@@ -2264,3 +2264,87 @@ table.prefixes small {
   background: var(--panel-2);
   color: var(--ink-2);
 }
+
+/* ---------------------------------------------------------------- library */
+
+.save-state {
+  padding: 2px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.save-state.saved {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.save-state.dirty {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.dialog.library {
+  width: min(980px, 100%);
+}
+
+.dialog.saveas {
+  width: min(460px, 100%);
+}
+
+.dialog.saveas input {
+  font-size: 15px;
+}
+
+.library-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.library-list {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.library-list table {
+  min-width: 760px;
+}
+
+.library-list td {
+  padding: 6px 10px;
+}
+
+.library-list td.iri {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-list td input {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.library-list .tag {
+  margin-left: 8px;
+}
+
+.dialog-actions {
+  align-items: center;
+}
+
+.library-list table {
+  min-width: 900px;
+}

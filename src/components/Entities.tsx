@@ -174,8 +174,8 @@ export function EntitiesView() {
                     Restrictions
                   </th>
                 )}
-                <th>{skos ? 'Definition' : 'Description'}</th>
-                <th style={{ width: '14%' }}>{skos ? 'Alternative labels' : 'Synonyms'}</th>
+                <th style={{ width: '15%' }}>{skos ? 'Definition' : 'Description'}</th>
+                <th style={{ width: '10%' }}>{skos ? 'Alternative labels' : 'Synonyms'}</th>
                 <th style={{ width: 80 }} className="num">
                   Relations
                 </th>

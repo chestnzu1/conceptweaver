@@ -6,7 +6,7 @@ import { sampleModel, skosSample } from '../model/sample';
 import { universitySample } from '../model/sampleUniversity';
 import { stressModel } from '../model/stress';
 import { stable } from '../model/stable';
-import { newModel, useStore, type View } from '../model/store';
+import { confirmDiscard, isDirty, newModel, useStore, type View } from '../model/store';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { CommitInput } from './fields';
 
@@ -38,6 +38,8 @@ export function Header() {
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const theme = useStore((s) => s.theme);
+  const docId = useStore((s) => s.doc.id);
+  const dirty = useStore(isDirty);
   const st = useStore.getState;
   const fileRef = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -57,15 +59,19 @@ export function Header() {
   };
 
   const fileMenu: MenuItem[] = [
-    { label: 'New model', onClick: newModel },
-    { label: 'Open…', onClick: () => fileRef.current?.click(), hint: 'JSON, Turtle' },
+    { label: 'New model', onClick: () => confirmDiscard() && newModel() },
+    { label: 'Open a file…', onClick: () => confirmDiscard() && fileRef.current?.click(), hint: 'JSON, Turtle' },
+    { label: 'My Models…', onClick: () => st().setDialog('library'), hint: 'saved in this browser' },
     { label: 'Ontology settings…', onClick: () => st().setDialog('settings'), hint: 'IRI, prefixes' },
-    { label: 'Load the SKOS example', onClick: () => st().replaceModel(skosSample()) },
-    { label: 'Load the ontology example', onClick: () => st().replaceModel(sampleModel()) },
-    { label: 'Load the large ontology example', onClick: () => st().replaceModel(universitySample()), hint: '130 terms' },
-    { label: 'Generate a stress-test model', onClick: () => st().replaceModel(stressModel()), hint: '960 terms' },
+    { label: 'Load the SKOS example', onClick: () => confirmDiscard() && st().replaceModel(skosSample()) },
+    { label: 'Load the ontology example', onClick: () => confirmDiscard() && st().replaceModel(sampleModel()) },
+    { label: 'Load the large ontology example', onClick: () => confirmDiscard() && st().replaceModel(universitySample()), hint: '130 terms' },
+    { label: 'Generate a stress-test model', onClick: () => confirmDiscard() && st().replaceModel(stressModel()), hint: '960 terms' },
     'sep',
-    { label: 'Save as JSON', onClick: () => exportModel('json'), hint: 'Ctrl+S' },
+    { label: 'Save', onClick: () => void st().saveToLibrary(), hint: 'Ctrl+S' },
+    { label: 'Save as…', onClick: () => st().setDialog('saveas') },
+    { heading: 'Files' },
+    { label: 'Download as JSON', onClick: () => exportModel('json') },
     { heading: 'Export' },
     { label: 'SKOS (Turtle)', onClick: () => exportModel('skos'), hint: model.mode === 'skos' ? '' : 'converted' },
     { label: 'OWL (Turtle)', onClick: () => exportModel('owl'), hint: model.mode === 'ontology' ? '' : 'converted' },
@@ -96,6 +102,15 @@ export function Header() {
         value={model.name}
         onCommit={(name) => st().apply((m) => ({ ...m, name: name.trim() || 'Untitled model' }))}
       />
+      <span className={'save-state ' + (docId ? (dirty ? 'dirty' : 'saved') : 'none')} role="status" title={docId ? (dirty ? 'This model has changes that are not saved to My Models yet' : 'Everything is saved to My Models in this browser') : 'This model is not saved to My Models. It is kept as a working copy in this browser until you replace it.'}>
+        {docId ? (dirty ? 'Unsaved changes' : 'Saved') : 'Not in My Models'}
+      </span>
+      <button className="btn" title="Save to My Models in this browser (Ctrl+S)" disabled={!!docId && !dirty} onClick={() => void st().saveToLibrary()}>
+        Save
+      </button>
+      <button className="btn" onClick={() => st().setDialog('library')}>
+        My Models
+      </button>
       <button className="btn" aria-haspopup="menu" onClick={(e) => dropdown(e, fileMenu)}>
         File ▾
       </button>

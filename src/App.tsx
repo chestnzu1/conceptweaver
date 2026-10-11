@@ -3,14 +3,14 @@ import { Canvas } from './components/Canvas';
 import { Header, openFile } from './components/Header';
 import { Inspector } from './components/Inspector';
 import { TermList } from './components/TermList';
+import { LibraryDialog, SaveAsDialog } from './components/Library';
 import { OntologySettings } from './components/OntologySettings';
 import { RdfView } from './components/RdfView';
 import { SparqlView } from './components/SparqlView';
 import { VocabView } from './components/VocabView';
 import { EntitiesView } from './components/Entities';
 import { BulkDialog, ChecksView, HierarchyView } from './components/views';
-import { exportModel } from './model/files';
-import { useStore } from './model/store';
+import { confirmDiscard, isDirty, useStore } from './model/store';
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
@@ -26,6 +26,17 @@ export function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  // The working copy normally survives closing the page. Only if the browser could not keep it
+  // would unsaved changes really be lost, and only then does the browser ask before leaving.
+  useEffect(() => {
+    const leaving = (e: BeforeUnloadEvent) => {
+      const s = useStore.getState();
+      if (s.workingCopyAtRisk && isDirty(s)) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', leaving);
+    return () => window.removeEventListener('beforeunload', leaving);
+  }, []);
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const st = useStore.getState();
@@ -33,7 +44,7 @@ export function App() {
       const k = e.key.toLowerCase();
       if (mod && k === 's') {
         e.preventDefault();
-        void exportModel('json');
+        void st.saveToLibrary();
         return;
       }
       if (isTyping(e.target) || st.dialog) return;
@@ -79,7 +90,7 @@ export function App() {
         e.preventDefault();
         setDropping(false);
         const f = e.dataTransfer.files[0];
-        if (f) void openFile(f);
+        if (f && confirmDiscard()) void openFile(f);
       }}
     >
       <Header />
@@ -99,6 +110,8 @@ export function App() {
       </div>
       {dialog === 'bulk' && <BulkDialog />}
       {dialog === 'settings' && <OntologySettings />}
+      {dialog === 'library' && <LibraryDialog />}
+      {dialog === 'saveas' && <SaveAsDialog />}
       {dropping && <div className="drop-overlay">Drop a model (.json) or ontology (.ttl) to open it</div>}
       {toast && (
         <div className="toast" role="status">

@@ -23,6 +23,9 @@ pnpm build      # static site in dist/
 - **Canvas** – double-click to add a term, drag a term's ⊕ handle onto another term to relate
   them (or onto empty space to create the other term), right-click anything for its menu.
   Pan by dragging, zoom with the wheel, Ctrl+drag to box-select. Full undo/redo.
+- **My Models** – save models in this browser (IndexedDB) and reopen them later: Save, Save as,
+  and a list to open, rename, duplicate and delete. The header shows whether the model in the
+  editor has unsaved changes. Browser storage is local and can be cleared, so export files too.
 - **Ontology settings** – File → Ontology settings: the ontology IRI, the default namespace new
   IRIs are made in, and namespace prefixes. Prefixes only change how an IRI is written (`ex:Actor`
   in tables, Turtle, SPARQL and search); they are kept on import and written on export.
@@ -68,7 +71,7 @@ pnpm build      # static site in dist/
 - **RDF view** – the live model as Turtle, JSON-LD or a triples table.
 - **Files** – save/open JSON; import Turtle / N-Triples (OWL, RDFS, SKOS); export OWL (Turtle),
   JSON-LD, CSV, SVG and PNG. Drag a file onto the window to open it.
-- The current model autosaves to the browser's local storage.
+- Whatever is in the editor is also kept as a working copy in the browser, so a reload loses nothing.
 
 ## Size
 

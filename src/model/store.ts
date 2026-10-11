@@ -9,6 +9,7 @@ import { declaredProp, findProp, propKey, type RelChoice } from './props';
 import { labelKey, resolveModel, suggestFor } from './vocab';
 import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from './subgraph';
 import { baseIriOf, moveNamespace, withIris } from './iri';
+import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
 import type { SettingsDraft } from './prefixes';
 import { assertedSuperclasses, wouldCycle } from './props';
 import { emptyModel, type ModelMode, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
@@ -84,6 +85,9 @@ interface Selection {
 const MODEL_KEY = 'conceptweaver:model:v1';
 const THEME_KEY = 'conceptweaver:theme';
 const MODE_KEY = 'conceptweaver:mode';
+/** Which saved model the working copy belongs to, and whether it has changes not yet saved there. */
+const DOC_KEY = 'conceptweaver:doc';
+const AUTOSAVE_KEY = 'conceptweaver:autosave';
 
 /** A stored setting, also looked for under the app's former name so that nothing saved before the rename is lost. */
 const stored = (key: string) => localStorage.getItem(key) ?? localStorage.getItem(key.replace('conceptweaver:', 'termloom:'));
@@ -109,8 +113,36 @@ function loadTheme(): Theme {
   return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+/**
+ * How the model in the editor relates to the library of saved models. `saved` is the very model
+ * object that was last saved or opened, so "has unsaved changes" is simply "the model is no
+ * longer that object" and undoing back to it makes the model clean again.
+ */
+export interface Doc {
+  /** Id of the saved model this is, or null when it has never been saved to the library. */
+  id: string | null;
+  saved: Model | null;
+}
+
+export const isDirty = (s: { model: Model; doc: Doc }) => s.model !== s.doc.saved;
+
+function loadDoc(model: Model): Doc {
+  try {
+    const d = JSON.parse(localStorage.getItem(DOC_KEY) ?? 'null') as { id?: unknown; dirty?: unknown } | null;
+    if (d) return { id: typeof d.id === 'string' ? d.id : null, saved: d.dirty === true ? null : model };
+  } catch {
+    // Unreadable: treat the working copy as an unsaved model.
+  }
+  return { id: null, saved: model };
+}
+
 interface State {
   model: Model;
+  doc: Doc;
+  /** Save to the library by itself a moment after each change, for a model that is already in it. */
+  libraryAutosave: boolean;
+  /** The working copy could not be kept in the browser, so closing the page would lose unsaved changes. */
+  workingCopyAtRisk: boolean;
   past: Model[];
   future: Model[];
   sel: Selection;
@@ -127,7 +159,7 @@ interface State {
   filter: string;
   theme: Theme;
   subgraph: SubgraphState;
-  dialog: 'bulk' | 'settings' | null;
+  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | null;
   toast: string | null;
 
   apply: (fn: (m: Model) => Model, history?: boolean) => void;
@@ -135,7 +167,19 @@ interface State {
   discardLast: () => void;
   undo: () => void;
   redo: () => void;
-  replaceModel: (m: Model) => void;
+  /** Puts another model in the editor. `docId` says which saved model it is, if it is one. */
+  replaceModel: (m: Model, docId?: string | null) => void;
+  /**
+   * Saves the model to the library in this browser. A model that is already there is updated;
+   * a new one, or any model with `asNew`, needs a `name` and becomes a new entry. Without a
+   * name where one is needed, the Save As dialog opens instead. Resolves to whether it was saved.
+   */
+  saveToLibrary: (opts?: { name?: string; asNew?: boolean; quiet?: boolean }) => Promise<boolean>;
+  /** Opens a saved model from the library. */
+  openFromLibrary: (id: string) => Promise<boolean>;
+  /** Called when the library changed a saved model behind the editor's back (renamed or deleted). */
+  syncDoc: (change: { renamed?: { id: string; name: string }; deleted?: string }) => void;
+  setLibraryAutosave: (on: boolean) => void;
 
   addTerm: (p?: Partial<Term>) => string;
   updateTerm: (id: string, patch: Partial<Term>, history?: boolean) => void;
@@ -229,8 +273,19 @@ const prune = (sel: Selection, m: Model): Selection => {
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
+const initialModel = loadModel();
+
 export const useStore = create<State>((set, get) => ({
-  model: loadModel(),
+  model: initialModel,
+  doc: loadDoc(initialModel),
+  libraryAutosave: (() => {
+    try {
+      return localStorage.getItem(AUTOSAVE_KEY) === 'on';
+    } catch {
+      return false;
+    }
+  })(),
+  workingCopyAtRisk: false,
   past: [],
   future: [],
   sel: { terms: [], rels: [] },
@@ -274,9 +329,65 @@ export const useStore = create<State>((set, get) => ({
       const model = s.future[0];
       return { model, past: [...s.past, s.model], future: s.future.slice(1), sel: prune(s.sel, model), editing: null, highlight: [] };
     }),
-  replaceModel: (m) => {
-    set((s) => ({ model: withIris(m), ...pushHistory(s), sel: { terms: [], rels: [] }, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH }));
+  replaceModel: (m, docId = null) => {
+    const model = withIris(m);
+    // A different document: its history starts afresh, and it counts as unchanged until edited.
+    set({ model, doc: { id: docId, saved: model }, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH });
     get().fit();
+  },
+  saveToLibrary: async ({ name, asNew = false, quiet = false } = {}) => {
+    const fresh = asNew || !get().doc.id;
+    if (fresh && !name?.trim()) {
+      set({ dialog: 'saveas' });
+      return false;
+    }
+    if (name?.trim() && name.trim() !== get().model.name) get().apply((m) => ({ ...m, name: name.trim() }));
+    // What is saved is the model as it is now; edits made while the browser is writing stay unsaved.
+    const model = get().model;
+    try {
+      const info = await saveToLibraryDb(model, fresh ? undefined : (get().doc.id ?? undefined));
+      set({ doc: { id: info.id, saved: model } });
+      if (!quiet) get().notify(fresh ? `Saved “${info.name}” to My Models in this browser.` : `Saved “${info.name}”.`);
+      return true;
+    } catch (e) {
+      get().notify(`Not saved. ${e instanceof Error ? e.message : 'The browser could not store the model.'}`);
+      return false;
+    }
+  },
+  openFromLibrary: async (id) => {
+    try {
+      const found = await loadSaved(id);
+      if (!found) {
+        get().notify('That model is no longer in My Models.');
+        return false;
+      }
+      get().replaceModel(found.model, id);
+      // Opening must not itself count as a change (replaceModel may have filled in missing IRIs).
+      set((s) => ({ doc: { id, saved: s.model }, view: 'graph' }));
+      get().notify(`Opened “${found.info.name}”.`);
+      return true;
+    } catch (e) {
+      get().notify(`Could not open it. ${e instanceof Error ? e.message : ''}`);
+      return false;
+    }
+  },
+  syncDoc: ({ renamed, deleted }) => {
+    const { doc, model } = get();
+    if (deleted && deleted === doc.id) set({ doc: { id: null, saved: null } });
+    if (renamed && renamed.id === doc.id && renamed.name !== model.name) {
+      // The open model takes the new name too, without that counting as an unsaved change.
+      const clean = !isDirty(get());
+      get().apply((m) => ({ ...m, name: renamed.name }), false);
+      if (clean) set((s) => ({ doc: { ...s.doc, saved: s.model } }));
+    }
+  },
+  setLibraryAutosave: (libraryAutosave) => {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, libraryAutosave ? 'on' : 'off');
+    } catch {
+      // The choice just isn't remembered.
+    }
+    set({ libraryAutosave });
   },
 
   addTerm: (p = {}) => {
@@ -814,7 +925,16 @@ export const useStore = create<State>((set, get) => ({
 
 // Autosave: the model lives in this browser's storage until it is saved to a file.
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let libraryTimer: ReturnType<typeof setTimeout> | undefined;
 useStore.subscribe((s, prev) => {
+  if (s.doc !== prev.doc || s.model !== prev.model) {
+    // Remembered across reloads: which saved model this is, and whether it has moved on from it.
+    try {
+      localStorage.setItem(DOC_KEY, JSON.stringify({ id: s.doc.id, dirty: isDirty(s) }));
+    } catch {
+      // ignore
+    }
+  }
   if (s.model === prev.model) return;
   // An edit can add or remove what the subgraph shows.
   if (s.subgraph.active) s.refreshSubgraph();
@@ -826,15 +946,37 @@ useStore.subscribe((s, prev) => {
       // ignore
     }
   }
+  // The working copy: whatever is in the editor is kept in this browser as it is edited, saved
+  // to the library or not, so that a reload or a crash loses nothing.
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
       localStorage.setItem(MODEL_KEY, JSON.stringify(useStore.getState().model));
+      if (useStore.getState().workingCopyAtRisk) useStore.setState({ workingCopyAtRisk: false });
     } catch {
-      useStore.getState().notify('Could not autosave: browser storage is full. Save the model to a file.');
+      useStore.setState({ workingCopyAtRisk: true });
+      useStore.getState().notify('This model is too large to keep as a working copy in the browser. Save it to My Models or to a file before closing the page.');
     }
   }, 300);
+  // Optional: a model that is already in the library is saved there too, a little after each change.
+  clearTimeout(libraryTimer);
+  if (s.libraryAutosave && s.doc.id && isDirty(s)) {
+    libraryTimer = setTimeout(() => {
+      const now = useStore.getState();
+      if (now.libraryAutosave && now.doc.id && isDirty(now)) void now.saveToLibrary({ quiet: true });
+    }, 1500);
+  }
 });
+
+/**
+ * Asks before the model in the editor is replaced by another, if it has changes that are not
+ * saved. Returns whether to go ahead.
+ */
+export function confirmDiscard(): boolean {
+  const s = useStore.getState();
+  if (!isDirty(s) || !s.model.terms.length) return true;
+  return window.confirm(`“${s.model.name}” has changes that are not saved to My Models.\n\nReplace it anyway? The unsaved changes will be lost.`);
+}
 
 /** A blank model of the type last worked on, so SKOS work starts in SKOS. */
 export const newModel = () => {
