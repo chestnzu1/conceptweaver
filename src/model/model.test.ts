@@ -597,7 +597,7 @@ describe('data and object properties', () => {
     const { m, t } = family();
     m.props.push(
       { name: 'has ancestor', description: 'Any forebear.', chars: ['transitive'], domain: [t.Person], range: [t.Person] },
-      { name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'], parent: 'has ancestor', inverseOf: 'has child', domain: [t.Person], range: [t.Parent] },
+      { name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'], parents: ['has ancestor'], inverses: ['has child'], domain: [t.Person], range: [t.Parent] },
       { name: 'has child', description: '', chars: [] },
     );
     const ttl = toTurtle(m);
@@ -607,7 +607,7 @@ describe('data and object properties', () => {
     expect(block(':hasParent')).toContain('rdfs:subPropertyOf :hasAncestor');
     expect(block(':hasParent')).toContain('owl:inverseOf :hasChild');
     const back = fromTurtle(ttl);
-    expect(back.props.find((p) => p.name === 'has parent')).toMatchObject({ chars: ['asymmetric', 'irreflexive'], parent: 'has ancestor', inverseOf: 'has child', range: [expect.any(String)] });
+    expect(back.props.find((p) => p.name === 'has parent')).toMatchObject({ chars: ['asymmetric', 'irreflexive'], parents: ['has ancestor'], inverses: ['has child'], range: [expect.any(String)] });
     // A domain and range alone put the property between no particular classes, so nothing is drawn.
     expect(back.relations.filter((r) => r.kind === 'association')).toEqual([]);
     expect(toTurtle(back)).toBe(ttl);
@@ -617,7 +617,7 @@ describe('data and object properties', () => {
     const { m, t, rel } = family();
     m.props.push(
       { name: 'has ancestor', description: '', chars: ['transitive'] },
-      { name: 'has parent', description: '', chars: [], parent: 'has ancestor', inverseOf: 'has child', range: [t.Parent] },
+      { name: 'has parent', description: '', chars: [], parents: ['has ancestor'], inverses: ['has child'], range: [t.Parent] },
       { name: 'married to', description: '', chars: ['symmetric'] },
       { name: 'has employer', description: '', chars: ['functional'] },
     );
@@ -714,7 +714,7 @@ describe('university example', () => {
     expect(m.props).toHaveLength(26);
     expect(m.relations.length).toBeGreaterThan(190);
     expect(plainRelationships(m).map((p) => p.name)).toEqual(['graduated from', 'hosted by', 'sponsors', 'works at']);
-    expect(objectProperties(m).every((p) => !p.inverseOf || m.props.some((x) => x.name === p.inverseOf))).toBe(true);
+    expect(objectProperties(m).every((p) => p.inverses.every((k) => m.props.some((x) => x.name === k)))).toBe(true);
   });
 
   it('passes its checks apart from suggestions, and is consistent', () => {

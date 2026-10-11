@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { runChecks } from '../model/checks';
-import { reason } from '../model/reasoner';
+import { owlFindings, qualityFindings } from '../model/validation';
 import { exportModel, parseModelFile } from '../model/files';
 import { sampleModel, skosSample } from '../model/sample';
 import { universitySample } from '../model/sampleUniversity';
@@ -14,7 +13,8 @@ const VIEWS: { value: View; label: string }[] = [
   { value: 'graph', label: 'Graph' },
   { value: 'table', label: 'Entities' },
   { value: 'hierarchy', label: 'Hierarchy' },
-  { value: 'checks', label: 'Checks' },
+  { value: 'checks', label: 'Validation' },
+  { value: 'align', label: 'Align' },
   { value: 'rdf', label: 'RDF' },
   { value: 'sparql', label: 'SPARQL' },
   { value: 'vocab', label: 'Vocabulary' },
@@ -49,7 +49,7 @@ export function Header() {
   // The count comes a moment after an edit, so that checking a large model never holds up the edit itself.
   const [problems, setProblems] = useState(0);
   useEffect(() => {
-    const id = setTimeout(() => setProblems(runChecks(meaning).filter((i) => i.severity !== 'info').length + reason(meaning).conflicts.length), meaning.terms.length > 300 ? 400 : 0);
+    const id = setTimeout(() => setProblems([...owlFindings(meaning).findings, ...qualityFindings(meaning).findings].filter((f) => f.severity !== 'info').length), meaning.terms.length > 300 ? 400 : 0);
     return () => clearTimeout(id);
   }, [meaning]);
 

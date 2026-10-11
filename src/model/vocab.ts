@@ -81,6 +81,15 @@ export const STD_PROPS: StdProp[] = [
   },
   {
     vocab: 'owl',
+    id: 'owl:propertyDisjointWith',
+    from: ['property'],
+    to: ['property'],
+    symmetric: true,
+    about: 'Nothing is related to the same value by both properties.',
+    aliases: /^(property )?disjoint property( with)?$/i,
+  },
+  {
+    vocab: 'owl',
     id: 'rdfs:domain',
     from: ['property'],
     to: ['concept'],
@@ -194,7 +203,8 @@ export const labelKey = (label: string) => label.trim().toLowerCase();
 /** The standard properties in force for a model: SKOS ones for a concept scheme, RDFS/OWL ones when switched on. */
 export function activeProps(m: Model): StdProp[] {
   if (m.mode === 'skos') return STD_PROPS.filter((p) => p.vocab === 'skos');
-  return m.vocab.enabled ? STD_PROPS.filter((p) => p.vocab === 'owl') : [];
+  // The SKOS mapping properties link any two resources, so an ontology can use them to point at another vocabulary.
+  return m.vocab.enabled ? STD_PROPS.filter((p) => p.vocab === 'owl' || p.id.endsWith('Match')) : [];
 }
 
 export const suggestFor = (m: Model, label: string): StdProp | undefined => activeProps(m).find((p) => p.aliases.test(label.trim()));

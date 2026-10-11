@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { CHARACTERISTICS, dataDomain, fitsIn, objectProperties, plainRelationships, propKey, REL_CHOICES, relChoice, restrictionsOf, type RelChoice } from '../model/props';
+import { inferredRestrictions } from '../model/inferred';
+import { CHARACTERISTICS, dataDomain, fitsIn, objectProperties, plainRelationships, propKey, propLinks, REL_CHOICES, relChoice, restrictionsOf, type RelChoice } from '../model/props';
 import { useStore } from '../model/store';
-import { DATATYPES, kindLabel, REL_KINDS, type RelKind, type Term, type TermType } from '../model/types';
+import { DATATYPES, kindLabel, REL_KINDS, type Model, type RelKind, type Term, type TermType } from '../model/types';
 import { CommitInput, useLazyOptions } from './fields';
 import { IriCell, SuperclassEditor } from './Iri';
 import { TermChips } from './TermChips';
@@ -13,6 +14,26 @@ let lastTab: Tab = 'concept';
 
 /** Rows shown at a time; a table of thousands of editable rows is slow to draw and no use to read. */
 const PAGE = 150;
+
+/** A class's inferred restrictions for the table: each with the class it comes from. */
+function InferredCell({ model, id }: { model: Model; id: string }) {
+  const inferred = useMemo(() => inferredRestrictions(model, id), [model, id]);
+  if (inferred.status === 'inconsistent') return <span className="muted">ontology inconsistent</span>;
+  return (
+    <>
+      {inferred.restrictions.map(({ key, restriction: r, sources }) => (
+        <div key={key} title={sources.map((x) => x.because).join('\n')}>
+          {r.property} <em>{r.quantifier}{r.n !== undefined ? ' ' + r.n : ''}</em> {r.filler} <span className="from">← {sources.map((x) => x.name).join(', ')}</span>
+        </div>
+      ))}
+      {inferred.expressions.length > 0 && (
+        <div className="muted" title={inferred.expressions.map((e) => e.text).join('\n')}>
+          + {inferred.expressions.length} inherited expression{inferred.expressions.length === 1 ? '' : 's'}
+        </div>
+      )}
+    </>
+  );
+}
 
 /** A dropdown of every term that only builds its options when it is about to be used. */
 function TermSelect({ value, current, onChange, label, sorted }: { value: string; current: string; onChange: (id: string) => void; label: string; sorted: Term[] }) {
@@ -56,17 +77,15 @@ export function EntitiesView() {
   const of = (type: TermType) => model.terms.filter((t) => (skos ? true : t.type === type));
   const sorted = useMemo(() => [...model.terms].sort((a, b) => a.name.localeCompare(b.name)), [model.terms]);
   // What each term is a kind of (or an instance of), and which terms have each data property.
-  const { parents, owners, degree } = useMemo(() => {
-    const parents = new Map<string, string[]>();
+  const { owners, degree } = useMemo(() => {
     const owners = new Map<string, string[]>();
     const degree = new Map<string, number>();
     for (const r of model.relations) {
       degree.set(r.from, (degree.get(r.from) ?? 0) + 1);
       if (r.to !== r.from) degree.set(r.to, (degree.get(r.to) ?? 0) + 1);
-      if (r.kind === 'generalization') parents.set(r.from, [...(parents.get(r.from) ?? []), r.to]);
       if (r.kind === 'property') owners.set(r.to, [...(owners.get(r.to) ?? []), r.from]);
     }
-    return { parents, owners, degree };
+    return { owners, degree };
   }, [model.relations]);
 
   const tabs: { id: Tab; label: string; count: number }[] = skos
@@ -170,12 +189,17 @@ export function EntitiesView() {
                   {skos ? 'Broader' : 'Asserted Superclasses'}
                 </th>
                 {!skos && (
-                  <th style={{ width: '20%' }} title="Anonymous superclasses: what each class's properties require of it">
-                    Restrictions
+                  <th style={{ width: '17%' }} title="Stated on the class itself: what its properties require of it">
+                    Asserted Restrictions
                   </th>
                 )}
-                <th style={{ width: '15%' }}>{skos ? 'Definition' : 'Description'}</th>
-                <th style={{ width: '10%' }}>{skos ? 'Alternative labels' : 'Synonyms'}</th>
+                {!skos && (
+                  <th style={{ width: '19%' }} title="Not stated on the class, but entailed by the reasoner: inherited from its superclasses and equivalent classes. Read-only.">
+                    Inferred Restrictions
+                  </th>
+                )}
+                <th style={{ width: '13%' }}>{skos ? 'Definition' : 'Description'}</th>
+                <th style={{ width: '9%' }}>{skos ? 'Alternative labels' : 'Synonyms'}</th>
                 <th style={{ width: 80 }} className="num">
                   Relations
                 </th>
@@ -204,6 +228,11 @@ export function EntitiesView() {
                           + {t.axioms.length} other asserted expression{t.axioms.length === 1 ? '' : 's'}
                         </div>
                       ) : null}
+                    </td>
+                  )}
+                  {!skos && (
+                    <td className="ro restrictions-cell inferred">
+                      <InferredCell model={model} id={t.id} />
                     </td>
                   )}
                   <td>{text(t, 'description', 'Description')}</td>
@@ -257,7 +286,9 @@ export function EntitiesView() {
                       <td key={side} className="cell-edit">
                         <TermChips
                           ids={ids}
-                          placeholder={ids.length ? '+' : 'anything; choose…'}
+                          placeholder={`Add a class to the ${side}`}
+                          of={p.name}
+                          empty="anything"
                           add={(id) => st().updateProp(p.key, { [side]: [...ids, id] })}
                           remove={(id) => st().updateProp(p.key, { [side]: ids.filter((x) => x !== id) })}
                         />
@@ -277,7 +308,7 @@ export function EntitiesView() {
                     );
                   })}
                   <td className="ro">{CHARACTERISTICS.filter((c) => p.chars.includes(c.id)).map((c) => c.label).join(', ') || '—'}</td>
-                  <td className="ro">{props.find((x) => x.key === p.inverseOf)?.name ?? p.inverseOf ?? '—'}</td>
+                  <td className="ro">{propLinks(model, p.key, 'inverses').map((k) => props.find((x) => x.key === k)?.name ?? k).join(', ') || '—'}</td>
                   <td className="num">{p.rels.length}</td>
                   <td className="row-actions">
                     <button className="btn icon ghost" title="Delete the property and the relationships that use it" aria-label={`Delete ${p.name}`} onClick={() => st().deleteProp(p.key)}>
@@ -299,6 +330,9 @@ export function EntitiesView() {
                 <th style={{ width: '18%' }}>Domain</th>
                 <th style={{ width: '16%' }}>Attached to</th>
                 <th style={{ width: 220 }}>Range (datatype)</th>
+                <th style={{ width: 90 }} title="Each thing has at most one value (owl:FunctionalProperty)">
+                  Functional
+                </th>
                 <th>Description</th>
                 <th style={{ width: 90 }} />
               </tr>
@@ -317,7 +351,9 @@ export function EntitiesView() {
                         <>
                           <TermChips
                             ids={d.ids}
-                            placeholder={d.ids.length ? '+' : 'not set; choose…'}
+                            placeholder="Add a class to the domain"
+                            of={t.name}
+                            empty="not set"
                             add={(id) => st().updateTerm(t.id, { domain: [...d.ids, id] })}
                             remove={(id) => st().updateTerm(t.id, { domain: d.ids.filter((x) => x !== id) })}
                           />
@@ -342,6 +378,9 @@ export function EntitiesView() {
                         </option>
                       ))}
                     </select>
+                  </td>
+                  <td className="num">
+                    <input type="checkbox" aria-label={`${t.name} is functional`} checked={!!t.functional} onChange={(e) => st().updateTerm(t.id, { functional: e.target.checked || undefined })} />
                   </td>
                   <td>{text(t, 'description', 'Description')}</td>
                   {actions(t)}
@@ -372,7 +411,9 @@ export function EntitiesView() {
                   <td className="ro">
                     <IriCell iri={t.iri} of={t.name} />
                   </td>
-                  <td className={'ro' + (parents.has(t.id) ? '' : ' missing')}>{names([...new Set(parents.get(t.id) ?? [])]) || 'not set'}</td>
+                  <td className="cell-edit">
+                    <SuperclassEditor term={t} />
+                  </td>
                   <td>{text(t, 'description', 'Description')}</td>
                   <td className="num">{degree.get(t.id) ?? 0}</td>
                   {actions(t)}

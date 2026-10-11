@@ -53,11 +53,35 @@ export interface ObjProp {
   range?: string[];
   /** Ids from CHARACTERISTICS, e.g. "transitive". */
   chars: string[];
-  /** Key (lower-cased name) of its inverse and of the property it specialises. */
-  inverseOf?: string;
-  parent?: string;
+  /**
+   * Other object properties, by key (lower-cased name): the ones it specialises
+   * (rdfs:subPropertyOf), its inverses, and the ones it is equivalent to or disjoint with.
+   * The last three hold both ways and are stored on one of the two properties.
+   */
+  parents?: string[];
+  inverses?: string[];
+  equivalents?: string[];
+  disjoints?: string[];
+  /** Annotations other than the name and description, as on a term. */
+  fields?: ExtraField[];
   /** Full IRI: kept from an import, or made once from the name. */
   iri?: string;
+  /** Defined in another ontology and only referred to here: the id of that ontology, or '' if it is not known. */
+  external?: string;
+}
+
+/** The lists of other properties an object property can carry. */
+export const PROP_LINKS = ['parents', 'inverses', 'equivalents', 'disjoints'] as const;
+export type PropLink = (typeof PROP_LINKS)[number];
+
+/** A literal value an individual has for a data property. */
+export interface DataValue {
+  /** Id of the data property term. */
+  prop: string;
+  value: string;
+  lang?: string;
+  /** Datatype stated on the value itself, when it is not simply the property's range. */
+  dt?: string;
 }
 
 export const COLORS = ['', 'blue', 'green', 'amber', 'red', 'purple', 'teal', 'pink'] as const;
@@ -94,6 +118,16 @@ export interface Term {
    * "rdfs:subClassOf [ owl:intersectionOf ( … ) ]". They come from imported ontologies.
    */
   axioms?: string[];
+  /** For a data property: each thing has at most one value (owl:FunctionalProperty). */
+  functional?: boolean;
+  /** For an individual: the literal values it has for data properties. */
+  values?: DataValue[];
+  /**
+   * Defined in another ontology and only referred to here, under its own IRI: the id of that
+   * ontology (see Model.externals), or '' if it is not known. Its definition is not part of
+   * this model and is not exported with it; statements made about it here are.
+   */
+  external?: string;
 }
 
 export interface Relation {
@@ -154,6 +188,130 @@ export interface Model {
   props: ObjProp[];
   terms: Term[];
   relations: Relation[];
+  shapes: Shapes;
+  quality: QualityConfig;
+  externals: ExternalRef[];
+  mappings: MappingMeta[];
+  /** Suggested mappings the user turned down ("source IRI|target IRI"), so they are not suggested again. */
+  rejected: string[];
+}
+
+/** A value in a SHACL constraint: an IRI, or a literal with its datatype or language. */
+export interface ShapeValue {
+  v: string;
+  iri?: boolean;
+  dt?: string;
+  lang?: string;
+}
+
+export type ShaclSeverity = 'Violation' | 'Warning' | 'Info';
+export const NODE_KINDS = ['IRI', 'Literal', 'BlankNode', 'BlankNodeOrIRI', 'BlankNodeOrLiteral', 'IRIOrLiteral'] as const;
+
+/** One sh:property of a node shape: what the values reached by a path must be like. Entities are named by IRI. */
+export interface PropertyShape {
+  id: string;
+  /** IRI of the property the values are reached by; `inverse` follows it backwards (sh:inversePath). */
+  path: string;
+  inverse?: boolean;
+  name?: string;
+  message?: string;
+  severity?: ShaclSeverity;
+  minCount?: number;
+  maxCount?: number;
+  /** A datatype as a prefixed name (xsd:string) or a full IRI. */
+  datatype?: string;
+  class?: string;
+  nodeKind?: (typeof NODE_KINDS)[number];
+  pattern?: string;
+  flags?: string;
+  in?: ShapeValue[];
+  hasValue?: ShapeValue;
+  minInclusive?: ShapeValue;
+  maxInclusive?: ShapeValue;
+  minExclusive?: ShapeValue;
+  maxExclusive?: ShapeValue;
+  minLength?: number;
+  maxLength?: number;
+  uniqueLang?: boolean;
+  languageIn?: string[];
+  /** IRI of a node shape every value must conform to. */
+  node?: string;
+}
+
+/** A SHACL node shape as the shape editor holds it. */
+export interface ShapeDef {
+  id: string;
+  iri: string;
+  name: string;
+  targetClass: string[];
+  targetNode: string[];
+  targetSubjectsOf: string[];
+  targetObjectsOf: string[];
+  severity?: ShaclSeverity;
+  message?: string;
+  closed?: boolean;
+  deactivated?: boolean;
+  properties: PropertyShape[];
+}
+
+/**
+ * The model's SHACL shapes graph. It is kept apart from the ontology: shapes say what data
+ * must look like, they assert nothing about the classes. `nodes` are the shapes the editor
+ * understands; `extra` is Turtle for imported shapes that use more of SHACL than the editor has
+ * fields for, kept as written.
+ */
+export interface Shapes {
+  nodes: ShapeDef[];
+  extra: string;
+}
+
+/**
+ * Another ontology this one knows about. Only this description is in the model; the
+ * ontology's content is cached in the browser and is never merged into the model by itself.
+ */
+export interface ExternalRef {
+  id: string;
+  name: string;
+  /** The IRI of that ontology, as it states it. */
+  iri: string;
+  versionIri?: string;
+  namespace: string;
+  /** Where it came from: a file name, a URL, or the name of a saved model. */
+  source: string;
+  sourceKind: 'file' | 'url' | 'model' | 'unknown';
+  addedAt: number;
+  classes: number;
+  objectProperties: number;
+  dataProperties: number;
+  individuals: number;
+  /** A dependency: this ontology imports it (owl:imports), so its axioms hold here too. */
+  imports: boolean;
+}
+
+export const MAPPING_STATUS = ['proposed', 'approved', 'needs review'] as const;
+
+/**
+ * What is recorded about a mapping beside the mapping itself: who made it, how, and whether it
+ * has been reviewed. The mapping is an axiom of the ontology; this is bookkeeping about it and
+ * is kept apart. `source`, `predicate` and `target` say which mapping it belongs to.
+ */
+export interface MappingMeta {
+  source: string;
+  predicate: string;
+  target: string;
+  created: number;
+  method: 'manual' | 'suggested' | 'imported';
+  /** The similarity the suggestion had. A heuristic, not a probability that the mapping is right. */
+  score?: number;
+  author?: string;
+  comment?: string;
+  status: (typeof MAPPING_STATUS)[number];
+}
+
+/** Which quality rules the user switched off, and which of the ones that are off by default they switched on. */
+export interface QualityConfig {
+  off: string[];
+  on: string[];
 }
 
 export const MAX_TERMS = 50_000;
@@ -164,7 +322,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [] };
+  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -208,6 +366,13 @@ const LANG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback);
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
+const fieldList = (v: unknown): ExtraField[] =>
+  Array.isArray(v)
+    ? (v as Record<string, unknown>[])
+        .filter((f) => f && typeof f === 'object')
+        .map((f) => ({ key: str(f.key), value: str(f.value), ...(LANG.test(str(f.lang)) ? { lang: str(f.lang).toLowerCase() } : {}) }))
+    : [];
+
 /** Validates untrusted JSON and returns a well-formed model. Throws on anything unusable. */
 export function normalizeModel(raw: unknown): Model {
   if (!raw || typeof raw !== 'object') throw new Error('Not a model file.');
@@ -236,15 +401,22 @@ export function normalizeModel(raw: unknown): Model {
       x: num(t.x),
       y: num(t.y),
       synonyms: str(t.synonyms),
-      fields: Array.isArray(t.fields)
-        ? (t.fields as Record<string, unknown>[])
-            .filter((f) => f && typeof f === 'object')
-            .map((f) => ({ key: str(f.key), value: str(f.value), ...(LANG.test(str(f.lang)) ? { lang: str(f.lang).toLowerCase() } : {}) }))
-        : [],
+      fields: fieldList(t.fields),
       ...(str(t.iri) ? { iri: str(t.iri) } : {}),
       ...(DATATYPES.some((d) => d.id === str(t.range)) ? { range: str(t.range) } : {}),
       ...(Array.isArray(t.axioms) && t.axioms.length ? { axioms: t.axioms.map((a) => str(a)).filter(Boolean) } : {}),
+      ...(t.functional === true ? { functional: true } : {}),
+      ...(typeof t.external === 'string' ? { external: t.external } : {}),
     });
+  }
+  // An individual's values can only be for terms that exist.
+  for (const t of o.terms as Record<string, unknown>[]) {
+    if (!t || typeof t !== 'object' || !Array.isArray(t.values)) continue;
+    const term = terms.find((x) => x.id === str(t.id));
+    const values = (t.values as Record<string, unknown>[])
+      .filter((v) => v && typeof v === 'object' && ids.has(str(v.prop)) && str(v.value) !== '')
+      .map((v): DataValue => ({ prop: str(v.prop), value: str(v.value), ...(LANG.test(str(v.lang)) ? { lang: str(v.lang).toLowerCase() } : {}), ...(DATATYPES.some((d) => d.id === str(v.dt)) ? { dt: str(v.dt) } : {}) }));
+    if (term && values.length) term.values = values;
   }
   // A data property's hand-set domain can only name terms that exist.
   for (const [i, t] of (o.terms as Record<string, unknown>[]).entries()) {
@@ -295,10 +467,17 @@ export function normalizeModel(raw: unknown): Model {
       chars: Array.isArray(p.chars) ? [...new Set(p.chars.map((c) => str(c)).filter(Boolean))] : [],
       ...(domain ? { domain: domain.list } : {}),
       ...(range ? { range: range.list } : {}),
-      ...(str(p.inverseOf) ? { inverseOf: key(str(p.inverseOf)) } : {}),
-      ...(str(p.parent) ? { parent: key(str(p.parent)) } : {}),
       ...(str(p.iri) ? { iri: str(p.iri) } : {}),
+      ...(fieldList(p.fields).length ? { fields: fieldList(p.fields) } : {}),
+      ...(typeof p.external === 'string' ? { external: p.external } : {}),
     });
+    // Models from before a property could have several: one parent, one inverse.
+    const entry = props[props.length - 1];
+    const legacy: Record<PropLink, unknown> = { parents: p.parent, inverses: p.inverseOf, equivalents: undefined, disjoints: undefined };
+    for (const link of PROP_LINKS) {
+      const list = [...new Set([...(Array.isArray(p[link]) ? (p[link] as unknown[]) : []), legacy[link]].map((x) => key(str(x))).filter((k) => k && k !== key(entry.name)))];
+      if (list.length) entry[link] = list;
+    }
   }
   // Models from the short-lived version that drew an object property as a term of its own:
   // each becomes a declared property, used between every domain and range term it had.
@@ -331,7 +510,95 @@ export function normalizeModel(raw: unknown): Model {
     props,
     terms,
     relations,
+    shapes: normalizeShapes(o.shapes),
+    externals: (Array.isArray(o.externals) ? (o.externals as Record<string, unknown>[]) : [])
+      .filter((e) => e && typeof e === 'object' && str(e.id))
+      .map((e): ExternalRef => {
+        const kind = str(e.sourceKind);
+        return {
+          id: str(e.id),
+          name: str(e.name) || str(e.iri) || 'External ontology',
+          iri: str(e.iri),
+          ...(str(e.versionIri) ? { versionIri: str(e.versionIri) } : {}),
+          namespace: str(e.namespace),
+          source: str(e.source),
+          sourceKind: kind === 'file' || kind === 'url' || kind === 'model' ? kind : 'unknown',
+          addedAt: num(e.addedAt),
+          classes: num(e.classes),
+          objectProperties: num(e.objectProperties),
+          dataProperties: num(e.dataProperties),
+          individuals: num(e.individuals),
+          imports: e.imports === true,
+        };
+      }),
+    mappings: (Array.isArray(o.mappings) ? (o.mappings as Record<string, unknown>[]) : [])
+      .filter((x) => x && typeof x === 'object' && str(x.source) && str(x.predicate) && str(x.target))
+      .map((x): MappingMeta => ({
+        source: str(x.source),
+        predicate: str(x.predicate),
+        target: str(x.target),
+        created: num(x.created),
+        method: x.method === 'suggested' || x.method === 'imported' ? x.method : 'manual',
+        ...(typeof x.score === 'number' ? { score: x.score } : {}),
+        ...(str(x.author) ? { author: str(x.author) } : {}),
+        ...(str(x.comment) ? { comment: str(x.comment) } : {}),
+        status: (MAPPING_STATUS as readonly string[]).includes(str(x.status)) ? (str(x.status) as MappingMeta['status']) : 'proposed',
+      })),
+    rejected: Array.isArray(o.rejected) ? [...new Set(o.rejected.map((x) => str(x)).filter(Boolean))] : [],
+    quality: {
+      off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],
+      on: Array.isArray((o.quality as QualityConfig | undefined)?.on) ? [...new Set((o.quality as QualityConfig).on.map((x) => str(x)).filter(Boolean))] : [],
+    },
   };
+}
+
+const SEVERITIES = ['Violation', 'Warning', 'Info'];
+const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined);
+const strs = (v: unknown) => (Array.isArray(v) ? [...new Set(v.map((x) => str(x)).filter(Boolean))] : []);
+function shapeValue(v: unknown): ShapeValue | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const o = v as Record<string, unknown>;
+  if (typeof o.v !== 'string') return undefined;
+  return { v: o.v, ...(o.iri === true ? { iri: true } : {}), ...(str(o.dt) ? { dt: str(o.dt) } : {}), ...(LANG.test(str(o.lang)) ? { lang: str(o.lang).toLowerCase() } : {}) };
+}
+
+/** Validates the shapes part of untrusted JSON. A model saved before shapes existed has none. */
+export function normalizeShapes(raw: unknown): Shapes {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const nodes: ShapeDef[] = [];
+  for (const n of (Array.isArray(o.nodes) ? o.nodes : []) as Record<string, unknown>[]) {
+    if (!n || typeof n !== 'object' || !str(n.iri)) continue;
+    const properties: PropertyShape[] = [];
+    for (const p of (Array.isArray(n.properties) ? n.properties : []) as Record<string, unknown>[]) {
+      if (!p || typeof p !== 'object') continue;
+      const out: PropertyShape = { id: str(p.id) || uid(), path: str(p.path) };
+      if (p.inverse === true) out.inverse = true;
+      for (const k of ['name', 'message', 'datatype', 'class', 'pattern', 'flags', 'node'] as const) if (str(p[k])) out[k] = str(p[k]);
+      if (SEVERITIES.includes(str(p.severity))) out.severity = str(p.severity) as ShaclSeverity;
+      for (const k of ['minCount', 'maxCount', 'minLength', 'maxLength'] as const) if (count(p[k]) !== undefined) out[k] = count(p[k]);
+      if ((NODE_KINDS as readonly string[]).includes(str(p.nodeKind))) out.nodeKind = str(p.nodeKind) as PropertyShape['nodeKind'];
+      for (const k of ['hasValue', 'minInclusive', 'maxInclusive', 'minExclusive', 'maxExclusive'] as const) if (shapeValue(p[k])) out[k] = shapeValue(p[k]);
+      if (Array.isArray(p.in)) out.in = p.in.map(shapeValue).filter((x): x is ShapeValue => !!x);
+      if (p.uniqueLang === true) out.uniqueLang = true;
+      if (Array.isArray(p.languageIn)) out.languageIn = strs(p.languageIn);
+      properties.push(out);
+    }
+    nodes.push({
+      id: str(n.id) || uid(),
+      iri: str(n.iri),
+      name: str(n.name),
+      targetClass: strs(n.targetClass),
+      targetNode: strs(n.targetNode),
+      targetSubjectsOf: strs(n.targetSubjectsOf),
+      targetObjectsOf: strs(n.targetObjectsOf),
+      ...(SEVERITIES.includes(str(n.severity)) ? { severity: str(n.severity) as ShaclSeverity } : {}),
+      ...(str(n.message) ? { message: str(n.message) } : {}),
+      ...(n.closed === true ? { closed: true } : {}),
+      ...(n.deactivated === true ? { deactivated: true } : {}),
+      properties,
+    });
+  }
+  return { nodes, extra: str(o.extra) };
 }
 
 /** Name of a relation kind as shown in menus; SKOS calls a generalization "broader". */

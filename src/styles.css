@@ -2348,3 +2348,1230 @@ table.prefixes small {
 .library-list table {
   min-width: 900px;
 }
+
+/* ------------------------------------------------------- sidebar class tree */
+
+.list-count {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.list-count .mini {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.list-count .mini:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.list-count .mini:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.term-list ul.class-tree {
+  padding: 2px 4px 10px;
+}
+
+.tree-line {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 6px;
+}
+
+.tree-line:hover {
+  background: var(--panel-2);
+}
+
+.tree-line.on {
+  background: var(--accent-soft);
+}
+
+.tree-line .chev {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tree-line button.chev:hover:not(:disabled) {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.tree-line button.chev:disabled {
+  cursor: default;
+}
+
+.term-list .tree-line .label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.term-list .tree-line .label:hover,
+.term-list .tree-line .label.on {
+  background: transparent;
+}
+
+.tree-line .label.root {
+  cursor: default;
+  color: var(--ink-2);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.tree-line.match .name {
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.tree-line .tag {
+  flex-shrink: 0;
+}
+
+/* A deep hierarchy scrolls sideways rather than squeezing names out of sight. */
+.term-list ul.class-tree {
+  overflow: auto;
+}
+
+.tree-line {
+  width: max-content;
+  min-width: 100%;
+}
+
+.term-list .tree-line .name {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* The header wraps onto a second line on a narrow window instead of pushing the page sideways. */
+.header {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.app {
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------- inferred restrictions */
+
+.section-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Inferred restrictions are worked out, not stated: dashed and tinted, and nothing in them can be edited. */
+.restrictions.inferred li {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 5px 9px;
+  border-style: dashed;
+  background: color-mix(in srgb, var(--tok-voc) 6%, var(--panel));
+}
+
+.restrictions.inferred .what em {
+  color: var(--tok-voc);
+  font-style: normal;
+}
+
+.restrictions.inferred code.what {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.sources,
+.restrictions-cell .from {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.restrictions-cell.inferred {
+  color: var(--ink-2);
+}
+
+.not-inferred {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.not-inferred summary {
+  cursor: pointer;
+}
+
+.not-inferred ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.not-inferred p {
+  margin: 6px 0 0;
+}
+
+.view table.wide {
+  min-width: 1560px;
+}
+
+/* ------------------------------------------------------------ entity editor */
+
+.inspector.wide {
+  width: 520px;
+}
+
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-head h2 {
+  flex: 1;
+}
+
+.editor-head .save-state {
+  padding: 1px 7px;
+  font-size: 11px;
+}
+
+.inspector .editor-head .btn {
+  width: auto;
+}
+
+.editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.editor-section > h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0;
+}
+
+/* What the reasoner works out is set apart from what is stated: tinted, dashed, without controls. */
+.editor-section.inferred {
+  padding: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+code.pred {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.iri-parts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.iri-parts dt {
+  color: var(--ink-3);
+}
+
+.iri-parts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.picker .missing {
+  font-size: 13px;
+}
+
+.chip-x.locked {
+  border-style: dashed;
+}
+
+.chip-lock {
+  width: 14px;
+  color: var(--ink-3);
+  text-align: center;
+  cursor: help;
+}
+
+.picker > small.bad {
+  display: block;
+  margin-top: 4px;
+}
+
+.anonymous {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.axioms li {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.axioms li code {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.inspector .axioms .btn {
+  width: auto;
+}
+
+.inferred-list,
+.assertions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inferred-list:empty,
+.assertions:empty {
+  display: none;
+}
+
+.inferred-list li {
+  font-size: 13px;
+}
+
+.inferred-list .sources {
+  display: block;
+}
+
+.assertions li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.assertions li > :nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.assertions .prop {
+  font-weight: 600;
+}
+
+.assertions .lang {
+  margin-left: 4px;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.inspector .assertions .btn,
+.inspector .assertion-add .btn {
+  width: auto;
+}
+
+.assertion-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.assertion-add > input:not(.meta-lang) {
+  flex: 1;
+  min-width: 110px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.assertion-add .picker {
+  min-width: 0;
+}
+
+.assertion-add .supers-add {
+  min-width: 200px;
+}
+
+.field.checks small.bad {
+  display: block;
+}
+
+.editor-section > h3 .section-toggle {
+  text-align: left;
+}
+
+.editor-section > h3 .tag {
+  flex: none;
+}
+
+.assertions li > :nth-child(2) {
+  overflow-wrap: break-word;
+}
+
+.assertions .prop {
+  flex: none;
+  max-width: 45%;
+  text-align: left;
+}
+
+.inspector .btn.danger {
+  height: auto;
+  min-height: 30px;
+  padding-block: 5px;
+  white-space: normal;
+}
+
+/* -------------------------------------------------------- validation workbench */
+
+.validation {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.validation .view-head {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.validation .run-state {
+  flex: 1;
+  min-width: 200px;
+}
+
+.validation .stale {
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+}
+
+.validation .summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.validation .card {
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.validation .card.is-good {
+  border-left-color: var(--accent);
+}
+
+.validation .card.is-warn {
+  border-left-color: var(--warn);
+}
+
+.validation .card.is-bad {
+  border-left-color: var(--danger);
+}
+
+.validation .card h3,
+.validation .card p {
+  margin: 0;
+}
+
+.validation .card h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
+}
+
+.validation .card details {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.validation .card details summary {
+  cursor: pointer;
+}
+
+.validation .card details ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.validation .data-graph {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.validation .data-graph label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.validation .data-graph select {
+  height: 28px;
+  max-width: 220px;
+}
+
+.validation .tabs.sub {
+  align-self: flex-start;
+  margin: 0 16px 8px;
+}
+
+.validation .filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 0 16px 10px;
+}
+
+.validation .filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.validation .filters label.grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.validation .filters select,
+.validation .filters input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.validation .table-wrap {
+  flex: none;
+  overflow: visible;
+}
+
+.validation .results.is-stale tbody {
+  opacity: 0.6;
+}
+
+.validation tr.result {
+  cursor: pointer;
+}
+
+.validation tr.result td {
+  padding: 8px 10px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.validation tr.result .msg {
+  color: var(--ink-2);
+}
+
+.validation .cat {
+  padding: 1px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.validation .cat.owl {
+  border-color: var(--danger);
+}
+
+.validation .cat.shacl {
+  border-color: var(--accent);
+}
+
+.validation tr.detail td {
+  padding: 10px 16px 14px 112px;
+  background: var(--panel-2);
+}
+
+.validation tr.detail dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.validation tr.detail dt {
+  color: var(--ink-3);
+}
+
+.validation tr.detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fix-preview {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.fix-preview p {
+  margin: 4px 0 8px;
+}
+
+.rules {
+  padding: 0 16px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.rules > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.rules fieldset {
+  margin: 0;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rules legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.rules .rule {
+  align-items: flex-start;
+}
+
+.rules .rule small {
+  display: block;
+  color: var(--ink-2);
+}
+
+.shapes {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 16px 16px;
+  align-items: start;
+}
+
+.shape-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shape-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shape-list li button {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shape-list li button.on {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shape-list li button .muted {
+  font-size: 12px;
+}
+
+.shape-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shape-editor h3 {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.shape-editor p {
+  margin: 0;
+}
+
+.shape-head {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.2fr) minmax(140px, 1.5fr) 190px auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.shape-head code {
+  overflow-wrap: anywhere;
+}
+
+.shape-targets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.shape-prop {
+  margin: 0;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shape-prop legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.shape-prop-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.shape-prop-head .field {
+  flex: 1;
+}
+
+.shape-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.shape-grid label,
+.shape-grid .field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.shape-grid .wide {
+  grid-column: span 2;
+}
+
+.shape-grid label.check {
+  flex-direction: row;
+  align-items: center;
+  align-self: end;
+  min-height: 30px;
+}
+
+.shape-grid input:not([type='checkbox']),
+.shape-grid select,
+.shape-head input,
+.shape-head select {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.shape-preview {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  white-space: pre;
+}
+
+.shapes-text {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+@media (max-width: 1100px) {
+  .validation .summary,
+  .shapes {
+    grid-template-columns: 1fr;
+  }
+
+  .shape-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------------ alignment */
+
+/* An entity of another ontology: dashed, so that it is never mistaken for one defined here. */
+.node.external .node-box {
+  stroke-dasharray: 6 3;
+  fill-opacity: 0.55;
+}
+
+.node.external .node-text {
+  font-style: italic;
+}
+
+.external-note {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.subgraph .row > select {
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.alignment {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.alignment .view-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.alignment .stale {
+  margin: 0;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+}
+
+.add-ontology {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.add-ontology input[type='url'] {
+  width: 340px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.add-ontology p,
+.saved-models {
+  margin: 0;
+  max-width: 560px;
+}
+
+.saved-models {
+  list-style: none;
+  padding: 0;
+}
+
+.dialog.ext-preview {
+  width: min(620px, 100%);
+}
+
+.ext-preview h3 {
+  margin: 4px 0 8px;
+  font-size: 18px;
+}
+
+.ext-preview dl,
+.ontology-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 14px;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.ext-preview dt,
+.ontology-facts dt {
+  color: var(--ink-3);
+}
+
+.ext-preview dd,
+.ontology-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ext-preview ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+  font-size: 12.5px;
+}
+
+.ext-preview .choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.ext-preview .choices > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ext-preview .choices small {
+  color: var(--ink-2);
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 16px 16px;
+  align-items: start;
+}
+
+.ontologies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ontologies button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+
+.ontologies button.on {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.ontologies .muted {
+  font-size: 12px;
+}
+
+.tag.dep {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ontology-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ontology-detail .head h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+}
+
+.ontology-detail p {
+  margin: 0;
+}
+
+.entity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.entity-list > input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.entity-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.entity-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+}
+
+.entity-list li.on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.entity-list li.mapped .name {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+}
+
+.entity-list .pick {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-list .pick .muted {
+  font-size: 12px;
+}
+
+.entity-list .actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.align,
+.mappings,
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.align .sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.align .sides h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.align .sides h3 .muted {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.align .entity-list ul {
+  max-height: 300px;
+}
+
+.mapping-form {
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mapping-form p {
+  margin: 0;
+}
+
+.mapping-form .pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.mapping-form .end {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mapping-form label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mapping-form select,
+.mappings .row select,
+.suggestions .row select,
+.align .row > select {
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.mappings .table-wrap,
+.suggestions .table-wrap {
+  flex: none;
+  overflow: visible;
+}
+
+.mappings td.ro .tag,
+.suggestions td .muted {
+  margin-left: 6px;
+}
+
+.check-result {
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.check-result.is-good {
+  border-left-color: var(--accent);
+}
+
+.check-result.is-warn {
+  border-left-color: var(--warn);
+}
+
+.check-result.is-bad {
+  border-left-color: var(--danger);
+}
+
+.check-result ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.check-result ul:empty {
+  display: none;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
+.suggestions p {
+  margin: 0;
+}
+
+.suggestions td.why {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}

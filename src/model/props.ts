@@ -1,4 +1,4 @@
-import type { Model, ObjProp, Quantifier, Relation, Term } from './types';
+import { PROP_LINKS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type Term } from './types';
 import { labelKey, resolveModel } from './vocab';
 
 /** The characteristics an object property can have, as in OWL. */
@@ -29,9 +29,15 @@ export interface PropView {
   domainAuto: boolean;
   rangeAuto: boolean;
   chars: string[];
-  inverseOf?: string;
-  parent?: string;
+  /** Keys of other properties, as declared on this one (see `propLinks` for both directions). */
+  parents: string[];
+  inverses: string[];
+  equivalents: string[];
+  disjoints: string[];
+  fields: ExtraField[];
   iri?: string;
+  /** Defined in another ontology (see ObjProp.external). */
+  external?: string;
   /** The relationships that use it. */
   rels: Relation[];
 }
@@ -66,9 +72,13 @@ function analyse(model: Model): Analysis {
       range: p.range?.filter((id) => types.has(id)) ?? [],
       domainAuto: !p.domain,
       rangeAuto: !p.range,
-      ...(p.inverseOf ? { inverseOf: p.inverseOf } : {}),
-      ...(p.parent ? { parent: p.parent } : {}),
+      parents: p.parents ?? [],
+      inverses: p.inverses ?? [],
+      equivalents: p.equivalents ?? [],
+      disjoints: p.disjoints ?? [],
+      fields: p.fields ?? [],
       ...(p.iri ? { iri: p.iri } : {}),
+      ...(p.external !== undefined ? { external: p.external } : {}),
       rels: [],
     });
   }
@@ -129,6 +139,19 @@ export const findProp = (model: Model, key: string) => analyse(model).props.find
 export function declaredProp(model: Model, key: string): ObjProp {
   return model.props.find((p) => propKey(p.name) === key) ?? { name: key, description: '', chars: [] };
 }
+
+/**
+ * The properties an object property is linked to in one way. Being a sub-property has a
+ * direction; inverse, equivalent and disjoint hold both ways, so a statement made on either
+ * property counts for both.
+ */
+export function propLinks(model: Model, key: string, link: PropLink): string[] {
+  const all = analyse(model).props;
+  const own = all.find((p) => p.key === key)?.[link] ?? [];
+  if (link === 'parents') return own;
+  return [...new Set([...own, ...all.filter((p) => p.key !== key && p[link].includes(key)).map((p) => p.key)])];
+}
+export { PROP_LINKS };
 
 /** The classes that can have a data property: set by hand, or else the terms it is attached to. */
 export function dataDomain(model: Model, t: Term): { ids: string[]; auto: boolean } {

@@ -9,7 +9,9 @@ import { RdfView } from './components/RdfView';
 import { SparqlView } from './components/SparqlView';
 import { VocabView } from './components/VocabView';
 import { EntitiesView } from './components/Entities';
-import { BulkDialog, ChecksView, HierarchyView } from './components/views';
+import { AlignmentView } from './components/Alignment';
+import { ValidationView } from './components/Validation';
+import { BulkDialog, HierarchyView } from './components/views';
 import { confirmDiscard, isDirty, useStore } from './model/store';
 
 const isTyping = (el: EventTarget | null) =>
@@ -101,7 +103,8 @@ export function App() {
           <Canvas />
           {view === 'table' && <EntitiesView />}
           {view === 'hierarchy' && <HierarchyView />}
-          {view === 'checks' && <ChecksView />}
+          {view === 'checks' && <ValidationView />}
+          {view === 'align' && <AlignmentView />}
           {view === 'rdf' && <RdfView />}
           {view === 'sparql' && <SparqlView />}
           {view === 'vocab' && <VocabView />}

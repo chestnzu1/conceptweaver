@@ -3,6 +3,7 @@
  * plus the SKOS documentation notes and the common Dublin Core terms.
  */
 export const ANNOTATION_PROPS: { id: string; about: string }[] = [
+  { id: 'rdfs:label', about: 'The name, e.g. in another language.' },
   { id: 'rdfs:comment', about: 'A general remark about the term.' },
   { id: 'rdfs:seeAlso', about: 'Where to find more about it (often a link).' },
   { id: 'rdfs:isDefinedBy', about: 'The source that defines it.' },

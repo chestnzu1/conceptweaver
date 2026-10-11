@@ -450,7 +450,7 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
         return <EdgeView key={r.id} r={r} geom={g.geom} label={editing?.kind === 'rel' && editing.id === r.id ? '' : label} cls={cls} actions={actions} />;
       })}
       {model.terms.map((t) => {
-        const cls = `node ${t.type}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}`;
+        const cls = `node ${t.type}${t.external !== undefined ? ' external' : ''}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}`;
         const more = sub?.result?.more.get(t.id) ?? 0;
         return (
           <NodeView

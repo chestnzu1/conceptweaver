@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
 import { compactIri } from '../model/prefixes';
 import { assertedSuperclasses } from '../model/props';
 import { useStore } from '../model/store';
-import { searchTerms } from '../model/subgraph';
+import { addIsA } from '../model/axioms';
+import { EntityPicker, type Choice } from './EntityPicker';
 import type { Term } from '../model/types';
 
 /**
@@ -49,89 +49,37 @@ export function IriCell({ iri, of, full = false }: { iri?: string; of: string; f
   );
 }
 
+/** What one "is a" statement about a term is called: a class has superclasses, an individual types, a data property superproperties. */
+const isANoun = (term: Term, skos: boolean) => (term.type === 'instance' && !skos ? 'type' : term.type === 'property' && !skos ? 'superproperty' : 'superclass');
+
 /**
- * The superclasses a class is explicitly stated to have, as removable chips, and a search to add
- * another. Each chip is one "is a" statement: removing it removes that statement and no other.
+ * What a term is explicitly stated to be a kind of: the asserted superclasses of a class, the
+ * types of an individual, the superproperties of a data property. Each chip is one "is a"
+ * statement: removing it removes that statement and no other. Any number can stand side by side.
  */
 export function SuperclassEditor({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
   const st = useStore.getState;
-  const [query, setQuery] = useState<string | null>(null);
-  const supers = assertedSuperclasses(model, term.id);
-  const byId = useMemo(() => new Map(supers.map((id) => [id, model.terms.find((t) => t.id === id)] as const)), [supers, model.terms]);
   const skos = model.mode === 'skos';
-  // Classes (in a concept scheme: any concept) matching the text by name or IRI.
-  const found = useMemo(
-    () =>
-      query === null
-        ? []
-        : searchTerms(model, query, 40)
-            .filter((t) => t.id !== term.id && !supers.includes(t.id) && (skos || t.type === 'concept'))
-            .slice(0, 8),
-    [model, query, supers, term.id, skos],
-  );
-  const iriOf = (id: string) => model.terms.find((t) => t.id === id)?.iri;
+  const noun = isANoun(term, skos);
+  const pick = (t: Term): Choice => ({ id: t.id, name: t.name || 'Unnamed', iri: t.iri, ...(t.external !== undefined ? { tag: 'external' } : {}) });
+  const byId = new Map(model.terms.map((t) => [t.id, t]));
+  const supers = assertedSuperclasses(model, term.id).filter((id) => byId.has(id));
+  // A class is a kind of classes and an individual an instance of them; a data property specialises data properties.
+  const wanted = term.type === 'property' ? 'property' : 'concept';
+  const label = skos ? 'a broader concept' : noun === 'type' ? 'a type' : `a ${noun}`;
   return (
-    <div className="supers">
-      <div className="chips-inline">
-        {supers.map((id) => (
-          <span key={id} className="chip-x" title={byId.get(id)?.iri}>
-            <button className="link" title={`${byId.get(id)?.iri ?? ''}\nShow on the canvas`} onClick={() => st().focusTerm(id)}>
-              {byId.get(id)?.name || 'Unnamed'}
-            </button>
-            <button aria-label={`Remove superclass ${byId.get(id)?.name}`} title="Remove this superclass statement" onClick={() => st().removeSuperclass(term.id, id)}>
-              ×
-            </button>
-          </span>
-        ))}
-        {!supers.length && query === null && <span className="missing">{skos ? 'top concept' : '—'}</span>}
-        {query === null && (
-          <button className="chip-add" title={skos ? 'Add a broader concept' : 'Add an asserted superclass'} aria-label={`Add ${skos ? 'a broader concept' : 'a superclass'} to ${term.name}`} onClick={() => setQuery('')}>
-            +
-          </button>
-        )}
-      </div>
-      {query !== null && (
-        <div className="supers-add">
-          <input
-            autoFocus
-            type="search"
-            value={query}
-            placeholder="Search by name or IRI…"
-            aria-label={skos ? 'Search for a broader concept' : 'Search for a superclass'}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Escape') setQuery(null);
-              if (e.key === 'Enter' && found.length === 1) {
-                st().addSuperclass(term.id, found[0].id);
-                setQuery(null);
-              }
-            }}
-            // Leaving the box closes it; a result is picked on pointer-down, before that happens.
-            onBlur={() => setQuery(null)}
-          />
-          {query.trim() !== '' && (
-            <ul className="subgraph-found">
-              {found.map((t) => (
-                <li key={t.id}>
-                  <button
-                    title={iriOf(t.id)}
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      st().addSuperclass(term.id, t.id);
-                      setQuery(null);
-                    }}
-                  >
-                    {t.name} <span className="muted">{(iriOf(t.id) && compactIri(model, iriOf(t.id)!)) ?? iriOf(t.id)}</span>
-                  </button>
-                </li>
-              ))}
-              {!found.length && <li className="muted">No other class matches.</li>}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
+    <EntityPicker
+      values={supers.map((id) => pick(byId.get(id)!))}
+      options={() => model.terms.filter((t) => t.id !== term.id && (skos || t.type === wanted)).map(pick)}
+      onAdd={(id) => st().edit((m) => addIsA(m, term.id, id))}
+      onRemove={(id) => st().removeSuperclass(term.id, id)}
+      onOpen={(id) => st().focusTerm(id)}
+      noun={noun}
+      of={term.name}
+      addLabel={`Add ${label}`}
+      searchLabel={`Search for ${label}`}
+      empty={skos ? 'top concept' : noun === 'type' ? 'not set' : '—'}
+    />
   );
 }

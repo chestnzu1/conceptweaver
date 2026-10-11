@@ -276,8 +276,8 @@ export function universitySample(): Model {
 
   for (const [name, description, chars, inverseOf, parent, domain, range] of rows(OBJECT_PROPERTIES)) {
     const p: ObjProp = { name, description, chars: chars ? chars.split(',') : [] };
-    if (inverseOf) p.inverseOf = inverseOf;
-    if (parent) p.parent = parent;
+    if (inverseOf) p.inverses = [inverseOf];
+    if (parent) p.parents = [parent];
     if (domain) p.domain = [id[domain]];
     if (range) p.range = [id[range]];
     m.props.push(p);

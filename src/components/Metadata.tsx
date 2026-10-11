@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ANNOTATION_PROPS, annotationAbout, standardAnnotation } from '../model/annotations';
 import { useStore } from '../model/store';
-import { isLang, type Term } from '../model/types';
+import { isLang, type ExtraField } from '../model/types';
 
 interface Draft {
   /** Position of the field being changed, or null for a new one. */
@@ -15,8 +15,8 @@ interface Draft {
  * A term's metadata as property / value pairs. A field is written into the model only when it
  * is confirmed, and is read-only from then on: changing it means pressing Edit and confirming again.
  */
-export function Metadata({ term }: { term: Term }) {
-  const update = useStore((s) => s.updateTerm);
+export function Metadata({ fields, onChange, title = 'Metadata' }: { fields: ExtraField[]; onChange: (fields: ExtraField[]) => void; title?: string }) {
+  const notify = useStore((s) => s.notify);
   const [draft, setDraft] = useState<Draft | null>(null);
 
   const [picking, setPicking] = useState(false);
@@ -36,11 +36,16 @@ export function Metadata({ term }: { term: Term }) {
     if (!draft || !ready) return;
     const lang = draft.lang.trim().toLowerCase();
     const field = { key: standardAnnotation(draft.key) ?? draft.key.trim(), value: draft.value.trim(), ...(lang ? { lang } : {}) };
-    update(term.id, { fields: draft.index === null ? [...term.fields, field] : term.fields.map((f, i) => (i === draft.index ? field : f)) });
+    // The same property can be given several times, once for each language or value; only an exact repeat is refused.
+    if (fields.some((f, i) => i !== draft.index && f.key === field.key && f.value === field.value && (f.lang ?? '') === (field.lang ?? ''))) {
+      notify(`This ${field.key} value is already there${field.lang ? ` in ${field.lang}` : ''}.`);
+      return;
+    }
+    onChange(draft.index === null ? [...fields, field] : fields.map((f, i) => (i === draft.index ? field : f)));
     setDraft(null);
   };
   const remove = (index: number) => {
-    update(term.id, { fields: term.fields.filter((_, i) => i !== index) });
+    onChange(fields.filter((_, i) => i !== index));
     setDraft(null);
   };
 
@@ -129,10 +134,12 @@ export function Metadata({ term }: { term: Term }) {
 
   return (
     <>
-      <h3>Metadata ({term.fields.length})</h3>
-      {term.fields.length > 0 && (
+      <h3>
+        {title} ({fields.length})
+      </h3>
+      {fields.length > 0 && (
         <ul className="meta-list">
-          {term.fields.map((f, i) =>
+          {fields.map((f, i) =>
             draft?.index === i ? (
               <li key={i}>{editor}</li>
             ) : (

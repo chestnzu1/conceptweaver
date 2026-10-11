@@ -1,4 +1,4 @@
-import type { Model, Relation } from './types';
+import type { DataValue, Model, Relation } from './types';
 import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, propKey } from './props';
 import { resolveModel } from './vocab';
 
@@ -10,7 +10,7 @@ import { resolveModel } from './vocab';
  * Statements are (subject, predicate, object) over term ids. A relationship of your own between
  * two individuals is a statement whose predicate is "p:" + its label.
  */
-type Pred = 'sub' | 'type' | 'eqc' | 'disj' | 'compl' | 'subp' | 'eqp' | 'dom' | 'rng' | 'same' | 'diff' | 'is' | 'inv' | `p:${string}`;
+type Pred = 'sub' | 'type' | 'eqc' | 'disj' | 'compl' | 'subp' | 'eqp' | 'dom' | 'rng' | 'same' | 'diff' | 'is' | 'inv' | 'pdisj' | `p:${string}`;
 
 interface Fact {
   s: string;
@@ -50,6 +50,26 @@ export interface Reasoning {
   inferred: number;
   /** Stopped early because the model produced too many facts. */
   truncated: boolean;
+  /** Classes that can never have a member. */
+  unsatisfiable: Set<string>;
+  /**
+   * Every class the given class is entailed to be a kind of, other than itself: stated ones,
+   * ones that follow through the hierarchy, and equivalent classes. Each comes with the stated
+   * facts it rests on.
+   */
+  superclasses: (classId: string) => SuperLink[];
+  /** Every class an individual is entailed to be an instance of, in the same way. */
+  types: (individualId: string) => SuperLink[];
+}
+
+export interface SuperLink {
+  id: string;
+  /** Stated directly rather than derived. */
+  asserted: boolean;
+  /** The two classes are entailed to be equivalent. */
+  equivalent: boolean;
+  because: string;
+  rels: string[];
 }
 
 const STD_TO_PRED: Record<string, Pred> = {
@@ -60,6 +80,7 @@ const STD_TO_PRED: Record<string, Pred> = {
   'owl:disjointWith': 'disj',
   'owl:complementOf': 'compl',
   'owl:equivalentProperty': 'eqp',
+  'owl:propertyDisjointWith': 'pdisj',
   'rdfs:domain': 'dom',
   'rdfs:range': 'rng',
   'owl:sameAs': 'same',
@@ -68,16 +89,19 @@ const STD_TO_PRED: Record<string, Pred> = {
 
 const MAX_FACTS = 150_000;
 
-let last: { relations: Relation[]; sig: string; result: Reasoning } | undefined;
+let last: { relations: Relation[]; props: Model['props']; sig: string; result: Reasoning } | undefined;
 
 /** `fresh` skips the cached result and reasons from scratch. */
 export function reason(model: Model, fresh = false): Reasoning {
   const m = resolveModel(model);
   // Dragging terms around changes the model on every frame but not what it means.
-  const sig = (m.vocab.enabled ? '1' : '0') + m.terms.map((t) => `${t.id}:${t.type}:${t.name}`).join('|');
-  if (!fresh && last && last.relations === m.relations && last.sig === sig) return last.result;
+  const sig =
+    (m.vocab.enabled ? '1' : '0') +
+    m.mode +
+    m.terms.map((t) => `${t.id}:${t.type}:${t.name}${t.functional ? ':f' : ''}${t.domain ? ':' + t.domain.join(',') : ''}${t.values ? ':' + JSON.stringify(t.values) : ''}`).join('|');
+  if (!fresh && last && last.relations === m.relations && last.props === m.props && last.sig === sig) return last.result;
   const result = run(m);
-  last = { relations: m.relations, sig, result };
+  last = { relations: m.relations, props: m.props, sig, result };
   return result;
 }
 
@@ -123,10 +147,25 @@ function run(m: Model): Reasoning {
       if (v.range.length === 1) add(key, 'rng', v.range[0], undefined, v.rangeAuto ? classLevel?.id : undefined);
       for (const c of v.chars) add(key, 'is', c);
       chars.set(key, sp('is', key));
-      if (v.parent) add(key, 'subp', `p:${v.parent}`);
-      if (v.inverseOf) {
-        add(key, 'inv', `p:${v.inverseOf}`);
-        add(`p:${v.inverseOf}`, 'inv', key);
+      for (const k of v.parents) add(key, 'subp', `p:${k}`);
+      for (const k of v.inverses) {
+        add(key, 'inv', `p:${k}`);
+        add(`p:${k}`, 'inv', key);
+      }
+      for (const k of v.equivalents) add(key, 'eqp', `p:${k}`);
+      for (const k of v.disjoints) add(key, 'pdisj', `p:${k}`);
+    }
+  }
+  // The literal values individuals have for data properties: facts whose predicate is the
+  // property's term and whose object is the literal.
+  const literal = (v: DataValue) => `lit:${JSON.stringify([v.value, v.lang ?? ''])}`;
+  if (m.mode !== 'skos') {
+    for (const t of m.terms) {
+      if (t.type !== 'instance') continue;
+      for (const v of t.values ?? []) {
+        if (byId.get(v.prop)?.type !== 'property') continue;
+        propLabel.set(literal(v), JSON.stringify(v.value) + (v.lang ? '@' + v.lang : ''));
+        add(t.id, v.prop as Pred, literal(v));
       }
     }
   }
@@ -182,7 +221,7 @@ function run(m: Model): Reasoning {
       symmetric(f);
       add(s, p === 'eqc' ? 'sub' : 'subp', o, [f]);
       add(o, p === 'eqc' ? 'sub' : 'subp', s, [f]);
-    } else if (p === 'disj' || p === 'diff') {
+    } else if (p === 'disj' || p === 'diff' || p === 'pdisj') {
       symmetric(f);
     } else if (p === 'compl') {
       symmetric(f);
@@ -257,8 +296,10 @@ function run(m: Model): Reasoning {
         return `${a} is ${CHARACTERISTICS.find((c) => c.id === f.o)?.label.toLowerCase() ?? f.o}`;
       case 'inv':
         return `${a} is the inverse of ${b}`;
+      case 'pdisj':
+        return `${a} is a disjoint property with ${b}`;
       default:
-        return `${a} ${propLabel.get(f.p) ?? f.p.slice(2)} ${b}`;
+        return f.o.startsWith('lit:') ? `${a} has ${name(f.p)} ${propLabel.get(f.o)}` : `${a} ${propLabel.get(f.p) ?? byId.get(f.p)?.name ?? f.p.slice(2)} ${b}`;
     }
   };
   /** Picks one direction of a symmetric pair, by name so that the wording is stable. */
@@ -332,6 +373,25 @@ function run(m: Model): Reasoning {
     }
   }
 
+  // Two disjoint properties can never relate the same pair.
+  for (const d of byP.get('pdisj') ?? []) {
+    if (!leads(d.s, d.o)) continue;
+    for (const g of byP.get(d.s) ?? []) {
+      const other = facts.get(`${g.s}|${d.o}|${g.o}`);
+      if (other) conflict('error', 'Inconsistent', `“${name(d.s)}” and “${name(d.o)}” are disjoint properties, but both hold for “${name(g.s)}”${g.o.startsWith('lit:') ? ` with the value ${propLabel.get(g.o)}` : ` and “${name(g.o)}”`}.`, [g.s, ...(byId.has(g.o) ? [g.o] : [])], [g, other, d]);
+    }
+  }
+  // A functional data property has at most one value for each individual.
+  for (const t of m.terms) {
+    if (t.type !== 'property' || !t.functional || m.mode === 'skos') continue;
+    const first = new Map<string, Fact>();
+    for (const g of byP.get(t.id) ?? []) {
+      const before = first.get(g.s);
+      if (!before) first.set(g.s, g);
+      else if (before.o !== g.o) conflict('error', 'Inconsistent', `“${t.name}” is functional, but “${name(g.s)}” has two different values for it: ${propLabel.get(before.o)} and ${propLabel.get(g.o)}.`, [g.s, t.id], [before, g]);
+    }
+  }
+
   // ---- conclusions worth showing: new knowledge about classes and individuals
   const inferences: Inference[] = [];
   const vocab = m.vocab.enabled;
@@ -369,5 +429,14 @@ function run(m: Model): Reasoning {
     asserted,
     inferred: facts.size - asserted,
     truncated,
+    unsatisfiable: new Set(conflicts.filter((c) => c.rule === 'Unsatisfiable class').flatMap((c) => c.terms)),
+    superclasses: (classId) =>
+      sp('sub', classId)
+        .filter((f) => f.o !== classId && byId.get(f.o)?.type === 'concept')
+        .map((f) => ({ id: f.o, asserted: !f.from, equivalent: has(classId, 'eqc', f.o), ...because([f]) })),
+    types: (id) =>
+      sp('type', id)
+        .filter((f) => byId.get(f.o)?.type === 'concept')
+        .map((f) => ({ id: f.o, asserted: !f.from, equivalent: false, ...because([f]) })),
   };
 }

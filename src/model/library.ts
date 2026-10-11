@@ -26,7 +26,7 @@ export interface SavedInfo {
 
 const DB_NAME = 'conceptweaver';
 /** Version of the database layout (which stores exist). */
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 /** Version of a record's layout (which fields it has). */
 const RECORD_SCHEMA = 1;
 
@@ -73,6 +73,8 @@ function open(): Promise<IDBDatabase> {
         db.createObjectStore('models', { keyPath: 'id' });
         db.createObjectStore('data', { keyPath: 'id' });
       }
+      // Version 2: the content of external ontologies, cached so that it is there in a later session.
+      if (ev.oldVersion < 2) db.createObjectStore('externals', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(explain(req.error));
@@ -205,3 +207,36 @@ export async function deleteModel(id: string): Promise<void> {
     data.delete(id);
   });
 }
+
+// ---------------------------------------------------------------- external ontologies
+
+/** The cached content of an external ontology: the Turtle it was read from, under the id its reference has in a model. */
+export interface CachedOntology {
+  id: string;
+  iri: string;
+  text: string;
+  cached: number;
+}
+
+async function externals<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+  const db = await open();
+  try {
+    const t = db.transaction(['externals'], mode);
+    const finished = new Promise<void>((resolve, reject) => {
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(explain(t.error));
+      t.onabort = () => reject(explain(t.error));
+    });
+    const result = await work(t.objectStore('externals'));
+    await finished;
+    return result;
+  } finally {
+    db.close();
+  }
+}
+
+export const cacheOntology = (id: string, iri: string, text: string) => externals('readwrite', async (store) => void store.put({ id, iri, text, cached: Date.now() } satisfies CachedOntology));
+export const cachedOntology = (id: string) => externals('readonly', (store) => done(store.get(id) as IDBRequest<CachedOntology | undefined>));
+/** One cached under another id but with the same ontology IRI: the same ontology, added to another model. */
+export const cachedOntologyByIri = (iri: string) => externals('readonly', async (store) => ((await done(store.getAll())) as CachedOntology[]).find((c) => c.iri === iri && !!iri));
+export const uncacheOntology = (id: string) => externals('readwrite', async (store) => void store.delete(id));

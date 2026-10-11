@@ -1,6 +1,6 @@
 import type { Model, Term } from './types';
 
-const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'range', 'domain'];
+const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'range', 'domain', 'axioms', 'functional', 'values', 'external'];
 
 let last: Model | undefined;
 
@@ -24,6 +24,11 @@ export function stable(model: Model): Model {
     prev.baseIri === model.baseIri &&
     prev.ontologyIri === model.ontologyIri &&
     prev.prefixes === model.prefixes &&
+    prev.shapes === model.shapes &&
+    prev.quality === model.quality &&
+    prev.externals === model.externals &&
+    prev.mappings === model.mappings &&
+    prev.rejected === model.rejected &&
     prev.terms.length === model.terms.length &&
     model.terms.every((t, i) => t === prev.terms[i] || SAME.every((k) => t[k] === prev.terms[i][k]))
   ) {

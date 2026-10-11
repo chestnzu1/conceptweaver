@@ -11,10 +11,16 @@ import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Sub
 import { baseIriOf, moveNamespace, withIris } from './iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
 import type { SettingsDraft } from './prefixes';
+import type { Edit } from './axioms';
+import { addExternal, importsClosure, readExternal, removeExternal, type Collision, type ExternalSummary } from './external';
+import { collisions } from './external';
+import { listMappings } from './alignment';
+import { cachedOntology, cachedOntologyByIri, cacheOntology, uncacheOntology } from './library';
+import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } from './validation';
 import { assertedSuperclasses, wouldCycle } from './props';
-import { emptyModel, type ModelMode, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
+import { emptyModel, PROP_LINKS, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
 
-export type View = 'graph' | 'table' | 'hierarchy' | 'checks' | 'rdf' | 'sparql' | 'vocab';
+export type View = 'graph' | 'table' | 'hierarchy' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
 export type Theme = 'light' | 'dark';
 
 export interface Editing {
@@ -53,15 +59,37 @@ export interface SubgraphState {
 
 const NO_SUBGRAPH: SubgraphState = { active: false, roots: [], depth: 1, direction: 'both', off: [], expanded: [], hidden: [], maxNodes: DEFAULT_MAX_NODES, pos: {}, result: null };
 
+/** Which part of the full graph the canvas draws: all of it, only this ontology's own entities, or only the mappings to other ontologies. */
+export type GraphScope = 'all' | 'local' | 'alignment';
+
 let viewCache: { model: Model; sub: SubgraphState; view: Model } | undefined;
+let scopeCache: { model: Model; scope: GraphScope; view: Model } | undefined;
+
+function scoped(model: Model, scope: GraphScope): Model {
+  if (scope === 'all') return model;
+  if (scopeCache && scopeCache.model === model && scopeCache.scope === scope) return scopeCache.view;
+  let view: Model;
+  if (scope === 'local') {
+    const hidden = new Set(model.terms.filter((t) => t.external !== undefined).map((t) => t.id));
+    view = hidden.size ? { ...model, terms: model.terms.filter((t) => !hidden.has(t.id)), relations: model.relations.filter((r) => !hidden.has(r.from) && !hidden.has(r.to)) } : model;
+  } else {
+    // The mappings and the entities at their ends, and nothing else.
+    const rels = new Set(listMappings(model).flatMap((m) => m.rels));
+    const kept = model.relations.filter((r) => rels.has(r.id));
+    const ends = new Set(kept.flatMap((r) => [r.from, r.to]));
+    view = { ...model, terms: model.terms.filter((t) => ends.has(t.id)), relations: kept };
+  }
+  scopeCache = { model, scope, view };
+  return view;
+}
 
 /**
  * The model as the canvas should draw it: the model itself in full-graph mode, or in subgraph
  * mode a copy holding only the visible terms and relationships, placed by the subgraph's layout.
  */
-export function viewOf(s: { model: Model; subgraph: SubgraphState }): Model {
+export function viewOf(s: { model: Model; subgraph: SubgraphState; graphScope?: GraphScope }): Model {
   const { model, subgraph: sub } = s;
-  if (!sub.active || !sub.result) return model;
+  if (!sub.active || !sub.result) return scoped(model, s.graphScope ?? 'all');
   if (viewCache && viewCache.model === model && viewCache.sub === sub) return viewCache.view;
   const byId = new Map(model.terms.map((t) => [t.id, t]));
   const rels = new Set(sub.result.rels);
@@ -139,6 +167,8 @@ function loadDoc(model: Model): Doc {
 interface State {
   model: Model;
   doc: Doc;
+  /** Goes up each time another model is put in the editor, so that views can start afresh for it. */
+  docSeq: number;
   /** Save to the library by itself a moment after each change, for a model that is already in it. */
   libraryAutosave: boolean;
   /** The working copy could not be kept in the browser, so closing the page would lose unsaved changes. */
@@ -158,9 +188,54 @@ interface State {
   highlightLabel: string;
   filter: string;
   theme: Theme;
+  /** The entity editor takes more room, for entities with a lot to say about them. */
+  editorWide: boolean;
+  setEditorWide: (wide: boolean) => void;
   subgraph: SubgraphState;
   dialog: 'bulk' | 'settings' | 'library' | 'saveas' | null;
   toast: string | null;
+  /**
+   * The validation workbench. Results are a record of one run over one model: they live here,
+   * beside the model, and are never saved with it or undone with it.
+   */
+  validation: {
+    run: ValidationRun | null;
+    running: boolean;
+    /** What the run in progress is doing, for showing while it works. */
+    phase: string;
+    /** The data graph SHACL validates. */
+    data: DataGraph;
+    tab: 'results' | 'shapes' | 'rules' | 'inferences';
+    /** The shape open in the shape editor. */
+    shapeId: string | null;
+  };
+  graphScope: GraphScope;
+  setGraphScope: (scope: GraphScope) => void;
+  /**
+   * Other ontologies. Their content is read from the browser's cache into `loaded` and is never
+   * part of the model; `missing` are the ones the model refers to whose content is not in this browser.
+   */
+  ext: {
+    loaded: Record<string, Model>;
+    missing: string[];
+    tab: 'library' | 'align' | 'mappings' | 'suggestions';
+    selected: string | null;
+    /** An ontology that has been read and is waiting for the user to say what to do with it. */
+    preview: { summary: ExternalSummary; text: string; collisions: Collision[] } | null;
+  };
+  setExt: (patch: Partial<Pick<State['ext'], 'tab' | 'selected' | 'preview'>>) => void;
+  /** Reads an ontology and shows what it is, without adding anything. Returns why it could not be read, if so. */
+  previewExternal: (text: string, source: string, kind: 'file' | 'url' | 'model') => string | undefined;
+  /** Adds the previewed ontology to the library; as a dependency (owl:imports) or only to browse and reuse. */
+  confirmExternal: (imports: boolean) => string | undefined;
+  /** Brings the content of the model's external ontologies in from the browser's cache. */
+  loadExternals: () => Promise<void>;
+  removeExternalRef: (id: string) => string | undefined;
+  /** Runs the checks in `scope`. A run already under way is left to finish. */
+  runValidation: (scope?: Scope) => Promise<void>;
+  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'shapeId'>>) => void;
+  /** Changes the model's SHACL shapes; an edit like any other, so it can be undone and is saved with the model. */
+  setShapes: (fn: (s: Shapes) => Shapes) => void;
 
   apply: (fn: (m: Model) => Model, history?: boolean) => void;
   checkpoint: () => void;
@@ -218,6 +293,12 @@ interface State {
    * are, except that the entities of each namespace in `moveFrom` are moved into the default namespace.
    */
   setOntologySettings: (d: SettingsDraft, moveFrom?: string[]) => void;
+  /**
+   * Makes one of the edits of the entity editor (see axioms.ts). A refused edit changes nothing
+   * and its reason is returned, for the editor to show where the edit was tried; anything worth
+   * knowing about an accepted one is shown as a notice.
+   */
+  edit: (fn: (m: Model) => Edit) => string | undefined;
   /** States that one term is a kind of another. Says so if it was already stated, is the term itself, or closes a cycle. */
   addSuperclass: (id: string, superId: string) => void;
   /** Withdraws that statement, and only that one. */
@@ -278,6 +359,7 @@ const initialModel = loadModel();
 export const useStore = create<State>((set, get) => ({
   model: initialModel,
   doc: loadDoc(initialModel),
+  docSeq: 0,
   libraryAutosave: (() => {
     try {
       return localStorage.getItem(AUTOSAVE_KEY) === 'on';
@@ -298,9 +380,105 @@ export const useStore = create<State>((set, get) => ({
   highlightLabel: '',
   filter: '',
   theme: loadTheme(),
+  editorWide: (() => {
+    try {
+      return localStorage.getItem('conceptweaver:editor-wide') === 'on';
+    } catch {
+      return false;
+    }
+  })(),
+  setEditorWide: (editorWide) => {
+    try {
+      localStorage.setItem('conceptweaver:editor-wide', editorWide ? 'on' : 'off');
+    } catch {
+      // The choice just isn't remembered.
+    }
+    set({ editorWide });
+  },
   dialog: null,
   subgraph: NO_SUBGRAPH,
   toast: null,
+  graphScope: 'all',
+  setGraphScope: (graphScope) => {
+    set({ graphScope });
+    get().fit();
+  },
+  ext: { loaded: {}, missing: [], tab: 'library', selected: null, preview: null },
+  setExt: (patch) => set((s) => ({ ext: { ...s.ext, ...patch } })),
+  previewExternal: (text, source, kind) => {
+    try {
+      const summary = readExternal(text, source, kind);
+      set((s) => ({ ext: { ...s.ext, preview: { summary, text, collisions: collisions(get().model, summary.model) } } }));
+      return undefined;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'It could not be read.';
+    }
+  },
+  confirmExternal: (imports) => {
+    const preview = get().ext.preview;
+    if (!preview) return undefined;
+    const { model, ref } = addExternal(get().model, preview.summary, imports);
+    get().apply(() => model);
+    set((s) => ({ ext: { ...s.ext, preview: null, selected: ref.id, loaded: { ...s.ext.loaded, [ref.id]: preview.summary.model }, missing: s.ext.missing.filter((x) => x !== ref.id) } }));
+    // Kept in this browser so that it is there next time; the model itself holds only the reference.
+    cacheOntology(ref.id, ref.iri, preview.text).catch((e) => get().notify(`“${ref.name}” is in the library for now, but could not be kept in the browser: ${e instanceof Error ? e.message : ''}`));
+    return ref.id;
+  },
+  loadExternals: async () => {
+    const refs = get().model.externals;
+    const loaded: Record<string, Model> = {};
+    const missing: string[] = [];
+    for (const ref of refs) {
+      if (get().ext.loaded[ref.id]) {
+        loaded[ref.id] = get().ext.loaded[ref.id];
+        continue;
+      }
+      try {
+        const hit = (await cachedOntology(ref.id)) ?? (await cachedOntologyByIri(ref.iri));
+        if (hit) loaded[ref.id] = readExternal(hit.text, ref.source || ref.name, ref.sourceKind).model;
+        else missing.push(ref.id);
+      } catch {
+        missing.push(ref.id);
+      }
+    }
+    set((s) => ({ ext: { ...s.ext, loaded, missing } }));
+  },
+  removeExternalRef: (id) => {
+    const result = removeExternal(get().model, id);
+    if (result.error !== undefined) return result.error;
+    get().apply(() => result.model);
+    set((s) => ({ ext: { ...s.ext, selected: s.ext.selected === id ? null : s.ext.selected } }));
+    void uncacheOntology(id).catch(() => undefined);
+    return undefined;
+  },
+  validation: { run: null, running: false, phase: '', data: MODEL_DATA, tab: 'results', shapeId: null },
+  runValidation: async (scope = 'all') => {
+    if (get().validation.running) return;
+    const { model } = get();
+    const { run, data } = get().validation;
+    set((s) => ({ validation: { ...s.validation, running: true, phase: 'Starting…' } }));
+    try {
+      // Between parts the page gets a moment to redraw, so a long validation shows its progress.
+      const closure = model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined;
+      const next = await validate(
+        model,
+        data,
+        scope,
+        run,
+        async (phase) => {
+          set((s) => ({ validation: { ...s.validation, phase } }));
+          await new Promise((r) => setTimeout(r, 16));
+        },
+        closure,
+      );
+      set((s) => ({ validation: { ...s.validation, run: next, running: false, phase: '' } }));
+    } catch (e) {
+      set((s) => ({ validation: { ...s.validation, running: false, phase: '' } }));
+      get().notify(`Validation stopped: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  },
+  setValidation: (patch) => set((s) => ({ validation: { ...s.validation, ...patch } })),
+  setShapes: (fn) => get().apply((m) => ({ ...m, shapes: fn(m.shapes) })),
 
   apply: (fn, history = true) =>
     set((s) => {
@@ -332,7 +510,8 @@ export const useStore = create<State>((set, get) => ({
   replaceModel: (m, docId = null) => {
     const model = withIris(m);
     // A different document: its history starts afresh, and it counts as unchanged until edited.
-    set({ model, doc: { id: docId, saved: model }, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH });
+    set({ model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
+    void get().loadExternals();
     get().fit();
   },
   saveToLibrary: async ({ name, asNew = false, quiet = false } = {}) => {
@@ -433,7 +612,11 @@ export const useStore = create<State>((set, get) => ({
     const r = new Set(rels);
     get().apply((m) => ({
       ...m,
-      terms: m.terms.filter((x) => !t.has(x.id)).map((x) => (x.domain && x.domain.some((id) => t.has(id)) ? { ...x, domain: x.domain.filter((id) => !t.has(id)) } : x)),
+      terms: m.terms
+        .filter((x) => !t.has(x.id))
+        .map((x) => (x.domain && x.domain.some((id) => t.has(id)) ? { ...x, domain: x.domain.filter((id) => !t.has(id)) } : x))
+        // A value goes with the data property it is a value of.
+        .map((x) => (x.values?.some((v) => t.has(v.prop)) ? { ...x, values: x.values.filter((v) => !t.has(v.prop)) } : x)),
       relations: m.relations.filter((x) => !r.has(x.id) && !t.has(x.from) && !t.has(x.to)),
       props: !t.size
         ? m.props
@@ -655,7 +838,7 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => {
       const next = { ...declaredProp(m, key), ...patch };
       // An emptied optional field means "not set", so it isn't stored.
-      for (const k of ['domain', 'range', 'inverseOf', 'parent'] as const) if (next[k] === undefined) delete next[k];
+      for (const k of ['domain', 'range', 'fields', ...PROP_LINKS] as const) if (next[k] === undefined || (k !== 'domain' && k !== 'range' && !next[k]!.length)) delete next[k];
       const exists = m.props.some((p) => propKey(p.name) === key);
       return { ...m, props: exists ? m.props.map((p) => (propKey(p.name) === key ? next : p)) : [...m.props, next] };
     }),
@@ -669,14 +852,16 @@ export const useStore = create<State>((set, get) => ({
     }
     get().apply((m) => {
       const entry = { ...declaredProp(m, key), name: clean };
-      const others = m.props.filter((p) => propKey(p.name) !== key).map((p) => ({
-        ...p,
-        ...(p.inverseOf === key ? { inverseOf: to } : {}),
-        ...(p.parent === key ? { parent: to } : {}),
-      }));
+      // Every mention of the property by another one follows the new name.
+      const follow = (p: ObjProp): ObjProp => {
+        let out = p;
+        for (const link of PROP_LINKS) if (p[link]?.includes(key)) out = { ...out, [link]: p[link]!.map((k) => (k === key ? to : k)) };
+        return out;
+      };
+      const others = m.props.filter((p) => propKey(p.name) !== key).map(follow);
       return {
         ...m,
-        props: [...others, { ...entry, ...(entry.inverseOf === key ? { inverseOf: to } : {}) }],
+        props: [...others, entry],
         relations: m.relations.map((r) => (r.kind === 'association' && !r.predicate && propKey(r.label) === key ? { ...r, label: clean } : r)),
       };
     });
@@ -689,8 +874,14 @@ export const useStore = create<State>((set, get) => ({
       props: m.props
         .filter((p) => propKey(p.name) !== key)
         .map((p) => {
-          const { inverseOf, parent, ...rest } = p;
-          return { ...rest, ...(inverseOf && inverseOf !== key ? { inverseOf } : {}), ...(parent && parent !== key ? { parent } : {}) };
+          let out = p;
+          for (const link of PROP_LINKS) {
+            if (!p[link]?.includes(key)) continue;
+            const { [link]: list, ...rest } = out;
+            const left = list!.filter((k) => k !== key);
+            out = left.length ? { ...rest, [link]: left } : rest;
+          }
+          return out;
         }),
       relations: m.relations.filter((r) => !(r.kind === 'association' && !r.predicate && propKey(r.label) === key)),
     }));
@@ -701,6 +892,13 @@ export const useStore = create<State>((set, get) => ({
       const next = { ...m, ontologyIri: d.ontologyIri, baseIri: d.baseIri, prefixes: d.prefixes };
       return moveFrom.reduce((acc, from) => moveNamespace(acc, from, baseIriOf(next)), next);
     }),
+  edit: (fn) => {
+    const result = fn(get().model);
+    if (result.error !== undefined) return result.error;
+    get().apply(() => result.model);
+    if (result.note) get().notify(result.note);
+    return undefined;
+  },
   addSuperclass: (id, superId) => {
     const { model } = get();
     const name = (x: string) => model.terms.find((t) => t.id === x)?.name || 'Unnamed';
@@ -709,7 +907,7 @@ export const useStore = create<State>((set, get) => ({
     const cycle = wouldCycle(model, id, superId);
     get().apply((m) => ({ ...m, relations: [...m.relations, newRelation({ from: id, to: superId, kind: 'generalization' })] }));
     // Allowed, since OWL allows it (the classes become equivalent), but rarely what was meant.
-    if (cycle) get().notify(`“${name(superId)}” is already a kind of “${name(id)}”, so the two are now each other's superclass. Checks lists this as a circular hierarchy.`);
+    if (cycle) get().notify(`“${name(superId)}” is already a kind of “${name(id)}”, so the two are now each other's superclass. Validation lists this as a circular hierarchy.`);
   },
   removeSuperclass: (id, superId) =>
     get().apply((m) => {
@@ -988,3 +1186,5 @@ export const newModel = () => {
   }
   useStore.getState().replaceModel(m);
 };
+
+void useStore.getState().loadExternals();

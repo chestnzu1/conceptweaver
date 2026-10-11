@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { stable } from '../model/stable';
-import { useStore } from '../model/store';
+import { useStore, type GraphScope } from '../model/store';
 import { edgeTypes, MAX_DEPTH, searchTerms, type Direction } from '../model/subgraph';
 
 /**
@@ -18,6 +18,8 @@ export function SubgraphPanel() {
   const types = useMemo(() => edgeTypes(model), [model]);
   const found = useMemo(() => searchTerms(model, query).filter((t) => !sub.roots.includes(t.id)), [model, query, sub.roots]);
   const roots = sub.roots.filter((id) => name.has(id));
+  const scope = useStore((s) => s.graphScope);
+  const hasExternal = model.terms.some((t) => t.external !== undefined);
   const addRoots = (ids: string[]) => st().setSubgraph({ roots: [...new Set([...sub.roots, ...ids])] });
   const toAdd = selected.filter((id) => !sub.roots.includes(id));
   const shown = sub.active && sub.result ? sub.result : null;
@@ -44,6 +46,13 @@ export function SubgraphPanel() {
             Subgraph
           </button>
         </div>
+        {!sub.active && hasExternal && (
+          <select aria-label="What the graph shows" title="What the full graph shows" value={scope} onChange={(e) => st().setGraphScope(e.target.value as GraphScope)}>
+            <option value="all">Everything</option>
+            <option value="local">This ontology only</option>
+            <option value="alignment">Mappings only</option>
+          </select>
+        )}
         <button className="btn small" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? 'Hide settings' : 'Settings'}
         </button>

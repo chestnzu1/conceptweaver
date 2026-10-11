@@ -109,7 +109,7 @@ describe('local model library', () => {
     expect(back).toEqual(m);
     // …and so the same ontology.
     expect(toTurtle(back)).toBe(toTurtle(m));
-    expect(back.props.find((p) => p.name === 'part of')).toMatchObject({ chars: ['transitive'], inverseOf: 'has part' });
+    expect(back.props.find((p) => p.name === 'part of')).toMatchObject({ chars: ['transitive'], inverses: ['has part'] });
     expect(back.relations.filter((r) => r.restriction).length).toBe(m.relations.filter((r) => r.restriction).length);
   });
 

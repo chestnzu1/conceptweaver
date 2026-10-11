@@ -45,8 +45,8 @@ export function stressModel(classes = 650): Model {
     }
     // Only a property with no domain and no characteristic (an odd-numbered one) is used as a
     // parent or an inverse, so that facts passed on to it cannot contradict anything.
-    if (i % 7 === 3 && i % 2 === 0) p.parent = `relates ${i}`;
-    if (i % 10 === 6) p.inverseOf = `relates ${i}`;
+    if (i % 7 === 3 && i % 2 === 0) p.parents = [`relates ${i}`];
+    if (i % 10 === 6) p.inverses = [`relates ${i}`];
     m.props.push(p);
   }
   const quantifiers: Quantifier[] = ['some', 'some', 'some', 'only', 'min', 'max', 'exactly'];

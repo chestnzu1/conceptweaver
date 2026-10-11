@@ -1,12 +1,14 @@
 import { useStore } from '../model/store';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
 import { DATATYPES, QUANTIFIERS, type Quantifier, isLang, kindLabel, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Relation, type ModelMode, type RelKind, type Term } from '../model/types';
+import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
 import { REL_CHOICES, relChoice, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, quantifierOf, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { CommitInput, CommitTextarea } from './fields';
-import { IriCell, SuperclassEditor } from './Iri';
+import { SuperclassEditor } from './Iri';
+import { AnonymousExpressions, CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
 
@@ -17,6 +19,7 @@ export function Inspector() {
   const rels = model.relations.filter((r) => sel.rels.includes(r.id));
   const selProp = useStore((s) => s.selProp);
   const prop = selProp && model.mode !== 'skos' ? findProp(model, selProp) : undefined;
+  const wide = useStore((s) => s.editorWide);
 
   let body;
   if (prop && !terms.length && !rels.length) body = <ObjectPropertyPanel key={prop.key} prop={prop} />;
@@ -24,7 +27,32 @@ export function Inspector() {
   else if (rels.length === 1 && !terms.length) body = <RelationPanel key={rels[0].id} rel={rels[0]} />;
   else if (terms.length + rels.length > 1) body = <MultiPanel terms={terms} rels={rels} />;
   else body = <ModelPanel />;
-  return <aside className="panel inspector">{body}</aside>;
+  return <aside className={'panel inspector' + (wide ? ' wide' : '')}>{body}</aside>;
+}
+
+/** Says that the entity belongs to another ontology, and what that means for editing it here. */
+function ExternalNote({ id }: { id: string }) {
+  const ref = useStore((s) => s.model.externals.find((e) => e.id === id));
+  const st = useStore.getState;
+  return (
+    <p className="external-note">
+      Defined in{' '}
+      {ref ? (
+        <button
+          className="link"
+          onClick={() => {
+            st().setExt({ tab: 'library', selected: ref.id });
+            st().setView('align');
+          }}
+        >
+          {ref.name}
+        </button>
+      ) : (
+        'an ontology that is not in the library'
+      )}
+      , and referred to here under its own IRI. Its name and definition are that ontology’s and are not exported from here; whatever you state about it below is an axiom of your ontology.
+    </p>
+  );
 }
 
 function ModelPanel() {
@@ -113,17 +141,38 @@ function TermPanel({ term }: { term: Term }) {
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
   const related = resolveModel(model).relations.filter((r) => r.from === term.id || r.to === term.id);
 
+  const kind = skos ? 'Concept' : term.type === 'concept' ? 'Class' : term.type === 'property' ? 'Data property' : 'Individual';
+  const other = (term.axioms ?? []).filter((x) => !x.startsWith('rdfs:subClassOf ') && !x.startsWith('owl:equivalentClass '));
+  const annotations = (
+    <Section id="annotations" title="Annotations" count={term.fields.length + (term.description ? 1 : 0) + term.synonyms.split(',').filter((x) => x.trim()).length}>
+      <label className="field">
+        <span>
+          {skos ? 'Definition' : 'Description'} <code className="pred">skos:definition</code>
+        </span>
+        <CommitTextarea rows={5} value={term.description} placeholder="What does this term mean?" onCommit={(description) => update(term.id, { description })} />
+      </label>
+      <label className="field">
+        <span>
+          {skos ? 'Alternative labels' : 'Synonyms'} <code className="pred">skos:altLabel</code>
+        </span>
+        <CommitInput value={term.synonyms} placeholder="Comma-separated" onCommit={(synonyms) => update(term.id, { synonyms })} />
+        {model.lang && <small>The name, description and synonyms are in “{model.lang}”. Add the same in other languages below, each with its language.</small>}
+      </label>
+      <Metadata title="Other annotations" fields={term.fields} onChange={(fields) => update(term.id, { fields })} />
+    </Section>
+  );
+
   return (
     <>
-      <h2>Term</h2>
+      <EditorHead kind={term.external !== undefined ? `External ${kind.toLowerCase()}` : kind} />
+      {term.external !== undefined && <ExternalNote id={term.external} />}
       <label className="field">
-        <span>{skos ? 'Preferred label' : 'Name'}</span>
+        <span>
+          {skos ? 'Preferred label' : 'Name'} <code className="pred">{skos ? 'skos:prefLabel' : 'rdfs:label'}</code>
+        </span>
         <CommitInput value={term.name} onCommit={(v) => update(term.id, { name: v.trim() })} />
       </label>
-      <div className="field">
-        <span title="The identifier of this entity. It was made once and does not change when the name does.">IRI</span>
-        <IriCell iri={term.iri} of={term.name} full />
-      </div>
+      <IriDetails iri={term.iri} name={term.name} />
       {/* A concept scheme only has concepts; the choice shows up just to fix a term that isn't one. */}
       {(!skos || term.type !== 'concept') && (
         <label className="field">
@@ -137,20 +186,79 @@ function TermPanel({ term }: { term: Term }) {
           </select>
         </label>
       )}
-      {term.type === 'property' && !skos && <PropertyFields term={term} />}
-      {term.type === 'concept' && (
+
+      {skos && term.type === 'concept' && (
         <div className="field">
-          <span title={skos ? undefined : 'Explicitly stated superclasses (rdfs:subClassOf). Ones that only follow from these are not listed.'}>{skos ? 'Broader concepts' : 'Asserted superclasses'}</span>
+          <span>Broader concepts</span>
           <SuperclassEditor term={term} />
         </div>
       )}
-      {term.type === 'concept' && !skos && <ClassRestrictions term={term} />}
-      {term.axioms?.length ? (
+
+      {!skos && term.type === 'concept' && (
         <>
-          <h3>Other asserted expressions ({term.axioms.length})</h3>
-          <p className="muted">Class expressions from the imported ontology that the canvas has no drawing for. They are kept exactly as written and exported with the class.</p>
+          <Section id="class-axioms" title="Class axioms">
+            <div className="field">
+              <span title="Explicitly stated superclasses. Ones that only follow from these are listed under Inferred superclasses.">
+                Asserted superclasses <code className="pred">rdfs:subClassOf</code>
+              </span>
+              <SuperclassEditor term={term} />
+              <AnonymousExpressions term={term} predicate="rdfs:subClassOf" />
+            </div>
+            <LinkEditor term={term} kind="equivalentClass" noun="equivalent class" label="Equivalent classes" hint="both classes have exactly the same members" />
+            <AnonymousExpressions term={term} predicate="owl:equivalentClass" />
+            <LinkEditor term={term} kind="disjointWith" noun="disjoint class" label="Disjoint classes" hint="nothing can belong to both" />
+          </Section>
+          <ClassRestrictions term={term} />
+          <ClassProperties term={term} />
+          <InferredSupers term={term} />
+          <InferredRestrictionsPanel term={term} />
+        </>
+      )}
+
+      {!skos && term.type === 'property' && (
+        <Section id="property-axioms" title="Property axioms">
+          <PropertyFields term={term} />
+          <fieldset className="field checks">
+            <legend>Characteristics</legend>
+            <label className="check" title="Each thing has at most one value (owl:FunctionalProperty).">
+              <input type="checkbox" checked={!!term.functional} onChange={(e) => update(term.id, { functional: e.target.checked || undefined })} />
+              <span>Functional</span>
+            </label>
+          </fieldset>
+          <div className="field">
+            <span>
+              Superproperties <code className="pred">rdfs:subPropertyOf</code>
+            </span>
+            <SuperclassEditor term={term} />
+          </div>
+          <LinkEditor term={term} kind="equivalentProperty" noun="equivalent property" label="Equivalent properties" />
+          <LinkEditor term={term} kind="propertyDisjointWith" noun="disjoint property" label="Disjoint properties" />
+        </Section>
+      )}
+
+      {!skos && term.type === 'instance' && (
+        <>
+          <Section id="individual-axioms" title="Individual axioms">
+            <div className="field">
+              <span title="The classes this individual is explicitly stated to be an instance of.">
+                Asserted types <code className="pred">rdf:type</code>
+              </span>
+              <SuperclassEditor term={term} />
+            </div>
+            <LinkEditor term={term} kind="sameAs" noun="same individual" label="Same individuals" hint="two names for one and the same thing" />
+            <LinkEditor term={term} kind="differentFrom" noun="different individual" label="Different individuals" hint="definitely not the same thing" />
+          </Section>
+          <IndividualAssertions term={term} />
+          <InferredSupers term={term} />
+        </>
+      )}
+
+      {other.length ? (
+        <>
+          <h3>Other asserted expressions ({other.length})</h3>
+          <p className="muted">Kept exactly as written and exported with the entity.</p>
           <ul className="axioms">
-            {term.axioms.map((a, i) => (
+            {other.map((a, i) => (
               <li key={i}>
                 <code>{a}</code>
               </li>
@@ -158,20 +266,12 @@ function TermPanel({ term }: { term: Term }) {
           </ul>
         </>
       ) : null}
+
+      {annotations}
       <div className="field">
-        <span>Colour</span>
+        <span>Colour on the canvas</span>
         <Swatches value={term.color} onPick={(color) => update(term.id, { color })} />
       </div>
-      <label className="field">
-        <span>{skos ? 'Definition' : 'Description'}</span>
-        <CommitTextarea rows={5} value={term.description} placeholder="What does this term mean?" onCommit={(description) => update(term.id, { description })} />
-      </label>
-      <label className="field">
-        <span>{skos ? 'Alternative labels' : 'Synonyms'}</span>
-        <CommitInput value={term.synonyms} placeholder="Comma-separated" onCommit={(synonyms) => update(term.id, { synonyms })} />
-      </label>
-
-      <Metadata term={term} />
 
       <h3>Relations ({related.length})</h3>
       {related.length > 0 && (
@@ -227,21 +327,27 @@ function PropertyFields({ term }: { term: Term }) {
         <span>Attached to: the classes that have it</span>
         <TermChips
           ids={attached.map((r) => r.from)}
-          placeholder={attached.length ? 'Attach to another…' : 'Choose a class…'}
+          placeholder="Attach to a class"
+          of={term.name}
+          empty="no class yet"
           add={(id) => st().addRelation({ from: id, to: term.id, kind: 'property' })}
           remove={(id) => st().remove([], attached.filter((r) => r.from === id).map((r) => r.id))}
         />
       </div>
       <div className="field">
-        <span>Domain</span>
+        <span>
+          Domain <code className="pred">rdfs:domain</code>
+        </span>
         <TermChips
           ids={domain.ids}
-          placeholder={domain.ids.length ? 'Add another…' : 'Choose a class…'}
+          placeholder="Add a class to the domain"
+          of={term.name}
+          empty="not set: anything"
           add={(id) => st().updateTerm(term.id, { domain: [...domain.ids, id] })}
           remove={(id) => st().updateTerm(term.id, { domain: domain.ids.filter((x) => x !== id) })}
         />
         {domain.auto ? (
-          <small>Follows the classes it is attached to. Choose a class, for example a more general one, to set it yourself.</small>
+          <small>{domain.ids.length ? 'Follows the classes it is attached to. Add a class, for example a more general one, to set it yourself.' : 'Add a class to set it. A domain is not a requirement: it says what anything that has the property is.'}</small>
         ) : (
           <small>
             Set by you.{' '}
@@ -258,7 +364,9 @@ function PropertyFields({ term }: { term: Term }) {
         {!domain.auto && attached.length > 0 && !outside.length && <small className="good">✓ Every class that has it is inside the domain.</small>}
       </div>
       <label className="field">
-        <span>Range: the type of its values</span>
+        <span>
+          Range: the type of its values <code className="pred">rdfs:range</code>
+        </span>
         <select aria-label="Datatype" value={term.range ?? ''} onChange={(e) => st().updateTerm(term.id, { range: e.target.value || undefined })}>
           <option value="">Not set</option>
           {DATATYPES.map((d) => (
@@ -326,8 +434,8 @@ function ClassRestrictions({ term }: { term: Term }) {
   };
   return (
     <>
-      <h3>Restrictions ({restrictions.length})</h3>
-      {restrictions.length === 0 && <p className="muted">None. A restriction says what every member of this class has: “directs some Film”, “release date some date”.</p>}
+      <h3>Asserted restrictions ({restrictions.length})</h3>
+      {restrictions.length === 0 && <p className="muted">None stated on this class. A restriction says what every member of the class has: “directs some Film”, “release date some date”.</p>}
       <ul className="restrictions">
         {restrictions.map((r) => (
           <li key={r.rel.id}>
@@ -382,11 +490,90 @@ function ClassRestrictions({ term }: { term: Term }) {
   );
 }
 
+/** Where an inferred restriction comes from: the classes it is asserted on, each a link to that class. */
+export function Sources({ sources }: { sources: RestrictionSource[] }) {
+  const st = useStore.getState;
+  return (
+    <span className="sources">
+      {sources.some((x) => !x.equivalent) ? 'Inherited from ' : 'From equivalent class '}
+      {sources.map((x, i) => (
+        <span key={x.id}>
+          {i > 0 && ', '}
+          <button className="link" title={`${x.because}\nOpen ${x.name}`} onClick={() => st().select([x.id])}>
+            {x.name}
+          </button>
+          {x.equivalent && sources.some((y) => !y.equivalent) && ' (equivalent)'}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Restrictions that hold for the class because the reasoner entails it to be a kind of a class
+ * they are asserted on. Read-only: they are worked out from the model each time, never stored in it.
+ */
+function InferredRestrictionsPanel({ term }: { term: Term }) {
+  const model = useStore((s) => s.model);
+  const inferred = useMemo(() => inferredRestrictions(model, term.id), [model, term.id]);
+  const count = inferred.restrictions.length + inferred.expressions.length;
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <h3>
+        <button className="section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span aria-hidden="true">{open ? '▾' : '▸'}</span> Inferred restrictions ({inferred.status === 'inconsistent' ? '—' : count})
+        </button>
+      </h3>
+      {open && (
+        <>
+          {inferred.status === 'inconsistent' && (
+            <p className="bad" role="status">
+              The reasoner finds the ontology inconsistent, so nothing reliable can be inferred. See the Validation tab.
+            </p>
+          )}
+          {inferred.status === 'unsatisfiable' && (
+            <p className="bad" role="status">
+              This class can never have members (see Validation), so anything at all holds of it. The restrictions below are the inherited ones.
+            </p>
+          )}
+          {inferred.status === 'partial' && <p className="muted">The reasoner stopped early on this large model; there may be more.</p>}
+          {inferred.status !== 'inconsistent' && count === 0 && <p className="muted">None. Nothing is inherited from a superclass or an equivalent class.</p>}
+          <ul className="restrictions inferred">
+            {inferred.restrictions.map(({ key, restriction: r, sources }) => (
+              <li key={key}>
+                <span className="what">
+                  <span className="prop">{r.property}</span> <em>{r.quantifier}{r.n !== undefined ? ' ' + r.n : ''}</em> <span className={r.data ? 'datatype' : ''}>{r.filler}</span>
+                </span>
+                <Sources sources={sources} />
+              </li>
+            ))}
+            {inferred.expressions.map(({ key, text, sources }) => (
+              <li key={key}>
+                <code className="what">{text}</code>
+                <Sources sources={sources} />
+              </li>
+            ))}
+          </ul>
+          <details className="not-inferred">
+            <summary>What is not inferred</summary>
+            <p>These follow from the ontology by reasoning over its hierarchy and equivalences, kept up to date as you edit. The reasoner does not work out:</p>
+            <ul>
+              {NOT_INFERRED.map((x) => (
+                <li key={x}>{x}</li>
+              ))}
+            </ul>
+          </details>
+        </>
+      )}
+    </>
+  );
+}
+
 /** An object property: declared once, used by every relationship that carries its name. */
 function ObjectPropertyPanel({ prop }: { prop: PropView }) {
   const model = useStore((s) => s.model);
   const st = useStore.getState;
-  const others = objectProperties(model).filter((p) => p.key !== prop.key);
   const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
   const set = (patch: Parameters<ReturnType<typeof useStore.getState>['updateProp']>[1]) => st().updateProp(prop.key, patch);
@@ -395,10 +582,12 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
     const auto = which === 'domain' ? prop.domainAuto : prop.rangeAuto;
     return (
       <div className="field">
-        <span>{which === 'domain' ? 'Domain: what can have it' : 'Range: what it points to'}</span>
-        <TermChips ids={ids} placeholder={ids.length ? 'Add another…' : 'Choose a term…'} add={(id) => set({ [which]: [...ids, id] })} remove={(id) => set({ [which]: ids.filter((x) => x !== id) })} />
+        <span>
+          {which === 'domain' ? 'Domain: what can have it' : 'Range: what it points to'} <code className="pred">rdfs:{which}</code>
+        </span>
+        <TermChips ids={ids} placeholder={`Add a class to the ${which}`} of={prop.name} empty="not set: anything" add={(id) => set({ [which]: [...ids, id] })} remove={(id) => set({ [which]: ids.filter((x) => x !== id) })} />
         {auto ? (
-          <small>{ids.length ? 'Follows the classes it is used between. Choose a class, for example a more general one, to set it yourself.' : 'Not set: anything. Choose a class to set it.'}</small>
+          <small>{ids.length ? 'Follows the classes it is used between. Add a class, for example a more general one, to set it yourself.' : 'Add a class to set it.'}</small>
         ) : (
           <small>
             Set by you.{' '}
@@ -410,38 +599,21 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
       </div>
     );
   };
-  const pick = (label: string, value: string | undefined, onChange: (key: string | undefined) => void) => (
-    <label className="field">
-      <span>{label}</span>
-      <select value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
-        <option value="">None</option>
-        {value && !others.some((p) => p.key === value) && <option value={value}>{value}</option>}
-        {others.map((p) => (
-          <option key={p.key} value={p.key}>
-            {p.name}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
   return (
     <>
-      <h2>Object property</h2>
+      <EditorHead kind={prop.external !== undefined ? 'External object property' : 'Object property'} />
+      {prop.external !== undefined && <ExternalNote id={prop.external} />}
       <label className="field">
-        <span>Name</span>
+        <span>
+          Name <code className="pred">rdfs:label</code>
+        </span>
         <CommitInput value={prop.name} onCommit={(v) => st().renameProp(prop.key, v)} />
         <small>Renaming it renames every relationship that uses it.</small>
       </label>
-      <div className="field">
-        <span title="The identifier of this property. It does not change when the name does.">IRI</span>
-        <IriCell iri={prop.iri} of={prop.name} full />
-      </div>
-      <label className="field">
-        <span>Description</span>
-        <CommitTextarea rows={3} value={prop.description} placeholder="What does this property mean?" onCommit={(description) => set({ description })} />
-      </label>
-      {side('domain')}
-      {side('range')}
+      <IriDetails iri={prop.iri} name={prop.name} />
+      <Section id="property-axioms" title="Property axioms">
+        {side('domain')}
+        {side('range')}
       <fieldset className="field checks">
         <legend>Characteristics</legend>
         {CHARACTERISTICS.map((c) => (
@@ -454,9 +626,19 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
             <span>{c.label}</span>
           </label>
         ))}
+        <CharacteristicWarnings chars={prop.chars} />
       </fieldset>
-      {pick('Inverse of', prop.inverseOf, (inverseOf) => set({ inverseOf }))}
-      {pick('Sub-property of', prop.parent, (parent) => set({ parent }))}
+        <PropLinks prop={prop} />
+      </Section>
+      <Section id="annotations" title="Annotations" count={prop.fields.length + (prop.description ? 1 : 0)}>
+        <label className="field">
+          <span>
+            Description <code className="pred">skos:definition</code>
+          </span>
+          <CommitTextarea rows={3} value={prop.description} placeholder="What does this property mean?" onCommit={(description) => set({ description })} />
+        </label>
+        <Metadata title="Other annotations" fields={prop.fields} onChange={(fields) => set({ fields })} />
+      </Section>
 
       <h3>Used by ({prop.rels.length})</h3>
       {prop.rels.length === 0 && <p className="muted">Nothing uses it yet. Add a restriction to a class, or on the canvas drag from one term to another and pick this name as the label.</p>}
