@@ -1,6 +1,6 @@
 import { edgeTypeOf, type EdgeType } from './graphStyle';
 import { isInstanceOf, plainRelationships, restrictionByRelation } from './props';
-import type { Model } from './types';
+import { relLabel, type Model } from './types';
 import { resolveModel } from './vocab';
 
 const cache = new WeakMap<Model, Map<string, EdgeType>>();
@@ -23,5 +23,26 @@ export function edgeTypesOf(meaning: Model): Map<string, EdgeType> {
     out.set(r.id, edgeTypeOf(r, { instanceOf: isInstanceOf(meaning, r), plain: plain.has(r.id), restriction: restrictions.has(r.id), betweenProperties: type.get(r.from) === 'property' && type.get(r.to) === 'property' }));
   }
   cache.set(meaning, out);
+  return out;
+}
+
+const labels = new WeakMap<Model, Map<string, string>>();
+
+/**
+ * The words on each relationship's line, by relationship id: its label, or what its kind is
+ * called where it has none. A restriction reads "directs some", and several on one line
+ * "directs some, only". The canvas draws these and the exported page lists them.
+ */
+export function edgeLabelsOf(meaning: Model): Map<string, string> {
+  const hit = labels.get(meaning);
+  if (hit) return hit;
+  const skos = meaning.mode === 'skos';
+  const restrictions = restrictionByRelation(meaning);
+  const out = new Map<string, string>();
+  for (const r of resolveModel(meaning).relations) {
+    const stated = restrictions.get(r.id);
+    out.set(r.id, stated ? `${stated[0].data ? 'has' : stated[0].property} ${stated.map((x) => x.quantifier + (x.n !== undefined ? ' ' + x.n : '')).join(', ')}` : relLabel(r, skos, isInstanceOf(meaning, r)));
+  }
+  labels.set(meaning, out);
   return out;
 }

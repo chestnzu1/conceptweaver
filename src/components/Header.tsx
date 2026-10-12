@@ -67,6 +67,7 @@ export function Header() {
     { heading: 'Files' },
     { label: 'Download as JSON', onClick: () => exportModel('json') },
     { heading: 'Export' },
+    { label: 'Interactive page (HTML)', onClick: () => exportModel('html'), hint: 'opens anywhere' },
     { label: 'SKOS (Turtle)', onClick: () => exportModel('skos'), hint: model.mode === 'skos' ? '' : 'converted' },
     { label: 'OWL (Turtle)', onClick: () => exportModel('owl'), hint: model.mode === 'ontology' ? '' : 'converted' },
     { label: 'JSON-LD', onClick: () => exportModel('jsonld') },

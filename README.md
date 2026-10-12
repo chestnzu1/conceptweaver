@@ -10,7 +10,7 @@ pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
@@ -181,6 +181,16 @@ node e2e/ui-audit.mjs       # measures every view in both themes: text contrast,
 - **SPARQL view** – write SELECT / ASK / CONSTRUCT / DESCRIBE queries against the model's RDF
   and see the results as a table (Oxigraph compiled to WebAssembly, loaded on first use).
 - **RDF view** – the live model as Turtle, JSON-LD or a triples table.
+- **Interactive page** – *File → Export → Interactive page (HTML)* writes the model as one HTML
+  file that opens on its own, with no app and no network: the graph as the canvas draws it (its
+  style included, in the theme the app is in), which can be dragged and zoomed; the classes or
+  concepts as a hierarchy, and the other kinds of entity, in a list with a search; and for
+  whatever is clicked its IRI, definition, place in the hierarchy, relationships and metadata,
+  each term named there a link to it. In the page a term can be dragged elsewhere (its lines
+  follow, drawn as the app draws them) and a relationship's line pulled into a bow; the
+  arrangement is remembered in that browser and *Reset layout* undoes it. It is a read-only copy
+  of the model (`src/model/htmlExport.ts`, with the page's own script and stylesheet in
+  `src/export/`).
 - **Files** – save/open JSON; import Turtle / N-Triples (OWL, RDFS, SKOS); export OWL (Turtle),
   JSON-LD, CSV, SVG and PNG. Drag a file onto the window to open it.
 - Whatever is in the editor is also kept as a working copy in the browser, so a reload loses nothing.
