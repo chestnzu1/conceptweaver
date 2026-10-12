@@ -9,6 +9,7 @@ import { declaredProp, findProp, propKey, type RelChoice } from './props';
 import { labelKey, resolveModel, suggestFor } from './vocab';
 import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from './subgraph';
 import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaOwner, type MetaValue } from './governance';
+import { normalizeByKind, PALETTE, patchNodes, resetOwn, type GraphStyle, type SavedStyle } from './graphStyle';
 import { baseIriOf, moveNamespace, withIris } from './iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
 import type { SettingsDraft } from './prefixes';
@@ -120,6 +121,20 @@ const AUTOSAVE_KEY = 'conceptweaver:autosave';
 
 /** A stored setting, also looked for under the app's former name so that nothing saved before the rename is lost. */
 const stored = (key: string) => localStorage.getItem(key) ?? localStorage.getItem(key.replace('conceptweaver:', 'termloom:'));
+const STYLES_KEY = 'conceptweaver:graph-styles';
+
+/** The graph styles saved under a name in this browser, to use in any model. */
+function loadSavedStyles(): SavedStyle[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(STYLES_KEY) ?? '[]') as unknown;
+    return (Array.isArray(list) ? (list as Record<string, unknown>[]) : []).filter((x) => x && typeof x === 'object' && typeof x.name === 'string' && x.name.trim()).map((x) => ({ name: (x.name as string).trim(), ...normalizeByKind(x) }));
+  } catch {
+    return [];
+  }
+}
+
+/** The last change to the graph style: a drag on a slider or in a colour picker is one step to undo, not fifty. */
+let lastStyleEdit = { key: '', at: 0 };
 const HISTORY = 100;
 
 function loadModel(): Model {
@@ -190,6 +205,25 @@ interface State {
   /** Whether the canvas also draws the class memberships the reasoner works out. A way of looking; never part of the model. */
   showInferred: boolean;
   setShowInferred: (on: boolean) => void;
+  /** Whether the graph style panel is open on the canvas. */
+  stylePanel: boolean;
+  setStylePanel: (open: boolean) => void;
+  /**
+   * Changes how the graph is drawn. Nothing about the ontology changes. Changes that share a
+   * `gesture` and follow each other closely are undone together.
+   */
+  setStyle: (fn: (s: GraphStyle) => GraphStyle, gesture?: string) => void;
+  /**
+   * Gives single terms a fill of their own, or takes it away. One of the canvas colours is kept
+   * as the term's colour, exactly as the canvas menu sets it; any other is kept in the style.
+   */
+  setOwnFill: (ids: string[], fill: string | undefined) => void;
+  /** Takes away the look single terms and relationships were given: their own style, and a term's canvas colour. */
+  resetOwnStyle: (terms: string[] | 'all', rels: string[] | 'all') => void;
+  savedStyles: SavedStyle[];
+  /** Keeps the styles by kind under a name in this browser. Returns the reason if it could not. */
+  saveStyleAs: (name: string) => string | undefined;
+  deleteSavedStyle: (name: string) => void;
   filter: string;
   theme: Theme;
   /** The entity editor takes more room, for entities with a lot to say about them. */
@@ -392,6 +426,54 @@ export const useStore = create<State>((set, get) => ({
   highlightLabel: '',
   showInferred: false,
   setShowInferred: (showInferred) => set({ showInferred }),
+  stylePanel: false,
+  setStylePanel: (stylePanel) => set({ stylePanel }),
+  setStyle: (fn, gesture = '') => {
+    const now = Date.now();
+    const same = !!gesture && gesture === lastStyleEdit.key && now - lastStyleEdit.at < 1200;
+    lastStyleEdit = { key: gesture, at: now };
+    get().apply((m) => {
+      const style = fn(m.style);
+      return style === m.style ? m : { ...m, style };
+    }, !same);
+  },
+  setOwnFill: (ids, fill) => {
+    const swatch = (PALETTE as readonly string[]).includes(fill ?? '') ? fill! : '';
+    const set_ = new Set(ids);
+    get().apply((m) => ({ ...m, terms: m.terms.map((t) => (set_.has(t.id) && t.color !== swatch ? { ...t, color: swatch } : t)), style: patchNodes(m.style, ids, { fill: swatch ? undefined : fill }) }));
+  },
+  resetOwnStyle: (terms, rels) =>
+    get().apply((m) => {
+      const termIds = terms === 'all' ? m.terms.map((t) => t.id) : terms;
+      const relIds = rels === 'all' ? m.relations.map((r) => r.id) : rels;
+      const set_ = new Set(termIds);
+      return { ...m, terms: m.terms.map((t) => (set_.has(t.id) && t.color ? { ...t, color: '' } : t)), style: resetOwn(m.style, termIds, relIds) };
+    }),
+  savedStyles: loadSavedStyles(),
+  saveStyleAs: (name) => {
+    const clean = name.trim();
+    if (!clean) return 'Give the style a name.';
+    const { nodeTypes, edgeTypes } = get().model.style;
+    const savedStyles = [...get().savedStyles.filter((x) => x.name.toLowerCase() !== clean.toLowerCase()), { name: clean, nodeTypes, edgeTypes }].sort((a, b) => a.name.localeCompare(b.name));
+    try {
+      localStorage.setItem(STYLES_KEY, JSON.stringify(savedStyles));
+    } catch {
+      return 'The browser would not store it.';
+    }
+    set({ savedStyles });
+    get().setStyle((s) => ({ ...s, theme: clean, customized: undefined }));
+    get().notify(`Graph style “${clean}” saved in this browser.`);
+    return undefined;
+  },
+  deleteSavedStyle: (name) => {
+    const savedStyles = get().savedStyles.filter((x) => x.name !== name);
+    try {
+      localStorage.setItem(STYLES_KEY, JSON.stringify(savedStyles));
+    } catch {
+      // Not stored either way.
+    }
+    set({ savedStyles });
+  },
   filter: '',
   theme: loadTheme(),
   editorWide: (() => {
@@ -1081,8 +1163,10 @@ export const useStore = create<State>((set, get) => ({
       return;
     }
     const pad = 70;
-    const k = Math.min(1.25, Math.max(0.1, Math.min(w / (b.x1 - b.x0 + pad * 2), h / (b.y1 - b.y0 + pad * 2))));
-    set({ vp: { k, x: w / 2 - ((b.x0 + b.x1) / 2) * k, y: h / 2 - ((b.y0 + b.y1) / 2) * k } });
+    // The style panel floats over the right of the canvas: with it open, the graph is fitted into the room beside it.
+    const room = get().stylePanel && w > 760 ? w - 340 : w;
+    const k = Math.min(1.25, Math.max(0.1, Math.min(room / (b.x1 - b.x0 + pad * 2), h / (b.y1 - b.y0 + pad * 2))));
+    set({ vp: { k, x: room / 2 - ((b.x0 + b.x1) / 2) * k, y: h / 2 - ((b.y0 + b.y1) / 2) * k } });
   },
   arrange: (kind) => {
     if (get().subgraph.active) {

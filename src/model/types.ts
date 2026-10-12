@@ -1,3 +1,4 @@
+import { noStyle, normalizeGraphStyle, type GraphStyle } from './graphStyle';
 import { STANDARD } from './prefixes';
 
 export type TermType = 'concept' | 'property' | 'instance';
@@ -214,6 +215,8 @@ export interface Model {
   rejected: string[];
   /** How the governance metadata fields are set up for this model: fields of its own, and changes to the standard ones. */
   governance: GovernanceConfig;
+  /** How the graph is drawn. Like the positions of the terms it is no part of the ontology and is never written to RDF. */
+  style: GraphStyle;
 }
 
 /** The kinds of entity a metadata field can apply to. The last two are metadata profiles an entity is given. */
@@ -385,7 +388,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} } };
+  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle() };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -664,6 +667,7 @@ export function normalizeModel(raw: unknown): Model {
       })),
     rejected: Array.isArray(o.rejected) ? [...new Set(o.rejected.map((x) => str(x)).filter(Boolean))] : [],
     governance: normalizeGovernance(o.governance),
+    style: normalizeGraphStyle(o.style, new Set(terms.map((t) => t.id)), new Set(relations.map((r) => r.id))),
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],
       on: Array.isArray((o.quality as QualityConfig | undefined)?.on) ? [...new Set((o.quality as QualityConfig).on.map((x) => str(x)).filter(Boolean))] : [],

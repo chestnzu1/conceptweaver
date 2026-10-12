@@ -109,6 +109,13 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     const tab = (name) => page.locator('.header').getByRole('tab', { name, exact: name === 'RDF' }).click();
     await page.locator('.node').first().locator('.node-box').click();
     report('Graph', await page.evaluate(measure));
+    // The graph style editor, tab by tab, with a term selected so that every control is live.
+    await page.locator('.subgraph').getByRole('button', { name: 'Style' }).click();
+    for (const name of ['Nodes', 'Edges', 'Themes']) {
+      await page.locator('.style-panel').getByRole('tab', { name }).click();
+      report('Style · ' + name, await page.evaluate(measure));
+    }
+    await page.locator('.style-panel').getByRole('button', { name: 'Close the graph style panel' }).click();
     await tab('Entities');
     report('Entities', await page.evaluate(measure));
     await page.locator('.view').getByRole('tab', { name: 'Governance & Metadata' }).click();

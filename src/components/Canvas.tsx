@@ -1,11 +1,14 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { displayName, edgeGeom, edgeOffsets, LABEL_FONT, nodeLabel, nodeSize, pointInNode, textWidth, type EdgeGeom, type Pt } from '../model/geometry';
+import { displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nodeLabel, nodeSize, placeLabels, pointInNode, setNodeLook, textWidth, type EdgeGeom, type LabelSpec, type Pt } from '../model/geometry';
+import { edgeTypesOf } from '../model/edgeKinds';
+import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
 import { useStore, viewOf, type SubgraphState } from '../model/store';
 import { INSTANCE_OF, kindLabel, newRelation, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
 import { isInstanceOf, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices, restrictionByRelation } from '../model/props';
 import { inferredMemberships, type InferredMembership } from '../model/inferred';
 import { activeProps, resolveModel, suggestFor } from '../model/vocab';
+import { StylePanel } from './StylePanel';
 import { SubgraphPanel } from './SubgraphPanel';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 
@@ -34,6 +37,7 @@ export function Canvas() {
   const highlightLabel = useStore((s) => s.highlightLabel);
   const filter = useStore((s) => s.filter);
   const showInferred = useStore((s) => s.showInferred);
+  const stylePanel = useStore((s) => s.stylePanel);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [connect, setConnect] = useState<{ from: string; to: Pt } | null>(null);
   const [box, setBox] = useState<{ a: Pt; b: Pt } | null>(null);
@@ -338,6 +342,7 @@ export function Canvas() {
       )}
 
       <SubgraphPanel />
+      {stylePanel && <StylePanel />}
       {subgraph.active && full.terms.length > 0 && model.terms.length === 0 && (
         <div className="empty-hint">
           <strong>Nothing in this subgraph</strong>
@@ -414,6 +419,10 @@ interface SceneProps {
 
 const NONE: InferredMembership[] = [];
 
+const INFERRED_LABEL = `${INSTANCE_OF} (inferred)`;
+/** Where the scene last put each edge label, for the editor that opens on one. */
+let labelSpots = new Map<string, Pt>();
+
 /**
  * Every term and relation of the model. Memoised at three levels so that a large model stays
  * responsive: the scene itself does not change while the view is panned or zoomed, and within it
@@ -423,36 +432,88 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
   const rootSet = useMemo(() => new Set(sub?.roots), [sub?.roots]);
   const expandedSet = useMemo(() => new Set(sub?.expanded), [sub?.expanded]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
+  // How the nodes are drawn decides how big they are and where edges meet them, so the geometry
+  // is told before anything is measured. Layout, fitting and the picture export read the same.
+  const style = model.style;
+  useMemo(() => setNodeLook(nodeLookFor(model)), [style, model.mode, model.prefixes, model.baseIri]); // eslint-disable-line react-hooks/exhaustive-deps
   // Relations as they should be read: with the RDFS/OWL layer on, a mapped relation takes the
   // kind and label of its standard property.
   const meaning = stable(model);
   const relations = useMemo(() => resolveModel(meaning).relations, [meaning]);
-  // An inferred membership takes its place among the relations between the same two terms.
-  const offsets = useMemo(() => edgeOffsets(inferred.length ? [...relations, ...inferred] : relations), [relations, inferred]);
-  // Geometry is kept per relation and reused while its two ends stay where they are.
-  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; geom: EdgeGeom }>());
-  const geoms = useMemo(() => {
-    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; geom: EdgeGeom }>();
-    for (const r of relations) {
-      const a = byId.get(r.from);
-      const b = byId.get(r.to);
-      if (!a || !b) continue;
-      const offset = offsets.get(r.id) ?? 0;
-      const old = cache.current.get(r.id);
-      // Only position and size matter, and size follows from the label.
-      const same = old && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
-      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, geom: edgeGeom(a, b, offset, r.kind) });
-    }
-    cache.current = next;
-    return next;
-  }, [relations, offsets, byId]);
-
   const skos = model.mode === 'skos';
   const { restrictions, plain } = useMemo(() => {
     const plain = new Set<string>();
     if (meaning.mode !== 'skos') for (const p of plainRelationships(meaning)) for (const r of p.rels) plain.add(r.id);
     return { restrictions: restrictionByRelation(meaning), plain };
   }, [meaning]);
+  // The style of each edge: that of its kind of relationship, with its own on top.
+  const edgeStyles = useMemo(() => {
+    const types = edgeTypesOf(meaning);
+    const out = new Map<string, EdgeStyle>();
+    for (const r of relations) out.set(r.id, resolveEdge(style, types.get(r.id) ?? 'plain', r.id));
+    return out;
+  }, [relations, meaning, style]);
+  const inferredStyle = resolveEdge(style, 'inferred', '');
+  // An inferred membership takes its place among the relations between the same two terms.
+  const offsets = useMemo(() => edgeOffsets(inferred.length ? [...relations, ...inferred] : relations), [relations, inferred]);
+  // Geometry is kept per relation and reused while its two ends stay where they are.
+  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; geom: EdgeGeom }>());
+  const geoms = useMemo(() => {
+    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; geom: EdgeGeom }>();
+    for (const r of relations) {
+      const a = byId.get(r.from);
+      const b = byId.get(r.to);
+      if (!a || !b) continue;
+      const es = edgeStyles.get(r.id) ?? NO_EDGE_STYLE;
+      // The style can bow the line further, on top of what keeps parallel edges apart.
+      const offset = (offsets.get(r.id) ?? 0) + (es.curve ?? 0);
+      const old = cache.current.get(r.id);
+      // Only position and size matter, and size follows from the label. Any change of style is a new style object.
+      const same = old && old.es === es && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
+      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, es, geom: edgeGeom(a, b, offset, r.kind, es.arrow) });
+    }
+    cache.current = next;
+    return next;
+    // The style object stands for everything about the nodes' sizes and shapes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relations, offsets, byId, edgeStyles, style]);
+  // What each edge says. A restriction reads "directs some Film", and several on one line "directs some, only".
+  const labelOf = useCallback(
+    (r: Relation) => {
+      const stated = restrictions.get(r.id);
+      return stated ? `${stated[0].data ? 'has' : stated[0].property} ${stated.map((x) => x.quantifier + (x.n !== undefined ? ' ' + x.n : '')).join(', ')}` : relLabel(r, skos, isInstanceOf(meaning, r));
+    },
+    [restrictions, skos, meaning],
+  );
+  const inferredGeoms = useMemo(() => {
+    const out = new Map<string, { a: Term; b: Term; geom: EdgeGeom }>();
+    for (const x of inferred) {
+      const a = byId.get(x.from);
+      const b = byId.get(x.to);
+      if (a && b) out.set(x.id, { a, b, geom: edgeGeom(a, b, (offsets.get(x.id) ?? 0) + (inferredStyle.curve ?? 0), 'generalization', inferredStyle.arrow) });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inferred, byId, offsets, inferredStyle, style]);
+  // Where each label goes: in the middle of its edge, or along it where the middle is taken.
+  const spots = useMemo(() => {
+    const specs: LabelSpec[] = [];
+    for (const r of relations) {
+      const g = geoms.get(r.id);
+      const label = g && g.es.labels !== false && labelOf(r);
+      if (g && label) specs.push({ id: r.id, geom: g.geom, w: textWidth(label, labelFont(g.es)) + 10, ends: [g.a, g.b] });
+    }
+    if (inferredStyle.labels !== false) for (const [id, g] of inferredGeoms) specs.push({ id, geom: g.geom, w: textWidth(INFERRED_LABEL, labelFont(inferredStyle)) + 10, ends: [g.a, g.b] });
+    // The cardinalities written at the ends of plain relationships stay where they are; labels keep off them.
+    const cards: { x: number; y: number; w: number; h: number }[] = [];
+    for (const r of relations) {
+      const g = geoms.get(r.id);
+      if (!g || !(skos ? r.kind === 'association' : plain.has(r.id))) continue;
+      if (r.fromCard) cards.push({ ...g.geom.fromCard, w: textWidth(r.fromCard, LABEL_FONT) + 4, h: 14 });
+      if (r.toCard) cards.push({ ...g.geom.toCard, w: textWidth(r.toCard, LABEL_FONT) + 4, h: 14 });
+    }
+    return (labelSpots = placeLabels(specs, cards));
+  }, [relations, geoms, inferredGeoms, inferredStyle, labelOf, skos, plain]);
   const selTerms = useMemo(() => new Set(sel.terms), [sel.terms]);
   const selRels = useMemo(() => new Set(sel.rels), [sel.rels]);
   const spot = useMemo(() => new Set(highlight), [highlight]);
@@ -472,21 +533,20 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
       {relations.map((r) => {
         const g = geoms.get(r.id);
         if (!g) return null;
-        // A restriction reads "directs some Film"; a relationship nobody has classified is drawn fainter.
-        const stated = restrictions.get(r.id);
+        // A relationship nobody has classified is drawn fainter.
         const instanceOf = isInstanceOf(meaning, r);
-        // Several restrictions on one line read "directs some, only".
-        const label = stated ? `${stated[0].data ? 'has' : stated[0].property} ${stated.map((x) => x.quantifier + (x.n !== undefined ? ' ' + x.n : '')).join(', ')}` : relLabel(r, skos, instanceOf);
+        const label = labelOf(r);
+        const at = spots.get(r.id) ?? g.geom.label;
         // Cardinalities are drawn for plain relationships only.
         const cards = skos ? r.kind === 'association' : plain.has(r.id);
         const cls = `edge ${r.kind}${instanceOf ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}`;
-        return <EdgeView key={r.id} r={r} geom={g.geom} label={editing?.kind === 'rel' && editing.id === r.id ? '' : label} cls={cls} cards={cards} actions={actions} />;
+        return <EdgeView key={r.id} r={r} geom={g.geom} es={g.es} lx={at.x} ly={at.y} label={(editing?.kind === 'rel' && editing.id === r.id) || g.es.labels === false ? '' : label} cls={cls} cards={cards} actions={actions} />;
       })}
       {inferred.map((x) => {
-        const a = byId.get(x.from);
-        const b = byId.get(x.to);
-        if (!a || !b) return null;
-        return <InferredEdge key={x.id} x={x} geom={edgeGeom(a, b, offsets.get(x.id) ?? 0, 'generalization')} dim={relDim(x)} />;
+        const g = inferredGeoms.get(x.id);
+        if (!g) return null;
+        const at = spots.get(x.id) ?? g.geom.label;
+        return <InferredEdge key={x.id} x={x} geom={g.geom} es={inferredStyle} lx={at.x} ly={at.y} dim={relDim(x)} />;
       })}
       {model.terms.map((t) => {
         const cls = `node ${t.type}${t.external !== undefined ? ' external' : ''}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}`;
@@ -495,6 +555,8 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
           <NodeView
             key={t.id}
             t={t}
+            ns={resolveNode(style, nodeTypeOf(model.mode, t.type), t)}
+            label={nodeLabel(t)}
             cls={cls + (rootSet.has(t.id) ? ' root' : '')}
             hideText={editing?.kind === 'term' && editing.id === t.id}
             actions={actions}
@@ -507,11 +569,46 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
   );
 });
 
-const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, cards, actions }: { r: Relation; geom: EdgeGeom; label: string; cls: string; cards: boolean; actions: SceneActions }) {
-  const lw = label ? textWidth(label, LABEL_FONT) + 10 : 0;
+const NO_EDGE_STYLE: EdgeStyle = {};
+const labelFont = (es: EdgeStyle) => (es.labelSize ? `400 ${es.labelSize}px system-ui, sans-serif` : LABEL_FONT);
+const labelHeight = (es: EdgeStyle) => Math.max(LABEL_H, (es.labelSize ?? 12) + 6);
+
+/**
+ * An edge's style as the stylesheet takes it: custom properties that the rules for lines, arrows
+ * and labels read, falling back to the theme where one is not set. Being selected or
+ * spotlighted is said by rules of their own, which still win.
+ */
+function edgeLook(es: EdgeStyle): { cls: string; vars: React.CSSProperties | undefined } {
+  if (es === NO_EDGE_STYLE || !Object.keys(es).length) return { cls: '', vars: undefined };
+  const vars: Record<string, string | number> = {};
+  const color = paint(es.color, 'line');
+  if (color) vars['--e-color'] = color;
+  if (es.width) vars['--e-width'] = es.width;
+  const dash = dashOf(es.line, es.width);
+  if (dash) vars['--e-dash'] = dash;
+  const label = paint(es.labelColor, 'line');
+  if (label) vars['--e-label'] = label;
+  if (es.labelSize) vars['--e-label-size'] = es.labelSize + 'px';
+  return { cls: (es.arrow ? ` arrow-${es.arrow}` : '') + (es.line === 'dotted' ? ' line-dotted' : ''), vars: vars as React.CSSProperties };
+}
+
+/** The end of an edge: a closed head, for the open kind two strokes that meet at the tip, or nothing at all. */
+function Arrow({ points, head }: { points: string; head: EdgeStyle['arrow'] }) {
+  // Left out rather than hidden, so that a picture exported from the canvas has none either.
+  if (head === 'none') return null;
+  if (head !== 'open') return <polygon className="edge-arrow" points={points} />;
+  const [tip, a, b] = points.split(' ');
+  return <polyline className="edge-arrow" points={`${a} ${tip} ${b}`} />;
+}
+
+const EdgeView = memo(function EdgeView({ r, geom: g, es, lx, ly, label, cls, cards, actions }: { r: Relation; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; label: string; cls: string; cards: boolean; actions: SceneActions }) {
+  const lw = label ? textWidth(label, labelFont(es)) + 10 : 0;
+  const lh = labelHeight(es);
+  const look = edgeLook(es);
   return (
     <g
-      className={cls}
+      className={cls + look.cls}
+      style={look.vars}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -525,11 +622,11 @@ const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, cards, actions
     >
       <path data-noexport className="edge-hit" d={g.path} />
       <path className="edge-line" d={g.path} />
-      <polygon className="edge-arrow" points={g.arrow} />
+      <Arrow points={g.arrow} head={es.arrow} />
       {label && (
         <>
-          <rect className="edge-label-bg" x={g.label.x - lw / 2} y={g.label.y - 9} width={lw} height={18} rx={4} />
-          <text className="edge-label" x={g.label.x} y={g.label.y}>
+          <rect className="edge-label-bg" x={lx - lw / 2} y={ly - lh / 2} width={lw} height={lh} rx={4} />
+          <text className="edge-label" x={lx} y={ly}>
             {label}
           </text>
         </>
@@ -549,29 +646,65 @@ const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, cards, actions
 });
 
 /** A class membership that is entailed, not asserted: dashed, labelled as inferred, and nothing about it can be edited. */
-function InferredEdge({ x, geom: g, dim }: { x: InferredMembership; geom: EdgeGeom; dim: boolean }) {
-  const label = `${INSTANCE_OF} (inferred)`;
-  const lw = textWidth(label, LABEL_FONT) + 10;
+function InferredEdge({ x, geom: g, es, lx, ly, dim }: { x: InferredMembership; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; dim: boolean }) {
+  const label = es.labels === false ? '' : INFERRED_LABEL;
+  const lw = textWidth(label, labelFont(es)) + 10;
+  const lh = labelHeight(es);
+  const look = edgeLook(es);
   return (
-    <g className={'edge generalization instance-of inferred' + (dim ? ' dim' : '')}>
+    <g className={'edge generalization instance-of inferred' + (dim ? ' dim' : '') + look.cls} style={look.vars}>
       <title>{`Inferred, not asserted. ${x.because}`}</title>
       <path data-noexport className="edge-hit" d={g.path} />
       <path className="edge-line" d={g.path} />
-      <polygon className="edge-arrow" points={g.arrow} />
-      <rect className="edge-label-bg" x={g.label.x - lw / 2} y={g.label.y - 9} width={lw} height={18} rx={4} />
-      <text className="edge-label" x={g.label.x} y={g.label.y}>
-        {label}
-      </text>
+      <Arrow points={g.arrow} head={es.arrow} />
+      {label && (
+        <>
+          <rect className="edge-label-bg" x={lx - lw / 2} y={ly - lh / 2} width={lw} height={lh} rx={4} />
+          <text className="edge-label" x={lx} y={ly}>
+            {label}
+          </text>
+        </>
+      )}
     </g>
   );
 }
 
-const NodeView = memo(function NodeView({ t, cls, hideText, actions, badge }: { t: Term; cls: string; hideText: boolean; actions: SceneActions; badge: string }) {
+/** The outline of a node: the standard box of its kind, or the shape its style asks for. */
+function NodeShape({ t, ns, w, h, paintStyle }: { t: Term; ns: NodeStyle; w: number; h: number; paintStyle: React.CSSProperties }) {
+  switch (ns.shape) {
+    case 'ellipse':
+    case 'circle':
+      return <ellipse className="node-box" cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} style={paintStyle} />;
+    case 'diamond':
+      return <polygon className="node-box" points={`${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`} style={paintStyle} />;
+    case 'hexagon': {
+      const c = hexInset(w, h);
+      return <polygon className="node-box" points={`${c},0 ${w - c},0 ${w},${h / 2} ${w - c},${h} ${c},${h} 0,${h / 2}`} style={paintStyle} />;
+    }
+    default:
+      return <rect className="node-box" width={w} height={h} rx={ns.shape === 'rectangle' ? 0 : ns.shape === 'rounded' ? 9 : t.type === 'property' ? h / 2 : t.type === 'instance' ? 2 : 9} style={paintStyle} />;
+  }
+}
+
+// `label` is what nodeLabel(t) gives now: it is a prop so that the node is drawn again when the words change though the term did not.
+const NodeView = memo(function NodeView({ t, ns, label, cls, hideText, actions, badge }: { t: Term; ns: NodeStyle; label: string; cls: string; hideText: boolean; actions: SceneActions; badge: string }) {
   const { w, h } = nodeSize(t);
   const color = t.color || 'default';
+  // A colour of the node's own, then the colour it was given on the canvas, then the theme's.
+  const fill = paint(ns.fill, 'fill') ?? `var(--nc-${color}-fill)`;
+  const stroke = paint(ns.stroke, 'line') ?? (ns.fill && !isHex(ns.fill) ? paint(ns.fill, 'line')! : `var(--nc-${color}-stroke)`);
+  const vars: Record<string, string | number> = {};
+  if (ns.strokeWidth !== undefined) vars['--n-sw'] = ns.strokeWidth;
+  // On a freely picked fill the words are black or white, whichever reads, unless a colour was chosen for them.
+  const ink = paint(ns.labelColor, 'line') ?? (isHex(ns.fill) ? readableOn(ns.fill) : undefined);
+  if (ink) vars['--n-ink'] = ink;
+  if (ns.fontSize) vars['--n-fs'] = ns.fontSize + 'px';
+  if (ns.fontWeight) vars['--n-fw'] = ns.fontWeight;
+  if (ns.opacity !== undefined) vars['--n-op'] = ns.opacity;
   return (
     <g
       className={cls}
+      style={vars as React.CSSProperties}
       transform={`translate(${t.x - w / 2},${t.y - h / 2})`}
       onPointerDown={(e) => actions.nodeDown(e, t)}
       onDoubleClick={(e) => {
@@ -580,10 +713,10 @@ const NodeView = memo(function NodeView({ t, cls, hideText, actions, badge }: { 
       }}
       onContextMenu={(e) => actions.termMenu(e, t)}
     >
-      <rect className="node-box" width={w} height={h} rx={t.type === 'property' ? h / 2 : t.type === 'instance' ? 2 : 9} style={{ fill: `var(--nc-${color}-fill)`, stroke: `var(--nc-${color}-stroke)` }} />
+      <NodeShape t={t} ns={ns} w={w} h={h} paintStyle={{ fill, stroke }} />
       {!hideText && (
         <text className="node-text" x={w / 2} y={h / 2}>
-          {t.name ? displayName(nodeLabel(t)) : 'Unnamed'}
+          {t.name ? displayName(label, t) : 'Unnamed'}
         </text>
       )}
       {badge && (
@@ -623,7 +756,8 @@ function InlineEditor({ byId }: { byId: Map<string, Term> }) {
     const a = byId.get(rel.from);
     const b = byId.get(rel.to);
     const resolved = resolveModel(view).relations;
-    if (a && b) at = edgeGeom(a, b, edgeOffsets(resolved).get(rel.id) ?? 0, resolved.find((r) => r.id === rel.id)?.kind ?? rel.kind).label;
+    // Where its label is drawn, so that the box opens on the words it replaces.
+    if (a && b) at = labelSpots.get(rel.id) ?? edgeGeom(a, b, edgeOffsets(resolved).get(rel.id) ?? 0, resolved.find((r) => r.id === rel.id)?.kind ?? rel.kind).label;
   }
   if (!at || (!term && !rel)) return null;
 

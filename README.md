@@ -10,7 +10,7 @@ pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
@@ -74,6 +74,15 @@ node e2e/ui-audit.mjs       # measures every view in both themes: text contrast,
   under *Validation* as a governance rule that can be switched off; it is never an OWL axiom.
   An entity can be given the profile of a business or technical data asset (`dcterms:type`),
   which changes its fields, not what it is in the ontology.
+- **Graph style** – the *Style* button on the canvas opens an editor for how the graph is drawn:
+  shape, fill, border, size, label and opacity of nodes; colour, thickness, line, arrowhead,
+  curvature and label of edges. A style is set for a kind (class, individual, datatype property;
+  "is a", Is Instance Of, restriction, plain relationship and the other kinds of line) or for the
+  selected terms and relationships, which then override their kind. Themes (Standard,
+  Professional, Minimal, High contrast, Colorful) set every kind at once, and a style can be
+  saved under a name to use in other models. The style is kept with the model like the positions
+  of its terms, never in the RDF, and reasoning and validation do not see it
+  (`src/model/graphStyle.ts`).
 - **Several restrictions on one relationship** – a relationship that uses an object property, or
   attaches a data property, can state more than one restriction (`directs some Film` and
   `directs max 3 Film`; `min 1` with `max 2`). *Add another restriction* in the relation panel,
