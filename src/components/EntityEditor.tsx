@@ -18,7 +18,7 @@ import {
   type ClassProperty,
   type LinkKind,
 } from '../model/axioms';
-import { baseIriOf } from '../model/iri';
+import { baseIriOf, iriCut, setIriSuffix, type IriOwner } from '../model/iri';
 import { compactIri } from '../model/prefixes';
 import { findProp, objectProperties, propLinks, type PropView } from '../model/props';
 import { reason } from '../model/reasoner';
@@ -27,6 +27,7 @@ import { isDirty, useStore } from '../model/store';
 import { DATATYPES, type PropLink, type Term, type TermType } from '../model/types';
 import { EntityPicker, type Choice } from './EntityPicker';
 import { IriCell } from './Iri';
+import { CommitInput } from './fields';
 
 /**
  * The parts of the entity editor that state OWL axioms about the selected entity. What each part
@@ -89,16 +90,35 @@ export function Section({ id, title, count, children, inferred = false }: { id: 
 }
 
 /** An entity's identifier, in full, with how it is abbreviated and which namespace it is in. */
-export function IriDetails({ iri, name }: { iri?: string; name: string }) {
+export function IriDetails({ iri, name, owner, external = false }: { iri?: string; name: string; owner: IriOwner; external?: boolean }) {
   const model = useStore((s) => s.model);
-  const cut = iri ? Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1 : 0;
+  const [error, setError] = useState<string>();
+  const cut = iri ? iriCut(iri) : 0;
   const ns = iri?.slice(0, cut);
   const curie = iri ? compactIri(model, iri) : undefined;
   const prefix = model.prefixes.find((p) => p.iri === ns);
   return (
     <div className="field">
-      <span title="The identifier of this entity. It was made once and does not change when the name does.">IRI</span>
+      <span title="The identifier of this entity. It starts out made from the name, and is its own thing from then on: renaming the entity changes its label, not its IRI.">IRI</span>
       <IriCell iri={iri} of={name} full />
+      {!external && (
+        <label className="iri-suffix">
+          <span title="The last part of the IRI, after the namespace. Changing it changes the identifier and leaves the name (rdfs:label) as it is.">IRI suffix</span>
+          <CommitInput
+            aria-label={`IRI suffix of ${name || 'this entity'}`}
+            aria-invalid={!!error}
+            spellCheck={false}
+            value={iri ? iri.slice(cut) : ''}
+            placeholder="made from the name"
+            onCommit={(v) => setError(useStore.getState().edit((m) => setIriSuffix(m, owner, v)))}
+          />
+          {error && (
+            <small className="bad" role="alert">
+              {error}
+            </small>
+          )}
+        </label>
+      )}
       {iri && (
         <dl className="iri-parts">
           <dt>Prefixed name</dt>

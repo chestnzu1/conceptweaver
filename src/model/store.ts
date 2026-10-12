@@ -11,14 +11,14 @@ import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Sub
 import { baseIriOf, moveNamespace, withIris } from './iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
 import type { SettingsDraft } from './prefixes';
-import type { Edit } from './axioms';
+import { makeInstanceOf, type Edit } from './axioms';
 import { addExternal, importsClosure, readExternal, removeExternal, type Collision, type ExternalSummary } from './external';
 import { collisions } from './external';
 import { listMappings } from './alignment';
 import { cachedOntology, cachedOntologyByIri, cacheOntology, uncacheOntology } from './library';
 import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } from './validation';
-import { assertedSuperclasses, wouldCycle } from './props';
-import { emptyModel, PROP_LINKS, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
+import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
+import { emptyModel, INSTANCE_OF, PROP_LINKS, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
 
 export type View = 'graph' | 'table' | 'hierarchy' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
 export type Theme = 'light' | 'dark';
@@ -186,6 +186,9 @@ interface State {
   highlight: string[];
   /** What the spotlight shows, for the banner on the canvas. */
   highlightLabel: string;
+  /** Whether the canvas also draws the class memberships the reasoner works out. A way of looking; never part of the model. */
+  showInferred: boolean;
+  setShowInferred: (on: boolean) => void;
   filter: string;
   theme: Theme;
   /** The entity editor takes more room, for entities with a lot to say about them. */
@@ -280,8 +283,12 @@ interface State {
   addProp: () => string;
   /** Makes a relationship label an object property: every relationship carrying it becomes a use. */
   declareProp: (name: string) => void;
-  /** Changes what one relationship is: a use of an object property, a plain relationship, "is a" or "has property". */
-  setRelChoice: (id: string, choice: RelChoice) => void;
+  /**
+   * Changes what one relationship is: a use of an object property, a plain relationship, "is a",
+   * "is instance of" or "has property". Says whether it did: a kind the two terms cannot have is
+   * refused, with a notice saying why.
+   */
+  setRelChoice: (id: string, choice: RelChoice, history?: boolean) => boolean;
   /** Changes what is declared about an object property, declaring it first if it only existed through use. */
   updateProp: (key: string, patch: Partial<ObjProp>) => void;
   /** Renames an object property everywhere: its declaration, the relationships that use it, and references to it. */
@@ -378,6 +385,8 @@ export const useStore = create<State>((set, get) => ({
   editing: null,
   highlight: [],
   highlightLabel: '',
+  showInferred: false,
+  setShowInferred: (showInferred) => set({ showInferred }),
   filter: '',
   theme: loadTheme(),
   editorWide: (() => {
@@ -599,13 +608,27 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => ({ ...m, relations: [...m.relations, r] }));
     return r.id;
   },
-  updateRelation: (id, patch, history = true) =>
-    get().apply((m) => (m.relations.some((r) => r.id === id) ? { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) } : m), history),
-  reverseRelation: (id) =>
+  updateRelation: (id, patch, history = true) => {
+    const m = get().model;
+    if (!m.relations.some((r) => r.id === id)) return;
+    const next = { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) };
+    // Moving an end or changing the kind must not state a class membership a second time.
+    const now = next.relations.find((r) => r.id === id)!;
+    const moved = 'from' in patch || 'to' in patch || 'kind' in patch || 'predicate' in patch;
+    if (moved && isInstanceOf(next, now) && next.relations.some((r) => r.id !== id && r.from === now.from && r.to === now.to && isInstanceOf(next, r))) {
+      const name = (x: string) => m.terms.find((t) => t.id === x)?.name || 'Unnamed';
+      return get().notify(`“${name(now.from)}” is already stated to be an instance of “${name(now.to)}”.`);
+    }
+    get().apply(() => next, history);
+  },
+  reverseRelation: (id) => {
+    const rel = get().model.relations.find((r) => r.id === id);
+    if (rel && isInstanceOf(get().model, rel)) return get().notify(`“${INSTANCE_OF}” always points from the individual to the class.`);
     get().apply((m) => ({
       ...m,
       relations: m.relations.map((r) => (r.id === id ? { ...r, from: r.to, to: r.from, fromCard: r.toCard, toCard: r.fromCard } : r)),
-    })),
+    }));
+  },
   remove: (terms, rels) => {
     if (!terms.length && !rels.length) return;
     const t = new Set(terms);
@@ -803,7 +826,17 @@ export const useStore = create<State>((set, get) => ({
       }),
     }));
   },
-  setRelChoice: (id, choice) =>
+  setRelChoice: (id, choice, history = true) => {
+    if (choice === 'instanceOf') {
+      const result = makeInstanceOf(get().model, id);
+      if (result.error !== undefined) {
+        get().notify(result.error);
+        return false;
+      }
+      get().apply(() => result.model, history);
+      if (result.note) get().notify(result.note);
+      return true;
+    }
     get().apply((m) => {
       const rel = m.relations.find((r) => r.id === id);
       if (!rel) return m;
@@ -833,7 +866,9 @@ export const useStore = create<State>((set, get) => ({
               : r,
         ),
       };
-    }),
+    }, history);
+    return true;
+  },
   updateProp: (key, patch) =>
     get().apply((m) => {
       const next = { ...declaredProp(m, key), ...patch };

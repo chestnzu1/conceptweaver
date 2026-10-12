@@ -10,7 +10,7 @@ pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs); need `pnpm exec vite preview --port 5181` running
 ```
 
 ## What it does
@@ -30,6 +30,10 @@ node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs
 - **Ontology settings** – File → Ontology settings: the ontology IRI, the default namespace new
   IRIs are made in, and namespace prefixes. Prefixes only change how an IRI is written (`ex:Actor`
   in tables, Turtle, SPARQL and search); they are kept on import and written on export.
+- **IRIs and labels are separate** – the entity editor has an *IRI suffix* field: the last part
+  of the IRI can be anything (`C0001`, `Film_v2`) whatever the name (`rdfs:label`) is, and renaming
+  never changes it. A suffix that is taken or cannot be part of an IRI is refused; shapes, kept
+  class expressions and mapping records that mention the IRI follow the change.
 - **IRIs** – every entity has a full IRI, made once in the model's base namespace when it is first
   named (or kept from an import) and unchanged by renaming. Shown read-only with a copy button.
 - **Asserted superclasses** – a class lists every superclass explicitly stated for it (not the
@@ -50,8 +54,15 @@ node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs
 - **Terms** – class, data property (with a domain and a datatype) or individual; description, synonyms, colour, and metadata fields
   (Protégé-style annotation properties such as `rdfs:comment`, or your own) that are confirmed
   before they are saved and read-only afterwards.
-- **Relations** – association, "is a" (generalization) or "has property"; label, cardinalities,
-  description; several relations between the same two terms fan out.
+- **Relations** – association, "is a" (generalization), "Is Instance Of" or "has property"; label,
+  cardinalities, description; several relations between the same two terms fan out.
+- **Is Instance Of** – the class membership of an individual, exported as `rdf:type` (never as a
+  predicate of its own). It is offered only between an individual and a class, always points
+  from the individual to the class (drawn the other way, it is turned around), and is not
+  stated twice. An individual can be an instance of any number of classes. Pick it as the kind
+  of a relationship, type "is instance of" as the label of a new line, or add a type in the
+  entity editor. **Inferred types** on the canvas also draws the memberships the reasoner
+  works out, dotted and marked "(inferred)"; they are never stored or exported.
 - **Views** – graph, editable table, hierarchy tree, and model checks.
 - **Model checks** – unnamed and duplicate terms, circular or redundant hierarchies, isolated
   terms, unlabelled or duplicate relations, malformed cardinalities, missing descriptions and more.

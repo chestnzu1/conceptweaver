@@ -202,6 +202,8 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     } else if (r.kind === 'generalization') {
       const pred =
         a.type === 'instance' && b.type === 'concept' ? 'rdf:type' : a.type === 'property' && b.type === 'property' ? 'rdfs:subPropertyOf' : 'rdfs:subClassOf';
+      // A class membership is one rdf:type triple, however many times it happens to be drawn.
+      if (pred === 'rdf:type' && A.props.some(([p, v]) => p === pred && 'id' in v && v.id === bRef.id)) continue;
       A.props.push([pred, bRef]);
     } else if (r.kind === 'property' && b.type === 'property') {
       // A class that has a data property is restricted by it: its members have such a value.
@@ -558,7 +560,15 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     const isIndividual = (preds.get(NS.rdf + 'type') ?? []).some((o) => o.value === NS.owl + 'NamedIndividual');
     if (!isIndividual && !types.some((t) => classes.has(t))) continue;
     ensure(s, 'instance');
-    types.forEach((t) => relate(s, t, 'generalization'));
+    for (const t of types) {
+      // What a declared individual is an instance of is a class, even if the file says nothing else about it.
+      if (isIndividual && !terms.has(t) && !objProps.has(t) && !dataProps.has(t) && !annotationProps.has(t)) {
+        ensure(t, 'concept');
+        classes.add(t);
+      }
+      // Only membership of a class is one: owl:NamedIndividual and the like are declarations, not memberships.
+      if (classes.has(t)) relate(s, t, 'generalization');
+    }
   }
   const datatypeId = (iri?: string) => (iri?.startsWith(XSD) ? 'xsd:' + iri.slice(XSD.length) : iri === NS.rdf + 'langString' ? 'rdf:langString' : undefined);
   for (const [s, preds] of spo) {

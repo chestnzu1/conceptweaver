@@ -139,7 +139,7 @@ export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind): EdgeG
 }
 
 /** Sideways offset per relation, fanning out relations that share the same pair of terms. */
-export function edgeOffsets(relations: Relation[]): Map<string, number> {
+export function edgeOffsets(relations: Pick<Relation, 'id' | 'from' | 'to'>[]): Map<string, number> {
   const groups = new Map<string, string[]>();
   for (const r of relations) {
     const key = r.from < r.to ? `${r.from}|${r.to}` : `${r.to}|${r.from}`;

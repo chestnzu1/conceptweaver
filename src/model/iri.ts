@@ -76,3 +76,71 @@ export function moveNamespace(m: Model, from: string, to: string): Model {
   const inText = (axiom: string) => axiom.replace(/<([^>]*)>/g, (all, iri: string) => (renamed.has(iri) ? `<${renamed.get(iri)}>` : all));
   return { ...m, props, terms: terms.map((t) => (t.axioms?.some((a) => inText(a) !== a) ? { ...t, axioms: t.axioms.map(inText) } : t)) };
 }
+
+/** Where the last part of an IRI starts: after its final # or /. */
+export const iriCut = (iri: string) => Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1;
+
+/** Which entity an IRI belongs to: a term by id, or an object property by key (its lower-cased name). */
+export type IriOwner = { term: string } | { prop: string };
+
+/**
+ * Gives an entity another identifier: the last part of its IRI, after the namespace. The label
+ * is not touched, and neither is the namespace (that is what the ontology settings are for).
+ * Whatever refers to the entity by IRI follows: kept class expressions, SHACL shapes, and the
+ * records of mappings. Refused, with the reason, if the name cannot be part of an IRI or the
+ * IRI is already taken.
+ */
+export function setIriSuffix(m: Model, owner: IriOwner, suffix: string): { model: Model; note?: string; error?: undefined } | { error: string; model?: undefined; note?: undefined } {
+  const entity = 'term' in owner ? m.terms.find((t) => t.id === owner.term) : m.props.find((p) => p.name.trim().toLowerCase() === owner.prop);
+  if (!entity) return { error: 'That entity no longer exists.' };
+  if (entity.external !== undefined) return { error: 'This entity belongs to another ontology, so its IRI is not this model’s to change.' };
+  const local = suffix.trim();
+  if (!local) return { error: 'The IRI needs a last part: it cannot be empty.' };
+  const bad = local.match(/[\s<>"{}|\\^`#/]/);
+  if (bad) return { error: bad[0] === '#' || bad[0] === '/' ? `“${bad[0]}” ends the namespace, so it cannot be in the last part of the IRI. The namespace is changed in the ontology settings.` : `${/\s/.test(bad[0]) ? 'A space' : `“${bad[0]}”`} cannot be part of an IRI.` };
+  const base = baseIriOf(m);
+  const old = entity.iri;
+  const next = (old ? old.slice(0, iriCut(old)) : base) + local;
+  if (next === old) return { model: m };
+  const taken = [...m.terms, ...m.props].find((x) => x !== entity && x.iri?.toLowerCase() === next.toLowerCase());
+  if (taken) return { error: `“${taken.name || 'Unnamed'}” already has the IRI <${taken.iri}>.` };
+
+  const swap = (x: string) => (x === old ? next : x);
+  const inText = (text: string) => (old ? text.split(`<${old}>`).join(`<${next}>`) : text);
+  const all = (list: string[]) => (list.includes(old!) ? list.map(swap) : list);
+  return {
+    model: {
+      ...m,
+      // The first IRI settles the default namespace, as it does when one is made from a name.
+      baseIri: m.baseIri.trim() ? m.baseIri : base,
+      terms: m.terms.map((t) => {
+        const out = t === entity ? { ...t, iri: next } : t;
+        return old && out.axioms?.some((a) => inText(a) !== a) ? { ...out, axioms: out.axioms.map(inText) } : out;
+      }),
+      props: m.props.map((p) => (p === entity ? { ...p, iri: next } : p)),
+      ...(old
+        ? {
+            shapes: {
+              extra: inText(m.shapes.extra),
+              nodes: m.shapes.nodes.map((n) => ({
+                ...n,
+                targetClass: all(n.targetClass),
+                targetNode: all(n.targetNode),
+                targetSubjectsOf: all(n.targetSubjectsOf),
+                targetObjectsOf: all(n.targetObjectsOf),
+                properties: n.properties.map((s) => ({
+                  ...s,
+                  path: swap(s.path),
+                  ...(s.class ? { class: swap(s.class) } : {}),
+                  ...(s.hasValue?.iri ? { hasValue: { ...s.hasValue, v: swap(s.hasValue.v) } } : {}),
+                  ...(s.in ? { in: s.in.map((v) => (v.iri ? { ...v, v: swap(v.v) } : v)) } : {}),
+                })),
+              })),
+            },
+            mappings: m.mappings.map((x) => (x.source === old || x.target === old ? { ...x, source: swap(x.source), target: swap(x.target) } : x)),
+            rejected: m.rejected.map((r) => r.split('|').map(swap).join('|')),
+          }
+        : {}),
+    },
+  };
+}

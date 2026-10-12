@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { inferredRestrictions } from '../model/inferred';
-import { CHARACTERISTICS, dataDomain, fitsIn, objectProperties, plainRelationships, propKey, propLinks, REL_CHOICES, relChoice, restrictionsOf, type RelChoice } from '../model/props';
+import { CHARACTERISTICS, dataDomain, fitsIn, objectProperties, isInstanceOf, plainRelationships, propKey, propLinks, relChoice, relChoices, restrictionsOf, type RelChoice } from '../model/props';
 import { useStore } from '../model/store';
 import { DATATYPES, kindLabel, REL_KINDS, type Model, type RelKind, type Term, type TermType } from '../model/types';
 import { CommitInput, useLazyOptions } from './fields';
@@ -461,8 +461,8 @@ export function EntitiesView() {
                       </select>
                     ) : (
                       <select aria-label="Kind" value={relChoice(model, r)} onChange={(e) => st().setRelChoice(r.id, e.target.value as RelChoice)}>
-                        {REL_CHOICES.map((k) => (
-                          <option key={k.value} value={k.value}>
+                        {relChoices(model, r).map((k) => (
+                          <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
                             {k.label}
                           </option>
                         ))}
@@ -472,7 +472,7 @@ export function EntitiesView() {
                   {!skos && (
                     <td className="ro">
                       {r.kind !== 'association' || r.predicate ? (
-                        <span className="muted">{r.predicate ?? (r.kind === 'generalization' ? 'hierarchy' : 'data property')}</span>
+                        <span className="muted">{isInstanceOf(model, r) ? 'class membership (rdf:type)' : (r.predicate ?? (r.kind === 'generalization' ? 'hierarchy' : 'data property'))}</span>
                       ) : declared.has(propKey(r.label)) && !plain.has(r.id) ? (
                         <button className="link" title="Open the object property" onClick={() => st().selectProp(propKey(r.label))}>
                           object property

@@ -1,6 +1,6 @@
 import { propKey, restrictionsOf, type Restriction } from './props';
 import { reason, type SuperLink } from './reasoner';
-import type { Model } from './types';
+import type { Model, Relation } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -99,3 +99,30 @@ export const NOT_INFERRED = [
   'Class membership that follows from a restriction, such as a property’s domain making a restricted class a kind of that domain.',
   'Anything that needs the inside of a kept class expression (unions, intersections, nested restrictions): those are inherited as text, not interpreted.',
 ];
+
+/** A class membership that is entailed but not stated, shaped like the relation that would state it. */
+export interface InferredMembership extends Pick<Relation, 'id' | 'from' | 'to'> {
+  /** What it follows from, in words. */
+  because: string;
+}
+
+/**
+ * The class memberships the reasoner works out beyond the asserted ones: an instance of a class
+ * is an instance of its superclasses, a property's domain and range say what its subject and
+ * value are, and so on. Nothing here is in the model. An inconsistent ontology entails anything,
+ * so it gives none.
+ */
+export function inferredMemberships(model: Model): { consistent: boolean; truncated: boolean; memberships: InferredMembership[] } {
+  const m = resolveModel(model);
+  if (m.mode === 'skos') return { consistent: true, truncated: false, memberships: [] };
+  const reasoning = reason(model);
+  if (!reasoning.consistent) return { consistent: false, truncated: reasoning.truncated, memberships: [] };
+  const memberships: InferredMembership[] = [];
+  for (const t of m.terms) {
+    if (t.type !== 'instance') continue;
+    for (const link of reasoning.types(t.id)) {
+      if (!link.asserted) memberships.push({ id: `inferred:${t.id}|${link.id}`, from: t.id, to: link.id, because: link.because });
+    }
+  }
+  return { consistent: true, truncated: reasoning.truncated, memberships };
+}

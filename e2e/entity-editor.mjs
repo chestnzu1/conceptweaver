@@ -178,6 +178,22 @@ await page.waitForFunction(() => document.querySelector('.editor-head .save-stat
 ok(true, 'saving through the editor uses My Models and the editor then says Saved');
 await sideTab(/Classes/);
 await pick('Award');
+// ---------------------------------------------------------------- the IRI suffix, apart from the label
+const suffix = panel.locator('.iri-suffix input');
+ok((await suffix.inputValue()) === 'Award', 'the last part of the IRI has a field of its own: ' + (await suffix.inputValue()));
+await suffix.fill('C0001');
+await suffix.press('Enter');
+ok((await rdf(':C0001')).startsWith(':C0001 a owl:Class ;\n    rdfs:label "Award"'), 'changing it changes the IRI and leaves the label: ' + flat(await rdf(':C0001')).slice(0, 44));
+ok((await panel.locator('input').first().inputValue()) === 'Award' && flat(await panel.locator('.iri-parts').innerText()).includes(':C0001'), 'the name is still Award, the prefixed name is :C0001');
+ok((await rdf(':Film')).includes(':wins :C0001'), 'what refers to the entity follows the new IRI');
+await suffix.fill('Film');
+await suffix.press('Enter');
+ok(flat(await panel.locator('.iri-suffix .bad').innerText()).includes('already has the IRI'), 'a suffix that is taken is refused, with the reason: ' + flat(await panel.locator('.iri-suffix .bad').innerText()));
+await suffix.fill('Award');
+await suffix.press('Enter');
+ok((await panel.locator('.iri-suffix .bad').count()) === 0 && (await rdf(':Award')).startsWith(':Award a owl:Class'), 'and it can be put back');
+await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+await page.waitForFunction(() => document.querySelector('.editor-head .save-state')?.textContent === 'Saved');
 await add('Disjoint classes', 'Person');
 ok(flat(await panel.locator('.editor-head .save-state').innerText()) === 'Unsaved changes', 'an edit shows Unsaved changes in the editor');
 await page.getByRole('button', { name: 'Undo' }).click();

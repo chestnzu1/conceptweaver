@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
 import { DATATYPES, QUANTIFIERS, type Quantifier, isLang, kindLabel, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Relation, type ModelMode, type RelKind, type Term } from '../model/types';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
-import { REL_CHOICES, relChoice, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, quantifierOf, restrictionsOf, type PropView } from '../model/props';
+import { isInstanceOf, relChoice, relChoices, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, quantifierOf, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { CommitInput, CommitTextarea } from './fields';
@@ -172,7 +172,7 @@ function TermPanel({ term }: { term: Term }) {
         </span>
         <CommitInput value={term.name} onCommit={(v) => update(term.id, { name: v.trim() })} />
       </label>
-      <IriDetails iri={term.iri} name={term.name} />
+      <IriDetails key={term.id} iri={term.iri} name={term.name} owner={{ term: term.id }} external={term.external !== undefined} />
       {/* A concept scheme only has concepts; the choice shows up just to fix a term that isn't one. */}
       {(!skos || term.type !== 'concept') && (
         <label className="field">
@@ -295,11 +295,11 @@ function TermPanel({ term }: { term: Term }) {
             <button onClick={() => st().select([], [r.id])} title="Open this relation">
               {r.from === term.id ? (
                 <>
-                  <em>{relLabel(r, skos) || (skos ? 'related' : '→')}</em> {name.get(r.to)}
+                  <em>{relLabel(r, skos, isInstanceOf(model, r)) || (skos ? 'related' : '→')}</em> {name.get(r.to)}
                 </>
               ) : (
                 <>
-                  {name.get(r.from)} <em>{relLabel(r, skos) || (skos ? 'related' : '→')}</em> this
+                  {name.get(r.from)} <em>{relLabel(r, skos, isInstanceOf(model, r)) || (skos ? 'related' : '→')}</em> this
                 </>
               )}
             </button>
@@ -610,7 +610,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
         <CommitInput value={prop.name} onCommit={(v) => st().renameProp(prop.key, v)} />
         <small>Renaming it renames every relationship that uses it.</small>
       </label>
-      <IriDetails iri={prop.iri} name={prop.name} />
+      <IriDetails key={prop.key} iri={prop.iri} name={prop.name} owner={{ prop: prop.key }} external={prop.external !== undefined} />
       <Section id="property-axioms" title="Property axioms">
         {side('domain')}
         {side('range')}
@@ -693,6 +693,8 @@ function RelationPanel({ rel }: { rel: Relation }) {
   const objProps = usesProp ? objectProperties(model) : [];
   const prop = usesProp ? objProps.find((p) => p.key === propKey(rel.label)) : undefined;
   const restriction = !skos ? restrictionsOf(model, rel.from).find((r) => r.rel.id === rel.id) : undefined;
+  // A class membership: it points from an individual to a class and cannot be turned around.
+  const instanceOf = isInstanceOf(model, rel);
 
   const names = (ids: string[]) => ids.map((id) => model.terms.find((t) => t.id === id)?.name).join(', ') || 'anything';
   const endpoint = (side: 'from' | 'to') => (
@@ -709,14 +711,14 @@ function RelationPanel({ rel }: { rel: Relation }) {
   );
   return (
     <>
-      <h2>{restriction ? 'Restriction' : usesProp ? 'Relationship' : 'Relation'}</h2>
+      <h2>{restriction ? 'Restriction' : instanceOf ? 'Class membership' : usesProp ? 'Relationship' : 'Relation'}</h2>
       {endpoint('from')}
       <label className="field">
         <span>{prop ? 'Object property' : usesProp ? 'Label, or an object property' : 'Label'}</span>
         <CommitInput
           list={usesProp ? 'panel-object-props' : undefined}
           value={rel.label}
-          placeholder={rel.kind === 'association' ? (skos ? 'empty means related' : 'pick one or type a new name') : relLabel({ ...rel, label: '' }, skos)}
+          placeholder={rel.kind === 'association' ? (skos ? 'empty means related' : 'pick one or type a new name') : relLabel({ ...rel, label: '' }, skos, instanceOf)}
           onCommit={(v) => update(rel.id, { label: v.trim() })}
         />
         {usesProp && (
@@ -744,7 +746,7 @@ function RelationPanel({ rel }: { rel: Relation }) {
         )}
       </label>
       {endpoint('to')}
-      <button className="btn small" onClick={() => st().reverseRelation(rel.id)}>
+      <button className="btn small" disabled={instanceOf} title={instanceOf ? 'A class membership always points from the individual to the class' : undefined} onClick={() => st().reverseRelation(rel.id)}>
         Reverse direction
       </button>
       <label className="field">
@@ -759,12 +761,17 @@ function RelationPanel({ rel }: { rel: Relation }) {
           </select>
         ) : (
           <select value={relChoice(model, rel)} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
-            {REL_CHOICES.map((k) => (
-              <option key={k.value} value={k.value}>
+            {relChoices(model, rel).map((k) => (
+              <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
                 {k.label}
               </option>
             ))}
           </select>
+        )}
+        {instanceOf && (
+          <small>
+            {names([rel.from])} is a member of the class {names([rel.to])}. Exports as <code className="pred">rdf:type</code>.
+          </small>
         )}
       </label>
       {props.length > 0 && (

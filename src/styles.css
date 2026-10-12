@@ -701,6 +701,31 @@ textarea {
   font-size: 11px;
 }
 
+/* Class membership (rdf:type). Asserted: a solid line. Inferred by the reasoner: dotted and
+   fainter, since it is not in the model and nothing about it can be edited. */
+.edge.instance-of .edge-label {
+  font-style: normal;
+}
+
+.edge.inferred {
+  cursor: default;
+}
+
+.edge.inferred .edge-line {
+  stroke: var(--ink-3);
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+}
+
+.edge.inferred .edge-arrow {
+  stroke: var(--ink-3);
+}
+
+.edge.inferred .edge-label {
+  font-style: italic;
+  fill: var(--ink-3);
+}
+
 .edge.selected .edge-line,
 .edge.spot .edge-line {
   stroke: var(--accent);
@@ -806,6 +831,11 @@ textarea {
 
 .zoom .btn {
   border-color: transparent;
+}
+
+.zoom .btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .zoom-level {
@@ -2612,6 +2642,21 @@ code.pred {
   gap: 2px 8px;
   margin: 0;
   font-size: 12px;
+}
+
+.iri-suffix {
+  display: grid;
+  gap: 3px;
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.iri-suffix > span {
+  color: var(--ink-3);
+}
+
+.iri-suffix input {
+  font-family: var(--mono, ui-monospace, monospace);
 }
 
 .iri-parts dt {

@@ -1,6 +1,6 @@
-import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, objectProperties, propKey, propLinks, wouldCycle } from './props';
+import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, isInstanceOf, objectProperties, propKey, propLinks, wouldCycle } from './props';
 import { reason } from './reasoner';
-import { DATATYPES, isLang, newRelation, type DataValue, type Model, type PropLink, type Term, type TermType } from './types';
+import { DATATYPES, INSTANCE_OF, isLang, newRelation, type DataValue, type Model, type PropLink, type Term, type TermType } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -111,6 +111,32 @@ export function addIsA(model: Model, id: string, superId: string): Edit {
 export function removeIsA(model: Model, id: string, superId: string): Model {
   const stated = new Set(resolveModel(model).relations.filter((r) => r.kind === 'generalization' && r.from === id && r.to === superId).map((r) => r.id));
   return stated.size ? { ...model, relations: model.relations.filter((r) => !stated.has(r.id)) } : model;
+}
+
+/**
+ * Makes a drawn relationship say that an individual is an instance of a class (rdf:type). It has
+ * to join an individual and a class, and is pointed from the individual to the class whichever
+ * way it was drawn. A membership that is already stated is not stated twice.
+ */
+export function makeInstanceOf(model: Model, relId: string): Edit {
+  const rel = model.relations.find((r) => r.id === relId);
+  const a = model.terms.find((t) => t.id === rel?.from);
+  const b = model.terms.find((t) => t.id === rel?.to);
+  if (!rel || !a || !b) return refuse('That relationship no longer exists.');
+  if (model.mode === 'skos') return refuse(`A concept scheme has no individuals, so nothing in it can be “${INSTANCE_OF}”.`);
+  const [ind, cls] = a.type === 'instance' && b.type === 'concept' ? [a, b] : a.type === 'concept' && b.type === 'instance' ? [b, a] : [];
+  if (!ind || !cls) return refuse(`“${INSTANCE_OF}” joins an individual and a class. ${q(a.name || 'Unnamed')} is ${a.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[a.type]} and ${q(b.name || 'Unnamed')} is ${b.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[b.type]}.`);
+  if (model.relations.some((r) => r.id !== rel.id && r.from === ind.id && r.to === cls.id && isInstanceOf(model, r))) {
+    return refuse(`${q(ind.name || 'Unnamed')} is already stated to be an instance of ${q(cls.name || 'Unnamed')}.`);
+  }
+  const reversed = rel.from !== ind.id;
+  // Nothing of what it was before applies to a membership: no name, no standard property, no quantifier.
+  const { plain: _plain, predicate: _predicate, restriction: _restriction, restrictionN: _n, ...base } = rel;
+  const next = { ...base, from: ind.id, to: cls.id, label: '', kind: 'generalization' as const, ...(reversed ? { fromCard: rel.toCard, toCard: rel.fromCard } : {}) };
+  return {
+    model: { ...model, relations: model.relations.map((r) => (r.id === rel.id ? next : r)) },
+    ...(reversed ? { note: `“${INSTANCE_OF}” always points from the individual to the class, so the relationship was turned around: ${q(ind.name || 'Unnamed')} → ${q(cls.name || 'Unnamed')}.` } : {}),
+  };
 }
 
 // ---------------------------------------------------------------- object properties

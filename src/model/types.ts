@@ -352,9 +352,13 @@ export function newRelation(p: Partial<Relation> & { from: string; to: string })
   };
 }
 
-/** Text shown on the canvas for a relation. */
-export function relLabel(r: Relation, skos = false): string {
+/** What a class membership (an individual's rdf:type) is called wherever it is shown. */
+export const INSTANCE_OF = 'Is Instance Of';
+
+/** Text shown on the canvas for a relation. `instanceOf`: it states that an individual is a member of a class. */
+export function relLabel(r: Relation, skos = false, instanceOf = false): string {
   if (r.label) return r.label;
+  if (instanceOf) return INSTANCE_OF;
   if (r.predicate) return r.predicate;
   if (r.kind === 'generalization') return skos ? 'broader' : 'is a';
   if (r.kind === 'property') return 'has';

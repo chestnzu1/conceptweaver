@@ -1,4 +1,4 @@
-import { PROP_LINKS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type Term } from './types';
+import { INSTANCE_OF, PROP_LINKS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type Term } from './types';
 import { labelKey, resolveModel } from './vocab';
 
 /** The characteristics an object property can have, as in OWL. */
@@ -52,6 +52,8 @@ interface Analysis {
   byRelation: Map<string, Restriction>;
   /** For each term: the terms it is directly stated to be a kind (or an instance) of, each once. */
   supers: Map<string, string[]>;
+  /** The relations that state a class membership: an individual is an instance of a class (rdf:type). */
+  memberships: Set<string>;
 }
 
 const cache = new WeakMap<Model, Analysis>();
@@ -84,8 +86,11 @@ function analyse(model: Model): Analysis {
   }
   const plain = new Map<string, { key: string; name: string; rels: Relation[] }>();
   const parents = new Map<string, string[]>();
+  const memberships = new Set<string>();
   for (const r of m.relations) {
     if (!types.has(r.from) || !types.has(r.to)) continue;
+    // "Is a" from an individual to a class is its membership of the class, unless a standard property says otherwise.
+    if (m.mode !== 'skos' && r.kind === 'generalization' && (!r.predicate || r.predicate === 'rdf:type') && types.get(r.from) === 'instance' && types.get(r.to) === 'concept') memberships.add(r.id);
     if (r.kind === 'generalization' && r.from !== r.to && !parents.get(r.from)?.includes(r.to)) parents.set(r.from, [...(parents.get(r.from) ?? []), r.to]);
     // "is a", "has property" and relations given a standard RDFS/OWL/SKOS meaning are neither.
     if (r.kind !== 'association' || r.predicate) continue;
@@ -118,6 +123,7 @@ function analyse(model: Model): Analysis {
     plain: [...plain.values()].sort((a, b) => a.name.localeCompare(b.name)),
     fits,
     supers: parents,
+    memberships,
     restrictions,
     byRelation: new Map([...restrictions.values()].flat().map((r) => [r.rel.id, r])),
   };
@@ -161,17 +167,42 @@ export function dataDomain(model: Model, t: Term): { ids: string[]; auto: boolea
 }
 
 /** What a relationship is, as offered where its kind is chosen. */
-export type RelChoice = 'object' | 'plain' | 'generalization' | 'property';
+export type RelChoice = 'object' | 'plain' | 'generalization' | 'instanceOf' | 'property';
 export const REL_CHOICES: { value: RelChoice; label: string }[] = [
   { value: 'plain', label: 'Relationship (plain)' },
   { value: 'object', label: 'Object property' },
   { value: 'generalization', label: 'Is a (generalization)' },
+  { value: 'instanceOf', label: INSTANCE_OF },
   { value: 'property', label: 'Has data property' },
 ];
 
+/**
+ * Whether a relation states a class membership: it points from an individual to a class and
+ * means rdf:type. It is an "is a" relation like a superclass is, told apart by what it connects.
+ */
+export const isInstanceOf = (model: Model, r: Pick<Relation, 'id'>): boolean => analyse(model).memberships.has(r.id);
+
 export function relChoice(model: Model, r: Relation): RelChoice {
+  if (isInstanceOf(model, r)) return 'instanceOf';
   if (r.kind !== 'association') return r.kind;
   return !r.predicate && !r.plain && model.props.some((p) => propKey(p.name) === propKey(r.label)) ? 'object' : 'plain';
+}
+
+/**
+ * The kinds a relationship can be given, each with the reason it is not on offer, if it is not.
+ * "Is Instance Of" needs an individual and a class, and between those two it takes the place of "is a".
+ */
+export function relChoices(model: Model, r: Pick<Relation, 'from' | 'to'>): { value: RelChoice; label: string; disabled?: string }[] {
+  const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
+  const ends = [type(r.from), type(r.to)];
+  const pair = ends.includes('instance') && ends.includes('concept');
+  return REL_CHOICES.map((c) =>
+    c.value === 'instanceOf' && !pair
+      ? { ...c, disabled: 'Only between an individual and a class' }
+      : c.value === 'generalization' && pair
+        ? { ...c, disabled: `Between an individual and a class this is “${INSTANCE_OF}”` }
+        : c,
+  );
 }
 
 /**
