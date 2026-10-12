@@ -224,6 +224,9 @@
     const down = inc.filter((r) => r.hier === 'isa');
     const typesOf = out.filter((r) => r.hier === 'type');
     const members = inc.filter((r) => r.hier === 'type');
+    // A class that is an enumeration is exactly the individuals it lists; that is not the same as their being of its type.
+    const lists = out.filter((r) => r.hier === 'oneOf');
+    const listedBy = inc.filter((r) => r.hier === 'oneOf');
     const others = [...out.filter((r) => !r.hier).map((r) => relLine(r, r.to, true)), ...inc.filter((r) => !r.hier).map((r) => relLine(r, r.from, false))];
     const list = (rs, end) => (rs.length ? el('ul', { class: 'links' }, rs.map((r) => el('li', null, termLink(r[end])))) : null);
     const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -237,6 +240,8 @@
       ...section(cap(words.child) + (down.length === 1 ? '' : 's'), list(down, 'from')),
       ...section('Is an instance of', list(typesOf, 'to')),
       ...section('Instances', list(members, 'from')),
+      ...section('Enumeration: exactly these individuals', list(lists, 'to')),
+      ...section('Listed by the enumeration', list(listedBy, 'from')),
       ...section('Relationships', others.length ? el('ul', { class: 'links' }, others) : null),
       ...section('Datatype', t.datatype ? el('p', null, t.datatype) : null),
       ...section('Values', t.values.length ? el('dl', null, t.values.map((v) => [el('dt', null, v.prop), el('dd', null, v.value)])) : null),

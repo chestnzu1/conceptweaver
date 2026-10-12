@@ -4,8 +4,9 @@ import { CHARACTERISTICS, dataDomain, fitsIn, hasCardinality, objectProperties, 
 import { useStore } from '../model/store';
 import { iriCut, setIriSuffix } from '../model/iri';
 import { configOf, type EntityColumn } from '../model/modelTypes';
-import { DATATYPES, type Model, type Term, type TermType } from '../model/types';
+import { type Model, type Term, type TermType } from '../model/types';
 import { CommitInput, useLazyOptions } from './fields';
+import { RangeSelect } from './Datatypes';
 import { GovernanceView } from './Governance';
 import { IriCell, SuperclassEditor } from './Iri';
 import { TermChips } from './TermChips';
@@ -400,14 +401,7 @@ export function EntitiesView() {
                   </td>
                   <td className="ro">{names(owners.get(t.id) ?? []) || '—'}</td>
                   <td>
-                    <select aria-label="Datatype" value={t.range ?? ''} onChange={(e) => st().updateTerm(t.id, { range: e.target.value || undefined })}>
-                      <option value="">Not set</option>
-                      {DATATYPES.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.id} ({d.label})
-                        </option>
-                      ))}
-                    </select>
+                    <RangeSelect term={t} />
                   </td>
                   <td className="num">
                     <input type="checkbox" aria-label={`${t.name} is functional`} checked={!!t.functional} onChange={(e) => st().updateTerm(t.id, { functional: e.target.checked || undefined })} />

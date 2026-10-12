@@ -205,6 +205,9 @@ interface State {
   /** Whether the canvas also draws the class memberships the reasoner works out. A way of looking; never part of the model. */
   showInferred: boolean;
   setShowInferred: (on: boolean) => void;
+  /** Whether the canvas draws a line from each enumeration class to the individuals it lists. */
+  showEnumerations: boolean;
+  setShowEnumerations: (on: boolean) => void;
   /** Whether the graph style panel is open on the canvas. */
   stylePanel: boolean;
   setStylePanel: (open: boolean) => void;
@@ -429,6 +432,8 @@ export const useStore = create<State>((set, get) => ({
   highlightLabel: '',
   showInferred: false,
   setShowInferred: (showInferred) => set({ showInferred: showInferred && supports(get().model, 'reasoning') }),
+  showEnumerations: true,
+  setShowEnumerations: (showEnumerations) => set({ showEnumerations }),
   stylePanel: false,
   setStylePanel: (stylePanel) => set({ stylePanel }),
   setStyle: (fn, gesture = '') => {
@@ -756,7 +761,9 @@ export const useStore = create<State>((set, get) => ({
         .filter((x) => !t.has(x.id))
         .map((x) => (x.domain && x.domain.some((id) => t.has(id)) ? { ...x, domain: x.domain.filter((id) => !t.has(id)) } : x))
         // A value goes with the data property it is a value of.
-        .map((x) => (x.values?.some((v) => t.has(v.prop)) ? { ...x, values: x.values.filter((v) => !t.has(v.prop)) } : x)),
+        .map((x) => (x.values?.some((v) => t.has(v.prop)) ? { ...x, values: x.values.filter((v) => !t.has(v.prop)) } : x))
+        // An individual that is gone is no longer listed by the enumerations it was a member of.
+        .map((x) => (x.oneOf?.some((id) => t.has(id)) ? { ...x, oneOf: x.oneOf.filter((id) => !t.has(id)) } : x)),
       relations: m.relations.filter((x) => !r.has(x.id) && !t.has(x.from) && !t.has(x.to)),
       props: !t.size
         ? m.props

@@ -1,7 +1,7 @@
 import { useStore } from '../model/store';
 import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
-import { DATATYPES, QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type Relation, type Term } from '../model/types';
+import { QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type Relation, type Term } from '../model/types';
 import { allowsView, configOf, MODEL_TYPE_LIST, supports, type EditorSection } from '../model/modelTypes';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
 import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, restrictionsOf, type PropView } from '../model/props';
@@ -12,6 +12,8 @@ import { SuperclassEditor } from './Iri';
 import { AnonymousExpressions, CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
+import { RangeEnumeration, RangeSelect } from './Datatypes';
+import { ClassDefinition } from './Enumeration';
 import { Disclosure, Icon } from './Icon';
 
 export function Inspector() {
@@ -231,6 +233,7 @@ function TermPanel({ term }: { term: Term }) {
 
       {has('axioms') && term.type === 'concept' && (
         <>
+          <ClassDefinition term={term} />
           <Section id="class-axioms" title="Class axioms">
             <div className="field">
               <span title="Explicitly stated superclasses. Ones that only follow from these are listed under Inferred superclasses.">
@@ -413,15 +416,10 @@ function PropertyFields({ term }: { term: Term }) {
         <span>
           Range: the type of its values <code className="pred">rdfs:range</code>
         </span>
-        <select aria-label="Datatype" value={term.range ?? ''} onChange={(e) => st().updateTerm(term.id, { range: e.target.value || undefined })}>
-          <option value="">Not set</option>
-          {DATATYPES.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.id} ({d.label})
-            </option>
-          ))}
-        </select>
+        <RangeSelect term={term} />
       </label>
+      {/* A range that is a list of values is edited here, where it is chosen. */}
+      <RangeEnumeration term={term} />
     </>
   );
 }

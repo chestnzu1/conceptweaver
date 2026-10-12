@@ -1,6 +1,7 @@
 import viewerCss from '../export/viewer.css?raw';
 import viewerJs from '../export/viewer.js?raw';
-import { edgeLabelsOf, edgeTypesOf } from './edgeKinds';
+import { enumOf, literalText, rangeLabel } from './datatypes';
+import { edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL } from './edgeKinds';
 import { edgeOffsets, nodeSize } from './geometry';
 import { fieldKey, fieldsFor, metaEntity, sameKey, valuesOf, type MetaEntity } from './governance';
 import { nodeTypeOf, resolveEdge, resolveNode, type EdgeType } from './graphStyle';
@@ -64,8 +65,8 @@ export interface ViewerRel {
   label: string;
   /** What kind of statement it is, in words. */
   kind: string;
-  /** Part of the hierarchy: "is a", or class membership. */
-  hier?: 'isa' | 'type';
+  /** Part of the hierarchy ("is a", class membership), or what an enumeration class lists. */
+  hier?: 'isa' | 'type' | 'oneOf';
   description: string;
   cards?: string;
   /** How its line is drawn: how far it bows sideways, and how it ends. The page redraws it from these when an end moves. */
@@ -111,6 +112,7 @@ const KIND_WORDS: Record<EdgeType, string> = {
   domain: 'rdfs:domain',
   range: 'rdfs:range',
   standard: 'standard property',
+  oneOf: 'enumeration membership (owl:oneOf)',
   inferred: 'inferred',
 };
 
@@ -120,6 +122,8 @@ export interface Picture {
   shown?: Set<string>;
   /** Class memberships the reasoner worked out, when the picture has them. */
   inferred?: { id: string; from: string; to: string; because: string }[];
+  /** False when the lines from enumeration classes to their members were switched off. */
+  enumerations?: boolean;
 }
 
 /** What the page shows of a model. */
@@ -172,7 +176,8 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
     shape: shapeOf(t),
     description: t.description,
     synonyms: t.synonyms.split(',').map((s) => s.trim()).filter(Boolean),
-    ...(t.type === 'property' && t.range ? { datatype: t.range } : {}),
+    // A standard datatype by its name; an enumerated one by its name and the values it lists.
+    ...(t.type === 'property' && t.range ? { datatype: enumOf(model, t.range) ? `${rangeLabel(model, t.range)}: one of ${enumOf(model, t.range)!.values.map(literalText).join(', ') || '(no values yet)'}` : t.range } : {}),
     values: (t.values ?? []).map((v) => ({ prop: name(v.prop), value: v.value + (v.lang ? ` @${v.lang}` : '') })),
     meta: metaOf(metaEntity(model, { term: t.id })),
     ...(t.external !== undefined ? { external: true } : {}),
@@ -184,7 +189,9 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
   const resolved = resolveModel(model).relations.filter((r) => ids.has(r.from) && ids.has(r.to));
   // Lines between the same two terms fan out. Only the ones in the picture take part, as on the canvas.
   const inPicture = (r: { from: string; to: string }) => !shown || (shown.has(r.from) && shown.has(r.to));
-  const offsets = edgeOffsets([...resolved.filter(inPicture), ...inferred.filter(inPicture)]);
+  // What each enumeration class lists is a line too, though no relationship of the model: it is listed with the class either way.
+  const listed = enumerationEdges(model);
+  const offsets = edgeOffsets([...resolved.filter(inPicture), ...inferred.filter(inPicture), ...(picture.enumerations === false ? [] : listed.filter(inPicture))]);
   const rels: ViewerRel[] = resolved
     .map((r) => {
       const type = types.get(r.id) ?? 'plain';
@@ -209,6 +216,8 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
     if (!ids.has(x.from) || !ids.has(x.to)) continue;
     rels.push({ id: x.id, from: x.from, to: x.to, label: 'Is Instance Of (inferred)', kind: 'inferred class membership', description: x.because, bend: (offsets.get(x.id) ?? 0) + (inferredStyle.curve ?? 0), head: inferredStyle.arrow ?? 'hollow' });
   }
+  const oneOfStyle = resolveEdge(model.style, 'oneOf', '');
+  for (const x of listed) rels.push({ id: x.id, from: x.from, to: x.to, label: ONE_OF_LABEL, kind: KIND_WORDS.oneOf, hier: 'oneOf', description: x.because, bend: (offsets.get(x.id) ?? 0) + (oneOfStyle.curve ?? 0), head: oneOfStyle.arrow ?? 'filled' });
 
   const props: ViewerProp[] =
     model.mode === 'skos'

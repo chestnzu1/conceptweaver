@@ -102,7 +102,7 @@ await panel.getByRole('button', { name: /Inferred restrictions/ }).click();
 ok((await panel.locator('.restrictions.inferred').count()) === 0, 'the section collapses');
 await panel.getByRole('button', { name: /Inferred restrictions/ }).click();
 await panel.locator('.not-inferred summary').click();
-ok((await panel.locator('.not-inferred li').count()) === 4, 'a note lists the four kinds of inference the reasoner does not make');
+ok((await panel.locator('.not-inferred li').count()) === 5, 'a note lists the five kinds of inference the reasoner does not make');
 
 // ---- nothing was written into the model, and an inconsistent ontology is not reasoned from
 await tab('RDF');

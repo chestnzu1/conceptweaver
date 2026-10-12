@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nodeLabel, nodeSize, placeLabels, pointInNode, setNodeLook, textWidth, type EdgeGeom, type LabelSpec, type Pt } from '../model/geometry';
-import { edgeLabelsOf, edgeTypesOf } from '../model/edgeKinds';
+import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL, type DerivedEdge } from '../model/edgeKinds';
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
 import { useStore, viewOf, type SubgraphState } from '../model/store';
@@ -38,6 +38,7 @@ export function Canvas() {
   const highlightLabel = useStore((s) => s.highlightLabel);
   const filter = useStore((s) => s.filter);
   const showInferred = useStore((s) => s.showInferred);
+  const showEnumerations = useStore((s) => s.showEnumerations);
   const stylePanel = useStore((s) => s.stylePanel);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [connect, setConnect] = useState<{ from: string; to: Pt } | null>(null);
@@ -281,6 +282,17 @@ export function Canvas() {
   const meaning = stable(full);
   const entailed = useMemo(() => (showInferred && supports(meaning, 'reasoning') ? inferredMemberships(meaning) : undefined), [showInferred, meaning]);
   const inferred = useMemo(() => entailed?.memberships.filter((x) => byId.has(x.from) && byId.has(x.to)) ?? NONE, [entailed, byId]);
+  // What each enumeration class lists, as a line to each member: a picture of its definition, not a
+  // relationship. Drawn unless switched off; in a subgraph, where its filters let the line through.
+  const hasEnumerations = useMemo(() => full.terms.some((t) => t.type === 'concept' && t.oneOf?.length), [full.terms]);
+  const listed = useMemo(() => {
+    if (!showEnumerations || !hasEnumerations) return NO_DERIVED;
+    const through = subgraph.active && subgraph.result ? new Set(subgraph.result.rels) : undefined;
+    return enumerationEdges(model).filter((e) => byId.has(e.from) && byId.has(e.to) && (!through || through.has(e.id)));
+  }, [showEnumerations, hasEnumerations, model, byId, subgraph]);
+  // A member of an enumeration is an instance of it, which its line says already: that membership is not drawn a second time.
+  const dotted = useMemo(() => beyondEnumerations(inferred, listed), [inferred, listed]);
+  const derived = useMemo(() => (dotted.length || listed.length ? [...dotted.map((x): DerivedEdge => ({ ...x, kind: 'inferred' })), ...listed] : NO_DERIVED), [dotted, listed]);
 
   const connectFrom = connect && byId.get(connect.from);
   // The term a new relation would land on if the pointer were released now.
@@ -318,7 +330,7 @@ export function Canvas() {
         onContextMenu={backgroundMenu}
       >
         <g data-world transform={`translate(${vp.x},${vp.y}) scale(${vp.k})`}>
-          <Scene model={model} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} inferred={inferred} />
+          <Scene model={model} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} />
           {connectFrom && <line data-noexport className="connect-line" x1={connectFrom.x} y1={connectFrom.y} x2={connect.to.x} y2={connect.to.y} />}
 
           {box && (
@@ -383,11 +395,22 @@ export function Canvas() {
                 ? 'Also draw the class memberships the reasoner works out, dotted, beside the asserted ones'
                 : !entailed?.consistent
                   ? 'The reasoner finds the ontology inconsistent, so nothing reliable can be inferred. See the Validation tab.'
-                  : `${inferred.length} inferred class membership${inferred.length === 1 ? '' : 's'} drawn dotted${entailed.truncated ? '; the reasoner stopped early on this large model, so there may be more' : ''}. They are not part of the model.`
+                  : `${dotted.length} inferred class membership${dotted.length === 1 ? '' : 's'} drawn dotted${entailed.truncated ? '; the reasoner stopped early on this large model, so there may be more' : ''}. They are not part of the model.`
             }
             onClick={() => st().setShowInferred(!showInferred)}
           >
-            Inferred types{showInferred ? (entailed?.consistent ? ` (${inferred.length})` : ' (inconsistent)') : ''}
+            Inferred types{showInferred ? (entailed?.consistent ? ` (${dotted.length})` : ' (inconsistent)') : ''}
+          </button>
+        )}
+        {/* Only where there is an enumeration to draw: the bar stays as short as it can. */}
+        {hasEnumerations && (
+          <button
+            className={'btn' + (showEnumerations ? ' on' : '')}
+            aria-pressed={showEnumerations}
+            title={showEnumerations ? 'Each enumeration class is joined to the individuals it lists (owl:oneOf). Click to hide those lines.' : 'Draw a line from each enumeration class to the individuals it lists (owl:oneOf)'}
+            onClick={() => st().setShowEnumerations(!showEnumerations)}
+          >
+            Enumerations
           </button>
         )}
       </div>
@@ -415,11 +438,12 @@ interface SceneProps {
   actions: SceneActions;
   /** Set in subgraph mode: which terms are starting points, which are expanded, and which have more to show. */
   sub?: SubgraphState;
-  /** Entailed class memberships to draw beside the asserted relations; empty unless asked for. */
-  inferred: InferredMembership[];
+  /** Lines that are worked out rather than stored: inferred class memberships when asked for, and what enumerations list. */
+  derived: DerivedEdge[];
 }
 
 const NONE: InferredMembership[] = [];
+const NO_DERIVED: DerivedEdge[] = [];
 
 const INFERRED_LABEL = `${INSTANCE_OF} (inferred)`;
 /** Where the scene last put each edge label, for the editor that opens on one. */
@@ -430,14 +454,14 @@ let labelSpots = new Map<string, Pt>();
  * responsive: the scene itself does not change while the view is panned or zoomed, and within it
  * a term or relation is redrawn only when something about it changed.
  */
-const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targetId, actions, sub, inferred }: SceneProps) {
+const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targetId, actions, sub, derived }: SceneProps) {
   const rootSet = useMemo(() => new Set(sub?.roots), [sub?.roots]);
   const expandedSet = useMemo(() => new Set(sub?.expanded), [sub?.expanded]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
   // How the nodes are drawn decides how big they are and where edges meet them, so the geometry
   // is told before anything is measured. Layout, fitting and the picture export read the same.
   const style = model.style;
-  useMemo(() => setNodeLook(nodeLookFor(model)), [style, model.mode, model.prefixes, model.baseIri]); // eslint-disable-line react-hooks/exhaustive-deps
+  useMemo(() => setNodeLook(nodeLookFor(model)), [style, model.mode, model.prefixes, model.baseIri, model.datatypes]); // eslint-disable-line react-hooks/exhaustive-deps
   // Relations as they should be read: with the RDFS/OWL layer on, a mapped relation takes the
   // kind and label of its standard property.
   const meaning = stable(model);
@@ -456,8 +480,9 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
     return out;
   }, [relations, meaning, style]);
   const inferredStyle = resolveEdge(style, 'inferred', '');
-  // An inferred membership takes its place among the relations between the same two terms.
-  const offsets = useMemo(() => edgeOffsets(inferred.length ? [...relations, ...inferred] : relations), [relations, inferred]);
+  const oneOfStyle = resolveEdge(style, 'oneOf', '');
+  // A derived line takes its place among the relations between the same two terms.
+  const offsets = useMemo(() => edgeOffsets(derived.length ? [...relations, ...derived] : relations), [relations, derived]);
   // Geometry is kept per relation and reused while its two ends stay where they are.
   const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; geom: EdgeGeom }>());
   const geoms = useMemo(() => {
@@ -482,16 +507,18 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
   // What each edge says. A restriction reads "directs some Film", and several on one line "directs some, only".
   const labels = useMemo(() => edgeLabelsOf(meaning), [meaning]);
   const labelOf = useCallback((r: Relation) => labels.get(r.id) ?? '', [labels]);
-  const inferredGeoms = useMemo(() => {
-    const out = new Map<string, { a: Term; b: Term; geom: EdgeGeom }>();
-    for (const x of inferred) {
+  const derivedGeoms = useMemo(() => {
+    const out = new Map<string, { a: Term; b: Term; es: EdgeStyle; geom: EdgeGeom }>();
+    for (const x of derived) {
       const a = byId.get(x.from);
       const b = byId.get(x.to);
-      if (a && b) out.set(x.id, { a, b, geom: edgeGeom(a, b, (offsets.get(x.id) ?? 0) + (inferredStyle.curve ?? 0), 'generalization', inferredStyle.arrow) });
+      const es = x.kind === 'oneOf' ? oneOfStyle : inferredStyle;
+      // An inferred membership ends like the asserted ones, hollow; an enumeration's line has a plain head at the member.
+      if (a && b) out.set(x.id, { a, b, es, geom: edgeGeom(a, b, (offsets.get(x.id) ?? 0) + (es.curve ?? 0), x.kind === 'oneOf' ? 'association' : 'generalization', es.arrow) });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inferred, byId, offsets, inferredStyle, style]);
+  }, [derived, byId, offsets, inferredStyle, oneOfStyle, style]);
   // Where each label goes: in the middle of its edge, or along it where the middle is taken.
   const spots = useMemo(() => {
     const specs: LabelSpec[] = [];
@@ -500,7 +527,10 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
       const label = g && g.es.labels !== false && labelOf(r);
       if (g && label) specs.push({ id: r.id, geom: g.geom, w: textWidth(label, labelFont(g.es)) + 10, ends: [g.a, g.b] });
     }
-    if (inferredStyle.labels !== false) for (const [id, g] of inferredGeoms) specs.push({ id, geom: g.geom, w: textWidth(INFERRED_LABEL, labelFont(inferredStyle)) + 10, ends: [g.a, g.b] });
+    for (const x of derived) {
+      const g = derivedGeoms.get(x.id);
+      if (g && g.es.labels !== false) specs.push({ id: x.id, geom: g.geom, w: textWidth(x.kind === 'oneOf' ? ONE_OF_LABEL : INFERRED_LABEL, labelFont(g.es)) + 10, ends: [g.a, g.b] });
+    }
     // The cardinalities written at the ends of plain relationships stay where they are; labels keep off them.
     const cards: { x: number; y: number; w: number; h: number }[] = [];
     for (const r of relations) {
@@ -510,7 +540,7 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
       if (r.toCard) cards.push({ ...g.geom.toCard, w: textWidth(r.toCard, LABEL_FONT) + 4, h: 14 });
     }
     return (labelSpots = placeLabels(specs, cards));
-  }, [relations, geoms, inferredGeoms, inferredStyle, labelOf, skos, plain]);
+  }, [relations, geoms, derived, derivedGeoms, labelOf, skos, plain]);
   const selTerms = useMemo(() => new Set(sel.terms), [sel.terms]);
   const selRels = useMemo(() => new Set(sel.rels), [sel.rels]);
   const spot = useMemo(() => new Set(highlight), [highlight]);
@@ -539,11 +569,11 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
         const cls = `edge ${r.kind}${instanceOf ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}`;
         return <EdgeView key={r.id} r={r} geom={g.geom} es={g.es} lx={at.x} ly={at.y} label={(editing?.kind === 'rel' && editing.id === r.id) || g.es.labels === false ? '' : label} cls={cls} cards={cards} actions={actions} />;
       })}
-      {inferred.map((x) => {
-        const g = inferredGeoms.get(x.id);
+      {derived.map((x) => {
+        const g = derivedGeoms.get(x.id);
         if (!g) return null;
         const at = spots.get(x.id) ?? g.geom.label;
-        return <InferredEdge key={x.id} x={x} geom={g.geom} es={inferredStyle} lx={at.x} ly={at.y} dim={relDim(x)} />;
+        return <DerivedView key={x.id} x={x} geom={g.geom} es={g.es} lx={at.x} ly={at.y} dim={relDim(x)} />;
       })}
       {model.terms.map((t) => {
         const cls = `node ${t.type}${t.external !== undefined ? ' external' : ''}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}`;
@@ -643,15 +673,34 @@ const EdgeView = memo(function EdgeView({ r, geom: g, es, lx, ly, label, cls, ca
   );
 });
 
-/** A class membership that is entailed, not asserted: dashed, labelled as inferred, and nothing about it can be edited. */
-function InferredEdge({ x, geom: g, es, lx, ly, dim }: { x: InferredMembership; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; dim: boolean }) {
-  const label = es.labels === false ? '' : INFERRED_LABEL;
+/**
+ * A line that is worked out rather than stored, so nothing about it can be edited here. A class
+ * membership the reasoner entails is dotted and labelled as inferred. What an enumeration lists
+ * is a line of its own kind from the class to the member, and clicking it opens the class, where
+ * the list is.
+ */
+function DerivedView({ x, geom: g, es, lx, ly, dim }: { x: DerivedEdge; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; dim: boolean }) {
+  const oneOf = x.kind === 'oneOf';
+  const label = es.labels === false ? '' : oneOf ? ONE_OF_LABEL : INFERRED_LABEL;
   const lw = textWidth(label, labelFont(es)) + 10;
   const lh = labelHeight(es);
   const look = edgeLook(es);
   return (
-    <g className={'edge generalization instance-of inferred' + (dim ? ' dim' : '') + look.cls} data-rel={x.id} style={look.vars}>
-      <title>{`Inferred, not asserted. ${x.because}`}</title>
+    <g
+      className={(oneOf ? 'edge one-of' : 'edge generalization instance-of inferred') + (dim ? ' dim' : '') + look.cls}
+      data-rel={x.id}
+      style={look.vars}
+      onPointerDown={
+        oneOf
+          ? (e) => {
+              if (e.button !== 0) return;
+              e.stopPropagation();
+              useStore.getState().select([x.from]);
+            }
+          : undefined
+      }
+    >
+      <title>{oneOf ? `Enumeration membership (owl:oneOf): part of how the class is defined, not a relationship of its own. ${x.because}` : `Inferred, not asserted. ${x.because}`}</title>
       <path data-noexport className="edge-hit" d={g.path} />
       <path className="edge-line" data-part="line" d={g.path} />
       <Arrow points={g.arrow} head={es.arrow} />

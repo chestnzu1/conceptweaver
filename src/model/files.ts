@@ -1,5 +1,6 @@
 import { flushSync } from 'react-dom';
 import { convertModel } from './convert';
+import { beyondEnumerations, enumerationEdges } from './edgeKinds';
 import { bounds } from './geometry';
 import { htmlPage, LIGHT_TOKENS, viewerData, type Tokens } from './htmlExport';
 import { inferredMemberships } from './inferred';
@@ -150,7 +151,10 @@ function interactivePage(): string {
   const shown = new Set(viewOf(store).terms.map((t) => t.id));
   // Class memberships the reasoner works out are in the picture when they were asked for on the canvas.
   const entailed = store.showInferred && supports(store.model, 'reasoning') ? inferredMemberships(stable(store.model)).memberships : [];
-  return htmlPage(viewerData(store.model, new Date(), { shown, inferred: entailed }), graph?.svg ?? '', tokens, store.theme === 'dark');
+  // Where the line of an enumeration is in the picture, the canvas leaves out the inferred membership it would repeat.
+  const drawn = new Set(Array.from((graph?.svg ?? '').matchAll(/data-rel="([^"]+)"/g), (x) => x[1]));
+  const inferred = beyondEnumerations(entailed, enumerationEdges(store.model).filter((e) => drawn.has(e.id)));
+  return htmlPage(viewerData(store.model, new Date(), { shown, inferred, enumerations: store.showEnumerations }), graph?.svg ?? '', tokens, store.theme === 'dark');
 }
 
 export type ExportFormat = 'json' | 'jsonld' | 'turtle' | 'owl' | 'skos' | 'csv-terms' | 'csv-relations' | 'svg' | 'png' | 'html';

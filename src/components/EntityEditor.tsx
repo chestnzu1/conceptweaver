@@ -29,6 +29,7 @@ import { EntityPicker, type Choice } from './EntityPicker';
 import { IriCell } from './Iri';
 import { CommitInput } from './fields';
 import { Disclosure, Icon } from './Icon';
+import { enumOf, rangeLabel } from '../model/datatypes';
 
 /**
  * The parts of the entity editor that state OWL axioms about the selected entity. What each part
@@ -313,7 +314,9 @@ export function IndividualAssertions({ term }: { term: Term }) {
   const [fact, setFact] = useState<{ prop?: string; to?: string; error?: string }>({});
   const [draft, setDraft] = useState<{ prop?: string; value: string; lang: string; error?: string }>({ value: '', lang: '' });
   const dataProp = draft.prop ? byId.get(draft.prop) : undefined;
-  const textual = !dataProp?.range || dataProp.range === 'xsd:string' || dataProp.range === 'rdf:langString';
+  // Where the property's values are an enumerated datatype, they are the ones it lists, offered as they are typed.
+  const listed = enumOf(model, dataProp?.range);
+  const textual = !dataProp?.range || dataProp.range === 'xsd:string' || dataProp.range === 'rdf:langString' || !!listed?.values.some((v) => v.lang);
   const ofType = (type: TermType) => () => model.terms.filter((t) => t.type === type).map(choice);
   const stateFact = () => {
     const error = st().edit((m) => addFact(m, term.id, fact.prop ?? '', fact.to ?? ''));
@@ -367,7 +370,7 @@ export function IndividualAssertions({ term }: { term: Term }) {
                 </button>
                 <span className="literal">
                   {v.value}
-                  {v.lang ? <span className="lang">@{v.lang}</span> : dt && dt !== 'xsd:string' ? <span className="lang">{dt}</span> : null}
+                  {v.lang ? <span className="lang">@{v.lang}</span> : dt && dt !== 'xsd:string' ? <span className="lang">{rangeLabel(model, dt, true)}</span> : null}
                 </span>
                 <button className="btn icon ghost" title="Remove this value" aria-label={`Remove ${byId.get(v.prop)?.name} ${v.value}`} onClick={() => st().apply((m) => removeValue(m, term.id, i))}>
                   ×
@@ -381,7 +384,8 @@ export function IndividualAssertions({ term }: { term: Term }) {
           <input
             aria-label="Value"
             aria-invalid={!!draft.error}
-            placeholder={dataProp?.range ? `${DATATYPES.find((d) => d.id === dataProp.range)?.label ?? 'value'} (${dataProp.range})` : 'Value'}
+            placeholder={listed ? `one of the values of ${listed.name}` : dataProp?.range ? `${DATATYPES.find((d) => d.id === dataProp.range)?.label ?? 'value'} (${dataProp.range})` : 'Value'}
+            list={listed ? 'enum-values' : undefined}
             value={draft.value}
             onChange={(e) => setDraft({ ...draft, value: e.target.value, error: undefined })}
             onKeyDown={(e) => {
@@ -389,6 +393,13 @@ export function IndividualAssertions({ term }: { term: Term }) {
               if (e.key === 'Enter' && draft.prop && draft.value.trim()) stateValue();
             }}
           />
+          {listed && (
+            <datalist id="enum-values">
+              {listed.values.map((v, i) => (
+                <option key={i} value={v.value} />
+              ))}
+            </datalist>
+          )}
           {textual && <input className="meta-lang" aria-label="Language of the value" placeholder="lang" title="Language of the value, e.g. nl. Leave empty if it has none." value={draft.lang} onChange={(e) => setDraft({ ...draft, lang: e.target.value, error: undefined })} onKeyDown={(e) => e.stopPropagation()} />}
           <button className="btn small primary" disabled={!draft.prop || !draft.value.trim()} onClick={stateValue}>
             Add value

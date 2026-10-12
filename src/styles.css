@@ -4513,3 +4513,124 @@ summary {
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
+
+/* ------------------------------------------------------------ enumerations */
+
+/* The members of an enumeration: each with its name, which opens it, and its IRI. */
+.enum-members {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.enum-members li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding-left: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+
+.enum-members .link {
+  flex: 0 1 auto;
+  min-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.enum-members code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector .enum-members .btn.icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+}
+
+/* A class expression, written out. */
+code.expression {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+/* What an enumeration lists: a line of its own kind from the class to each member, dash-dotted and in
+   another colour, so that it is not taken for class membership (rdf:type), which is solid with a hollow head. */
+.edge.one-of {
+  --e-color-kind: var(--info);
+  --e-dash-kind: 9 3 2 3;
+  --e-label-kind: var(--info);
+}
+
+/* An enumerated datatype, edited where it is chosen as a range. */
+.enum-datatype {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+/* The notes in it are of the size the notes of a field are. */
+.enum-datatype > small {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.enum-datatype > small .link {
+  font-size: inherit;
+}
+
+.enum-members code.literal {
+  flex: 1;
+  color: var(--ink);
+  font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.enum-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.field .enum-add input:first-child {
+  flex: 1 1 110px;
+  width: auto;
+  min-width: 0;
+}
+
+.field .enum-add select {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 130px;
+}
+
+.field .enum-add .meta-lang {
+  flex: 0 0 54px;
+  width: 54px;
+}
+
+code.expression.pre {
+  white-space: pre-wrap;
+}

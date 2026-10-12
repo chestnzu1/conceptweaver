@@ -98,6 +98,7 @@ export const NOT_INFERRED = [
   'Restrictions through the property hierarchy: one on a sub-property or an inverse property is not turned into one on the related property.',
   'Class membership that follows from a restriction, such as a property’s domain making a restricted class a kind of that domain.',
   'Anything that needs the inside of a kept class expression (unions, intersections, nested restrictions): those are inherited as text, not interpreted.',
+  'What follows from an enumeration by trying each member in turn: a restriction that every member of { A, B } meets is not concluded for the class.',
 ];
 
 /** A class membership that is entailed but not stated, shaped like the relation that would state it. */

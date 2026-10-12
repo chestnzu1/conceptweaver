@@ -1,7 +1,7 @@
 import type { ExtraField, Model } from './types';
 
 /** A name that only stands in until the user types a real one; no IRI is made from it. */
-const PLACEHOLDER = /^new (class|concept|data property|individual|term|property( \d+)?)$/i;
+const PLACEHOLDER = /^new (class|concept|data property|individual|term|property( \d+)?|datatype( \d+)?)$/i;
 
 /** The last part of an IRI made from a name: "Release date" → "ReleaseDate" (or "releaseDate" for a property). */
 export function localName(name: string, camel: boolean): string {
@@ -26,12 +26,14 @@ export function baseIriOf(m: Model): string {
  */
 export function withIris(m: Model): Model {
   const needs = (x: { iri?: string; name: string }) => !x.iri && !!x.name.trim() && !PLACEHOLDER.test(x.name.trim());
-  if (!m.terms.some(needs) && !m.props.some(needs)) return m;
+  const datatypes = m.datatypes ?? [];
+  const lacks = (d: { iri?: string; name: string; anonymous?: boolean }) => !d.anonymous && needs(d);
+  if (!m.terms.some(needs) && !m.props.some(needs) && !datatypes.some(lacks)) return m;
   const base = baseIriOf(m);
   const used = new Set<string>();
   // The first IRIs settle the default namespace, so that it does not shift when the model is renamed.
   const baseIri = m.baseIri.trim() ? m.baseIri : base;
-  for (const x of [...m.terms, ...m.props]) if (x.iri) used.add(x.iri.toLowerCase());
+  for (const x of [...m.terms, ...m.props, ...datatypes]) if (x.iri) used.add(x.iri.toLowerCase());
   const mint = (name: string, camel: boolean) => {
     const local = localName(name, camel);
     let iri = base + local;
@@ -44,6 +46,8 @@ export function withIris(m: Model): Model {
     baseIri,
     terms: m.terms.map((t) => (needs(t) ? { ...t, iri: mint(t.name, t.type === 'property') } : t)),
     props: m.props.map((p) => (needs(p) ? { ...p, iri: mint(p.name, true) } : p)),
+    // A datatype is named like a class: StatusCode.
+    ...(datatypes.some(lacks) ? { datatypes: datatypes.map((d) => (lacks(d) ? { ...d, iri: mint(d.name, false) } : d)) } : {}),
   };
 }
 

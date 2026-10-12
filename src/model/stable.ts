@@ -1,6 +1,6 @@
 import type { Model, Term } from './types';
 
-const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'range', 'domain', 'axioms', 'functional', 'values', 'external'];
+const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'range', 'domain', 'axioms', 'functional', 'values', 'external', 'oneOf', 'allDifferent'];
 
 let last: Model | undefined;
 
@@ -27,6 +27,7 @@ export function stable(model: Model): Model {
     prev.shapes === model.shapes &&
     prev.quality === model.quality &&
     prev.governance === model.governance &&
+    prev.datatypes === model.datatypes &&
     prev.externals === model.externals &&
     prev.mappings === model.mappings &&
     prev.rejected === model.rejected &&

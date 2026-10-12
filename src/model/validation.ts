@@ -174,12 +174,14 @@ function entityIndex(model: Model) {
 // ---------------------------------------------------------------- OWL
 
 /** The rules the app's reasoner applies, for saying honestly what a "consistent" covers. */
-export const REASONER_PROFILE = 'RDFS and a subset of OWL 2 RL: class and property hierarchies, equivalence, disjointness and complements, domains and ranges, inverse, symmetric, transitive, functional and inverse-functional properties, sameAs and differentFrom';
+export const REASONER_PROFILE = 'RDFS and a subset of OWL 2 RL: class and property hierarchies, equivalence, disjointness and complements, domains and ranges, inverse, symmetric, transitive, functional and inverse-functional properties, sameAs and differentFrom, enumerations (owl:oneOf) and owl:AllDifferent';
 export const REASONER_LIMITS = [
   'It is a rule reasoner, not a complete OWL 2 DL reasoner: it finds the contradictions its rules reach, so “consistent” means none of those was found.',
   'Class expressions kept as text (unions, intersections, complements written as expressions, nested restrictions) are not interpreted.',
   'Restrictions are compared only when they are on the same property and the same class or datatype; a clash that needs the fillers’ hierarchy is not found.',
   'Literal values are compared as written: "1" and "01" count as two values.',
+  'An enumeration is not reasoned with by cases. An instance of { A, B } is concluded to be A only once it is known to be different from B; what holds for A and for B alike is not concluded of it. Nothing is counted either: a class that needs three different values out of an enumeration of two is not found unsatisfiable, and two enumerations without a common member are not found disjoint.',
+  'An enumerated datatype is used for one thing: a value an individual has for a property is checked against the list of that property’s range (a number by its value, anything else as written). Datatypes are not compared with each other, and an owl:oneOf kept as text inside another expression is not read.',
 ];
 
 /**

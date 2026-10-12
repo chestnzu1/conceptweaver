@@ -10,7 +10,7 @@ pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
@@ -145,14 +145,19 @@ node e2e/ui-audit.mjs       # measures every view in both themes: text contrast,
   - *OWL consistency*: the built-in RDFS / OWL RL rule reasoner. Reports whether the ontology
     contradicts itself and which classes can never have a member (not the same thing), each
     with the stated facts the reasoner derived it from. Also restrictions that cannot hold
-    together, and property characteristics that exclude each other.
+    together, and property characteristics that exclude each other. Enumerations are part of
+    it: what a class lists are its instances, members declared all different are different, an
+    instance of an enumeration that is different from all members but one is that one (and
+    from all of them, a contradiction), an enumeration whose members are all of a class is a
+    kind of that class, and a value of a property has to be one its enumerated datatype lists.
   - *SHACL*: the model's shapes validated against a data graph by a SHACL Core engine
     (`rdf-validate-shacl`, loaded on first use). Shapes are made in a form (SHACL shapes tab),
     imported from Turtle or written as Turtle, and saved with the model but apart from the
     ontology. The data graph is the model's own RDF (individuals and ontology triples) or an
     imported Turtle file. Results keep the standard report fields.
-  - *Quality*: 27 modelling rules (missing definitions, redundant superclasses, naming, IRIs
-    and namespaces, …), each of which can be switched off per model. They are suggestions,
+  - *Quality*: 34 modelling rules (missing definitions, redundant superclasses, naming, IRIs
+    and namespaces, enumerations without members or with something on the list that does not
+    belong there, …), each of which can be switched off per model. They are suggestions,
     not errors.
 
   Results can be filtered by category, severity and entity type and searched; clicking one
@@ -181,6 +186,23 @@ node e2e/ui-audit.mjs       # measures every view in both themes: text contrast,
 - **SPARQL view** – write SELECT / ASK / CONSTRUCT / DESCRIBE queries against the model's RDF
   and see the results as a table (Oxigraph compiled to WebAssembly, loaded on first use).
 - **RDF view** – the live model as Turtle, JSON-LD or a triples table.
+- **Enumeration classes** – a class can be defined as exactly the individuals it lists
+  (*Class definition → Enumeration (ObjectOneOf)* in the class editor). Members are picked from
+  the individuals of the model or made on the spot; an individual can be on several lists, and
+  not twice on one. The class stays a class with everything else it has, and is written as
+  `owl:equivalentClass [ a owl:Class ; owl:oneOf ( … ) ]`: never as a triple from the class to
+  an individual, and never as `rdf:type`. Members are not taken to be different from one
+  another unless *Declare all members different* is ticked (`owl:AllDifferent`). On the canvas
+  a line labelled *one of* joins the class to each member. It is a picture of the definition,
+  not a relationship: it is not stored, has a style of its own, can be hidden with
+  *Enumerations*, and is a kind of line a subgraph can follow or leave out.
+- **Enumerated datatypes** – the range of a data property is a standard datatype or one that
+  lists its values (*New enumerated datatype…* in the range selector): text, typed values or
+  text in a language. It is a datatype, not a class, and its values are literals, not
+  individuals. A named one is written as `:Status a rdfs:Datatype ; owl:equivalentClass
+  [ a rdfs:Datatype ; owl:oneOf ( "active" "pending" ) ]` and can be the range of several
+  properties; one that a file wrote in place as a range is kept in place. An individual can
+  only be given one of the listed values for such a property.
 - **Interactive page** – *File → Export → Interactive page (HTML)* writes the model as one HTML
   file that opens on its own, with no app and no network: the graph as the canvas draws it (its
   style included, in the theme the app is in), which can be dragged and zoomed; the classes or
@@ -212,15 +234,30 @@ Long tables and result lists are shown a page at a time; the search box narrows 
 ## OWL constructs without an editor
 
 Kept as text on the class and written back unchanged, but not editable piece by piece: unions,
-intersections, complements, enumerations (`owl:oneOf`), `owl:hasValue`, `owl:hasSelf`,
-unqualified cardinalities and nested restrictions, where they are stated as a superclass or an
-equivalent class.
+intersections, complements, `owl:hasValue`, `owl:hasSelf`, unqualified cardinalities and nested
+restrictions, where they are stated as a superclass or an equivalent class.
+
+An `owl:oneOf` has an editor in two places only: as the whole of a class's definition
+(`owl:equivalentClass` to a list of named individuals) and as the whole of a datatype (a named
+datatype equivalent to a list of literals, or such a list written in place as the range of a
+data property). Anywhere else it is kept as text with the entity and is neither shown as an
+enumeration nor reasoned with: a class that is a *subclass* of a list, a list inside a union,
+an intersection or a restriction (`hasColor some { Red, Green }`, `status some { "a", "b" }`),
+a second list on a class that has one already, a list with an anonymous individual or with
+both individuals and literals in it, and a list of nothing. An RDF list that is not well formed
+(it forks, stops short, or comes back on itself) is never taken for an enumeration; it is kept
+cell by cell, as broken as it was. A data range written in place that is not a list of
+literals (a datatype narrowed by facets, a union of datatypes) is kept as text with its
+property. Validation points each of these out.
 
 Read as the pairs they stand for: `owl:AllDisjointClasses`, `owl:AllDifferent`,
-`owl:AllDisjointProperties` (named members only).
+`owl:AllDisjointProperties` (named members only). An `owl:AllDifferent` over exactly the
+members of an enumeration is kept as one statement on that enumeration instead.
 
 Not read at all, so lost on import: property chains, keys (`owl:hasKey`), negative property
-assertions, `owl:disjointUnionOf`, datatype definitions and facets, annotations on axioms,
+assertions, `owl:disjointUnionOf`, a *named* datatype defined by anything but a list of
+literals (facets, unions; a property that has one as its range comes in without a range),
+annotations on axioms,
 domains, ranges and hierarchies of annotation properties, `owl:imports` and the ontology's own
 annotations other than its name and description, and a domain or range that is a class
 expression other than a union of named classes. A value whose datatype is not one of the twelve
@@ -230,6 +267,15 @@ the app offers is kept as plain text.
 
 - The reasoner is a rule reasoner, not a complete OWL 2 DL reasoner: "consistent" means its
   rules found no contradiction. Class expressions kept as text are not interpreted.
+- Enumerations are not reasoned with by cases. An instance of `{ A, B }` is concluded to be `A`
+  only once it is known to be different from `B`; what holds for `A` and for `B` alike is not
+  concluded of it. Nothing is counted: a class that needs three different values out of an
+  enumeration of two is not found unsatisfiable, and two enumerations without a common member
+  are not found disjoint. An enumeration with something other than an individual on its list
+  is left alone until that is taken off. An enumerated datatype is used for one thing, checking
+  the values individuals have against the list of their property's range (a number by its
+  value, so `"01"` is `"1"^^xsd:integer`; anything else as written, so a date with a time zone
+  is not the same date without one); datatypes are not compared with each other.
 - SHACL: all of SHACL Core is validated. SHACL-SPARQL, SHACL Advanced Features and entailment
   regimes are not. The shape form covers targets (class, node, subjects-of, objects-of), a
   property or its inverse as path, and the constraints min/max count, datatype, class, node

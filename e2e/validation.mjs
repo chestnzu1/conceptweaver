@@ -68,7 +68,7 @@ await v.getByLabel('Severity').selectOption('');
 // ---------------------------------------------------------------- quality rules are configurable
 const before = (await rowTexts()).filter((r) => r.includes('Missing definition')).length;
 await sub('Quality rules');
-ok((await v.locator('.rules fieldset legend').allInnerTexts()).map(flat).join(' | ') === 'Documentation | Structure | IRIs and namespaces | Modelling practice | Governance | SKOS integrity', 'rules are grouped');
+ok((await v.locator('.rules fieldset legend').allInnerTexts()).map(flat).join(' | ') === 'Documentation | Structure | IRIs and namespaces | Modelling practice | Enumerations | Governance | SKOS integrity', 'rules are grouped');
 ok(!(await v.locator('.rule', { hasText: 'Multiple inheritance' }).locator('input').isChecked()), 'multiple inheritance is not reported unless asked for');
 const rev0 = await revision();
 await v.locator('.rule', { hasText: 'Missing definition' }).locator('input').uncheck();

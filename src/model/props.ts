@@ -1,5 +1,5 @@
 import { allowsKind, configOf, type RelKindId } from './modelTypes';
-import { PROP_LINKS, QUANTIFIERS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
+import { ENUM_RANGE, PROP_LINKS, QUANTIFIERS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
 import { labelKey, resolveModel } from './vocab';
 
 /** The characteristics an object property can have, as in OWL. */
@@ -290,7 +290,9 @@ function allRestrictions(m: Model, declared: Map<string, string>): Map<string, R
     if (from?.type !== 'concept' || !to || r.predicate) continue;
     let line: Pick<Restriction, 'data' | 'property' | 'filler'> | undefined;
     if (r.kind === 'property' && to.type === 'property') {
-      line = { data: true, property: to.name || 'Unnamed', filler: to.range ?? 'rdfs:Literal' };
+      // The values it has to have: a standard datatype by its name, an enumerated one by the name it was given.
+      const listed = to.range?.startsWith(ENUM_RANGE) ? m.datatypes.find((d) => d.id === to.range!.slice(ENUM_RANGE.length))?.name : undefined;
+      line = { data: true, property: to.name || 'Unnamed', filler: listed ?? (to.range?.startsWith(ENUM_RANGE) ? undefined : to.range) ?? 'rdfs:Literal' };
     } else if (r.kind === 'association' && !r.plain && to.type === 'concept' && declared.has(propKey(r.label))) {
       line = { data: false, property: declared.get(propKey(r.label))!, filler: to.name || 'Unnamed' };
     }

@@ -45,6 +45,8 @@ export interface NodeLook {
   fontWeight?: number;
   /** The words to draw in place of the name, such as the IRI. */
   text?: string;
+  /** For a data property whose values are an enumerated datatype: what that datatype is called. */
+  datatype?: string;
 }
 
 type Sized = Pick<Term, 'name' | 'type' | 'range'>;
@@ -64,8 +66,10 @@ const fontOf = (look: NodeLook | undefined) => (look?.fontSize || look?.fontWeig
 
 /** Text drawn on a node: the name, and for a data property its datatype ("Release date : date"). */
 export function nodeLabel(t: Sized): string {
-  const datatype = t.type === 'property' && t.range ? ` : ${t.range.split(':')[1]}` : '';
-  return (lookOf(t)?.text ?? (t.name || '')) + datatype;
+  const look = lookOf(t);
+  // "date" for xsd:date; an enumerated datatype by its name, which only the model knows.
+  const range = t.type === 'property' && t.range ? (look?.datatype ?? (t.range.startsWith('enum:') ? 'enumeration' : t.range.split(':')[1])) : '';
+  return (look?.text ?? (t.name || '')) + (range ? ` : ${range}` : '');
 }
 
 export function nodeSize(t: Sized): { w: number; h: number } {

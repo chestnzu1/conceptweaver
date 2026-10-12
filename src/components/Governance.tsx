@@ -24,7 +24,7 @@ import { localName } from '../model/iri';
 import { compactIri, isAbsoluteIri } from '../model/prefixes';
 import { isStale, type Finding } from '../model/validation';
 import { useStore } from '../model/store';
-import { DATATYPES, ENTITY_KINDS, META_GROUPS, VALUE_TYPES, type EntityKind, type MetaField, type MetaGroup, type Model, type ValueType } from '../model/types';
+import { DATATYPES, ENTITY_KINDS, ENUM_RANGE, META_GROUPS, VALUE_TYPES, type EntityKind, type MetaField, type MetaGroup, type Model, type ValueType } from '../model/types';
 import { EntityPicker, type Choice } from './EntityPicker';
 import { CommitInput, CommitTextarea } from './fields';
 import { IriCell } from './Iri';
@@ -180,7 +180,7 @@ function FieldControl({ model, entity, field, values, names }: { model: Model; e
     );
   } else if (field.bind === 'range' || field.type === 'choice' || field.type === 'boolean') {
     const options: { id: string; label: string }[] =
-      field.bind === 'range' ? DATATYPES.map((d) => ({ id: d.id, label: `${d.label} (${d.id})` })) : field.type === 'boolean' ? [{ id: 'true', label: 'Yes' }, { id: 'false', label: 'No' }] : (field.options ?? []).map((o) => ({ id: o, label: o }));
+      field.bind === 'range' ? [...DATATYPES.map((d) => ({ id: d.id, label: `${d.label} (${d.id})` })), ...model.datatypes.map((d) => ({ id: ENUM_RANGE + d.id, label: `${d.name} (enumerated)` }))] : field.type === 'boolean' ? [{ id: 'true', label: 'Yes' }, { id: 'false', label: 'No' }] : (field.options ?? []).map((o) => ({ id: o, label: o }));
     const current = options.find((o) => o.id.toLowerCase() === first.toLowerCase())?.id ?? first;
     control = (
       <select aria-label={label} value={current} disabled={locked} aria-invalid={!!stale} onChange={(e) => one(e.target.value)}>

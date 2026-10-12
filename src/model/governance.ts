@@ -1,7 +1,7 @@
 import { standardAnnotation } from './annotations';
 import { expandIri, isAbsoluteIri } from './prefixes';
 import { objectProperties, propKey } from './props';
-import { DATATYPES, META_GROUPS, uid, type EntityKind, type ExtraField, type GovernanceConfig, type MetaField, type Model, type Term, type ValueType } from './types';
+import { DATATYPES, ENUM_RANGE, META_GROUPS, uid, type EntityKind, type ExtraField, type GovernanceConfig, type MetaField, type Model, type Term, type ValueType } from './types';
 
 /**
  * Governance and catalogue metadata: who owns an entity, how sensitive it is, where its data
@@ -262,7 +262,7 @@ export function checkValues(f: MetaField, values: MetaValue[]): string | undefin
   if (f.bind === 'type' || f.bind === 'validation') return `${f.label} is not set here.`;
   if (!f.multiple && values.length > 1) return `${f.label} takes one value.`;
   if (f.bind === 'name' && !values.some((v) => v.value.trim())) return 'An entity needs a name.';
-  if (f.bind === 'range') return values.every((v) => DATATYPES.some((d) => d.id === v.value)) ? undefined : 'That is not a datatype the app knows.';
+  if (f.bind === 'range') return values.every((v) => DATATYPES.some((d) => d.id === v.value) || v.value.startsWith(ENUM_RANGE)) ? undefined : 'That is not a datatype the app knows.';
   if (f.bind === 'synonyms' && values.some((v) => v.value.includes(','))) return 'An alternative label cannot contain a comma: the labels are kept as a list separated by commas.';
   for (const v of values) {
     const problem = checkValue(f, v);

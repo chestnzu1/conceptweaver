@@ -46,3 +46,45 @@ export function edgeLabelsOf(meaning: Model): Map<string, string> {
   labels.set(meaning, out);
   return out;
 }
+
+/**
+ * A line on the canvas that is no relationship of the model: it is drawn from something else the
+ * model says. Either a class membership the reasoner worked out, or an individual that a class
+ * lists as one of its members.
+ */
+export interface DerivedEdge {
+  id: string;
+  from: string;
+  to: string;
+  kind: 'inferred' | 'oneOf';
+  /** What it rests on, in words. */
+  because: string;
+}
+
+/**
+ * Enumeration membership: for each class that is defined as a list of individuals, a line from
+ * the class to each one it lists. It is a picture of the owl:oneOf class expression and nothing
+ * more: no such triple is in the model, and it does not say the individual has the class as its type.
+ */
+export function enumerationEdges(model: Model): DerivedEdge[] {
+  const ids = new Set(model.terms.map((t) => t.id));
+  const out: DerivedEdge[] = [];
+  for (const c of model.terms) {
+    if (c.type !== 'concept' || !c.oneOf) continue;
+    for (const m of c.oneOf) if (ids.has(m) && m !== c.id) out.push({ id: `oneof:${c.id}|${m}`, from: c.id, to: m, kind: 'oneOf', because: `“${c.name || 'Unnamed'}” is defined as an enumeration that lists it (owl:oneOf).` });
+  }
+  return out;
+}
+
+export const ONE_OF_LABEL = 'one of';
+
+/**
+ * The inferred class memberships that say something the lines of the enumerations do not. What a
+ * class lists are its instances, so the reasoner gives each member as one; where the line of the
+ * enumeration is drawn already, a second line between the same two would only repeat it.
+ */
+export function beyondEnumerations<T extends { from: string; to: string }>(inferred: T[], listed: DerivedEdge[]): T[] {
+  if (!inferred.length || !listed.length) return inferred;
+  const drawn = new Set(listed.map((e) => `${e.to}|${e.from}`));
+  return inferred.filter((x) => !drawn.has(`${x.from}|${x.to}`));
+}

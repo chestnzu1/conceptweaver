@@ -1,5 +1,5 @@
 import { compactIri } from './prefixes';
-import type { Model, Term, TermType } from './types';
+import { ENUM_RANGE, type Model, type Term, type TermType } from './types';
 
 /**
  * How the graph is drawn: shapes, colours, line styles. None of it is part of the ontology. It is
@@ -58,7 +58,7 @@ export type NodeType = (typeof NODE_TYPES)[number];
 export const NODE_TYPE_LABEL: Record<NodeType, string> = { class: 'Class', individual: 'Individual', dataProperty: 'Datatype property' };
 
 /** The kinds of relationship that are drawn as edges. Object properties and restrictions are edges here, not nodes. */
-export const EDGE_TYPES = ['subClassOf', 'type', 'restriction', 'objectProperty', 'dataProperty', 'plain', 'subPropertyOf', 'equivalentClass', 'disjointWith', 'domain', 'range', 'standard', 'inferred'] as const;
+export const EDGE_TYPES = ['subClassOf', 'type', 'restriction', 'objectProperty', 'dataProperty', 'plain', 'subPropertyOf', 'equivalentClass', 'disjointWith', 'domain', 'range', 'standard', 'oneOf', 'inferred'] as const;
 export type EdgeType = (typeof EDGE_TYPES)[number];
 export const EDGE_TYPE_LABEL: Record<EdgeType, string> = {
   subClassOf: 'Is a (rdfs:subClassOf)',
@@ -73,6 +73,7 @@ export const EDGE_TYPE_LABEL: Record<EdgeType, string> = {
   domain: 'rdfs:domain',
   range: 'rdfs:range',
   standard: 'Other standard property',
+  oneOf: 'Enumeration membership (owl:oneOf)',
   inferred: 'Inferred Is Instance Of',
 };
 
@@ -365,6 +366,7 @@ interface Look {
   fontSize?: number;
   fontWeight?: number;
   text?: string;
+  datatype?: string;
 }
 
 /**
@@ -374,7 +376,8 @@ interface Look {
  */
 export function nodeLookFor(model: Model): ((t: Pick<Term, 'name' | 'type' | 'range'>) => Look | undefined) | null {
   const style = model.style;
-  if (!Object.keys(style.nodeTypes).length && !Object.keys(style.nodes).length) return null;
+  const enums = model.datatypes;
+  if (!Object.keys(style.nodeTypes).length && !Object.keys(style.nodes).length && !enums.length) return null;
   const byTerm = new WeakMap<object, Look | null>();
   return (sized) => {
     const hit = byTerm.get(sized);
@@ -382,8 +385,12 @@ export function nodeLookFor(model: Model): ((t: Pick<Term, 'name' | 'type' | 'ra
     const t = sized as Term;
     const ns = resolveNode(style, nodeTypeOf(model.mode, t.type), t);
     const text = ns.label && ns.label !== 'name' ? labelText(model, t, ns.label) : undefined;
+    // A data property whose values are an enumerated datatype shows that datatype's name.
+    const datatype = t.type === 'property' && t.range?.startsWith(ENUM_RANGE) ? enums.find((d) => d.id === t.range!.slice(ENUM_RANGE.length))?.name : undefined;
     const look: Look | null =
-      ns.shape || ns.width || ns.height || ns.fontSize || ns.fontWeight || text !== undefined ? { shape: ns.shape, width: ns.width, height: ns.height, fontSize: ns.fontSize, fontWeight: ns.fontWeight, ...(text !== undefined ? { text } : {}) } : null;
+      ns.shape || ns.width || ns.height || ns.fontSize || ns.fontWeight || text !== undefined || datatype
+        ? { shape: ns.shape, width: ns.width, height: ns.height, fontSize: ns.fontSize, fontWeight: ns.fontWeight, ...(text !== undefined ? { text } : {}), ...(datatype ? { datatype } : {}) }
+        : null;
     byTerm.set(sized, look);
     return look ?? undefined;
   };

@@ -1,3 +1,4 @@
+import { enumerationEdges } from './edgeKinds';
 import { compactIri } from './prefixes';
 import { objectProperties, propKey } from './props';
 import type { Model, Relation } from './types';
@@ -64,6 +65,7 @@ interface Index {
 }
 
 const LABELS: Record<string, string> = {
+  'owl:oneOf': 'Enumeration membership (owl:oneOf)',
   restriction: 'Restrictions (object properties)',
   data: 'Data properties (has)',
   fact: 'Facts between individuals',
@@ -108,8 +110,16 @@ function buildIndex(model: Model): Index {
     push(index.out, r.from, { rel: r.id, other: r.to, type: t });
     push(index.in, r.to, { rel: r.id, other: r.from, type: t });
   }
+  // A class that is an enumeration leads to the individuals it lists, though no relationship says so:
+  // the canvas draws a line for each, and the subgraph follows those lines too.
+  for (const e of enumerationEdges(m)) {
+    index.type.set(e.id, 'owl:oneOf');
+    counts.set('owl:oneOf', (counts.get('owl:oneOf') ?? 0) + 1);
+    push(index.out, e.from, { rel: e.id, other: e.to, type: 'owl:oneOf' });
+    push(index.in, e.to, { rel: e.id, other: e.from, type: 'owl:oneOf' });
+  }
   // Hierarchy first, then the app's own kinds, then standard properties by name.
-  const order = ['rdfs:subClassOf', 'skos:broader', 'rdf:type', 'rdfs:subPropertyOf', 'restriction', 'data', 'fact', 'plain'];
+  const order = ['rdfs:subClassOf', 'skos:broader', 'rdf:type', 'owl:oneOf', 'rdfs:subPropertyOf', 'restriction', 'data', 'fact', 'plain'];
   index.types = [...counts]
     .map(([key, count]) => ({ key, label: LABELS[key] ?? key, count }))
     .sort((x, y) => (order.indexOf(x.key) + 1 || 99) - (order.indexOf(y.key) + 1 || 99) || x.key.localeCompare(y.key));

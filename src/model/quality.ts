@@ -1,10 +1,12 @@
 import { runChecks, type Severity } from './checks';
+import { literalText, usersOf } from './datatypes';
 import { metaProblems } from './governance';
 import { baseIriOf } from './iri';
+import { validateLiteral } from './literals';
 import { isAbsoluteIri, STANDARD } from './prefixes';
 import { assertedSuperclasses, objectProperties, propKey, propLinks } from './props';
 import { shapeReferences } from './shapes';
-import { PROP_LINKS, isLang, type Model, type QualityConfig } from './types';
+import { DATATYPES, PROP_LINKS, isLang, type Model, type QualityConfig, type Term } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -13,7 +15,7 @@ import { resolveModel } from './vocab';
  * ontology is wrong: a class without a definition, or a property without a range, is valid OWL.
  */
 
-export type RuleGroup = 'Documentation' | 'Structure' | 'IRIs and namespaces' | 'Modelling practice' | 'Governance' | 'SKOS integrity';
+export type RuleGroup = 'Documentation' | 'Structure' | 'IRIs and namespaces' | 'Modelling practice' | 'Enumerations' | 'Governance' | 'SKOS integrity';
 
 export interface QualityRule {
   id: string;
@@ -55,6 +57,12 @@ export const QUALITY_RULES: QualityRule[] = [
   { id: 'unlabelled-relationship', group: 'Modelling practice', label: 'Relationship without a label', about: 'A relationship that does not say what it means.', severity: 'warning', default: true },
   { id: 'standard-property-misuse', group: 'Modelling practice', label: 'Standard property between the wrong kinds', about: 'An RDFS or OWL property used between kinds of entity it is not meant for.', severity: 'warning', default: true },
   { id: 'invalid-cardinality', group: 'Modelling practice', label: 'Cardinality that cannot be read', about: 'A cardinality on a relationship that is not of the form 1, 0..1, 1..*.', severity: 'warning', default: true },
+
+  { id: 'enumeration-empty', group: 'Enumerations', label: 'Enumeration without members', about: 'A class defined as an enumeration that lists no individual yet, or an enumerated datatype without values. Nothing is written for such a definition until it lists something.', severity: 'warning', default: true },
+  { id: 'enumeration-member', group: 'Enumerations', label: 'Member that is not one individual', about: 'An enumeration (owl:oneOf) lists individuals. Something else on the list, something that is no longer in the model, or two members with one IRI, is not what the list is meant to say.', severity: 'warning', default: true },
+  { id: 'enumeration-value', group: 'Enumerations', label: 'Value that is not a literal of its datatype', about: 'A value of an enumerated datatype that is not written the way the datatype it claims is written, such as "ninety" as an integer, or that is listed twice.', severity: 'warning', default: true },
+  { id: 'enumeration-unsupported', group: 'Enumerations', label: 'owl:oneOf the editor does not take', about: 'An owl:oneOf that is not, by itself, the definition of a class or the range of a data property: one inside another expression, a list with something other than named individuals or literals in it, or a list that is not well formed. It is kept as it was read and exported with the entity (of a list that is not well formed, the part that could be followed), but it is not shown as an enumeration and the reasoner does not read it.', severity: 'info', default: true },
+  { id: 'enumeration-distinct', group: 'Enumerations', label: 'Members not declared different', about: 'OWL does not take two names to mean two individuals. Unless its members are declared all different, an enumeration of three may have fewer than three members. Often that is fine; switch this on to review where it is left open.', severity: 'info', default: false },
 
   { id: 'required-metadata', group: 'Governance', label: 'Required metadata missing', about: 'An entity without a value for a metadata field that is marked as required for its kind. Which fields are required is set under Entities, Governance & Metadata; it is a rule of this model, not of RDF or OWL.', severity: 'warning', default: true },
   { id: 'metadata-value', group: 'Governance', label: 'Metadata value of the wrong kind', about: 'A metadata value that is not what its field takes: text where a date or a number is expected, a value outside the controlled vocabulary, several values where one is allowed.', severity: 'warning', default: true },
@@ -325,6 +333,76 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     for (const r of resolveModel(model).relations) {
       if (r.kind === 'association' && !r.predicate && byId.get(r.to)?.type === 'property' && byId.get(r.from)?.type === 'concept') {
         add('property-kind', `${q(name(r.from))} is linked to the data property ${q(name(r.to))} by an ordinary relationship${r.label.trim() ? ` ${q(r.label.trim())}` : ''}. To say the class has the property, the relationship should be of the kind “Has data property”.`, { rels: [r.id] });
+      }
+    }
+  }
+
+  // ---- enumerations
+  if (!skos) {
+    const kindOf = (t: Term) => (t.type === 'concept' ? 'class' : t.type === 'property' ? 'data property' : 'individual');
+    for (const c of model.terms) {
+      for (const a of c.axioms ?? []) {
+        if (!/\bowl:oneOf\b/.test(a)) continue;
+        add('enumeration-unsupported', `${q(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${a.length > 140 ? a.slice(0, 140) + '…' : a}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is. It is listed with the entity under Other asserted expressions.' });
+      }
+      if (c.type !== 'concept' || !c.oneOf) continue;
+      const here = c.oneOf.map((id) => byId.get(id)).filter((t): t is Term => !!t);
+      const drop = (ids: Set<string>) => (m: Model) => ({ ...m, terms: m.terms.map((t) => (t.id === c.id && t.oneOf ? { ...t, oneOf: t.oneOf.filter((id) => !ids.has(id)) } : t)) });
+      if (!here.length) add('enumeration-empty', `${q(c.name)} is defined as an enumeration but lists no individual yet. Until it does, it is exported as an ordinary class.`, { terms: [c.id], suggestion: 'Open the class and add its members under Class definition, or make it an ordinary class again there.' });
+      const gone = c.oneOf.filter((id) => !byId.has(id));
+      if (gone.length) {
+        add('enumeration-member', `${q(c.name)} lists ${gone.length === 1 ? 'an individual that is' : `${gone.length} individuals that are`} no longer in the model.`, {
+          terms: [c.id],
+          fix: { label: 'Take off the list', preview: `Removes ${gone.length === 1 ? 'the entry' : `the ${gone.length} entries`} that no longer ${gone.length === 1 ? 'refers' : 'refer'} to anything from the members of ${q(c.name)}. Nothing that is exported changes.`, apply: drop(new Set(gone)) },
+        });
+      }
+      for (const t of here) {
+        if (t.type === 'instance') continue;
+        add('enumeration-member', `${q(c.name)} lists ${q(t.name)}, which is a ${kindOf(t)}, not an individual.`, {
+          terms: [c.id, t.id],
+          explanation: 'An enumeration (owl:oneOf) lists individuals. It is exported with this member as it is, but the reasoner leaves the whole enumeration alone until the list holds individuals only.',
+          fix: { label: 'Take it off the list', preview: `Removes ${q(t.name)} from the members of ${q(c.name)}. ${q(t.name)} itself stays in the model.`, apply: drop(new Set([t.id])) },
+        });
+      }
+      const byIri = new Map<string, Term[]>();
+      for (const t of here) if (t.iri) byIri.set(t.iri, [...(byIri.get(t.iri) ?? []), t]);
+      for (const [iri, twins] of byIri) {
+        if (twins.length < 2) continue;
+        add('enumeration-member', `${q(c.name)} lists ${twins.map((t) => q(t.name)).join(' and ')}, which share the IRI <${iri}>. In RDF that is one individual, listed ${twins.length === 2 ? 'twice' : `${twins.length} times`}.`, {
+          terms: [c.id, ...twins.map((t) => t.id)],
+          fix: { label: 'Keep the first only', preview: `Removes ${twins.slice(1).map((t) => q(t.name)).join(', ')} from the members of ${q(c.name)}, leaving ${q(twins[0].name)}. The individuals themselves stay in the model.`, apply: drop(new Set(twins.slice(1).map((t) => t.id))) },
+        });
+      }
+      const individuals = here.filter((t) => t.type === 'instance');
+      if (!c.allDifferent && individuals.length > 1) {
+        add('enumeration-distinct', `The ${individuals.length} members of ${q(c.name)} are not declared different, so two of them may be one and the same individual.`, {
+          terms: [c.id],
+          fix: { label: 'Declare them all different', preview: `States that ${individuals.map((t) => q(t.name)).join(', ')} are all different individuals (owl:AllDifferent). Only do this if they are.`, apply: (m) => ({ ...m, terms: m.terms.map((t) => (t.id === c.id && t.oneOf ? { ...t, allDifferent: true } : t)) }) },
+        });
+      }
+    }
+    for (const d of model.datatypes) {
+      const users = usersOf(model, d.id);
+      const about = users.length ? { terms: users.map((t) => t.id) } : { model: true };
+      const of = users.length ? `, the range of ${users.map((t) => q(t.name)).join(', ')},` : '';
+      if (!d.values.length) {
+        add('enumeration-empty', `The enumerated datatype ${q(d.name)}${of} has no values yet. ${d.anonymous ? 'Nothing is written for it until it has one.' : 'Until it has one, it is exported as a datatype without a definition.'}`, { ...about, suggestion: 'Select a data property that has it as its range and add the values there.' });
+      }
+      const seen = new Set<string>();
+      const twice = new Set<number>();
+      d.values.forEach((v, i) => {
+        const key = JSON.stringify([v.value, v.dt ?? '', v.lang ?? '']);
+        if (seen.has(key)) twice.add(i);
+        seen.add(key);
+        // A datatype the app does not know the shape of cannot be checked, and is taken as it is.
+        const wrong = v.dt && v.lang ? 'has a language and a datatype; a literal has one or the other' : !v.dt || DATATYPES.some((x) => x.id === v.dt) ? validateLiteral(v.value, v.dt) : undefined;
+        if (wrong) add('enumeration-value', `${literalText(v)}, one of the values of ${q(d.name)}, is not a literal that can be written: ${wrong.replace(/^Enter a value\.$/, 'it is empty.')}`, { ...about, suggestion: 'Remove the value from the datatype and add it again as it should be.' });
+      });
+      if (twice.size) {
+        add('enumeration-value', `${q(d.name)} lists ${[...twice].map((i) => literalText(d.values[i])).join(', ')} more than once.`, {
+          ...about,
+          fix: { label: 'Keep one of each', preview: `Removes the repeated ${twice.size === 1 ? 'value' : 'values'} from ${q(d.name)}. What the datatype allows does not change.`, apply: (m) => ({ ...m, datatypes: m.datatypes.map((x) => (x.id === d.id ? { ...x, values: x.values.filter((_, i) => !twice.has(i)) } : x)) }) },
+        });
       }
     }
   }

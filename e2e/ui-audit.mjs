@@ -141,6 +141,29 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     report('SPARQL', await page.evaluate(measure));
     await tab('Vocabulary');
     report('Vocabulary', await page.evaluate(measure));
+    // The editors of an enumeration class and of an enumerated datatype, each with something in it.
+    await tab('Graph');
+    const node = (name) => page.locator('.node', { has: page.locator('text', { hasText: new RegExp('^' + name) }) }).first();
+    const inspector = page.locator('.inspector');
+    await node('Genre').locator('.node-box').click();
+    const definition = inspector.locator('[data-section="class-definition"]');
+    await definition.getByLabel('Class definition').selectOption('oneOf');
+    for (const name of ['Drama', 'Comedy']) {
+      await definition.locator('.chip-add').click();
+      await definition.locator('input[type=search]').fill(name);
+      await definition.locator('.subgraph-found button').first().dispatchEvent('pointerdown');
+    }
+    report('Enumeration class', await page.evaluate(measure));
+    await node('Running time').locator('.node-box').click();
+    await inspector.getByLabel('Datatype', { exact: true }).selectOption({ label: 'New enumerated datatype…' });
+    const datatype = inspector.locator('.enum-datatype');
+    for (const value of ['short', 'feature']) {
+      await datatype.getByLabel('New value', { exact: true }).fill(value);
+      await datatype.getByRole('button', { name: 'Add value' }).click();
+    }
+    await datatype.getByLabel('New value', { exact: true }).fill('short');
+    await datatype.getByRole('button', { name: 'Add value' }).click();
+    report('Enumerated datatype', await page.evaluate(measure));
     await page.close();
   }
 }

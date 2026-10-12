@@ -87,6 +87,34 @@ export interface DataValue {
   dt?: string;
 }
 
+/** One of the values of an enumerated datatype: a literal, with its datatype or its language where it has one. */
+export interface EnumLiteral {
+  value: string;
+  /** The datatype it is written with ("xsd:integer"). Left out, it is plain text. */
+  dt?: string;
+  /** A language tag, which only text can have. */
+  lang?: string;
+}
+
+/**
+ * A datatype defined by listing its values: StatusCode is exactly "active", "inactive",
+ * "pending" (a datatype equivalent to an owl:oneOf of literals). It is a datatype and nothing
+ * else: not a class, not a term on the canvas, and its values are literals, not individuals.
+ */
+export interface EnumDatatype {
+  id: string;
+  name: string;
+  description: string;
+  values: EnumLiteral[];
+  /** Full IRI: kept from an import, or made once from the name. */
+  iri?: string;
+  /** Written in place wherever it is the range of a property, with no name of its own, as some files have it. */
+  anonymous?: boolean;
+}
+
+/** How a data property refers to an enumerated datatype as its range. */
+export const ENUM_RANGE = 'enum:';
+
 export const COLORS = ['', 'blue', 'green', 'amber', 'red', 'purple', 'teal', 'pink'] as const;
 
 export interface ExtraField {
@@ -117,7 +145,10 @@ export interface Term {
   fields: ExtraField[];
   /** Full IRI, kept when the term came from an RDF import. */
   iri?: string;
-  /** For a data property: the datatype of its values, e.g. "xsd:date". */
+  /**
+   * For a data property: the datatype of its values. Either one of the standard ones, by name
+   * ("xsd:date"), or an enumerated datatype of the model, as "enum:" and its id (see EnumDatatype).
+   */
   range?: string;
   /** For a data property: the classes that can have it, when set by hand. Otherwise the classes it is attached to. */
   domain?: string[];
@@ -131,6 +162,17 @@ export interface Term {
   functional?: boolean;
   /** For an individual: the literal values it has for data properties. */
   values?: DataValue[];
+  /**
+   * For a class that is defined by listing its members: the individuals it consists of, by term
+   * id (owl:equivalentClass [ owl:oneOf ( … ) ]). Present, even when empty, the class is an
+   * enumeration; absent, it is an ordinary class. Either way it is a class and nothing else.
+   */
+  oneOf?: string[];
+  /**
+   * For an enumeration: its members are stated to be different individuals (owl:AllDifferent).
+   * Unless this is set nothing is assumed about that: two members may be one and the same thing.
+   */
+  allDifferent?: boolean;
   /**
    * Defined in another ontology and only referred to here, under its own IRI: the id of that
    * ontology (see Model.externals), or '' if it is not known. Its definition is not part of
@@ -217,6 +259,8 @@ export interface Model {
   governance: GovernanceConfig;
   /** How the graph is drawn. Like the positions of the terms it is no part of the ontology and is never written to RDF. */
   style: GraphStyle;
+  /** The enumerated datatypes of the model: datatypes defined by listing their values. */
+  datatypes: EnumDatatype[];
 }
 
 /** The kinds of entity a metadata field can apply to. The last two are metadata profiles an entity is given. */
@@ -388,7 +432,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle() };
+  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), datatypes: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -501,6 +545,19 @@ export function normalizeModel(raw: unknown): Model {
   if (o.terms.length > MAX_TERMS || o.relations.length > MAX_RELATIONS) {
     throw new Error('Model is too large.');
   }
+  // The enumerated datatypes come first: a data property may name one as its range.
+  const datatypes: EnumDatatype[] = [];
+  for (const d of (Array.isArray(o.datatypes) ? o.datatypes : []) as Record<string, unknown>[]) {
+    if (!d || typeof d !== 'object' || !str(d.id) || datatypes.some((x) => x.id === str(d.id))) continue;
+    const values: EnumLiteral[] = [];
+    for (const v of (Array.isArray(d.values) ? d.values : []) as Record<string, unknown>[]) {
+      if (!v || typeof v !== 'object' || typeof v.value !== 'string') continue;
+      const lit: EnumLiteral = { value: v.value, ...(str(v.dt) ? { dt: str(v.dt) } : {}), ...(LANG.test(str(v.lang)) ? { lang: str(v.lang).toLowerCase() } : {}) };
+      if (!values.some((x) => x.value === lit.value && (x.dt ?? '') === (lit.dt ?? '') && (x.lang ?? '') === (lit.lang ?? ''))) values.push(lit);
+    }
+    datatypes.push({ id: str(d.id), name: str(d.name), description: str(d.description), values, ...(str(d.iri) ? { iri: str(d.iri) } : {}), ...(d.anonymous === true ? { anonymous: true } : {}) });
+  }
+  const knownRange = (range: string) => DATATYPES.some((x) => x.id === range) || (range.startsWith(ENUM_RANGE) && datatypes.some((x) => x.id === range.slice(ENUM_RANGE.length)));
   const ids = new Set<string>();
   const terms: Term[] = [];
   for (const t of o.terms as Record<string, unknown>[]) {
@@ -521,7 +578,7 @@ export function normalizeModel(raw: unknown): Model {
       synonyms: str(t.synonyms),
       fields: fieldList(t.fields),
       ...(str(t.iri) ? { iri: str(t.iri) } : {}),
-      ...(DATATYPES.some((d) => d.id === str(t.range)) ? { range: str(t.range) } : {}),
+      ...(knownRange(str(t.range)) ? { range: str(t.range) } : {}),
       ...(Array.isArray(t.axioms) && t.axioms.length ? { axioms: t.axioms.map((a) => str(a)).filter(Boolean) } : {}),
       ...(t.functional === true ? { functional: true } : {}),
       ...(typeof t.external === 'string' ? { external: t.external } : {}),
@@ -535,6 +592,13 @@ export function normalizeModel(raw: unknown): Model {
       .filter((v) => v && typeof v === 'object' && ids.has(str(v.prop)) && str(v.value) !== '')
       .map((v): DataValue => ({ prop: str(v.prop), value: str(v.value), ...(LANG.test(str(v.lang)) ? { lang: str(v.lang).toLowerCase() } : {}), ...(DATATYPES.some((d) => d.id === str(v.dt)) ? { dt: str(v.dt) } : {}) }));
     if (term && values.length) term.values = values;
+  }
+  // An enumeration can only list terms that exist, each once, and not the class itself.
+  for (const t of o.terms as Record<string, unknown>[]) {
+    const term = t && typeof t === 'object' && Array.isArray(t.oneOf) ? terms.find((x) => x.id === str(t.id)) : undefined;
+    if (!term) continue;
+    term.oneOf = [...new Set((t.oneOf as unknown[]).map((x) => str(x)).filter((id) => ids.has(id) && id !== term.id))];
+    if (t.allDifferent === true) term.allDifferent = true;
   }
   // A data property's hand-set domain can only name terms that exist.
   for (const [i, t] of (o.terms as Record<string, unknown>[]).entries()) {
@@ -668,6 +732,7 @@ export function normalizeModel(raw: unknown): Model {
     rejected: Array.isArray(o.rejected) ? [...new Set(o.rejected.map((x) => str(x)).filter(Boolean))] : [],
     governance: normalizeGovernance(o.governance),
     style: normalizeGraphStyle(o.style, new Set(terms.map((t) => t.id)), new Set(relations.map((r) => r.id))),
+    datatypes,
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],
       on: Array.isArray((o.quality as QualityConfig | undefined)?.on) ? [...new Set((o.quality as QualityConfig).on.map((x) => str(x)).filter(Boolean))] : [],

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addIsA, addLink, addValue } from './axioms';
 import { withIris } from './iri';
 import { loadModel, saveModel } from './library';
-import { setRule } from './quality';
+import { QUALITY_RULES, setRule } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
 import { importShapes, newPropertyShape, newShape, shapesToTurtle } from './shapes';
 import { emptyModel, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
@@ -283,7 +283,8 @@ describe('ontology quality', () => {
     expect(rules(n)).not.toContain('root-class');
     expect(rules({ ...n, quality: setRule(n.quality, 'root-class', true) })).toContain('root-class');
     const s = qualityFindings(off).summary;
-    expect(s.rulesOn).toBe(s.rulesTotal - 3);
+    // The one switched off here, and those that are off until asked for.
+    expect(s.rulesOn).toBe(s.rulesTotal - 1 - QUALITY_RULES.filter((r) => !r.default).length);
   });
 
   it('finds redundant superclasses, duplicate statements and questionable IRIs, and removes nothing by itself', () => {
