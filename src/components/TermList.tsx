@@ -4,6 +4,7 @@ import { stable } from '../model/stable';
 import { useStore } from '../model/store';
 import { ancestorsOf, classTree, defaultOpen, matchingClasses, ROOT, treeRows } from '../model/tree';
 import type { Term, TermType } from '../model/types';
+import { Disclosure, Icon } from './Icon';
 
 /** Which classes are expanded. Kept outside the component so that it survives switching views. */
 let remembered: { seq: number; open: Set<string> } | undefined;
@@ -90,10 +91,10 @@ export function TermList() {
             <span>{searching ? `${matches.size} of ${tree.size} match` : `${tree.size} ${skos ? 'concepts' : 'classes'}`}</span>
             <span className="spacer" />
             <button className="mini" title="Expand all" aria-label="Expand all" disabled={searching} onClick={() => setOpen(new Set([ROOT, ...tree.children.keys()]))}>
-              ⊞
+              <Icon name="expandAll" size={14} />
             </button>
             <button className="mini" title="Collapse all" aria-label="Collapse all" disabled={searching} onClick={() => setOpen(new Set([ROOT]))}>
-              ⊟
+              <Icon name="collapseAll" size={14} />
             </button>
           </div>
           <ul className="class-tree" role="tree" aria-label={skos ? 'Concept hierarchy' : 'Class hierarchy'}>
@@ -176,7 +177,7 @@ const TreeRowView = memo(
       <li role="treeitem" aria-expanded={hasChildren ? open : undefined} aria-selected={selected} aria-level={depth + 1} className={'tree-line' + (selected ? ' on' : '') + (match ? ' match' : '')} style={{ paddingLeft: 4 + depth * 12 }}>
         {hasChildren ? (
           <button className="chev" aria-label={`${open ? 'Collapse' : 'Expand'} ${name}`} disabled={frozen} onClick={() => onToggle(id)}>
-            {open ? '▾' : '▸'}
+            <Disclosure open={open} />
           </button>
         ) : (
           <span className="chev" />

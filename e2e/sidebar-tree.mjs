@@ -19,7 +19,7 @@ const side = page.locator('.term-list');
 const tree = () => side.locator('.tree-line').evaluateAll((rows) => rows.map((r) => `${'  '.repeat(Number(r.getAttribute('aria-level')) - 1)}${r.getAttribute('aria-expanded') === 'true' ? '▼ ' : r.getAttribute('aria-expanded') === 'false' ? '▶ ' : '  '}${r.querySelector('.name, .label.root').textContent}`).join('\n'));
 const line = (name) => side.locator('.tree-line', { has: page.locator('.name', { hasText: new RegExp('^' + name + '$') }) });
 const tab = (name) => page.locator('.header').getByRole('tab', { name, exact: name === 'RDF' }).click();
-const file = async (item) => { await page.getByRole('button', { name: 'File ▾' }).click(); await page.getByRole('menuitem', { name: item }).click(); };
+const file = async (item) => { await page.getByRole('button', { name: 'File', exact: true }).click(); await page.getByRole('menuitem', { name: item }).click(); };
 const bulkRel = async (text) => { await page.getByRole('button', { name: 'Bulk add' }).click(); await page.getByRole('tab', { name: '2. Relationships' }).click(); await page.locator('.dialog textarea').fill(text); await page.getByRole('button', { name: 'Add relationships' }).click(); };
 
 await page.goto('http://localhost:5181/');

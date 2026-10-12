@@ -178,14 +178,17 @@ export function EntitiesView() {
             </button>
           ))}
         </div>
+      </div>
+      {/* What the tab is for, with its one action beside it: there the action fits however narrow the view is. */}
+      <div className="view-sub">
+        <p className="muted">
+          {hint[tab]}
+          {q && tab !== 'governance' && <strong> Filtered by “{filter.trim()}”: {total} shown.</strong>}
+        </p>
         <button className="btn primary" disabled={add[tab].disabled} onClick={add[tab].run}>
           {add[tab].label}
         </button>
       </div>
-      <p className="muted note">
-        {hint[tab]}
-        {q && tab !== 'governance' && <strong> Filtered by “{filter.trim()}”: {total} shown.</strong>}
-      </p>
       {tab === 'governance' && <GovernanceView configuring={configuring} />}
       <div className="table-wrap" hidden={tab === 'governance'}>
         {tab === 'concept' && (

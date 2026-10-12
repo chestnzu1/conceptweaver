@@ -220,7 +220,7 @@ await page.getByRole('button', { name: 'Save', exact: true }).first().click();
 await page.locator('.dialog.saveas input').fill('Validation test');
 await page.locator('.dialog.saveas').getByRole('button', { name: /^Save/ }).click();
 await page.waitForFunction(() => document.querySelector('.header .save-state')?.textContent === 'Saved');
-await page.getByRole('button', { name: 'File ▾' }).click();
+await page.getByRole('button', { name: 'File', exact: true }).click();
 await page.getByRole('menuitem', { name: 'Load the SKOS example' }).click();
 await tab(/^Validation/);
 await settled();

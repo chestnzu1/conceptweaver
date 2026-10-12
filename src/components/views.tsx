@@ -3,6 +3,7 @@ import { parseOutline, parseRelations, parseTerms } from '../model/bulk';
 import { useStore } from '../model/store';
 import type { Model, Term } from '../model/types';
 import { resolveModel } from '../model/vocab';
+import { Disclosure } from './Icon';
 
 // -------------------------------------------------------------- hierarchy
 
@@ -86,7 +87,7 @@ export function HierarchyView() {
         <div className="tree-row">
           {kids.length ? (
             <button className="twisty" aria-expanded={open} aria-label={open ? 'Collapse' : 'Expand'} onClick={() => toggle(t.id)}>
-              {open ? '▾' : '▸'}
+              <Disclosure open={open} />
             </button>
           ) : (
             <span className="twisty" />

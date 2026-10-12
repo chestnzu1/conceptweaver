@@ -28,6 +28,7 @@ import { DATATYPES, type PropLink, type Term, type TermType } from '../model/typ
 import { EntityPicker, type Choice } from './EntityPicker';
 import { IriCell } from './Iri';
 import { CommitInput } from './fields';
+import { Disclosure, Icon } from './Icon';
 
 /**
  * The parts of the entity editor that state OWL axioms about the selected entity. What each part
@@ -60,7 +61,7 @@ export function EditorHead({ kind }: { kind: string }) {
         </button>
       )}
       <button className="btn icon ghost" aria-pressed={wide} title={wide ? 'Narrow the editor' : 'Widen the editor'} aria-label={wide ? 'Narrow the editor' : 'Widen the editor'} onClick={() => st().setEditorWide(!wide)}>
-        {wide ? '⇥' : '⇤'}
+        <Icon name={wide ? 'narrow' : 'widen'} />
       </button>
     </div>
   );
@@ -79,7 +80,7 @@ export function Section({ id, title, count, children, inferred = false }: { id: 
     <section className={'editor-section' + (inferred ? ' inferred' : '')} data-section={id}>
       <h3>
         <button className="section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <span aria-hidden="true">{open ? '▾' : '▸'}</span> {title}
+          <Disclosure open={open} /> {title}
           {count !== undefined && ` (${count})`}
         </button>
         {inferred && <span className="tag auto" title="Worked out by the reasoner from what is asserted. Never stored in the model or exported.">read-only</span>}

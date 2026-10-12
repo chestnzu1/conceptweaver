@@ -6,6 +6,7 @@ import { stable } from '../model/stable';
 import { useStore } from '../model/store';
 import { categoryLabel, isStale, MODEL_DATA, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE, type Category, type EntityType, type Finding, type Level, type Scope } from '../model/validation';
 import { ShapesPanel } from './Shapes';
+import { Disclosure } from './Icon';
 
 /**
  * The validation workbench: three kinds of check, run on request, with their results in one
@@ -385,7 +386,7 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
                   </td>
                   <td className="row-actions">
                     {f.fix && <span className="tag auto">fix available</span>}
-                    <span aria-hidden="true">{open === f.id ? '▾' : '▸'}</span>
+                    <Disclosure open={open === f.id} />
                   </td>
                 </tr>
                 {open === f.id && (

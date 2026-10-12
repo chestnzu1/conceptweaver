@@ -4,6 +4,7 @@ import { useStore } from '../model/store';
 import { addIsA } from '../model/axioms';
 import { EntityPicker, type Choice } from './EntityPicker';
 import type { Term } from '../model/types';
+import { Icon } from './Icon';
 
 /**
  * An entity's full IRI, read-only. The namespace gives way when space is short so that the
@@ -43,7 +44,7 @@ export function IriCell({ iri, of, full = false }: { iri?: string; of: string; f
         </>
       )}
       <button className="btn icon ghost iri-copy" title="Copy the full IRI" aria-label={`Copy the IRI of ${of}`} onClick={copy}>
-        ⧉
+        <Icon name="copy" size={13} />
       </button>
     </span>
   );

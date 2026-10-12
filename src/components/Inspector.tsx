@@ -11,6 +11,7 @@ import { SuperclassEditor } from './Iri';
 import { AnonymousExpressions, CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
+import { Disclosure } from './Icon';
 
 export function Inspector() {
   const model = useStore((s) => s.model);
@@ -534,7 +535,7 @@ function InferredRestrictionsPanel({ term }: { term: Term }) {
     <>
       <h3>
         <button className="section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <span aria-hidden="true">{open ? '▾' : '▸'}</span> Inferred restrictions ({inferred.status === 'inconsistent' ? '—' : count})
+          <Disclosure open={open} /> Inferred restrictions ({inferred.status === 'inconsistent' ? '—' : count})
         </button>
       </h3>
       {open && (

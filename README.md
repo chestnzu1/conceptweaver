@@ -11,6 +11,7 @@ pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
 node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
 ## What it does

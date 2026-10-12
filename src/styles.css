@@ -7,16 +7,18 @@
   --line: #e2dfd5;
   --line-strong: #c9c5b8;
   --ink: #1d2126;
-  --ink-2: #5a6068;
-  --ink-3: #8a8f96;
+  --ink-2: #4a5058;
+  --ink-3: #636971;
   --accent: #0f766e;
   --accent-soft: #d9f0ec;
   --on-accent: #ffffff;
   --danger: #b42318;
-  --warn: #a15c07;
+  --warn: #8f5106;
   --info: #3b5b8c;
   --edge: #6b7280;
   --shadow: 0 6px 24px rgba(30, 30, 20, 0.12), 0 1px 3px rgba(30, 30, 20, 0.08);
+  /* How long a control takes to answer the pointer: long enough to be seen, short enough not to be waited for. */
+  --quick: 120ms;
 
   --nc-default-fill: #ffffff;
   --nc-default-stroke: #9aa0a8;
@@ -50,8 +52,8 @@
   --line: #2c3137;
   --line-strong: #414850;
   --ink: #e8eaed;
-  --ink-2: #a9b0b8;
-  --ink-3: #7b838c;
+  --ink-2: #bcc3ca;
+  --ink-3: #99a1aa;
   --accent: #2dd4bf;
   --accent-soft: #123a36;
   --on-accent: #06211e;
@@ -110,6 +112,22 @@ textarea {
   outline-offset: 1px;
 }
 
+/* Every text box and dropdown starts from the same look. Written with :where so that it weighs
+   nothing: any rule for a particular place (a table cell, the model name) still has its way. */
+:where(input:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color']), select, textarea) {
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+
+:where(input[type='checkbox'], input[type='radio']) {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -138,6 +156,10 @@ textarea {
 /* ---------------------------------------------------------------- buttons */
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   height: 30px;
   padding: 0 11px;
   border: 1px solid var(--line-strong);
@@ -185,6 +207,7 @@ textarea {
 }
 
 .btn.icon {
+  flex: none;
   width: 30px;
   padding: 0;
   font-size: 16px;
@@ -193,13 +216,51 @@ textarea {
 
 /* ----------------------------------------------------------------- header */
 
+/* Three groups: the model and what is done with it, the views, and the tools. The views take a
+   row of their own, except where the window is wide enough for everything side by side. */
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'doc tools'
+    'views views';
   align-items: center;
-  gap: 8px;
+  gap: 6px 12px;
   padding: 8px 12px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+}
+
+.header-doc,
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-doc {
+  grid-area: doc;
+  flex-wrap: wrap;
+}
+
+.header-tools {
+  grid-area: tools;
+}
+
+.header > .tabs {
+  grid-area: views;
+  justify-self: start;
+  max-width: 100%;
+  margin: 0;
+  overflow-x: auto;
+}
+
+@media (min-width: 1680px) {
+  .header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'doc views tools';
+  }
 }
 
 .brand {
@@ -207,7 +268,9 @@ textarea {
 }
 
 .model-name {
+  flex: 0 1 220px;
   width: 220px;
+  min-width: 110px;
   height: 30px;
   padding: 0 8px;
   border: 1px solid transparent;
@@ -263,7 +326,7 @@ textarea {
   border-radius: 9px;
   background: var(--warn);
   color: #fff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -334,6 +397,7 @@ textarea {
 }
 
 .chip {
+  min-height: 24px;
   padding: 2px 9px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
@@ -698,7 +762,7 @@ textarea {
 
 .edge-card {
   fill: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* Class membership (rdf:type). Asserted: a solid line. Inferred by the reasoner: dotted and
@@ -908,7 +972,7 @@ textarea {
 .menu-heading {
   padding: 6px 10px 2px 26px;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1036,8 +1100,10 @@ td.num {
 }
 
 .twisty {
-  width: 22px;
-  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 5px;
@@ -1055,6 +1121,7 @@ button.twisty:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 26px;
   padding: 3px 8px;
   border: 0;
   border-radius: 6px;
@@ -1077,7 +1144,7 @@ button.twisty:hover {
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1120,6 +1187,7 @@ button.twisty:hover {
 .sev {
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .sev.error {
@@ -1213,7 +1281,11 @@ button.twisty:hover {
   }
 
   .header {
-    overflow-x: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'doc'
+      'tools'
+      'views';
   }
 }
 
@@ -1500,7 +1572,7 @@ button.twisty:hover {
 .results .lang {
   margin-left: 6px;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ask {
@@ -1667,12 +1739,12 @@ button.twisty:hover {
 .lang {
   margin-left: 6px;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .tree-row .add {
   opacity: 0;
-  height: 22px;
+  height: 24px;
   padding: 0 7px;
   font-size: 12px;
 }
@@ -1731,8 +1803,9 @@ button.twisty:hover {
 .chip-x {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 9px;
+  gap: 2px;
+  min-height: 26px;
+  padding: 0 1px 0 9px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: var(--panel-2);
@@ -1740,8 +1813,8 @@ button.twisty:hover {
 }
 
 .chip-x > button:last-child {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -2077,7 +2150,7 @@ td.cell-edit select[aria-label='+'] {
 
 .node .expand text {
   fill: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   pointer-events: none;
 }
@@ -2120,11 +2193,11 @@ td.cell-edit select[aria-label='+'] {
 
 .iri-copy {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   margin-left: 2px;
   font-size: 13px;
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 .iri-none {
@@ -2143,8 +2216,8 @@ td.cell-edit select[aria-label='+'] {
 }
 
 .chip-add {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px dashed var(--line-strong);
   border-radius: 50%;
@@ -2200,7 +2273,7 @@ td.cell-edit select[aria-label='+'] {
   border-radius: 7px;
   background: var(--panel-2);
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11.5px;
+  font-size: 12px;
   overflow-wrap: anywhere;
   user-select: text;
 }
@@ -2286,7 +2359,7 @@ table.prefixes small {
 }
 
 .move-box code {
-  font-size: 11.5px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
@@ -2388,8 +2461,10 @@ table.prefixes small {
 }
 
 .list-count .mini {
-  width: 22px;
-  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 4px;
@@ -2430,15 +2505,17 @@ table.prefixes small {
 }
 
 .tree-line .chev {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -2458,6 +2535,7 @@ table.prefixes small {
   flex: 1;
   min-width: 0;
   width: auto;
+  min-height: 26px;
   padding: 3px 4px;
   border: 0;
   border-radius: 5px;
@@ -2505,12 +2583,6 @@ table.prefixes small {
   text-overflow: clip;
 }
 
-/* The header wraps onto a second line on a narrow window instead of pushing the page sideways. */
-.header {
-  flex-wrap: wrap;
-  row-gap: 6px;
-}
-
 .app {
   overflow: hidden;
 }
@@ -2544,7 +2616,7 @@ table.prefixes small {
 
 .restrictions.inferred code.what {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11.5px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
@@ -2598,11 +2670,15 @@ table.prefixes small {
 
 .editor-head .save-state {
   padding: 1px 7px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .inspector .editor-head .btn {
   width: auto;
+}
+
+.inspector .editor-head .btn.icon {
+  width: 30px;
 }
 
 .editor-section {
@@ -2631,7 +2707,7 @@ table.prefixes small {
 
 code.pred {
   margin-left: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--ink-3);
 }
@@ -2756,7 +2832,7 @@ code.pred {
 .assertions .lang {
   margin-left: 4px;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .inspector .assertions .btn,
@@ -2983,7 +3059,7 @@ code.pred {
   padding: 1px 7px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -3677,17 +3753,12 @@ code.pred {
 }
 
 .gov-profile select,
-.gov-field select,
-.gov-field input,
-.gov-field textarea,
 .gov-new input,
 .gov-new select {
-  padding: 5px 7px;
+  padding: 6px 8px;
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--ink);
-  font: inherit;
+  border-radius: 7px;
+  background: var(--canvas);
 }
 
 .gov-field input[aria-invalid='true'],
@@ -3715,7 +3786,7 @@ code.pred {
 
 .gov-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
   gap: 12px 16px;
   padding: 4px 12px 14px;
 }
@@ -3737,12 +3808,12 @@ code.pred {
 
 .gov-prop {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-3);
 }
 
 .gov-req {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--warn);
   text-decoration: none;
 }
@@ -3801,4 +3872,160 @@ code.pred {
 
 .gov-registry code {
   font-size: 12px;
+}
+
+/* A tick box alone in a cell: big enough to hit, with the cell around it as its margin. */
+.gov-registry input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+
+/* ------------------------------------------------------------ icons and motion */
+
+/* The drawn icons; buttons that hold only an icon are .btn.icon. */
+svg.icon {
+  display: block;
+  flex: none;
+}
+
+/* A control answers the pointer at once but not abruptly: colour and outline ease in. Nothing
+   moves, so there is nothing here to slow down for someone who has asked for less motion. */
+.btn,
+.tabs button,
+.chip,
+.chip-add,
+.chip-x > button,
+.list-count .mini,
+.tree-line .chev,
+.twisty,
+.tree-name,
+.menu-item,
+.model-name,
+.search input,
+.field input,
+.field select,
+.field textarea,
+td input,
+td select {
+  transition:
+    background-color var(--quick) ease-out,
+    border-color var(--quick) ease-out,
+    color var(--quick) ease-out,
+    box-shadow var(--quick) ease-out;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.tabs button:hover:not(.on) {
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+}
+
+.search input:hover,
+.field input:hover:not(:disabled),
+.field select:hover:not(:disabled),
+.field textarea:hover:not(:disabled) {
+  border-color: var(--ink-3);
+}
+
+/* A row says it is under the pointer, which helps to read across a wide table. */
+.view tbody tr:not(.sel):not(.detail):hover > td {
+  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------ view headers */
+
+/* A view never paints over the panels beside it, whatever is in it. What is inside it lays itself
+   out by the room the view has, which depends on the side panels as much as on the window. */
+.view {
+  overflow: hidden;
+  container: view / inline-size;
+}
+
+/* Too narrow for a list and a form side by side: the list goes on top. */
+@container view (max-width: 760px) {
+  .gov {
+    flex-direction: column;
+  }
+
+  .gov-list {
+    flex: 0 0 38%;
+    min-width: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-strong);
+  }
+}
+
+/* The tabs inside a view are a level below the views themselves, and say so by their size.
+   Where they do not fit on one line they wrap rather than run under the side panel. */
+.view-head {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.view-head .tabs {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.view-head .tabs button {
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* What a tab is for, and the one thing to do there. */
+.view-sub {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.view-sub > p {
+  flex: 1;
+  min-width: 0;
+  max-width: 110ch;
+  line-height: 1.45;
+}
+
+.view-sub > .btn {
+  flex: none;
+}
+
+/* Things that open and close are as easy to hit as a button. */
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+}
+
+summary {
+  min-height: 24px;
+  padding-block: 2px;
+  cursor: pointer;
+}
+
+.chip-x > .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
 }
