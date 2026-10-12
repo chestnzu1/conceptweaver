@@ -987,6 +987,47 @@ export function prefixesOf(m: Model): [string, string][] {
 }
 
 /** Full IRI of each term in the exports, mapped back to the term's id. */
+/** What a reasoner entails beyond what the model states, to be written out as triples of their own. */
+export interface Materialized {
+  /** Class memberships: an individual and a class, by term id. */
+  types: { individual: string; class: string }[];
+  /** Relationships between individuals: by term id, with the key of the object property. */
+  facts: { from: string; prop: string; to: string }[];
+  /** Which reasoner worked them out, for saying so in the file. */
+  by: string;
+  /** Anything to add about how far the reasoning went. */
+  notes?: string[];
+  at?: Date;
+}
+
+/**
+ * The ontology as Turtle, followed by assertions a reasoner entails: inferred class memberships
+ * and inferred relationships between individuals, written as the triples that would state them.
+ *
+ * The asserted ontology comes first and is exactly what toTurtle writes. The inferred triples
+ * follow it under a heading that says what they are, each once and none that is already stated.
+ * RDF itself cannot mark a triple as inferred: to whatever reads the file, they are assertions.
+ * So this is something to ask for, not what an export is by default.
+ */
+export function toTurtleWithInferred(m: Model, inferred: Materialized): string {
+  const { ref, propRef } = toRdf(m);
+  const lines = new Set<string>();
+  for (const t of inferred.types) if (ref.has(t.individual) && ref.has(t.class)) lines.add(`${ref.get(t.individual)} a ${ref.get(t.class)} .`);
+  for (const f of inferred.facts) if (ref.has(f.from) && ref.has(f.to) && propRef.has(f.prop)) lines.add(`${ref.get(f.from)} ${propRef.get(f.prop)} ${ref.get(f.to)} .`);
+  const rule = '# ' + '-'.repeat(86);
+  const say = (text: string) => text.match(/.{1,84}(\s|$)/g)!.map((l) => `# ${l.trim()}`);
+  const types = [...lines].filter((l) => / a [^ ]+ \.$/.test(l)).length;
+  const head = [
+    rule,
+    ...say(`Inferred assertions, materialized on export: ${types} class membership${types === 1 ? '' : 's'} and ${lines.size - types} relationship${lines.size - types === 1 ? '' : 's'} between individuals.`),
+    ...say(`They follow from the ontology above and are not asserted in the model it was exported from. Worked out by ${inferred.by} on ${(inferred.at ?? new Date()).toISOString().slice(0, 10)}.`),
+    ...(inferred.notes ?? []).flatMap(say),
+    ...(lines.size ? [] : say('Nothing follows beyond what is asserted.')),
+    rule,
+  ];
+  return `${toTurtle(m).replace(/\n+$/, '')}\n\n${head.join('\n')}\n${lines.size ? '\n' + [...lines].join('\n') + '\n' : ''}`;
+}
+
 export function termIris(m: Model): Map<string, string> {
   return entityIris(m).terms;
 }

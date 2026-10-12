@@ -1,5 +1,6 @@
-import { propKey, restrictionsOf, type Restriction } from './props';
+import { objectProperties, propKey, restrictionsOf, type Restriction } from './props';
 import { reason, type SuperLink } from './reasoner';
+import { creditOf, type ReasoningResult } from './reasoning';
 import type { Model, Relation } from './types';
 import { resolveModel } from './vocab';
 
@@ -132,4 +133,76 @@ export function inferredMemberships(model: Model): { consistent: boolean; trunca
     }
   }
   return { consistent: true, truncated: reasoning.truncated, memberships };
+}
+
+/**
+ * A relationship between two individuals that is entailed but not stated: through an inverse
+ * property, a symmetric or transitive one, a sub-property or an equivalent property. Shaped like
+ * the relation that would state it; nothing here is in the model.
+ */
+export interface InferredFact extends Pick<Relation, 'id' | 'from' | 'to'> {
+  /** Key of the object property. */
+  prop: string;
+  /** Its name, as the line is labelled. */
+  name: string;
+  because: string;
+}
+
+/** The relationships between individuals that the app's own reasoner works out beyond the stated ones. */
+export function inferredFacts(model: Model): { consistent: boolean; truncated: boolean; facts: InferredFact[] } {
+  const m = resolveModel(model);
+  if (m.mode === 'skos') return { consistent: true, truncated: false, facts: [] };
+  const reasoning = reason(model);
+  if (!reasoning.consistent) return { consistent: false, truncated: reasoning.truncated, facts: [] };
+  const individuals = new Set(m.terms.filter((t) => t.type === 'instance').map((t) => t.id));
+  const names = new Map(objectProperties(model).map((p) => [p.key, p.name]));
+  const facts: InferredFact[] = [];
+  for (const i of reasoning.inferences) {
+    const [a, b] = [i.key.indexOf('|'), i.key.lastIndexOf('|')];
+    const [from, pred, to] = [i.key.slice(0, a), i.key.slice(a + 1, b), i.key.slice(b + 1)];
+    // A use of a declared object property between two individuals; a relationship kept plain has no meaning to follow from.
+    if (!pred.startsWith('p:') || pred.startsWith('p:~') || !individuals.has(from) || !individuals.has(to) || !names.has(pred.slice(2))) continue;
+    facts.push({ id: `fact:${from}|${pred.slice(2)}|${to}`, from, to, prop: pred.slice(2), name: names.get(pred.slice(2))!, because: i.because });
+  }
+  return { consistent: true, truncated: reasoning.truncated, facts };
+}
+
+/** What is entailed beyond what is stated, in the one shape everything that shows it reads. */
+export interface Entailed {
+  /** False when a reasoner finds the ontology inconsistent: then nothing is given as inferred. */
+  consistent: boolean;
+  /** A reasoner stopped early or left something out, so there may be more. */
+  partial: boolean;
+  /** Which reasoner, or reasoners, this is from, for saying so. */
+  by: string;
+  memberships: InferredMembership[];
+  facts: InferredFact[];
+}
+
+export const FAST_CREDIT = 'the fast reasoner (RDFS / partial OWL RL)';
+
+/**
+ * Inferred class memberships and inferred relationships between individuals, from the app's own
+ * reasoner and, when it was asked about the model as it is now, from the OWL 2 DL reasoner as
+ * well. Both are sound, so what either finds holds; each is there once, and never if it is
+ * stated. From an inconsistent ontology nothing is inferred.
+ */
+export function entailed(model: Model, dl?: ReasoningResult): Entailed {
+  const own = inferredMemberships(model);
+  const facts = inferredFacts(model);
+  const by = dl ? `${dl.engine.name}${dl.engine.version ? ' ' + dl.engine.version : ''} (OWL 2 DL)` : FAST_CREDIT;
+  if (!own.consistent || (dl && dl.consistency !== 'consistent')) return { consistent: false, partial: false, by, memberships: [], facts: [] };
+  const out: Entailed = { consistent: true, partial: own.truncated || (!!dl && dl.status !== 'complete'), by, memberships: [...own.memberships], facts: [...facts.facts] };
+  if (!dl) return out;
+  const credit = creditOf(dl);
+  const haveTypes = new Set(out.memberships.map((x) => `${x.from}|${x.to}`));
+  for (const x of dl.types) if (!x.asserted && !haveTypes.has(`${x.individual}|${x.class}`)) out.memberships.push({ id: `inferred:${x.individual}|${x.class}`, from: x.individual, to: x.class, because: credit });
+  const haveFacts = new Set(out.facts.map((x) => x.id));
+  const names = new Map(objectProperties(model).map((p) => [p.key, p.name]));
+  for (const x of dl.relations) {
+    const id = `fact:${x.subject}|${x.property}|${x.object}`;
+    if (x.asserted || haveFacts.has(id) || !names.has(x.property)) continue;
+    out.facts.push({ id, from: x.subject, to: x.object, prop: x.property, name: names.get(x.property)!, because: credit });
+  }
+  return out;
 }

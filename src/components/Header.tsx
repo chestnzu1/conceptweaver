@@ -70,6 +70,8 @@ export function Header() {
     { label: 'Interactive page (HTML)', onClick: () => exportModel('html'), hint: 'opens anywhere' },
     { label: 'SKOS (Turtle)', onClick: () => exportModel('skos'), hint: model.mode === 'skos' ? '' : 'converted' },
     { label: 'OWL (Turtle)', onClick: () => exportModel('owl'), hint: model.mode === 'ontology' ? '' : 'converted' },
+    // Asserted axioms only is what an export is. This one adds, after them and marked as such, what the reasoner entails.
+    ...(supports(model, 'reasoning') ? [{ label: 'OWL with inferred assertions (Turtle)', onClick: () => void exportModel('owl-inferred'), hint: 'materialized' }] : []),
     { label: 'JSON-LD', onClick: () => exportModel('jsonld') },
     { label: 'Terms as CSV', onClick: () => exportModel('csv-terms') },
     { label: 'Relations as CSV', onClick: () => exportModel('csv-relations') },

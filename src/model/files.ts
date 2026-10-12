@@ -3,12 +3,12 @@ import { convertModel } from './convert';
 import { beyondEnumerations, enumerationEdges } from './edgeKinds';
 import { bounds } from './geometry';
 import { htmlPage, LIGHT_TOKENS, viewerData, type Tokens } from './htmlExport';
-import { inferredMemberships } from './inferred';
+import { entailed as entailedBy } from './inferred';
 import { supports } from './modelTypes';
 import { hasCardinality } from './props';
-import { fromTurtle, toJsonLd, toTurtle } from './rdf';
+import { fromTurtle, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
 import { stable } from './stable';
-import { useStore, viewOf } from './store';
+import { currentDl, useStore, viewOf } from './store';
 import { normalizeModel, type Model } from './types';
 
 const fileBase = (m: Model) => m.name.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'model';
@@ -149,15 +149,38 @@ function interactivePage(): string {
   const tokens = Object.fromEntries((Object.keys(LIGHT_TOKENS) as (keyof Tokens)[]).map((k) => [k, style.getPropertyValue('--' + k).trim() || LIGHT_TOKENS[k]])) as Tokens;
   // The picture is of what the canvas shows, which in a subgraph is part of the model. The page says so, and lists all of it.
   const shown = new Set(viewOf(store).terms.map((t) => t.id));
-  // Class memberships the reasoner works out are in the picture when they were asked for on the canvas.
-  const entailed = store.showInferred && supports(store.model, 'reasoning') ? inferredMemberships(stable(store.model)).memberships : [];
+  // What the reasoner works out is in the picture when it was asked for on the canvas: the same, from the same reasoners.
+  const entailed = store.showInferred && supports(store.model, 'reasoning') ? entailedBy(stable(store.model), currentDl(store)) : undefined;
   // Where the line of an enumeration is in the picture, the canvas leaves out the inferred membership it would repeat.
   const drawn = new Set(Array.from((graph?.svg ?? '').matchAll(/data-rel="([^"]+)"/g), (x) => x[1]));
-  const inferred = beyondEnumerations(entailed, enumerationEdges(store.model).filter((e) => drawn.has(e.id)));
-  return htmlPage(viewerData(store.model, new Date(), { shown, inferred, enumerations: store.showEnumerations }), graph?.svg ?? '', tokens, store.theme === 'dark');
+  const inferred = beyondEnumerations(entailed?.memberships ?? [], enumerationEdges(store.model).filter((e) => drawn.has(e.id)));
+  return htmlPage(viewerData(store.model, new Date(), { shown, inferred, facts: entailed?.facts ?? [], enumerations: store.showEnumerations }), graph?.svg ?? '', tokens, store.theme === 'dark');
 }
 
-export type ExportFormat = 'json' | 'jsonld' | 'turtle' | 'owl' | 'skos' | 'csv-terms' | 'csv-relations' | 'svg' | 'png' | 'html';
+/**
+ * The ontology as Turtle with what the chosen reasoner entails written out after it: inferred
+ * class memberships and inferred relationships between individuals. Nothing is added to the
+ * model. Where the reasoner has no answer, or finds the ontology inconsistent, there is nothing
+ * to write: the reason is given and no file is made.
+ */
+export async function inferredTurtle(): Promise<{ text: string; count: number } | { error: string }> {
+  let store = useStore.getState();
+  if (!supports(store.model, 'reasoning')) return { error: 'There is no reasoning for this type of model, so nothing is inferred from it.' };
+  if (store.validation.engine === 'dl' && !currentDl(store)) {
+    // The OWL 2 DL reasoner is asked now, about the model as it is.
+    await store.runValidation('owl');
+    store = useStore.getState();
+    if (!currentDl(store)) return { error: `The OWL 2 DL reasoner gave no answer, so there are no inferred assertions to export. ${store.validation.run?.owl?.errors?.[0] ?? ''}`.trim() };
+  }
+  const dl = currentDl(store);
+  const found = entailedBy(stable(store.model), dl);
+  if (!found.consistent) return { error: 'The ontology is inconsistent. From a contradiction everything follows, so nothing is exported as inferred. See the Validation tab.' };
+  const notes = [...(found.partial ? ['The reasoning was partial, so more may follow than is written here.'] : []), ...(dl?.warnings ?? [])];
+  const text = toTurtleWithInferred(store.model, { types: found.memberships.map((x) => ({ individual: x.from, class: x.to })), facts: found.facts.map((x) => ({ from: x.from, prop: x.prop, to: x.to })), by: found.by, notes });
+  return { text, count: found.memberships.length + found.facts.length };
+}
+
+export type ExportFormat = 'json' | 'jsonld' | 'turtle' | 'owl' | 'owl-inferred' | 'skos' | 'csv-terms' | 'csv-relations' | 'svg' | 'png' | 'html';
 
 export async function exportModel(format: ExportFormat) {
   const store = useStore.getState();
@@ -169,6 +192,14 @@ export async function exportModel(format: ExportFormat) {
     else if (format === 'turtle') download(`${base}.ttl`, toTurtle(m), 'text/turtle');
     // Either type on request, whatever the model currently is: it is converted on the way out.
     else if (format === 'owl') download(`${base}${m.mode === 'ontology' ? '' : '-ontology'}.ttl`, toTurtle(convertModel(m, 'ontology')), 'text/turtle');
+    else if (format === 'owl-inferred') {
+      const made = await inferredTurtle();
+      if ('error' in made) store.notify(made.error);
+      else {
+        download(`${base}-with-inferred.ttl`, made.text, 'text/turtle');
+        store.notify(`Exported with ${made.count} inferred assertion${made.count === 1 ? '' : 's'} written after the ontology. The model itself is unchanged.`);
+      }
+    }
     else if (format === 'skos') download(`${base}${m.mode === 'skos' ? '' : '-skos'}.ttl`, toTurtle(convertModel(m, 'skos')), 'text/turtle');
     else if (format === 'csv-terms') download(`${base}-terms.csv`, '﻿' + termsCsv(m), 'text/csv');
     else if (format === 'csv-relations') download(`${base}-relations.csv`, '﻿' + relationsCsv(m), 'text/csv');

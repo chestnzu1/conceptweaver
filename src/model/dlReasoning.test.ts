@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startReasoner, unavailable } from '../../reasoner/run.mjs';
-import { fromTurtle, toTurtle } from './rdf';
+import { entailed } from './inferred';
+import { fromTurtle, toTurtle, toTurtleWithInferred } from './rdf';
 import { askReasoner, dlRequest, dlResult, type DlReport } from './reasoning';
 import { newRelation, newTerm, type Model } from './types';
 import { dlFindings, owlFindings } from './validation';
@@ -252,6 +253,100 @@ describe.skipIf(!!why)('OWL 2 DL reasoning with HermiT', () => {
       ];
       for (const c of cases) expect([c, (await ask(c)).consistency]).toEqual([c, 'inconsistent']);
       expect((await ask(':A a owl:Class . :x a owl:NamedIndividual , :A .')).consistency).toBe('consistent');
+    });
+  });
+
+  describe('relationships between individuals', () => {
+    const N = 'http://example.org/test#';
+    /** The example the missing inferences were reported with, as it was given. */
+    const EXAMPLE = `
+      @prefix : <${N}> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :hasMember a owl:ObjectProperty .
+      :isMemberOf a owl:ObjectProperty ; owl:inverseOf :hasMember .
+      :John a owl:NamedIndividual ; :isMemberOf :CompanyA .
+      :CompanyA a owl:NamedIndividual .`;
+    const triples = (r: DlReport) => r.relations!.map((x) => `${local(x.subject)} ${local(x.property)} ${local(x.object)}`).sort();
+    /** The same through the app: what it reads, writes, sends, and makes of the answer. */
+    const through = async (turtle: string) => {
+      const model = fromTurtle(turtle.includes('@prefix') ? turtle : PREFIXES + turtle);
+      const result = dlResult(model, await askReasoner(service.url, dlRequest(model)));
+      const name = (id: string) => model.terms.find((t) => t.id === id)!.name;
+      const said = (asserted: boolean) => result.relations.filter((x) => x.asserted === asserted).map((x) => `${name(x.subject)} ${x.property} ${name(x.object)}`).sort();
+      return { model, result, stated: said(true), inferred: said(false) };
+    };
+
+    it('the example, put to HermiT as it is: the inverse relationship is entailed', async () => {
+      const r = await askReasoner(service.url, { ontology: EXAMPLE, imports: [], timeoutMs: 30_000, explanations: { perSubject: 0, max: 0, timeoutMs: 0 } });
+      expect(r).toMatchObject({ status: 'complete', consistency: 'consistent', errors: [] });
+      expect(triples(r)).toEqual(['CompanyA hasMember John', 'John isMemberOf CompanyA']);
+    });
+
+    it('the example, through the app: the stated relationship is told apart from the one that follows', async () => {
+      const { model, result, stated, inferred } = await through(EXAMPLE);
+      expect(stated).toEqual(['John is member of Company A']);
+      expect(inferred).toEqual(['Company A has member John']);
+      // The one account both reasoners feed: there once, though both find it, and not what is stated.
+      const fast = entailed(model);
+      const both = entailed(model, result);
+      expect(fast.facts.map((f) => f.id)).toEqual(both.facts.map((f) => f.id));
+      expect(both.facts).toHaveLength(1);
+      expect(both.by).toBe('HermiT 1.4.5.456 (OWL 2 DL)');
+      expect(dlFindings(model, await askReasoner(service.url, dlRequest(model))).summary.inferred).toBe(1);
+    });
+
+    it('symmetric and transitive properties', async () => {
+      const r = await through(`
+        :knows a owl:ObjectProperty , owl:SymmetricProperty . :partOf a owl:ObjectProperty , owl:TransitiveProperty .
+        :a a owl:NamedIndividual ; :knows :b ; :partOf :b . :b a owl:NamedIndividual ; :partOf :c . :c a owl:NamedIndividual ; :partOf :d . :d a owl:NamedIndividual .`);
+      expect(r.inferred).toEqual(['a part of c', 'a part of d', 'b knows a', 'b part of d']);
+      expect(r.stated).toEqual(['a knows b', 'a part of b', 'b part of c', 'c part of d']);
+    });
+
+    it('equivalent properties and sub-properties', async () => {
+      const r = await through(`
+        :employs a owl:ObjectProperty . :hasStaff a owl:ObjectProperty ; owl:equivalentProperty :employs .
+        :relatedTo a owl:ObjectProperty . :parentOf a owl:ObjectProperty ; rdfs:subPropertyOf :relatedTo . :motherOf a owl:ObjectProperty ; rdfs:subPropertyOf :parentOf .
+        :a a owl:NamedIndividual ; :employs :b ; :motherOf :c . :b a owl:NamedIndividual . :c a owl:NamedIndividual ; :hasStaff :d . :d a owl:NamedIndividual .`);
+      expect(r.inferred).toEqual(['a has staff b', 'a parent of c', 'a related to c', 'c employs d']);
+    });
+
+    it('several individuals and assertions: each inferred relationship once, none that is stated', async () => {
+      const r = await through(`
+        :hasMember a owl:ObjectProperty . :isMemberOf a owl:ObjectProperty ; owl:inverseOf :hasMember . :knows a owl:ObjectProperty , owl:SymmetricProperty .
+        :a a owl:NamedIndividual ; :isMemberOf :d ; :knows :b . :b a owl:NamedIndividual ; :isMemberOf :d ; :knows :a , :c . :c a owl:NamedIndividual ; :isMemberOf :d . :d a owl:NamedIndividual ; :hasMember :c .`);
+      expect(r.inferred).toEqual(['c knows b', 'd has member a', 'd has member b']);
+      expect(new Set(r.result.relations.map((x) => `${x.subject}|${x.property}|${x.object}`)).size).toBe(r.result.relations.length);
+      // The app's own reasoner agrees on every one of them.
+      expect(entailed(r.model).facts.map((f) => f.id).sort()).toEqual(entailed(r.model, r.result).facts.map((f) => f.id).sort());
+    });
+
+    it('finds what the app’s own rules cannot: a relationship that follows from a class', async () => {
+      // Every member of the staff works for Acme. Ann is one, so she does: that needs the restriction to be read.
+      const r = await through(`
+        :worksFor a owl:ObjectProperty . :acme a owl:NamedIndividual .
+        :Staff a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :worksFor ; owl:hasValue :acme ] .
+        :ann a owl:NamedIndividual , :Staff .`);
+      expect(r.inferred).toEqual(['ann works for acme']);
+      expect(entailed(r.model).facts).toEqual([]);
+      const found = entailed(r.model, r.result).facts;
+      expect(found.map((f) => [f.name, f.because])).toEqual([['works for', 'Entailed, according to HermiT 1.4.5.456 (OWL 2 DL).']]);
+    });
+
+    it('written out with the inferred assertions, and read back, HermiT has nothing left to add', async () => {
+      const { model, result } = await through(EXAMPLE);
+      const found = entailed(model, result);
+      const ttl = toTurtleWithInferred(model, { types: found.memberships.map((x) => ({ individual: x.from, class: x.to })), facts: found.facts.map((x) => ({ from: x.from, prop: x.prop, to: x.to })), by: found.by });
+      expect(ttl).toContain('# exported from. Worked out by HermiT 1.4.5.456 (OWL 2 DL) on');
+      expect(ttl).toContain(':CompanyA :hasMember :John .');
+      // The file is an ontology HermiT reads, in which the materialized triple is an assertion like the other.
+      const again = await askReasoner(service.url, { ontology: ttl, imports: [], timeoutMs: 30_000, explanations: { perSubject: 0, max: 0, timeoutMs: 0 } });
+      expect(again).toMatchObject({ status: 'complete', consistency: 'consistent' });
+      expect(triples(again)).toEqual(['CompanyA hasMember John', 'John isMemberOf CompanyA']);
+      const back = fromTurtle(ttl);
+      const reread = dlResult(back, await askReasoner(service.url, dlRequest(back)));
+      expect(reread.relations.map((x) => x.asserted)).toEqual([true, true]);
+      expect(entailed(back, reread).facts).toEqual([]);
     });
   });
 

@@ -122,13 +122,15 @@ export interface Picture {
   shown?: Set<string>;
   /** Class memberships the reasoner worked out, when the picture has them. */
   inferred?: { id: string; from: string; to: string; because: string }[];
+  /** Relationships between individuals the reasoner worked out, when the picture has them. */
+  facts?: { id: string; from: string; to: string; name: string; because: string }[];
   /** False when the lines from enumeration classes to their members were switched off. */
   enumerations?: boolean;
 }
 
 /** What the page shows of a model. */
 export function viewerData(model: Model, now = new Date(), picture: Picture = {}): ViewerData {
-  const { shown, inferred = [] } = picture;
+  const { shown, inferred = [], facts = [] } = picture;
   const config = configOf(model);
   const byIri = new Map(model.terms.filter((t) => t.iri).map((t) => [t.iri!, t]));
   const name = (id: string) => model.terms.find((t) => t.id === id)?.name || 'Unnamed';
@@ -191,7 +193,7 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
   const inPicture = (r: { from: string; to: string }) => !shown || (shown.has(r.from) && shown.has(r.to));
   // What each enumeration class lists is a line too, though no relationship of the model: it is listed with the class either way.
   const listed = enumerationEdges(model);
-  const offsets = edgeOffsets([...resolved.filter(inPicture), ...inferred.filter(inPicture), ...(picture.enumerations === false ? [] : listed.filter(inPicture))]);
+  const offsets = edgeOffsets([...resolved.filter(inPicture), ...inferred.filter(inPicture), ...facts.filter(inPicture), ...(picture.enumerations === false ? [] : listed.filter(inPicture))]);
   const rels: ViewerRel[] = resolved
     .map((r) => {
       const type = types.get(r.id) ?? 'plain';
@@ -215,6 +217,10 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
   for (const x of inferred) {
     if (!ids.has(x.from) || !ids.has(x.to)) continue;
     rels.push({ id: x.id, from: x.from, to: x.to, label: 'Is Instance Of (inferred)', kind: 'inferred class membership', description: x.because, bend: (offsets.get(x.id) ?? 0) + (inferredStyle.curve ?? 0), head: inferredStyle.arrow ?? 'hollow' });
+  }
+  for (const x of facts) {
+    if (!ids.has(x.from) || !ids.has(x.to)) continue;
+    rels.push({ id: x.id, from: x.from, to: x.to, label: `${x.name} (inferred)`, kind: 'inferred relationship', description: x.because, bend: (offsets.get(x.id) ?? 0) + (inferredStyle.curve ?? 0), head: inferredStyle.arrow ?? 'filled' });
   }
   const oneOfStyle = resolveEdge(model.style, 'oneOf', '');
   for (const x of listed) rels.push({ id: x.id, from: x.from, to: x.to, label: ONE_OF_LABEL, kind: KIND_WORDS.oneOf, hier: 'oneOf', description: x.because, bend: (offsets.get(x.id) ?? 0) + (oneOfStyle.curve ?? 0), head: oneOfStyle.arrow ?? 'filled' });

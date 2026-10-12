@@ -60,7 +60,12 @@ const reasoned = () => card.locator('.reasoned');
 const text = async () => flat(await reasoned().innerText());
 // Runs the reasoning and waits for the run to be over.
 const run = async () => { await card.getByRole('button', { name: 'Run reasoning' }).click(); await page.waitForFunction(() => !document.querySelector('.owl-card fieldset')?.disabled && /^Validated /.test(document.querySelector('.run-state')?.textContent ?? '')); };
-const choose = (label) => card.getByRole('radio', { name: label }).check();
+// Choosing an engine asks it at once: the other one's answer is not left standing. Waits for the answer of the one chosen.
+const choose = async (label) => {
+  await card.getByRole('radio', { name: label }).check();
+  const engine = /Advanced/.test(String(label)) ? 'dl' : 'fast';
+  await page.waitForFunction((e) => document.querySelector('.owl-card .reasoned')?.getAttribute('data-engine') === e && !document.querySelector('.owl-card fieldset')?.disabled, engine);
+};
 
 await page.goto(base);
 // The app starts out asking an address where nothing listens, whatever service may be running on this machine.
@@ -81,8 +86,9 @@ ok(t.includes('That is not a proof that the ontology is consistent') && !/Status
 
 await choose(/^Advanced reasoner/);
 await page.waitForFunction(() => /is running|Not running/.test(document.querySelector('.owl-card .health')?.textContent ?? ''));
-ok(flat(await card.locator('.health').innerText()) === 'Not running' && flat(await card.locator('.service').innerText()).includes('start it with “pnpm reasoner”'), 'choosing the advanced reasoner looks for the reasoning service, and says how to start it when it is not there');
-ok((await text()).includes('What follows is the answer of the fast reasoner. Run reasoning to ask the OWL 2 DL reasoner.'), 'results on the page stay those of the engine that gave them, and say so');
+ok(flat(await card.locator('.health').innerText()) === 'Not running' && flat(await card.innerText()).includes('start it with “pnpm reasoner”') && (flat(await card.innerText()).match(/start it with “pnpm reasoner”/g) ?? []).length === 1, 'choosing the advanced reasoner looks for the reasoning service, and says how to start it, once, when it is not there');
+t = await text();
+ok(t.includes('Reasoner: HermiT') && t.includes('Status: Unknown: the reasoner gave no answer') && !t.includes('No contradiction found'), 'the reasoner chosen is asked at once, and the other one’s answer is not left standing as if it were its own: ' + t.slice(0, 70));
 await card.getByLabel('Address of the reasoning service').fill(`http://127.0.0.1:${PORT}`);
 await card.getByLabel('Address of the reasoning service').press('Enter');
 await page.waitForFunction(() => /is running/.test(document.querySelector('.owl-card .health')?.textContent ?? ''));
@@ -133,9 +139,9 @@ ok((await listed('inferred-types')).join(' | ') === 'Worker Entailed, according 
 await side.getByRole('tab', { name: /^Classes/ }).click();
 await side.getByRole('button', { name: 'Party Local Profile', exact: true }).first().click();
 ok(flat(await section('inferred-superclasses').innerText()).includes('The OWL 2 DL reasoner finds that this class can never have an instance: it is a subclass of owl:Nothing.'), 'an unsatisfiable class says so in the editor');
-await page.locator('.zoom').getByRole('button', { name: /^Inferred types/ }).click();
+await page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ }).click();
 ok((await page.locator('.edge.inferred').count()) === 1 && flat(await page.locator('.edge.inferred title').first().textContent()).includes('according to HermiT 1.4.5.456'), 'the graph draws the class membership it entails, dotted like the others');
-await page.locator('.zoom').getByRole('button', { name: /^Inferred types/ }).click();
+await page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ }).click();
 await section('inferred-superclasses').getByRole('button', { name: 'View explanation' }).click();
 ok((await v.locator('tr.result.sel').count()) === 1 && flat(await v.locator('tr.result.sel').innerText()).includes('Party Local Profile') && (await explanation.locator('li').count()) === 3, 'View explanation in the editor goes to the finding and its justification');
 await v.locator('.tabs.sub').getByRole('tab', { name: 'Inferred facts' }).click();

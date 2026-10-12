@@ -234,6 +234,12 @@ export interface ReasoningResult {
   equivalentClasses: string[][];
   /** Entailed class memberships of individuals, every class of the way up. */
   types: { individual: string; class: string; asserted: boolean; direct: boolean }[];
+  /**
+   * Entailed relationships between individuals: the object property assertions that hold, by the
+   * key of the property. Through an inverse, a symmetric or transitive property, a sub-property
+   * or an equivalent one, more hold than are stated; `asserted` tells the stated ones apart.
+   */
+  relations: { subject: string; property: string; object: string; asserted: boolean }[];
   sameIndividuals: string[][];
   explanations: ReasoningExplanation[];
   errors: string[];
@@ -257,7 +263,7 @@ export function entityLinks(model: Model): (e: AxiomEntity) => EntityLink {
 
 /** Reads the service's report in the terms of the model. What it says of entities that are not in the model is left out. */
 export function dlResult(model: Model, report: DlReport): ReasoningResult {
-  const { terms } = entityIris(model);
+  const { terms, props } = entityIris(model);
   const link = entityLinks(model);
   const id = (iri: string) => terms.get(iri);
   const classes = new Set(model.terms.filter((t) => t.type === 'concept').map((t) => t.id));
@@ -317,6 +323,22 @@ export function dlResult(model: Model, report: DlReport): ReasoningResult {
     }
   }
 
+  // Which individuals are related by which object property. What the model states of two of its
+  // own individuals with one of its own properties is marked as stated; the rest is inferred.
+  const stated = new Set(objectProperties(model).flatMap((p) => p.rels.filter((r) => individuals.has(r.from) && individuals.has(r.to)).map((r) => `${r.from}|${p.key}|${r.to}`)));
+  const relations: ReasoningResult['relations'] = [];
+  if (ok) {
+    const seen = new Set<string>();
+    for (const x of report.relations ?? []) {
+      const [s, p, o] = [id(x.subject), props.get(x.property), id(x.object)];
+      if (!s || !o || p === undefined || !individuals.has(s) || !individuals.has(o)) continue;
+      const key = `${s}|${p}|${o}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      relations.push({ subject: s, property: p, object: o, asserted: stated.has(key) });
+    }
+  }
+
   const explanations: ReasoningExplanation[] = (report.explanations ?? []).map((e) => {
     const subject = e.subject ? link({ iri: e.subject, kind: 'Class', name: e.subject }) : undefined;
     return { kind: e.kind, ...(subject ? { subject } : {}), justifications: e.justifications.map((j) => j.axioms.map((a) => ({ text: a.text, entities: a.entities.map(link) }))), ...(e.note ? { note: e.note } : {}) };
@@ -332,6 +354,7 @@ export function dlResult(model: Model, report: DlReport): ReasoningResult {
     subclasses,
     equivalentClasses,
     types,
+    relations,
     sameIndividuals: ok ? (report.same ?? []).map((g) => g.map(id).filter((x): x is string => !!x && individuals.has(x))).filter((g) => g.length > 1) : [],
     explanations,
     errors: report.errors,
@@ -348,6 +371,7 @@ export function entailmentsOf(result: ReasoningResult, id: string) {
     subclasses: result.subclasses.filter((x) => x.superclass === id),
     instances: result.types.filter((x) => x.class === id),
     types: result.types.filter((x) => x.individual === id),
+    relations: result.relations.filter((x) => x.subject === id),
     equivalents: result.equivalentClasses.find((g) => g.includes(id))?.filter((x) => x !== id) ?? [],
     same: result.sameIndividuals.find((g) => g.includes(id))?.filter((x) => x !== id) ?? [],
   };

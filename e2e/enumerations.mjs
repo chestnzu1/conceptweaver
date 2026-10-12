@@ -175,7 +175,7 @@ const owl = async () => flat(await v.locator('.card', { has: page.locator('h3', 
 const rowTexts = async () => (await v.locator('tr.result').allInnerTexts()).map(flat);
 const field = (label) => panel.locator('.field', { has: page.locator(`:scope > span:has-text("${label}")`) }).first();
 const zoom = page.locator('.zoom');
-const dotted = async () => Number(flat(await zoom.getByRole('button', { name: /^Inferred types/ }).innerText()).match(/\((\d+)\)/)?.[1]);
+const dotted = async () => Number(flat(await page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ }).innerText()).match(/\((\d+)\)/)?.[1]);
 
 await validation();
 ok((await owl()) === 'Status: No contradiction found', 'with an enumeration and an enumerated datatype in it, the ontology is consistent: ' + (await owl()));
@@ -185,7 +185,7 @@ await tab('Graph');
 await node('Drama').locator('.node-box').click();
 const inferredTypes = flat(await panel.locator('.editor-section.inferred').first().innerText());
 ok(inferredTypes.includes('Genre') && !flat(await field('Asserted types').innerText()).includes('Genre'), 'a member is an instance of its enumeration by inference, without that being stated: ' + inferredTypes.slice(0, 90));
-await zoom.getByRole('button', { name: /^Inferred types/ }).click();
+await page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ }).click();
 const withLines = await dotted();
 ok((await page.locator('.edge.inferred').count()) === withLines, `inferred class memberships are drawn dotted (${withLines})`);
 await zoom.getByRole('button', { name: 'Enumerations', exact: true }).click();
@@ -201,7 +201,7 @@ const drawn = [...html.matchAll(/data-rel="([^"]+)"/g)].map((x) => x[1]);
 const known = new Set(data.rels.map((r) => r.id));
 const pairs = data.rels.filter((r) => r.id.startsWith('inferred:')).map((r) => `${r.to}|${r.from}`);
 ok(drawn.length > 0 && drawn.every((id) => known.has(id)) && drawn.filter((id) => id.startsWith('inferred:')).length === withLines && !data.rels.some((r) => r.id.startsWith('oneof:') && pairs.includes(`${r.from}|${r.to}`)), 'the exported page has the same lines as the canvas: the enumeration’s own, and no inferred membership doubling one of them');
-await zoom.getByRole('button', { name: /^Inferred types/ }).click();
+await page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ }).click();
 
 // Declared all different, two members cannot be stated to be the same individual.
 await node('Drama').locator('.node-box').click();

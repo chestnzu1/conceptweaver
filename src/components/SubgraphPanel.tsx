@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { stable } from '../model/stable';
 import { useStore, type GraphScope } from '../model/store';
 import { edgeTypes, MAX_DEPTH, searchTerms, type Direction } from '../model/subgraph';
@@ -7,7 +7,8 @@ import { edgeTypes, MAX_DEPTH, searchTerms, type Direction } from '../model/subg
  * The switch between the full graph and a subgraph, and the settings of the subgraph: the terms
  * it starts from, how far to go, in which direction, and through which kinds of relationship.
  */
-export function SubgraphPanel() {
+/** `tools` are further buttons of the canvas, shown in the same bar: what it draws besides the model itself. */
+export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
   const model = stable(useStore((s) => s.model));
   const sub = useStore((s) => s.subgraph);
   const stylePanel = useStore((s) => s.stylePanel);
@@ -60,6 +61,7 @@ export function SubgraphPanel() {
         <button className="btn small" aria-pressed={stylePanel} title="How terms and relationships are drawn: shapes, colours, lines, themes" onClick={() => st().setStylePanel(!stylePanel)}>
           Style
         </button>
+        {tools}
         {shown && (
           <span className="subgraph-count" role="status">
             {shown.terms.length} of {model.terms.length} terms

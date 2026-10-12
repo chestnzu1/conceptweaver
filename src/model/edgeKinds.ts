@@ -56,9 +56,12 @@ export interface DerivedEdge {
   id: string;
   from: string;
   to: string;
-  kind: 'inferred' | 'oneOf';
+  /** inferred: a class membership. fact: a relationship between two individuals. Both worked out by a reasoner. */
+  kind: 'inferred' | 'oneOf' | 'fact';
   /** What it rests on, in words. */
   because: string;
+  /** For a relationship between individuals: the name of the object property. */
+  name?: string;
 }
 
 /**

@@ -434,11 +434,12 @@ const sidebarWidthOf = (width: number) => (Number.isFinite(width) ? Math.round(M
 
 /**
  * The OWL 2 DL reasoner's result for the model as it is now. There is none once the model has
- * changed since it was asked, or when it gave no answer: an old result is never shown as current.
+ * changed since it was asked, when it gave no answer, or when the other reasoner is the one
+ * chosen: an old result, or one of the engine that was switched away from, is never shown as current.
  */
 export const currentDl = (s: Pick<State, 'model' | 'validation'>): ReasoningResult | undefined => {
   const run = s.validation.run;
-  return run?.dl && run.model === stable(s.model) && run.dl.result.status !== 'failed' ? run.dl.result : undefined;
+  return s.validation.engine === 'dl' && run?.dl && run.model === stable(s.model) && run.dl.result.status !== 'failed' ? run.dl.result : undefined;
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -463,8 +464,23 @@ export const useStore = create<State>((set, get) => ({
   editing: null,
   highlight: [],
   highlightLabel: '',
-  showInferred: false,
-  setShowInferred: (showInferred) => set({ showInferred: showInferred && supports(get().model, 'reasoning') }),
+  // Whether the graph also draws what the reasoner works out is remembered, like the other choices of what it shows.
+  showInferred: (() => {
+    try {
+      return localStorage.getItem('conceptweaver:show-inferred') === 'on' && supports(initialModel, 'reasoning');
+    } catch {
+      return false;
+    }
+  })(),
+  setShowInferred: (wanted) => {
+    const showInferred = wanted && supports(get().model, 'reasoning');
+    try {
+      localStorage.setItem('conceptweaver:show-inferred', showInferred ? 'on' : 'off');
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ showInferred });
+  },
   showEnumerations: true,
   setShowEnumerations: (showEnumerations) => set({ showEnumerations }),
   stylePanel: false,

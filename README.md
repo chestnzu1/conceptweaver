@@ -13,7 +13,7 @@ pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
 pnpm reasoner   # the OWL 2 DL reasoning service (HermiT) on http://localhost:5190; needs a JDK, 11 or later
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs, e2e/relationship-kinds.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs, e2e/relationship-kinds.mjs, e2e/inferred-relations.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
@@ -186,8 +186,18 @@ More on what the advanced reasoner does and does not cover is under
   from the individual to the class (drawn the other way, it is turned around), and is not
   stated twice. An individual can be an instance of any number of classes. Pick it as the kind
   of a relationship, type "is instance of" as the label of a new line, or add a type in the
-  entity editor. **Inferred types** on the canvas also draws the memberships the reasoner
-  works out, dotted and marked "(inferred)"; they are never stored or exported.
+  entity editor.
+- **Inferred facts, on the canvas** – the *Inferred facts* button in the bar at the top of the
+  graph (beside *Style*) also draws what the reasoner works out, dotted and marked
+  "(inferred)": class memberships, and relationships between individuals
+  that follow from what an object property is (its inverse, symmetric, transitive, a
+  sub-property, an equivalent property). Each is drawn once and never when it is stated. They
+  come from the fast reasoner and, when it is the one chosen and was asked about the model as
+  it is now, from the OWL 2 DL reasoner; an individual's editor lists them under *Inferred
+  relationships*, each with what it rests on. They are never stored, and an export has them
+  only when asked. The button shows how many are drawn and stays as it was left; *Show
+  inferred facts in the graph*, above the list under Validation → Inferred facts, switches it
+  on and goes to the graph.
 - **Views** – graph, editable table, hierarchy tree, and model checks.
 - **Model checks** – unnamed and duplicate terms, circular or redundant hierarchies, isolated
   terms, unlabelled or duplicate relations, malformed cardinalities, missing descriptions and more.
@@ -311,6 +321,13 @@ More on what the advanced reasoner does and does not cover is under
   `src/export/`).
 - **Files** – save/open JSON; import Turtle / N-Triples (OWL, RDFS, SKOS); export OWL (Turtle),
   JSON-LD, CSV, SVG and PNG. Drag a file onto the window to open it.
+- **Export with inferred assertions** – an export is of what is asserted. *File → Export → OWL
+  with inferred assertions (Turtle)* writes the same ontology and, after it, under a heading
+  that says what they are and which reasoner worked them out, the inferred class memberships
+  and the inferred relationships between individuals as triples. It is of the reasoner chosen
+  under Validation; when that one has no answer, or finds the ontology inconsistent, no file is
+  made and the reason is given. The model is not changed by it. RDF cannot mark a triple as
+  inferred, so a tool that reads the file, this app included, takes them for assertions.
 - Whatever is in the editor is also kept as a working copy in the browser, so a reload loses nothing.
 
 ## Size
@@ -412,13 +429,18 @@ What the answer covers, and where it stops:
 - Reasoning is stopped after 60 seconds and reported as failed. Results belong to the revision
   of the model they were made for: after an edit they are marked stale, and what the editor
   and the graph show of them is withdrawn until the reasoning is run again.
-- Inferred relationships between individuals are worked out and are in the JSON report, but the
-  editor shows only inferred superclasses, subclasses, instances, types and same individuals.
+- Inferred relationships between individuals are worked out for an ontology of up to 4,000
+  pairs of individual and object property (one question to the reasoner each); beyond that
+  they are left out and the result says so. Inferred values of data properties are not asked for.
 
 Both reasoners feed the same places: the Validation results, the *Inferred* sections of the
-entity editor (each line credited to the reasoner it is from), the inferred class memberships on
-the canvas, and *Inferred facts*. Nothing inferred is ever added to the model unless you state
-it with *Add to model*. The interface between the app and a reasoner is `src/model/reasoning.ts`.
+entity editor (each line credited to the reasoner it is from), the inferred class memberships
+and relationships between individuals on the canvas, *Inferred facts*, and the export with
+inferred assertions. Choosing the other reasoner asks it at once, and what the first one
+inferred is withdrawn from all of them. Nothing inferred is ever added to the model unless you
+state it with *Add to model*. The interface between the app and a reasoner is
+`src/model/reasoning.ts`; what is shown as inferred, whichever reasoner found it, is put
+together in `src/model/inferred.ts`.
 
 ## Validation: what is and is not covered
 

@@ -68,7 +68,7 @@ ok((await dialog.count()) === 0 && (await page.locator('.model-name').inputValue
 ok((await views()) === 'Graph|Entities|Hierarchy', 'a vocabulary has three functions: ' + (await views()));
 ok(flat(await panel.locator('.model-type-shown').innerText()) === 'Model type SKOS-like vocabulary' && (await panel.locator('.model-type-shown select').count()) === 0, 'its type is shown in the model details, and is not a choice there');
 ok(flat(await panel.locator('.ns-summary').innerText()) === 'http://example.org/glossary#', 'with the namespace it was given');
-ok((await page.locator('.zoom').getByRole('button', { name: /Inferred types/ }).count()) === 0, 'there is no reasoner to ask for inferred types');
+ok((await page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ }).count()) === 0 && (await page.locator('.subgraph').getByRole('button', { name: 'Style' }).count()) === 1, 'there is no reasoner to ask for inferred facts, so no button for them');
 
 await addTerm('Animal', 700, 300);
 await addTerm('Dog', 600, 480);

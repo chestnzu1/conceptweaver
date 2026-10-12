@@ -23,6 +23,7 @@ import { compactIri } from '../model/prefixes';
 import { findProp, objectProperties, propLinks, type PropView } from '../model/props';
 import { reason } from '../model/reasoner';
 import { stable } from '../model/stable';
+import { entailed as entailedBy } from '../model/inferred';
 import { creditOf, entailmentsOf } from '../model/reasoning';
 import { currentDl, isDirty, useStore } from '../model/store';
 import { DATATYPES, type PropLink, type Term, type TermType } from '../model/types';
@@ -277,6 +278,9 @@ export function InferredSupers({ term }: { term: Term }) {
       same: sort(of && !isClass ? of.same : []),
     };
   }, [model, term.id, isClass, dl]);
+  // What the individual is related to without that being stated, whichever reasoner says so.
+  const related = useMemo(() => (isClass ? [] : entailedBy(model, dl).facts.filter((f) => f.from === term.id)), [model, term.id, isClass, dl]);
+  const nameOf = (id: string) => model.terms.find((t) => t.id === id)?.name || 'Unnamed';
   const what = isClass ? 'superclasses' : 'types';
   const credit = dl ? creditOf(dl) : '';
   const others = (id: string, title: string, list: { id: string; name: string; iri?: string }[]) =>
@@ -332,6 +336,23 @@ export function InferredSupers({ term }: { term: Term }) {
       {others('inferred-subclasses', 'Inferred subclasses', result.below)}
       {others('inferred-instances', 'Inferred instances', result.instances)}
       {others('inferred-same', 'Inferred to be the same individual', result.same)}
+      {related.length > 0 && (
+        <Section id="inferred-relations" title="Inferred relationships" count={related.length} inferred>
+          <ul className="inferred-list" aria-label="Inferred relationships">
+            {related.map((f) => (
+              <li key={f.id}>
+                <button className="link" title="Open the object property" onClick={() => st().selectProp(f.prop)}>
+                  {f.name}
+                </button>{' '}
+                <button className="link" title="Open it" onClick={() => st().select([f.to])}>
+                  {nameOf(f.to)}
+                </button>
+                <span className="sources">{f.because}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       {isClass && result.inherited.length > 0 && (
         <Section id="inferred-domain" title="Properties from superclass domains" count={result.inherited.length} inferred>
           <ul className="inferred-list" aria-label="Properties from superclass domains">

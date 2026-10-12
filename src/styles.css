@@ -909,6 +909,14 @@ textarea {
   color: var(--accent);
 }
 
+/* A button of the bar above the graph that is switched on: what it stands for is being drawn. */
+.subgraph .row > .btn.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .zoom-level {
   min-width: 56px;
   font-variant-numeric: tabular-nums;
@@ -2037,7 +2045,8 @@ td.cell-edit select[aria-label='+'] {
   top: 12px;
   left: 12px;
   z-index: 4;
-  max-width: 392px;
+  /* Room for its bar of buttons on one line, and never wider than the canvas. */
+  max-width: min(540px, calc(100% - 24px));
   max-height: calc(100% - 84px);
   display: flex;
   flex-direction: column;
@@ -3025,10 +3034,13 @@ code.pred {
 
 /* -------------------------------------------------------- validation workbench */
 
-.validation {
+/* The workbench is one page that scrolls: its summary, then its results. (Said of the view by both
+   its names, so that it holds against the rule that a view does not spill over its neighbours.) */
+.view.validation {
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .validation .view-head {
@@ -3305,9 +3317,10 @@ code.pred {
   background: var(--panel);
 }
 
+/* As tall as its rows, since the page scrolls; a table wider than the view scrolls sideways in its own frame. */
 .validation .table-wrap {
   flex: none;
-  overflow: visible;
+  overflow-x: auto;
 }
 
 .validation .results.is-stale tbody {

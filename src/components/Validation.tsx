@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { download } from '../model/files';
+import { objectProperties } from '../model/props';
 import { QUALITY_RULES, ruleEnabled, setRule, type RuleGroup } from '../model/quality';
 import { reason } from '../model/reasoner';
 import { stable } from '../model/stable';
@@ -23,7 +24,7 @@ const fileBase = (name: string) => name.trim().replace(/[^\p{L}\p{N}]+/gu, '-').
 export function ValidationView() {
   const model = useStore((s) => s.model);
   const meaning = stable(model);
-  const { run, running, phase, data, tab } = useStore((s) => s.validation);
+  const { run, running, phase, data, tab, engine } = useStore((s) => s.validation);
   const st = useStore.getState;
   const dataRef = useRef<HTMLInputElement>(null);
   const stale = isStale(run, model, data);
@@ -212,7 +213,23 @@ export function ValidationView() {
       {tab === 'results' && <Results findings={findings} counts={{ owl: count('owl'), shacl: count('shacl'), quality: count('quality') }} stale={stale} ran={!!run} />}
       {tab === 'shapes' && <ShapesPanel />}
       {tab === 'rules' && <Rules />}
-      {tab === 'inferences' && (run?.dl && !stale && run.dl.result.status !== 'failed' ? <DlInferences result={run.dl.result} /> : <Inferences inferences={inferences} />)}
+      {tab === 'inferences' && (
+        <>
+          <p className="note inferred-graph">
+            <button
+              className="btn small"
+              title="Goes to the graph and draws the inferred class memberships and relationships between individuals, dotted, beside what is asserted"
+              onClick={() => {
+                st().setShowInferred(true);
+                st().setView('graph');
+              }}
+            >
+              Show inferred facts in the graph
+            </button>
+          </p>
+          {run?.dl && engine === 'dl' && !stale && run.dl.result.status !== 'failed' ? <DlInferences result={run.dl.result} /> : <Inferences inferences={inferences} />}
+        </>
+      )}
 
       <input
         ref={dataRef}
@@ -287,7 +304,16 @@ function OwlCard() {
             <legend>Reasoning engine</legend>
             {ENGINES.map((e) => (
               <label key={e.id} title={e.about}>
-                <input type="radio" name="reasoning-engine" checked={engine === e.id} onChange={() => st().setValidation({ engine: e.id })} />
+                <input
+                  type="radio"
+                  name="reasoning-engine"
+                  checked={engine === e.id}
+                  onChange={() => {
+                    // The other reasoner's answer is not left standing as if it were this one's: it is asked at once.
+                    st().setValidation({ engine: e.id });
+                    void st().runValidation('owl');
+                  }}
+                />
                 <span>{e.label}</span>
               </label>
             ))}
@@ -805,12 +831,15 @@ function DlInferences({ result }: { result: ReasoningResult }) {
   const names = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
   const facts = useMemo(() => {
     const q = (id: string) => `“${names.get(id) ?? 'Unnamed'}”`;
-    const out = [
+    const props = new Map(objectProperties(model).map((p) => [p.key, p.name]));
+    const out: { key: string; from: string; to: string; direct: boolean; text: string; label?: string }[] = [
       ...result.types.filter((x) => !x.asserted).map((x) => ({ key: `t|${x.individual}|${x.class}`, from: x.individual, to: x.class, direct: x.direct, text: `${q(x.individual)} is an instance of ${q(x.class)}` })),
+      // What holds between two individuals through an inverse, a symmetric or transitive property, a sub-property or an equivalent one.
+      ...result.relations.filter((x) => !x.asserted && props.has(x.property)).map((x) => ({ key: `r|${x.subject}|${x.property}|${x.object}`, from: x.subject, to: x.object, direct: true, text: `${q(x.subject)} ${props.get(x.property)} ${q(x.object)}`, label: props.get(x.property)! })),
       ...result.subclasses.filter((x) => !x.asserted).map((x) => ({ key: `s|${x.subclass}|${x.superclass}`, from: x.subclass, to: x.superclass, direct: x.direct, text: `${q(x.subclass)} is a kind of ${q(x.superclass)}` })),
     ];
     return out.sort((a, b) => Number(b.direct) - Number(a.direct) || a.text.localeCompare(b.text));
-  }, [result, names]);
+  }, [result, names, model]);
   const credit = creditOf(result);
   if (result.consistency !== 'consistent')
     return (
@@ -821,7 +850,7 @@ function DlInferences({ result }: { result: ReasoningResult }) {
   return (
     <div className="issues" data-engine="dl">
       <p className="muted note">
-        What {result.engine.name} entails beyond what is stated: class memberships and the class hierarchy. {result.proves ? '' : 'The reasoning was partial, so there may be more. '}These are not stored: “Add to model” states one explicitly.
+        What {result.engine.name} entails beyond what is stated: class memberships, relationships between individuals and the class hierarchy. {result.proves ? '' : 'The reasoning was partial, so there may be more. '}These are not stored: “Add to model” states one explicitly.
       </p>
       {!facts.length && <p className="muted note">Nothing new follows from the model.</p>}
       {facts.slice(0, limit).map((f) => (
@@ -843,7 +872,7 @@ function DlInferences({ result }: { result: ReasoningResult }) {
               {f.direct ? '' : ' It follows through what is between them.'}
             </span>
           </span>
-          <button className="btn small" title="State this explicitly as a relation in the model" onClick={() => st().addRelation({ from: f.from, to: f.to, kind: 'generalization' })}>
+          <button className="btn small" title="State this explicitly as a relation in the model" onClick={() => st().addRelation(f.label ? { from: f.from, to: f.to, label: f.label } : { from: f.from, to: f.to, kind: 'generalization' })}>
             Add to model
           </button>
         </div>

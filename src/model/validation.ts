@@ -436,7 +436,7 @@ export function dlFindings(model: Model, report: DlReport): { summary: OwlSummar
   const notes = report.warnings.map(say);
   const undeclared = report.profile?.undeclaredCount ?? 0;
   if (undeclared) notes.push(`${undeclared} ${undeclared === 1 ? 'entity is' : 'entities are'} used without being declared (${(report.profile?.undeclared ?? []).slice(0, 4).join(', ')}${undeclared > 4 ? '…' : ''}). Each was read as what its use implies, which changes no axiom.`);
-  const inferred = result.subclasses.filter((x) => !x.asserted).length + result.types.filter((x) => !x.asserted).length;
+  const inferred = result.subclasses.filter((x) => !x.asserted).length + result.types.filter((x) => !x.asserted).length + result.relations.filter((x) => !x.asserted).length;
   return {
     summary: {
       engine: 'dl',

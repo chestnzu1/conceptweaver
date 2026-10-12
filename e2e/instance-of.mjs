@@ -96,7 +96,7 @@ ok((await kind.locator('option').evaluateAll((os) => os.map((o) => o.value))).jo
 // ---------------------------------------------------------------- asserted and inferred
 await node('Film').locator('.node-box').click();
 await add('Asserted superclasses', 'Genre');
-const toggle = page.locator('.zoom').getByRole('button', { name: /Inferred types/ });
+const toggle = page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ });
 ok((await inferred.count()) === 0, 'inferred memberships are not drawn until asked for');
 await toggle.click();
 ok((await inferred.count()) === 1 && flat(await inferred.locator('.edge-label').textContent()) === 'Is Instance Of (inferred)', 'asked for, the inferred membership (Parasite is a Film, a Film is a Genre) is drawn and labelled as inferred');

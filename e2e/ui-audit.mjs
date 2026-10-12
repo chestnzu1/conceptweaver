@@ -134,10 +134,10 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
     report('Validation', await page.evaluate(measure));
     // The same view with the OWL 2 DL reasoner chosen, and its service not there to answer.
+    // Choosing it asks it at once; whether its service is there to answer or not, the card is measured as it then is.
     await page.locator('.owl-card').getByRole('radio', { name: /^Advanced reasoner/ }).check();
     await page.waitForFunction(() => /Not running|is running/.test(document.querySelector('.owl-card .health')?.textContent ?? ''));
-    await page.locator('.owl-card').getByRole('button', { name: 'Run reasoning' }).click();
-    await page.waitForFunction(() => !document.querySelector('.owl-card fieldset')?.disabled && /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
+    await page.waitForFunction(() => document.querySelector('.owl-card .reasoned')?.getAttribute('data-engine') === 'dl' && !document.querySelector('.owl-card fieldset')?.disabled);
     report('Validation · OWL 2 DL', await page.evaluate(measure));
     await page.locator('.owl-card').getByRole('radio', { name: /^Fast reasoner/ }).check();
     await tab('Align');
