@@ -1,7 +1,6 @@
 # ConceptWeaver
 
-A browser-based visual editor for knowledge graphs, glossaries and small ontologies, in the
-spirit of [Termboard](https://termboard.com). Draw terms as boxes, connect them with labelled
+A browser-based visual editor for knowledge graphs, glossaries and small ontologies. Draw terms as boxes, connect them with labelled
 relations, and export a standards-compliant model. Everything stays in the browser: no
 account, no server.
 
