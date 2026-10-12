@@ -4421,3 +4421,95 @@ summary {
   flex: 1;
   min-width: 0;
 }
+
+/* ------------------------------------------------------------ types of model */
+
+/* Choosing what kind of model to make: each type is a card with what it is for. */
+.model-types {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 6px;
+}
+
+.model-types legend {
+  padding: 0;
+  margin-bottom: 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.model-type {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color var(--quick) ease-out,
+    border-color var(--quick) ease-out;
+}
+
+.model-type:hover {
+  background: var(--panel-2);
+}
+
+.model-type.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* The round button itself, not a text box: the look fields give their inputs is taken off again. */
+.field .model-type input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.model-type > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-type small {
+  color: var(--ink-2);
+}
+
+/* The type of the model in hand: said, not chosen. */
+.model-type-shown {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-type-shown > span {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.model-type-shown strong {
+  padding: 6px 0;
+  font-weight: 600;
+}
+
+.type-fixed {
+  font-size: 14px;
+}
+
+.tree-name.match {
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}

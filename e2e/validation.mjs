@@ -222,9 +222,9 @@ await page.locator('.dialog.saveas').getByRole('button', { name: /^Save/ }).clic
 await page.waitForFunction(() => document.querySelector('.header .save-state')?.textContent === 'Saved');
 await page.getByRole('button', { name: 'File', exact: true }).click();
 await page.getByRole('menuitem', { name: 'Load the SKOS example' }).click();
-await tab(/^Validation/);
-await settled();
-ok(flat(await card('OWL consistency').innerText()).includes('no OWL axioms to contradict') && flat(await v.locator('.tabs.sub').innerText()).includes('SHACL shapes (0)'), 'another model has its own validation: a concept scheme has no OWL consistency, and no shapes');
+await page.waitForSelector('.node');
+// A vocabulary is not validated: the function is not there for it, and the view that was open is left.
+ok((await page.locator('.header').getByRole('tab', { name: /^Validation/ }).count()) === 0 && (await page.locator('.header [role=tab].on').innerText()) === 'Graph', 'another model, a vocabulary, has no Validation to open');
 await page.getByRole('button', { name: 'My Models' }).click();
 await page.locator('.dialog.library').getByRole('button', { name: /^Open/ }).first().click();
 await page.waitForSelector('.node');

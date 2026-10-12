@@ -58,6 +58,8 @@ export const DEFAULT_FIELDS: MetaField[] = [
     g('domain', 'Business domain', 'dcat:theme', 'entity', ALL, { multiple: true, about: 'The subject area it belongs to, such as Customer Management.' }),
     g('keywords', 'Tags and keywords', 'dcat:keyword', 'text', ALL, { multiple: true, about: 'Words to find it by.' }),
     g('altLabels', 'Alternative labels', 'skos:altLabel', 'text', [C, D, I, B, T], { bind: 'synonyms', multiple: true, about: 'Other names it goes by: its synonyms.' }),
+    g('note', 'Notes', 'skos:note', 'longtext', [C, D, I, B, T], { about: 'A general remark about it.' }),
+    g('scopeNote', 'Scope note', 'skos:scopeNote', 'longtext', [C], { about: 'What it does and does not cover.' }),
     g('concepts', 'Related semantic concepts', 'dcterms:subject', 'entity', [B, T], { multiple: true, about: 'The classes or concepts this asset holds data about.' }),
   ]),
   ...group('Governance', [
@@ -65,7 +67,7 @@ export const DEFAULT_FIELDS: MetaField[] = [
     g('steward', 'Data steward', 'dcat:contactPoint', 'entity', ALL, { about: 'Who looks after it day to day, and whom to ask about it.' }),
     g('technicalOwner', 'Technical owner', '', 'entity', [D, T], { about: 'Who runs the system it lives in.' }),
     g('department', 'Responsible department', 'dcterms:publisher', 'entity', [C, B, T], { about: 'The department that makes it available.' }),
-    g('sensitivity', 'Sensitivity classification', 'dcterms:accessRights', 'choice', [D, B, T], { options: ['Public', 'Internal', 'Confidential', 'Restricted'], about: 'Who may see it.' }),
+    g('sensitivity', 'Sensitivity classification', 'dcterms:accessRights', 'choice', [C, D, B, T], { options: ['Public', 'Internal', 'Confidential', 'Restricted'], about: 'Who may see it.' }),
     g('status', 'Lifecycle status', 'adms:status', 'choice', ALL, { options: ['Draft', 'Under Review', 'Approved', 'Deprecated'], about: 'Where it stands in its review.' }),
     g('policies', 'Governance policies', 'dcterms:conformsTo', 'entity', [D, B, T], { multiple: true, about: 'The policies and standards it has to follow.' }),
   ]),

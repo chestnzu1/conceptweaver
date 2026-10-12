@@ -98,6 +98,7 @@ const report = (label, found) => {
 for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }]) {
   for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: size });
+    page.on('dialog', (d) => d.accept());
     await page.goto(base);
     await page.evaluate((t) => { localStorage.clear(); localStorage.setItem('conceptweaver:theme', t); }, theme);
     await page.reload();
@@ -116,6 +117,11 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
       report('Style · ' + name, await page.evaluate(measure));
     }
     await page.locator('.style-panel').getByRole('button', { name: 'Close the graph style panel' }).click();
+    // The dialog a new model starts with.
+    await page.getByRole('button', { name: 'File', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^New model/ }).click();
+    report('New model', await page.evaluate(measure));
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
     await tab('Entities');
     report('Entities', await page.evaluate(measure));
     await page.locator('.view').getByRole('tab', { name: 'Governance & Metadata' }).click();

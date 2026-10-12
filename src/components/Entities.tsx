@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { inferredRestrictions } from '../model/inferred';
 import { CHARACTERISTICS, dataDomain, fitsIn, hasCardinality, objectProperties, isInstanceOf, plainRelationships, propKey, propLinks, offeredChoices, relChoice, restrictionsOf, type RelChoice } from '../model/props';
 import { useStore } from '../model/store';
-import { DATATYPES, kindLabel, REL_KINDS, type Model, type RelKind, type Term, type TermType } from '../model/types';
+import { iriCut, setIriSuffix } from '../model/iri';
+import { configOf, type EntityColumn } from '../model/modelTypes';
+import { DATATYPES, type Model, type Term, type TermType } from '../model/types';
 import { CommitInput, useLazyOptions } from './fields';
 import { GovernanceView } from './Governance';
 import { IriCell, SuperclassEditor } from './Iri';
@@ -66,7 +68,9 @@ export function EntitiesView() {
   const st = useStore.getState;
   const skos = model.mode === 'skos';
   const [tabState, setTabState] = useState<Tab>(lastTab);
-  const tab: Tab = skos && tabState !== 'relations' && tabState !== 'governance' ? 'concept' : tabState;
+  // The sections the type of model has; one it does not have is never the one shown.
+  const config = configOf(model);
+  const tab: Tab = config.entityTabs.includes(tabState) ? tabState : config.entityTabs[0];
   const [configuring, setConfiguring] = useState(false);
   const setTab = (t: Tab) => setTabState((lastTab = t));
 
@@ -76,7 +80,8 @@ export function EntitiesView() {
   const name = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
   const names = (ids: string[]) => ids.map((id) => name.get(id)).join(', ');
   const type = useMemo(() => new Map(model.terms.map((t) => [t.id, t.type])), [model.terms]);
-  const of = (type: TermType) => model.terms.filter((t) => (skos ? true : t.type === type));
+  // Where there is one kind of term, every term is of it.
+  const of = (type: TermType) => model.terms.filter((t) => config.termTypes.length < 2 || t.type === type);
   const sorted = useMemo(() => [...model.terms].sort((a, b) => a.name.localeCompare(b.name)), [model.terms]);
   // What each term is a kind of (or an instance of), and which terms have each data property.
   const { owners, degree } = useMemo(() => {
@@ -90,27 +95,22 @@ export function EntitiesView() {
     return { owners, degree };
   }, [model.relations]);
 
-  const tabs: { id: Tab; label: string; count: number }[] = skos
-    ? [
-        { id: 'concept', label: 'Concepts', count: model.terms.length },
-        { id: 'relations', label: 'Relationships', count: model.relations.length },
-        { id: 'governance', label: 'Governance & Metadata', count: -1 },
-      ]
-    : [
-        { id: 'concept', label: 'Classes', count: of('concept').length },
-        { id: 'object', label: 'Object properties', count: props.length },
-        { id: 'property', label: 'Data properties', count: of('property').length },
-        { id: 'instance', label: 'Individuals', count: of('instance').length },
-        { id: 'relations', label: 'Relationships', count: model.relations.length },
-        { id: 'governance', label: 'Governance & Metadata', count: -1 },
-      ];
+  const tabInfo: Record<Tab, { label: string; count: number }> = {
+    concept: { label: config.termType.concept.plural, count: of('concept').length },
+    object: { label: 'Object properties', count: props.length },
+    property: { label: 'Data properties', count: of('property').length },
+    instance: { label: 'Individuals', count: of('instance').length },
+    relations: { label: 'Relationships', count: model.relations.length },
+    governance: { label: 'Governance & Metadata', count: -1 },
+  };
+  const tabs = config.entityTabs.map((id) => ({ id, ...tabInfo[id] }));
 
   const addTerm = (type: TermType, label: string) => {
     const id = st().addTerm({ type, name: label });
     st().select([id]);
   };
   const add: Record<Tab, { label: string; run: () => void; disabled?: boolean }> = {
-    concept: { label: skos ? 'Add concept' : 'Add class', run: () => addTerm('concept', skos ? 'New concept' : 'New class') },
+    concept: { label: `Add ${config.termType.concept.label.toLowerCase()}`, run: () => addTerm('concept', `New ${config.termType.concept.label.toLowerCase()}`) },
     object: { label: 'Add object property', run: () => st().addProp() },
     property: { label: 'Add data property', run: () => addTerm('property', 'New data property') },
     instance: { label: 'Add individual', run: () => addTerm('instance', 'New individual') },
@@ -122,7 +122,7 @@ export function EntitiesView() {
     governance: { label: configuring ? 'Back to the entities' : 'Configure fields', run: () => setConfiguring(!configuring) },
   };
   const hint: Record<Tab, string> = {
-    concept: skos ? 'Every concept in the scheme.' : 'The classes of the ontology, each with the restrictions its properties place on it. Click a row to edit it in the side panel.',
+    concept: skos ? 'Every concept of the vocabulary, by its name and its IRI. Its labels, definition and ownership are under Governance & Metadata; what it is broader or narrower than is under Hierarchy.' : 'The classes of the ontology, each with the restrictions its properties place on it. Click a row to edit it in the side panel.',
     object: 'Object properties link two terms. Each is declared once here and reused wherever its name is used. A domain or range marked “from use” follows where the property is used; choose a class in the cell to set it yourself.',
     property: 'Data properties hold a value such as a date or a number. Attach one to a class with a “has property” relation.',
     instance: 'Individuals are particular things. Give one a type by making it “is a” of a class.',
@@ -153,6 +153,63 @@ export function EntitiesView() {
   const text = (t: Term, field: 'name' | 'description' | 'synonyms', label: string) => (
     <CommitInput aria-label={label} value={t[field]} onCommit={(v) => st().updateTerm(t.id, { [field]: field === 'name' ? v.trim() : v })} />
   );
+  // Every column the table of classes or concepts can have. Which of them it has is the type of model's to say.
+  const columns: Record<EntityColumn, { head: string; width: string | number; title?: string; cls?: string; cell: (t: Term) => ReactNode }> = {
+    name: { head: 'Name', width: '15%', cell: (t) => text(t, 'name', 'Name') },
+    iri: { head: 'IRI', width: '19%', cls: 'ro', cell: (t) => <IriCell iri={t.iri} of={t.name} /> },
+    suffix: {
+      head: 'IRI suffix',
+      width: '18%',
+      title: 'The last part of the IRI. It is the entity’s identifier, apart from its name: renaming the entity does not change it.',
+      cell: (t) => (
+        <CommitInput
+          aria-label="IRI suffix"
+          disabled={t.external !== undefined}
+          value={t.iri ? t.iri.slice(iriCut(t.iri)) : ''}
+          placeholder="made from the name"
+          onCommit={(v) => {
+            const refused = st().edit((m) => setIriSuffix(m, { term: t.id }, v));
+            if (refused) st().notify(refused);
+          }}
+        />
+      ),
+    },
+    type: {
+      head: 'Type',
+      width: '18%',
+      cls: 'ro',
+      cell: (t) => (
+        <>
+          {config.termType[t.type].label} <code className="pred">{config.termType[t.type].rdf}</code>
+        </>
+      ),
+    },
+    hierarchy: { head: 'Asserted Superclasses', width: '17%', title: 'The superclasses explicitly stated for each class (rdfs:subClassOf). Superclasses that only follow from these are not listed.', cls: 'cell-edit', cell: (t) => <SuperclassEditor term={t} /> },
+    restrictions: {
+      head: 'Asserted Restrictions',
+      width: '17%',
+      title: 'Stated on the class itself: what its properties require of it',
+      cls: 'ro restrictions-cell',
+      cell: (t) => (
+        <>
+          {restrictionsOf(model, t.id).map((r) => (
+            <div key={`${r.rel.id}:${r.index}`}>
+              {r.property} <em>{r.quantifier}{r.n !== undefined ? ' ' + r.n : ''}</em> {r.filler}
+            </div>
+          ))}
+          {t.axioms?.length ? (
+            <div className="muted" title={t.axioms.join('\n')}>
+              + {t.axioms.length} other asserted expression{t.axioms.length === 1 ? '' : 's'}
+            </div>
+          ) : null}
+        </>
+      ),
+    },
+    inferred: { head: 'Inferred Restrictions', width: '19%', title: 'Not stated on the class, but entailed by the reasoner: inherited from its superclasses and equivalent classes. Read-only.', cls: 'ro restrictions-cell inferred', cell: (t) => <InferredCell model={model} id={t.id} /> },
+    description: { head: 'Description', width: '13%', cell: (t) => text(t, 'description', 'Description') },
+    synonyms: { head: 'Synonyms', width: '9%', cell: (t) => text(t, 'synonyms', 'Synonyms') },
+    relations: { head: 'Relations', width: 80, cls: 'num', cell: (t) => degree.get(t.id) ?? 0 },
+  };
   // The search box on the left narrows every table; long tables are shown a page at a time.
   const filter = useStore((s) => s.filter);
   const q = filter.trim().toLowerCase();
@@ -192,64 +249,25 @@ export function EntitiesView() {
       {tab === 'governance' && <GovernanceView configuring={configuring} />}
       <div className="table-wrap" hidden={tab === 'governance'}>
         {tab === 'concept' && (
-          <table className={skos ? '' : 'wide'}>
+          <table className={config.entityColumns.length > 5 ? 'wide' : ''}>
             <thead>
               <tr>
-                <th style={{ width: '15%' }}>Name</th>
-                <th style={{ width: '19%' }}>IRI</th>
-                <th style={{ width: '17%' }} title={skos ? 'The broader concepts stated for each concept' : 'The superclasses explicitly stated for each class (rdfs:subClassOf). Superclasses that only follow from these are not listed.'}>
-                  {skos ? 'Broader' : 'Asserted Superclasses'}
-                </th>
-                {!skos && (
-                  <th style={{ width: '17%' }} title="Stated on the class itself: what its properties require of it">
-                    Asserted Restrictions
+                {config.entityColumns.map((c) => (
+                  <th key={c} style={{ width: columns[c].width }} className={c === 'relations' ? 'num' : undefined} title={columns[c].title}>
+                    {columns[c].head}
                   </th>
-                )}
-                {!skos && (
-                  <th style={{ width: '19%' }} title="Not stated on the class, but entailed by the reasoner: inherited from its superclasses and equivalent classes. Read-only.">
-                    Inferred Restrictions
-                  </th>
-                )}
-                <th style={{ width: '13%' }}>{skos ? 'Definition' : 'Description'}</th>
-                <th style={{ width: '9%' }}>{skos ? 'Alternative labels' : 'Synonyms'}</th>
-                <th style={{ width: 80 }} className="num">
-                  Relations
-                </th>
+                ))}
                 <th style={{ width: 90 }} />
               </tr>
             </thead>
             <tbody>
               {list.map((t) => (
                 <tr key={t.id} {...rowProps(t)}>
-                  <td>{text(t, 'name', 'Name')}</td>
-                  <td className="ro">
-                    <IriCell iri={t.iri} of={t.name} />
-                  </td>
-                  <td className="cell-edit">
-                    <SuperclassEditor term={t} />
-                  </td>
-                  {!skos && (
-                    <td className="ro restrictions-cell">
-                      {restrictionsOf(model, t.id).map((r) => (
-                        <div key={`${r.rel.id}:${r.index}`}>
-                          {r.property} <em>{r.quantifier}{r.n !== undefined ? ' ' + r.n : ''}</em> {r.filler}
-                        </div>
-                      ))}
-                      {t.axioms?.length ? (
-                        <div className="muted" title={t.axioms.join('\n')}>
-                          + {t.axioms.length} other asserted expression{t.axioms.length === 1 ? '' : 's'}
-                        </div>
-                      ) : null}
+                  {config.entityColumns.map((c) => (
+                    <td key={c} className={columns[c].cls}>
+                      {columns[c].cell(t)}
                     </td>
-                  )}
-                  {!skos && (
-                    <td className="ro restrictions-cell inferred">
-                      <InferredCell model={model} id={t.id} />
-                    </td>
-                  )}
-                  <td>{text(t, 'description', 'Description')}</td>
-                  <td>{text(t, 'synonyms', 'Synonyms')}</td>
-                  <td className="num">{degree.get(t.id) ?? 0}</td>
+                  ))}
                   {actions(t)}
                 </tr>
               ))}
@@ -463,23 +481,13 @@ export function EntitiesView() {
                   </td>
                   <td>{termSelect(r.to, (to) => st().updateRelation(r.id, { to }), 'To')}</td>
                   <td>
-                    {skos ? (
-                      <select aria-label="Kind" value={r.kind} onChange={(e) => st().updateRelation(r.id, { kind: e.target.value as RelKind })}>
-                        {REL_KINDS.map((k) => (
-                          <option key={k.value} value={k.value}>
-                            {kindLabel(k.value, skos)}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <select aria-label="Kind" value={relChoice(model, r)} onChange={(e) => st().setRelChoice(r.id, e.target.value as RelChoice)}>
-                        {offeredChoices(model, r).map((k) => (
-                          <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
-                            {k.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <select aria-label="Kind" value={relChoice(model, r)} onChange={(e) => st().setRelChoice(r.id, e.target.value as RelChoice)}>
+                      {offeredChoices(model, r).map((k) => (
+                        <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
+                          {k.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   {!skos && (
                     <td className="ro">

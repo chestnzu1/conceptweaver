@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useStore } from '../model/store';
 import type { Relation } from '../model/types';
 import { activeProps, labelKey, resolveModel, suggestFor } from '../model/vocab';
+import { MODEL_TYPES } from '../model/modelTypes';
 
 const types = (ts: string[]) => (ts.length ? ts.join(' / ') : 'any term');
 
@@ -37,6 +38,9 @@ export function VocabView() {
   }, [model, skos]);
   const example = (r: Relation) => `${name.get(r.from)} → ${name.get(r.to)}`;
   const convert = (to: 'skos' | 'ontology') => {
+    // The type of a model decides what the app offers for it, so it is changed only when that is confirmed.
+    const type = MODEL_TYPES[to].label;
+    if (!window.confirm(`Convert “${model.name}” to a ${type}?\n\nIts terms and relationships are restated in that type's terms, and the app then offers that type's functions. Undo brings it back.`)) return;
     st().convertTo(to);
     st().notify(to === 'ontology' ? 'Converted to an ontology. Undo brings the concept scheme back.' : 'Converted to a SKOS concept scheme. Undo brings the ontology back.');
   };

@@ -1,4 +1,5 @@
-import { INSTANCE_OF, PROP_LINKS, QUANTIFIERS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
+import { allowsKind, configOf, type RelKindId } from './modelTypes';
+import { PROP_LINKS, QUANTIFIERS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
 import { labelKey, resolveModel } from './vocab';
 
 /** The characteristics an object property can have, as in OWL. */
@@ -166,15 +167,8 @@ export function dataDomain(model: Model, t: Term): { ids: string[]; auto: boolea
   return { ids: [...new Set(model.relations.filter((r) => r.kind === 'property' && r.to === t.id && known.has(r.from)).map((r) => r.from))], auto: true };
 }
 
-/** What a relationship is, as offered where its kind is chosen. */
-export type RelChoice = 'object' | 'plain' | 'generalization' | 'instanceOf' | 'property';
-export const REL_CHOICES: { value: RelChoice; label: string }[] = [
-  { value: 'plain', label: 'Relationship (plain)' },
-  { value: 'object', label: 'Object property' },
-  { value: 'generalization', label: 'Is a (generalization)' },
-  { value: 'instanceOf', label: INSTANCE_OF },
-  { value: 'property', label: 'Has data property' },
-];
+/** What a relationship is, as offered where its kind is chosen. Which kinds there are depends on the type of model. */
+export type RelChoice = RelKindId;
 
 /**
  * Whether a relation states a class membership: it points from an individual to a class and
@@ -185,7 +179,8 @@ export const isInstanceOf = (model: Model, r: Pick<Relation, 'id'>): boolean => 
 export function relChoice(model: Model, r: Relation): RelChoice {
   if (isInstanceOf(model, r)) return 'instanceOf';
   if (r.kind !== 'association') return r.kind;
-  return !r.predicate && !r.plain && model.props.some((p) => propKey(p.name) === propKey(r.label)) ? 'object' : 'plain';
+  // Where the type of model has no object properties, a label is only ever a label.
+  return allowsKind(model, 'object') && !r.predicate && !r.plain && model.props.some((p) => propKey(p.name) === propKey(r.label)) ? 'object' : 'plain';
 }
 
 /** What each pair of term types can be related by. Pairs not listed can be anything but "Is Instance Of". */
@@ -201,9 +196,13 @@ const KINDS_BETWEEN: Record<string, { kinds: RelChoice[]; between: string }> = {
  * an object property, "is a" or plain; a class and a data property "has data property" or plain.
  */
 export function relChoices(model: Model, r: Pick<Relation, 'from' | 'to'>): { value: RelChoice; label: string; disabled?: string }[] {
+  const config = configOf(model);
+  const kinds = config.relationKinds.map((k) => ({ value: k.id, label: k.label }));
+  // With one kind of term there is nothing for the two ends to differ in.
+  if (config.termTypes.length < 2) return kinds;
   const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
   const rule = KINDS_BETWEEN[[type(r.from), type(r.to)].sort().join('|')];
-  return REL_CHOICES.map((c) => {
+  return kinds.map((c) => {
     if (rule) return rule.kinds.includes(c.value) ? c : { ...c, disabled: `Not between ${rule.between}` };
     return c.value === 'instanceOf' ? { ...c, disabled: 'Only between an individual and a class' } : c;
   });

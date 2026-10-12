@@ -5,21 +5,11 @@ import { sampleModel, skosSample } from '../model/sample';
 import { universitySample } from '../model/sampleUniversity';
 import { stressModel } from '../model/stress';
 import { stable } from '../model/stable';
-import { confirmDiscard, isDirty, newModel, useStore, type View } from '../model/store';
+import { configOf, supports, VIEW_LABEL, viewFor } from '../model/modelTypes';
+import { confirmDiscard, isDirty, useStore } from '../model/store';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { CommitInput } from './fields';
 import { Icon } from './Icon';
-
-const VIEWS: { value: View; label: string }[] = [
-  { value: 'graph', label: 'Graph' },
-  { value: 'table', label: 'Entities' },
-  { value: 'hierarchy', label: 'Hierarchy' },
-  { value: 'checks', label: 'Validation' },
-  { value: 'align', label: 'Align' },
-  { value: 'rdf', label: 'RDF' },
-  { value: 'sparql', label: 'SPARQL' },
-  { value: 'vocab', label: 'Vocabulary' },
-];
 
 export async function openFile(file: File) {
   const st = useStore.getState();
@@ -35,7 +25,8 @@ export async function openFile(file: File) {
 
 export function Header() {
   const model = useStore((s) => s.model);
-  const view = useStore((s) => s.view);
+  // The view in force: the one asked for, where the type of model has it.
+  const view = viewFor(model, useStore((s) => s.view));
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const theme = useStore((s) => s.theme);
@@ -50,6 +41,8 @@ export function Header() {
   // The count comes a moment after an edit, so that checking a large model never holds up the edit itself.
   const [problems, setProblems] = useState(0);
   useEffect(() => {
+    // Nothing is checked for a type of model that has no validation.
+    if (!supports(meaning, 'validation')) return setProblems(0);
     const id = setTimeout(() => setProblems([...owlFindings(meaning).findings, ...qualityFindings(meaning).findings].filter((f) => f.severity !== 'info').length), meaning.terms.length > 300 ? 400 : 0);
     return () => clearTimeout(id);
   }, [meaning]);
@@ -60,7 +53,7 @@ export function Header() {
   };
 
   const fileMenu: MenuItem[] = [
-    { label: 'New model', onClick: () => confirmDiscard() && newModel() },
+    { label: 'New model…', onClick: () => confirmDiscard() && st().setDialog('new'), hint: 'choose its type' },
     { label: 'Open a file…', onClick: () => confirmDiscard() && fileRef.current?.click(), hint: 'JSON, Turtle' },
     { label: 'My Models…', onClick: () => st().setDialog('library'), hint: 'saved in this browser' },
     { label: 'Ontology settings…', onClick: () => st().setDialog('settings'), hint: 'IRI, prefixes' },
@@ -119,10 +112,11 @@ export function Header() {
       </div>
 
       <nav className="tabs" role="tablist" aria-label="View">
-        {VIEWS.map((v) => (
-          <button key={v.value} role="tab" aria-selected={view === v.value} className={view === v.value ? 'on' : ''} onClick={() => st().setView(v.value)}>
-            {v.label}
-            {v.value === 'checks' && problems > 0 && <span className="badge">{problems}</span>}
+        {/* The functions the type of model has, and no others. */}
+        {configOf(model).views.map((v) => (
+          <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} onClick={() => st().setView(v)}>
+            {VIEW_LABEL[v]}
+            {v === 'checks' && problems > 0 && <span className="badge">{problems}</span>}
           </button>
         ))}
       </nav>

@@ -5,6 +5,7 @@ import { useStore } from '../model/store';
 import { ancestorsOf, classTree, defaultOpen, matchingClasses, ROOT, treeRows } from '../model/tree';
 import type { Term, TermType } from '../model/types';
 import { Disclosure, Icon } from './Icon';
+import { configOf } from '../model/modelTypes';
 
 /** Which classes are expanded. Kept outside the component so that it survives switching views. */
 let remembered: { seq: number; open: Set<string> } | undefined;
@@ -20,9 +21,12 @@ export function TermList() {
   const filter = useStore((s) => s.filter);
   const setFilter = useStore((s) => s.setFilter);
   const docSeq = useStore((s) => s.docSeq);
-  const [type, setType] = useState<TermType>('concept');
+  const config = configOf(model);
+  const [wanted, setType] = useState<TermType>('concept');
+  // The kinds of term the type of model has; where it has one kind, every term is of it.
+  const type = config.termTypes.includes(wanted) ? wanted : config.termTypes[0];
   const skos = model.mode === 'skos';
-  const count = (t: TermType) => model.terms.filter((x) => x.type === t).length;
+  const count = (t: TermType) => model.terms.filter((x) => config.termTypes.length < 2 || x.type === t).length;
 
   const tree = useMemo(() => classTree(model), [model]);
   // Expansion belongs to the model in the editor: another model starts from the default, an edit keeps what is open.
@@ -66,11 +70,7 @@ export function TermList() {
     if (!next.delete(id)) next.add(id);
     setOpen(next);
   };
-  const tabs: [TermType, string][] = [
-    ['concept', skos ? 'Concepts' : 'Classes'],
-    ['property', 'Properties'],
-    ['instance', 'Individuals'],
-  ];
+  const tabs: [TermType, string][] = config.termTypes.map((t) => [t, config.termType[t].plural]);
 
   return (
     <aside className="panel term-list">

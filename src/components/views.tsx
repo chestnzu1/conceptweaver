@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { parseOutline, parseRelations, parseTerms } from '../model/bulk';
+import { configOf } from '../model/modelTypes';
 import { useStore } from '../model/store';
 import type { Model, Term } from '../model/types';
 import { resolveModel } from '../model/vocab';
@@ -28,13 +29,46 @@ function buildTree(model: Model) {
   const byName = (a: Term, b: Term) => a.name.localeCompare(b.name);
   for (const list of children.values()) list.sort(byName);
   const roots = m.terms.filter((t) => !hasParent.has(t.id)).sort((a, b) => (children.has(b.id) ? 1 : 0) - (children.has(a.id) ? 1 : 0) || byName(a, b));
-  return { children, props, roots };
+  // Terms that are each other's ancestors have no top among them and would never be reached.
+  // One of each such ring is put at the top, so that every term is somewhere in the tree.
+  const reached = new Set<string>();
+  const walk = (t: Term) => {
+    if (reached.has(t.id)) return;
+    reached.add(t.id);
+    (children.get(t.id) ?? []).forEach(walk);
+  };
+  roots.forEach(walk);
+  for (const t of [...m.terms].sort(byName)) {
+    if (reached.has(t.id)) continue;
+    roots.push(t);
+    walk(t);
+  }
+  // What each term is under, to find the way up from a term the search found.
+  const parents = new Map<string, string[]>();
+  for (const [parent, kids] of children) for (const k of kids) parents.set(k.id, [...(parents.get(k.id) ?? []), parent]);
+  return { children, props, roots, parents };
 }
 
 export function HierarchyView() {
   const model = useStore((s) => s.model);
   const focusTerm = useStore((s) => s.focusTerm);
-  const { children, props, roots } = useMemo(() => buildTree(model), [model]);
+  const { children, props, roots, parents } = useMemo(() => buildTree(model), [model]);
+  const config = configOf(model);
+  // The search box narrows the tree to the terms it finds and what they are under.
+  const filter = useStore((s) => s.filter);
+  const found = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return null;
+    const matches = new Set(model.terms.filter((t) => `${t.name}\n${t.description}\n${t.synonyms}\n${t.iri ?? ''}`.toLowerCase().includes(q)).map((t) => t.id));
+    const shown = new Set<string>();
+    const up = (id: string) => {
+      if (shown.has(id)) return;
+      shown.add(id);
+      (parents.get(id) ?? []).forEach(up);
+    };
+    matches.forEach(up);
+    return { matches, shown };
+  }, [model.terms, parents, filter]);
   // A big hierarchy opens folded to its top two levels; unfolding everything is one click away.
   const [closed, setClosed] = useState<Set<string>>(() => {
     if (model.terms.length < 400) return new Set();
@@ -79,9 +113,11 @@ export function HierarchyView() {
       return next;
     });
 
-  const node = (t: Term, path: string[]) => {
-    const kids = path.includes(t.id) ? [] : (children.get(t.id) ?? []);
-    const open = !closed.has(t.id);
+  const node = (t: Term, path: string[]): ReactNode => {
+    if (found && !found.shown.has(t.id)) return null;
+    // A term met again on the way down is a ring: it is shown, marked, and not gone into a second time.
+    const kids = (path.includes(t.id) ? [] : (children.get(t.id) ?? [])).filter((k) => !found || found.shown.has(k.id));
+    const open = found ? true : !closed.has(t.id);
     return (
       <li key={t.id}>
         <div className="tree-row">
@@ -92,11 +128,11 @@ export function HierarchyView() {
           ) : (
             <span className="twisty" />
           )}
-          <button className="tree-name" onClick={() => focusTerm(t.id)} title="Show on the canvas">
+          <button className={'tree-name' + (found?.matches.has(t.id) ? ' match' : '')} onClick={() => focusTerm(t.id)} title="Show on the canvas">
             <span className={'dot ' + t.type} style={{ background: `var(--nc-${t.color || 'default'}-fill)`, borderColor: `var(--nc-${t.color || 'default'}-stroke)` }} />
             {t.name || 'Unnamed'}
           </button>
-          {t.type !== 'concept' && <span className="tag">{t.type}</span>}
+          {config.termTypes.length > 1 && t.type !== 'concept' && <span className="tag">{t.type}</span>}
           {kids.length > 0 && <span className="count">{kids.length}</span>}
           {(props.get(t.id) ?? []).map((p) => (
             <span key={p.id} className="tag prop">
@@ -123,8 +159,9 @@ export function HierarchyView() {
       <div className="view-head">
         <p className="muted">
           {skos
-            ? 'The broader / narrower hierarchy. Hover a concept and press “+ narrower” to type concepts straight into the tree.'
+            ? 'The broader / narrower hierarchy, built from the “is a” relations (skos:broader). Hover a concept and press “+ narrower” to type concepts straight into the tree.'
             : 'Built from the “is a” relations. Properties are shown next to the term that owns them.'}
+          {found && <strong> Filtered by “{filter.trim()}”: {found.matches.size} found.</strong>}
         </p>
         <div className="row">
           <button className="btn small primary" onClick={() => startAdding(null)}>
@@ -144,6 +181,7 @@ export function HierarchyView() {
           {adding && adding.parent === null && entry(null)}
         </ul>
         {!roots.length && !adding && <p className="muted pad">No terms yet.</p>}
+        {found && !found.matches.size && <p className="muted pad">Nothing in the hierarchy matches “{filter.trim()}”.</p>}
       </div>
     </div>
   );

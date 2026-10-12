@@ -1,7 +1,8 @@
 import { useStore } from '../model/store';
 import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
-import { DATATYPES, QUANTIFIERS, type Quantifier, isLang, kindLabel, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Relation, type ModelMode, type RelKind, type Term } from '../model/types';
+import { DATATYPES, QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type Relation, type Term } from '../model/types';
+import { allowsView, configOf, MODEL_TYPE_LIST, supports, type EditorSection } from '../model/modelTypes';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
 import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
@@ -70,6 +71,7 @@ function ExternalNote({ id }: { id: string }) {
 
 function ModelPanel() {
   const model = useStore((s) => s.model);
+  const config = configOf(model);
   const apply = useStore((s) => s.apply);
   return (
     <>
@@ -97,13 +99,11 @@ function ModelPanel() {
         </button>
       </div>
       <div className="field two">
-        <label>
+        <div className="model-type-shown">
           <span>Model type</span>
-          <select value={model.mode} onChange={(e) => useStore.getState().convertTo(e.target.value as ModelMode)}>
-            <option value="skos">Concept scheme (SKOS)</option>
-            <option value="ontology">Ontology (OWL)</option>
-          </select>
-        </label>
+          {/* Shown, not chosen: the type is settled when the model is made, and changes only by converting it. */}
+          <strong>{config.label}</strong>
+        </div>
         <label style={{ flex: '0 0 84px' }}>
           <span>Language</span>
           <CommitInput
@@ -118,15 +118,29 @@ function ModelPanel() {
           />
         </label>
       </div>
-      {model.mode === 'ontology' && (
+      {supports(model, 'standardProperties') && (
         <label className="check">
           <input type="checkbox" checked={model.vocab.enabled} onChange={(e) => useStore.getState().setVocabEnabled(e.target.checked)} />
           <span>Use RDFS &amp; OWL properties</span>
         </label>
       )}
-      <button className="btn small" onClick={() => useStore.getState().setView('vocab')}>
-        {model.mode === 'skos' ? 'SKOS relations and conversion…' : 'Map relationships and convert…'}
-      </button>
+      {allowsView(model, 'vocab') && (
+        <button className="btn small" onClick={() => useStore.getState().setView('vocab')}>
+          Map relationships and convert…
+        </button>
+      )}
+      {/* Where there is no Vocabulary view to convert from, the conversion is offered here. It is asked for and confirmed, never done in passing. */}
+      {!allowsView(model, 'vocab') &&
+        MODEL_TYPE_LIST.filter((t) => t.id !== model.mode).map((t) => (
+          <button
+            key={t.id}
+            className="btn small"
+            title={`Makes this model a ${t.label}: its concepts and relationships are restated in that type's terms. Undo brings it back.`}
+            onClick={() => window.confirm(`Convert “${model.name}” to a ${t.label}?\n\nIts concepts and relationships are restated in that type's terms, and the app then offers that type's functions. Undo brings it back.`) && useStore.getState().convertTo(t.id)}
+          >
+            Convert to {t.label}…
+          </button>
+        ))}
       <p className="stat">
         {model.terms.length} terms · {model.relations.length} relations
       </p>
@@ -156,10 +170,13 @@ function TermPanel({ term }: { term: Term }) {
   const update = useStore((s) => s.updateTerm);
   const st = useStore.getState;
   const skos = model.mode === 'skos';
+  // Which parts of the editor there are is a matter of the type of model: a vocabulary's concept has its name, IRI and type here and nothing else.
+  const config = configOf(model);
+  const has = (section: EditorSection) => config.editorSections.includes(section);
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
   const related = resolveModel(model).relations.filter((r) => r.from === term.id || r.to === term.id);
 
-  const kind = skos ? 'Concept' : term.type === 'concept' ? 'Class' : term.type === 'property' ? 'Data property' : 'Individual';
+  const kind = config.termType[term.type].label;
   const other = (term.axioms ?? []).filter((x) => !x.startsWith('rdfs:subClassOf ') && !x.startsWith('owl:equivalentClass '));
   const annotations = (
     <Section id="annotations" title="Annotations" count={term.fields.length + (term.description ? 1 : 0) + term.synonyms.split(',').filter((x) => x.trim()).length}>
@@ -186,33 +203,33 @@ function TermPanel({ term }: { term: Term }) {
       {term.external !== undefined && <ExternalNote id={term.external} />}
       <label className="field">
         <span>
-          {skos ? 'Preferred label' : 'Name'} <code className="pred">{skos ? 'skos:prefLabel' : 'rdfs:label'}</code>
+          Name <code className="pred">{config.rdf.label}</code>
         </span>
         <CommitInput value={term.name} onCommit={(v) => update(term.id, { name: v.trim() })} />
       </label>
       <IriDetails key={term.id} iri={term.iri} name={term.name} owner={{ term: term.id }} external={term.external !== undefined} />
-      {/* A concept scheme only has concepts; the choice shows up just to fix a term that isn't one. */}
-      {(!skos || term.type !== 'concept') && (
+      {config.termTypes.length > 1 ? (
         <label className="field">
           <span>Type</span>
           <select value={typeChoice(term)} onChange={(e) => update(term.id, TYPE_CHOICES.find((c) => c.value === e.target.value)!.patch)}>
-            {TYPE_CHOICES.map((t) => (
+            {TYPE_CHOICES.filter((t) => config.termTypes.includes(t.value)).map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
               </option>
             ))}
           </select>
         </label>
-      )}
-
-      {skos && term.type === 'concept' && (
+      ) : (
+        // One kind of term: there is nothing to choose, only to say.
         <div className="field">
-          <span>Broader concepts</span>
-          <SuperclassEditor term={term} />
+          <span>Type</span>
+          <span className="type-fixed">
+            {kind} <code className="pred">{config.termType[term.type].rdf}</code>
+          </span>
         </div>
       )}
 
-      {!skos && term.type === 'concept' && (
+      {has('axioms') && term.type === 'concept' && (
         <>
           <Section id="class-axioms" title="Class axioms">
             <div className="field">
@@ -226,14 +243,14 @@ function TermPanel({ term }: { term: Term }) {
             <AnonymousExpressions term={term} predicate="owl:equivalentClass" />
             <LinkEditor term={term} kind="disjointWith" noun="disjoint class" label="Disjoint classes" hint="nothing can belong to both" />
           </Section>
-          <ClassRestrictions term={term} />
+          {has('restrictions') && <ClassRestrictions term={term} />}
           <ClassProperties term={term} />
-          <InferredSupers term={term} />
-          <InferredRestrictionsPanel term={term} />
+          {has('inferred') && <InferredSupers term={term} />}
+          {has('inferred') && <InferredRestrictionsPanel term={term} />}
         </>
       )}
 
-      {!skos && term.type === 'property' && (
+      {has('axioms') && term.type === 'property' && (
         <Section id="property-axioms" title="Property axioms">
           <PropertyFields term={term} />
           <fieldset className="field checks">
@@ -254,7 +271,7 @@ function TermPanel({ term }: { term: Term }) {
         </Section>
       )}
 
-      {!skos && term.type === 'instance' && (
+      {has('axioms') && term.type === 'instance' && (
         <>
           <Section id="individual-axioms" title="Individual axioms">
             <div className="field">
@@ -271,7 +288,7 @@ function TermPanel({ term }: { term: Term }) {
         </>
       )}
 
-      {other.length ? (
+      {has('axioms') && other.length ? (
         <>
           <h3>Other asserted expressions ({other.length})</h3>
           <p className="muted">Kept exactly as written and exported with the entity.</p>
@@ -285,14 +302,16 @@ function TermPanel({ term }: { term: Term }) {
         </>
       ) : null}
 
-      {annotations}
-      <div className="field">
-        <span>Colour on the canvas</span>
-        <Swatches value={term.color} onPick={(color) => update(term.id, { color })} />
-      </div>
+      {has('annotations') && annotations}
+      {has('colour') && (
+        <div className="field">
+          <span>Colour on the canvas</span>
+          <Swatches value={term.color} onPick={(color) => update(term.id, { color })} />
+        </div>
+      )}
 
-      <h3>Relations ({related.length})</h3>
-      {related.length > 0 && (
+      {has('relations') && <h3>Relations ({related.length})</h3>}
+      {has('relations') && related.length > 0 && (
         <div className="row wrap">
           <span className="muted">Highlight</span>
           <button className="btn small" title="Terms with a relation pointing to this one" onClick={() => st().showNeighbours([term.id], 'in')}>
@@ -306,9 +325,9 @@ function TermPanel({ term }: { term: Term }) {
           </button>
         </div>
       )}
-      {related.length === 0 && <p className="muted">None yet. Drag the ⊕ handle on the term to another term.</p>}
+      {has('relations') && related.length === 0 && <p className="muted">None yet. Drag the ⊕ handle on the term to another term.</p>}
       <ul className="rel-list">
-        {related.map((r) => (
+        {(has('relations') ? related : []).map((r) => (
           <li key={r.id}>
             <button onClick={() => st().select([], [r.id])} title="Open this relation">
               {r.from === term.id ? (
@@ -324,8 +343,17 @@ function TermPanel({ term }: { term: Term }) {
           </li>
         ))}
       </ul>
+      {!has('annotations') && (
+        <p className="muted">
+          Its labels, definition, notes and ownership are under{' '}
+          <button className="link" onClick={() => st().setView('table')}>
+            Entities, Governance &amp; Metadata
+          </button>
+          .
+        </p>
+      )}
       <button className="btn danger" onClick={() => st().remove([term.id], [])}>
-        Delete term
+        Delete {kind.toLowerCase()}
       </button>
     </>
   );
@@ -784,30 +812,21 @@ function RelationPanel({ rel }: { rel: Relation }) {
       </button>
       <label className="field">
         <span>Kind</span>
-        {skos ? (
-          <select value={rel.kind} onChange={(e) => update(rel.id, { kind: e.target.value as RelKind })}>
-            {REL_KINDS.map((k) => (
-              <option key={k.value} value={k.value}>
-                {kindLabel(k.value, skos)}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <select value={relChoice(model, rel)} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
-            {offeredChoices(model, rel).map((k) => (
-              <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
-                {k.label}
-              </option>
-            ))}
-          </select>
-        )}
+        {/* The kinds the type of model has, of those the ones that fit what the line connects. */}
+        <select value={relChoice(model, rel)} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
+          {offeredChoices(model, rel).map((k) => (
+            <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
+              {k.label}
+            </option>
+          ))}
+        </select>
         {instanceOf && (
           <small>
             {names([rel.from])} is a member of the class {names([rel.to])}. Exports as <code className="pred">rdf:type</code>.
           </small>
         )}
       </label>
-      {props.length > 0 && (
+      {supports(model, 'standardProperties') && props.length > 0 && (
         <label className="field">
           <span>Standard property</span>
           <select value={own} onChange={(e) => update(rel.id, { predicate: e.target.value || undefined })}>

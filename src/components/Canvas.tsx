@@ -4,7 +4,8 @@ import { edgeTypesOf } from '../model/edgeKinds';
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
 import { useStore, viewOf, type SubgraphState } from '../model/store';
-import { INSTANCE_OF, kindLabel, newRelation, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
+import { allowsKind, configOf, supports } from '../model/modelTypes';
+import { INSTANCE_OF, newRelation, relLabel, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
 import { isInstanceOf, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices, restrictionByRelation } from '../model/props';
 import { inferredMemberships, type InferredMembership } from '../model/inferred';
 import { activeProps, resolveModel, suggestFor } from '../model/vocab';
@@ -46,7 +47,6 @@ export function Canvas() {
   const st = useStore.getState;
 
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
-  const skos = model.mode === 'skos';
 
   const toWorld = (clientX: number, clientY: number): Pt => {
     const r = wrapRef.current!.getBoundingClientRect();
@@ -167,9 +167,7 @@ export function Canvas() {
         if (target && target.id !== t.id) {
           // Drawing a term onto a data property attaches it: the term becomes (part of) its domain.
           let kind: RelKind = 'association';
-          if (st().model.mode !== 'skos') {
-            if (target.type === 'property' && t.type !== 'property') kind = 'property';
-          }
+          if (allowsKind(st().model, 'property') && target.type === 'property' && t.type !== 'property') kind = 'property';
           const id = st().addRelation({ from: t.id, to: target.id, kind });
           st().select([], [id]);
           st().setEditing({ kind: 'rel', id, isNew: true });
@@ -211,12 +209,17 @@ export function Canvas() {
     const many = ids.length > 1;
     openMenu(e, [
       { label: 'Rename', onClick: () => st().setEditing({ kind: 'term', id: t.id }), hint: 'F2', disabled: many },
-      { heading: 'Type' },
-      ...TYPE_CHOICES.map((tt) => ({
-        label: tt.label,
-        checked: !many && typeChoice(t) === tt.value,
-        onClick: () => st().updateTerms(ids, tt.patch),
-      })),
+      // The kinds of term the type of model has; with only one there is nothing to choose.
+      ...(configOf(st().model).termTypes.length > 1
+        ? [
+            { heading: 'Type' },
+            ...TYPE_CHOICES.filter((tt) => configOf(st().model).termTypes.includes(tt.value)).map((tt) => ({
+              label: tt.label,
+              checked: !many && typeChoice(t) === tt.value,
+              onClick: () => st().updateTerms(ids, tt.patch),
+            })),
+          ]
+        : []),
       { heading: 'Colour' },
       { swatches: (color) => st().updateTerms(ids, { color }), current: many ? undefined : t.color },
       { heading: 'Highlight' },
@@ -267,9 +270,8 @@ export function Canvas() {
       // A class membership has one direction only: from the individual to the class.
       { label: 'Reverse direction', onClick: () => st().reverseRelation(r.id), disabled: isInstanceOf(st().model, r) },
       { heading: 'Kind' },
-      ...(skos
-        ? REL_KINDS.map((k) => ({ label: kindLabel(k.value, skos), checked: r.kind === k.value, onClick: () => st().updateRelation(r.id, { kind: k.value }) }))
-        : offeredChoices(st().model, r).map((k) => ({ label: k.label, checked: relChoice(st().model, r) === k.value, disabled: !!k.disabled, onClick: () => st().setRelChoice(r.id, k.value) }))),
+      // The kinds the type of model has, of those the ones that fit what the line connects.
+      ...offeredChoices(st().model, r).map((k) => ({ label: k.label, checked: relChoice(st().model, r) === k.value, disabled: !!k.disabled, onClick: () => st().setRelChoice(r.id, k.value) })),
       'sep',
       { label: 'Delete', onClick: () => st().remove([], [r.id]), danger: true, hint: 'Del' },
     ]);
@@ -277,7 +279,7 @@ export function Canvas() {
 
   // Class memberships the reasoner works out, when asked for: drawn beside the asserted ones, never stored.
   const meaning = stable(full);
-  const entailed = useMemo(() => (showInferred && meaning.mode !== 'skos' ? inferredMemberships(meaning) : undefined), [showInferred, meaning]);
+  const entailed = useMemo(() => (showInferred && supports(meaning, 'reasoning') ? inferredMemberships(meaning) : undefined), [showInferred, meaning]);
   const inferred = useMemo(() => entailed?.memberships.filter((x) => byId.has(x.from) && byId.has(x.to)) ?? NONE, [entailed, byId]);
 
   const connectFrom = connect && byId.get(connect.from);
@@ -372,7 +374,7 @@ export function Canvas() {
         <button className="btn" title="Fit the whole model on screen (F)" onClick={() => st().fit()}>
           Fit
         </button>
-        {!skos && (
+        {supports(model, 'reasoning') && (
           <button
             className={'btn' + (showInferred ? ' on' : '')}
             aria-pressed={showInferred}

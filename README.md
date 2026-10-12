@@ -10,17 +10,27 @@ pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
 ## What it does
 
-- **Two model types** – a SKOS concept scheme (thesaurus, taxonomy, glossary) or an OWL ontology,
-  switchable at any time: the model is converted (broader ↔ is-a, exactMatch ↔ equivalentClass, …)
-  and either form can be exported without converting. SKOS models get the SKOS relations, labels
-  per language, the SKOS integrity checks, tree entry in the Hierarchy view and an indented-outline
-  bulk import.
+- **Two types of model** – an **OWL ontology** or a **SKOS-like vocabulary** (taxonomy, controlled
+  vocabulary, glossary). *File → New model…* asks which, with a name and a namespace; the type
+  stays with the model through saving and reopening, and changes only by an explicit, confirmed
+  conversion (broader ↔ is-a, exactMatch ↔ equivalentClass, …). Either form can be exported
+  without converting.
+  - An ontology has every function.
+  - A vocabulary has *Graph*, *Entities* and *Hierarchy*. Its entities are concepts
+    (`skos:Concept`), managed by name, IRI, IRI suffix and type; their labels, definitions, notes
+    and ownership are under *Governance & Metadata*. A relationship is plain or "is a", which
+    builds the hierarchy and is written `skos:broader`. There is no reasoning, no restrictions and
+    no validation, and the store refuses them as well as the menus hiding them.
+  - What each type has is said in one place, `src/model/modelTypes.ts`: its views, the sections
+    and columns of *Entities*, the kinds of term and of relationship, the parts of the entity
+    editor, what the hierarchy means, and its features. The navigation, the editors and the store
+    read it from there; a further type of model is a further entry.
 
 - **Canvas** – double-click to add a term, drag a term's ⊕ handle onto another term to relate
   them (or onto empty space to create the other term), right-click anything for its menu.

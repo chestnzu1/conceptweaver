@@ -10,6 +10,7 @@ import { labelKey, resolveModel, suggestFor } from './vocab';
 import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from './subgraph';
 import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaOwner, type MetaValue } from './governance';
 import { normalizeByKind, PALETTE, patchNodes, resetOwn, type GraphStyle, type SavedStyle } from './graphStyle';
+import { allowsKind, allowsView, configOf, supports, termTypeFor, viewFor, type View } from './modelTypes';
 import { baseIriOf, moveNamespace, withIris } from './iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
 import type { SettingsDraft } from './prefixes';
@@ -22,7 +23,7 @@ import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } 
 import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
 import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
 
-export type View = 'graph' | 'table' | 'hierarchy' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
+export type { View } from './modelTypes';
 export type Theme = 'light' | 'dark';
 
 export interface Editing {
@@ -114,7 +115,6 @@ interface Selection {
 
 const MODEL_KEY = 'conceptweaver:model:v1';
 const THEME_KEY = 'conceptweaver:theme';
-const MODE_KEY = 'conceptweaver:mode';
 /** Which saved model the working copy belongs to, and whether it has changes not yet saved there. */
 const DOC_KEY = 'conceptweaver:doc';
 const AUTOSAVE_KEY = 'conceptweaver:autosave';
@@ -233,7 +233,7 @@ interface State {
   setModelPanelHidden: (hidden: boolean) => void;
   setEditorWide: (wide: boolean) => void;
   subgraph: SubgraphState;
-  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | null;
+  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | null;
   toast: string | null;
   /**
    * The validation workbench. Results are a record of one run over one model: they live here,
@@ -428,7 +428,7 @@ export const useStore = create<State>((set, get) => ({
   highlight: [],
   highlightLabel: '',
   showInferred: false,
-  setShowInferred: (showInferred) => set({ showInferred }),
+  setShowInferred: (showInferred) => set({ showInferred: showInferred && supports(get().model, 'reasoning') }),
   stylePanel: false,
   setStylePanel: (stylePanel) => set({ stylePanel }),
   setStyle: (fn, gesture = '') => {
@@ -567,7 +567,7 @@ export const useStore = create<State>((set, get) => ({
   },
   validation: { run: null, running: false, phase: '', data: MODEL_DATA, tab: 'results', shapeId: null },
   runValidation: async (scope = 'all') => {
-    if (get().validation.running) return;
+    if (get().validation.running || !supports(get().model, 'validation')) return;
     const { model } = get();
     const { run, data } = get().validation;
     set((s) => ({ validation: { ...s.validation, running: true, phase: 'Starting…' } }));
@@ -624,7 +624,8 @@ export const useStore = create<State>((set, get) => ({
   replaceModel: (m, docId = null) => {
     const model = withIris(m);
     // A different document: its history starts afresh, and it counts as unchanged until edited.
-    set({ model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
+    // Another model may be of another type: the view stays only if that type has it.
+    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
     void get().loadExternals();
     get().fit();
   },
@@ -684,15 +685,22 @@ export const useStore = create<State>((set, get) => ({
   },
 
   addTerm: (p = {}) => {
-    const t = newTerm(p);
+    // A term is of a kind the type of model has: in a vocabulary everything new is a concept.
+    const t = newTerm({ ...p, type: termTypeFor(get().model, p.type) });
     // Created while looking at a subgraph: it has to be part of that subgraph to be seen.
     if (get().subgraph.active) set((s) => ({ subgraph: { ...s.subgraph, roots: [...s.subgraph.roots, t.id], pos: { ...s.subgraph.pos, [t.id]: { x: t.x, y: t.y } } } }));
     get().apply((m) => ({ ...m, terms: [...m.terms, t] }));
     return t.id;
   },
-  updateTerm: (id, patch, history = true) =>
-    get().apply((m) => (m.terms.some((t) => t.id === id) ? { ...m, terms: m.terms.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : m), history),
-  updateTerms: (ids, patch) => {
+  updateTerm: (id, patch, history = true) => {
+    // A kind of term the type of model does not have cannot be given to one.
+    const { type, ...rest } = patch;
+    const allowed = type === undefined || configOf(get().model).termTypes.includes(type) ? patch : rest;
+    get().apply((m) => (m.terms.some((t) => t.id === id) ? { ...m, terms: m.terms.map((t) => (t.id === id ? { ...t, ...allowed } : t)) } : m), history);
+  },
+  updateTerms: (ids, given) => {
+    const { type, ...rest } = given;
+    const patch = type === undefined || configOf(get().model).termTypes.includes(type) ? given : rest;
     const set_ = new Set(ids);
     get().apply((m) => ({ ...m, terms: m.terms.map((t) => (set_.has(t.id) ? { ...t, ...patch } : t)) }));
   },
@@ -713,9 +721,13 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => ({ ...m, relations: [...m.relations, r] }));
     return r.id;
   },
-  updateRelation: (id, patch, history = true) => {
+  updateRelation: (id, given, history = true) => {
     const m = get().model;
     if (!m.relations.some((r) => r.id === id)) return;
+    // What the type of model does not have is not set, whoever asks: no restrictions, no data properties.
+    const patch = { ...given };
+    if (!supports(m, 'restrictions')) for (const k of ['restriction', 'restrictionN', 'more'] as const) delete patch[k];
+    if (patch.kind === 'property' && !allowsKind(m, 'property')) delete patch.kind;
     const next = { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) };
     // Moving an end or changing the kind must not state a class membership a second time.
     const now = next.relations.find((r) => r.id === id)!;
@@ -906,9 +918,12 @@ export const useStore = create<State>((set, get) => ({
     const before = get().model;
     if (before.mode === mode) return;
     get().apply((m) => convertModel(m, mode));
+    // The other type may not have the view this was done from.
+    set({ view: viewFor(get().model, get().view), showInferred: get().showInferred && supports(get().model, 'reasoning') });
   },
   selectProp: (selProp) => set({ selProp, sel: { terms: [], rels: [] } }),
   addProp: () => {
+    if (!supports(get().model, 'objectProperties')) return '';
     const taken = new Set(get().model.props.map((p) => propKey(p.name)));
     let name = 'new property';
     for (let i = 2; taken.has(propKey(name)) || findProp(get().model, propKey(name)); i++) name = `new property ${i}`;
@@ -932,6 +947,10 @@ export const useStore = create<State>((set, get) => ({
     }));
   },
   setRelChoice: (id, choice, history = true) => {
+    if (!allowsKind(get().model, choice)) {
+      get().notify(`A ${configOf(get().model).label} has no relationships of that kind.`);
+      return false;
+    }
     if (choice === 'instanceOf') {
       const result = makeInstanceOf(get().model, id);
       if (result.error !== undefined) {
@@ -1199,7 +1218,8 @@ export const useStore = create<State>((set, get) => ({
     get().fit();
   },
 
-  setView: (view) => set({ view }),
+  // A function the type of model does not have is not opened, however it was asked for.
+  setView: (view) => allowsView(get().model, view) && set({ view }),
   setEditing: (editing) => set({ editing }),
   setHighlight: (highlight, highlightLabel = '') => set({ highlight, highlightLabel }),
   setFilter: (filter) => set({ filter }),
@@ -1309,14 +1329,6 @@ useStore.subscribe((s, prev) => {
   if (s.model === prev.model) return;
   // An edit can add or remove what the subgraph shows.
   if (s.subgraph.active) s.refreshSubgraph();
-  if (s.model.mode !== prev.model.mode) {
-    // Remembered so that the next new model is of the type being worked on.
-    try {
-      localStorage.setItem(MODE_KEY, s.model.mode);
-    } catch {
-      // ignore
-    }
-  }
   // The working copy: whatever is in the editor is kept in this browser as it is edited, saved
   // to the library or not, so that a reload or a crash loses nothing.
   clearTimeout(saveTimer);
@@ -1349,15 +1361,11 @@ export function confirmDiscard(): boolean {
   return window.confirm(`“${s.model.name}” has changes that are not saved to My Models.\n\nReplace it anyway? The unsaved changes will be lost.`);
 }
 
-/** A blank model of the type last worked on, so SKOS work starts in SKOS. */
-export const newModel = () => {
-  const m = emptyModel();
-  try {
-    if (stored(MODE_KEY) === 'skos') m.mode = 'skos';
-  } catch {
-    // ignore
-  }
-  useStore.getState().replaceModel(m);
+/** A blank model of the type that was chosen for it, in the namespace that was given, if one was. */
+export const createModel = (spec: { name: string; mode: ModelMode; baseIri?: string; ontologyIri?: string }) => {
+  useStore.getState().replaceModel({ ...emptyModel(spec.name), mode: spec.mode, baseIri: spec.baseIri ?? '', ontologyIri: spec.ontologyIri ?? '' });
+  // An empty model is begun on the canvas.
+  useStore.getState().setView('graph');
 };
 
 void useStore.getState().loadExternals();
