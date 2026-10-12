@@ -211,6 +211,22 @@ await side.getByRole('button', { name: 'Expand all' }).click();
 await pick('Film');
 ok((await chips('Disjoint classes')).join() === 'Genre', 'after a reload the class axioms are still there');
 
+// ---------------------------------------------------------------- the model details can be folded away
+await page.locator('#graph-svg').click({ position: { x: 30, y: 600 } });
+ok(flat(await panel.locator('h2').first().innerText()).toLowerCase() === 'model' && (await panel.boundingBox()).width > 250, 'with nothing selected the side panel shows the model details');
+const stageWidth = (await page.locator('.stage').boundingBox()).width;
+await panel.getByRole('button', { name: 'Hide the model details' }).click();
+ok((await panel.boundingBox()).width < 60 && (await panel.locator('.field').count()) === 0 && (await page.locator('.stage').boundingBox()).width > stageWidth + 200, 'they can be hidden, which leaves a strip at the edge and gives the room to the canvas');
+await pick('Film');
+ok(flat(await panel.locator('h2').first().innerText()).toLowerCase() === 'class' && (await field('Name').locator('input').inputValue()) === 'Film', 'selecting a term still opens its editor');
+await page.locator('#graph-svg').click({ position: { x: 30, y: 600 } });
+ok((await panel.boundingBox()).width < 60, 'and with nothing selected the details are hidden again');
+await page.reload();
+await page.waitForSelector('.node');
+ok((await panel.boundingBox()).width < 60, 'the choice is remembered over a reload');
+await panel.getByRole('button', { name: 'Show the model details' }).click();
+ok((await field('Name').locator('input').count()) === 1 && (await panel.boundingBox()).width > 250, 'the strip brings them back');
+
 console.log('console errors:', errors.length ? errors.slice(0, 3) : 'none');
 await browser.close();
 process.exit(failed || errors.length ? 1 : 0);

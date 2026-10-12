@@ -11,7 +11,7 @@ import { SuperclassEditor } from './Iri';
 import { AnonymousExpressions, CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
-import { Disclosure } from './Icon';
+import { Disclosure, Icon } from './Icon';
 
 export function Inspector() {
   const model = useStore((s) => s.model);
@@ -21,13 +21,25 @@ export function Inspector() {
   const selProp = useStore((s) => s.selProp);
   const prop = selProp && model.mode !== 'skos' ? findProp(model, selProp) : undefined;
   const wide = useStore((s) => s.editorWide);
+  const modelHidden = useStore((s) => s.modelPanelHidden);
 
   let body;
   if (prop && !terms.length && !rels.length) body = <ObjectPropertyPanel key={prop.key} prop={prop} />;
   else if (terms.length === 1 && !rels.length) body = <TermPanel key={terms[0].id} term={terms[0]} />;
   else if (rels.length === 1 && !terms.length) body = <RelationPanel key={rels[0].id} rel={rels[0]} />;
   else if (terms.length + rels.length > 1) body = <MultiPanel terms={terms} rels={rels} />;
-  else body = <ModelPanel />;
+  // Nothing is selected: the model's own details, unless they were folded away. Then only a strip
+  // is left to bring them back, and the room goes to the canvas or the table.
+  else if (modelHidden) {
+    return (
+      <aside className="panel inspector rail">
+        <button className="rail-open" title="Show the model details" aria-label="Show the model details" aria-expanded={false} onClick={() => useStore.getState().setModelPanelHidden(false)}>
+          <Icon name="panelOpen" />
+          <span aria-hidden="true">Model</span>
+        </button>
+      </aside>
+    );
+  } else body = <ModelPanel />;
   return <aside className={'panel inspector' + (wide ? ' wide' : '')}>{body}</aside>;
 }
 
@@ -61,7 +73,12 @@ function ModelPanel() {
   const apply = useStore((s) => s.apply);
   return (
     <>
-      <h2>Model</h2>
+      <div className="editor-head">
+        <h2>Model</h2>
+        <button className="btn icon ghost" title="Hide the model details. Selecting a term or a relationship still opens its editor." aria-label="Hide the model details" aria-expanded={true} onClick={() => useStore.getState().setModelPanelHidden(true)}>
+          <Icon name="panelClose" />
+        </button>
+      </div>
       <label className="field">
         <span>Name</span>
         <CommitInput value={model.name} onCommit={(name) => apply((m) => ({ ...m, name: name.trim() || 'Untitled model' }))} />

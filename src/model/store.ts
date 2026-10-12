@@ -228,6 +228,9 @@ interface State {
   theme: Theme;
   /** The entity editor takes more room, for entities with a lot to say about them. */
   editorWide: boolean;
+  /** Whether the model details, which the side panel shows while nothing is selected, are folded away. */
+  modelPanelHidden: boolean;
+  setModelPanelHidden: (hidden: boolean) => void;
   setEditorWide: (wide: boolean) => void;
   subgraph: SubgraphState;
   dialog: 'bulk' | 'settings' | 'library' | 'saveas' | null;
@@ -483,6 +486,21 @@ export const useStore = create<State>((set, get) => ({
       return false;
     }
   })(),
+  modelPanelHidden: (() => {
+    try {
+      return localStorage.getItem('conceptweaver:model-panel') === 'hidden';
+    } catch {
+      return false;
+    }
+  })(),
+  setModelPanelHidden: (modelPanelHidden) => {
+    try {
+      localStorage.setItem('conceptweaver:model-panel', modelPanelHidden ? 'hidden' : 'shown');
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ modelPanelHidden });
+  },
   setEditorWide: (editorWide) => {
     try {
       localStorage.setItem('conceptweaver:editor-wide', editorWide ? 'on' : 'off');
