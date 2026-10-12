@@ -3620,3 +3620,185 @@ code.pred {
   font-size: 12.5px;
   color: var(--ink-2);
 }
+
+/* Governance & Metadata: the entities on one side, the selected one's metadata on the other. */
+.gov {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.gov-list {
+  flex: 0 0 42%;
+  min-width: 300px;
+  border-right: 1px solid var(--line);
+}
+
+.view .gov-list table {
+  min-width: 460px;
+}
+
+.gov-list tr {
+  cursor: pointer;
+}
+
+.gov-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.gov-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 24px;
+}
+
+.gov-form-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.gov-form-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.gov-profile {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.gov-profile select,
+.gov-field select,
+.gov-field input,
+.gov-field textarea,
+.gov-new input,
+.gov-new select {
+  padding: 5px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.gov-field input[aria-invalid='true'],
+.gov-field select[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.gov-group {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.gov-group > summary {
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gov-group > summary .muted {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.gov-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px 16px;
+  padding: 4px 12px 14px;
+}
+
+.gov-fields.one {
+  display: block;
+}
+
+.gov-field > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.gov-field.missing > span:first-child > span {
+  color: var(--danger);
+}
+
+.gov-prop {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.gov-req {
+  font-size: 11px;
+  color: var(--warn);
+  text-decoration: none;
+}
+
+.gov-ro {
+  font-size: 13px;
+}
+
+.gov-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.gov-add {
+  max-width: 220px;
+}
+
+.gov-config {
+  padding: 4px 16px 24px;
+}
+
+.gov-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.gov-new label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.gov-error {
+  margin: 6px 0;
+}
+
+.view table.gov-registry {
+  min-width: 1180px;
+}
+
+.gov-registry .gov-kind {
+  width: 74px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.gov-registry td {
+  vertical-align: middle;
+}
+
+.gov-registry code {
+  font-size: 12px;
+}

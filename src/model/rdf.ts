@@ -3,7 +3,8 @@ import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
 import { baseIriOf, localName } from './iri';
 import { hierarchyLayout } from './layout';
 import { DATATYPES, emptyModel, newRelation, newTerm, PROP_LINKS, type DataValue, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
-import { allPrefixes, compactIri, expandIri, ontologyIriOf, STANDARD } from './prefixes';
+import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
+import { keyIri } from './governance';
 import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, propKey, restrictionSpecs, specsPatch } from './props';
 import { resolveModel, STD_PROPS } from './vocab';
 
@@ -63,13 +64,40 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   const custom = new Map<string, string>();
   const annProps: RdfNode[] = [];
   // Metadata fields are annotations: standard properties as they are, the rest as properties of the model's own.
+  // Properties of other vocabularies used as annotations are declared as annotation properties,
+  // so that an OWL reader takes them for what they are and reads no logic into them.
+  const declaredAnn = new Set<string>();
+  const declare = (pred: string) => {
+    if (declaredAnn.has(pred) || /^(rdfs|owl|skos|dcterms):/.test(pred)) return;
+    declaredAnn.add(pred);
+    annProps.push({ id: pred, props: [['rdf:type', { id: 'owl:AnnotationProperty' }]] });
+  };
+  const metrics = new Map<string, string>();
+  const literalOf = (f: ExtraField, value: string): Val =>
+    f.dt === 'xsd:boolean' && /^(true|false)$/.test(value) ? { lit: value, bool: true } : f.dt ? { lit: value, dt: f.dt } : f.lang ? { lit: value, lang: f.lang } : { lit: value };
   const annotate = (n: RdfNode, t: { fields: ExtraField[] }) => {
     for (const f of t.fields) {
       const key = f.key.trim();
       const value = f.value.trim();
       if (!key || !value) continue;
+      if (f.measure) {
+        // A quality measurement (DQV): the value, and the metric it is a measurement of.
+        let metric = standardAnnotation(key) ?? (keyIri(m, key) ? short(keyIri(m, key)!) : metrics.get(key.toLowerCase()));
+        if (!metric) {
+          metric = ':' + unique(localName(key, true));
+          metrics.set(key.toLowerCase(), metric);
+          annProps.push({ id: metric, props: [['rdf:type', { id: 'dqv:Metric' }], ['rdfs:label', { lit: key }]] });
+        }
+        declare('dqv:hasQualityMeasurement');
+        n.props.push(['dqv:hasQualityMeasurement', { bnode: { id: '', props: [['rdf:type', { id: 'dqv:QualityMeasurement' }], ['dqv:isMeasurementOf', { id: metric }], ['dqv:value', literalOf(f, value)]] } }]);
+        continue;
+      }
       let pred = standardAnnotation(key);
-      if (!pred) {
+      if (pred) declare(pred);
+      else if (keyIri(m, key)) {
+        pred = short(keyIri(m, key)!);
+        declare(pred);
+      } else {
         pred = custom.get(key.toLowerCase());
         if (!pred) {
           pred = ':' + unique(localName(key, true));
@@ -77,9 +105,10 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
           annProps.push({ id: pred, props: [['rdf:type', { id: 'owl:AnnotationProperty' }], ['rdfs:label', { lit: key }]] });
         }
       }
-      if (pred === 'owl:deprecated' && /^(true|false)$/i.test(value)) n.props.push([pred, { lit: value.toLowerCase(), bool: true }]);
+      if (f.iri && isAbsoluteIri(value)) n.props.push([pred, { id: short(value) }]);
+      else if (pred === 'owl:deprecated' && /^(true|false)$/i.test(value)) n.props.push([pred, { lit: value.toLowerCase(), bool: true }]);
       else if (LINKS.has(pred) && /^https?:\/\/[^\s<>"]+$/.test(value)) n.props.push([pred, { id: `<${value}>` }]);
-      else n.props.push([pred, f.lang ? { lit: value, lang: f.lang } : { lit: value }]);
+      else n.props.push([pred, literalOf(f, value)]);
     }
   };
   const nodes = new Map<string, RdfNode>();
@@ -284,6 +313,7 @@ export function toTurtle(m: Model): string {
     ...[...m.prefixes].sort((a, b) => a.prefix.localeCompare(b.prefix)).map((p) => `@prefix ${p.prefix}: <${p.iri}> .`),
     ...[...STANDARD]
       .sort((a, b) => a.prefix.localeCompare(b.prefix))
+      .filter((p) => !m.prefixes.some((x) => x.prefix === p.prefix))
       .filter((p) => always.has(p.prefix) || new RegExp(`(^|[\\s^(\\[])${p.prefix}:`, 'm').test(body))
       .map((p) => `@prefix ${p.prefix}: <${p.iri}> .`),
   ];
@@ -665,20 +695,69 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   const curieNs: Record<string, string> = { rdfs: NS.rdfs, owl: NS.owl, skos: NS.skos, dcterms: NS.dct };
   const known = new Map(ANNOTATION_PROPS.map((p) => [curieNs[p.id.split(':')[0]] + p.id.split(':')[1], p.id]));
   known.set(NS.rdfs + 'label', 'rdfs:label');
-  const names = new Set([NS.rdfs + 'label', NS.skos + 'prefLabel']);
-  const descriptions = new Set([NS.skos + 'definition', NS.rdfs + 'comment']);
+  // The catalogue vocabularies (Dublin Core, DCAT, PROV, DQV, ADMS) are metadata wherever they occur.
+  const META_NS = STANDARD.filter((p) => ['dcterms', 'dcat', 'prov', 'dqv', 'adms'].includes(p.prefix));
+  const QM = META_NS.find((p) => p.prefix === 'dqv')!.iri;
+  // Statements between two terms that were drawn as relationships above are not annotations as well.
+  const plainRel = new Set(typed(NS.rdf + 'Property').filter((p) => !objProps.has(p) && !dataProps.has(p) && !annotationProps.has(p)));
+  const stdRel = new Set(STD_PROPS.map((sp) => full(sp.id)));
+  const drawn = (pred: string) => stdRel.has(pred) || objProps.has(pred) || plainRel.has(pred);
+  const defaultNs = declared.get('');
+  /** Whether a property is one of the file's own: in its default namespace, or anywhere if it has none. */
+  const own = (iri: string) => defaultNs === undefined || iri.startsWith(defaultNs);
+  /** A property of another vocabulary keeps its identity: its prefixed name where the file has a prefix for it, or else its IRI. */
+  const byIri = (iri: string): string => {
+    const prefix = [...declared].find(([name, ns]) => /^[A-Za-z][A-Za-z0-9_-]*$/.test(name) && !STANDARD.some((p) => p.prefix === name || p.iri === ns) && iri.startsWith(ns) && /^[\p{L}\p{N}_][\p{L}\p{N}_-]*$/u.test(iri.slice(ns.length)));
+    return prefix ? `${prefix[0]}:${iri.slice(prefix[1].length)}` : iri;
+  };
+  /** The name an annotation property is filed under: a standard prefixed name, its label, or failing that its IRI. */
+  const annotationKey = (pred: string): string | undefined => {
+    const std = known.get(pred);
+    if (std) return std;
+    // Not where the file itself declares the property an object or data property: there its
+    // statements are relationships and values, and it is exported as the property it is.
+    const ns = objProps.has(pred) || dataProps.has(pred) ? undefined : META_NS.find((p) => pred.startsWith(p.iri) && /^[A-Za-z][\w-]*$/.test(pred.slice(p.iri.length)));
+    if (ns) return `${ns.prefix}:${pred.slice(ns.iri.length)}`;
+    if (!annotationProps.has(pred)) return undefined;
+    // A property of the file's own namespace, or one it names, goes by that name. Any other keeps
+    // its IRI, so that it is written back as the property it is.
+    return own(pred) || literal(pred, NS.rdfs + 'label', NS.skos + 'prefLabel') ? propLabel(pred) : byIri(pred);
+  };
+  const typedValue = (o: N3Term): Pick<ExtraField, 'lang' | 'dt' | 'iri'> => {
+    if (o.termType === 'NamedNode') return { iri: true };
+    if (o.language) return { lang: o.language };
+    const dt = o.datatype?.value.startsWith(XSD) ? 'xsd:' + o.datatype.value.slice(XSD.length) : undefined;
+    return dt && dt !== 'xsd:string' ? { dt } : {};
+  };
+  const names = new Set([NS.rdfs + 'label', NS.skos + 'prefLabel', NS.dct + 'title']);
+  const descriptions = new Set([NS.skos + 'definition', NS.rdfs + 'comment', NS.dct + 'description']);
   const annotated: [string, { name: string; description: string; fields?: ExtraField[] }, boolean][] = [...[...terms].map(([iri, t]): [string, Term, boolean] => [iri, t, true]), ...[...propEntries].map(([iri, p]): [string, ObjProp, boolean] => [iri, p, false])];
   for (const [iri, t, hasSynonyms] of annotated) {
     for (const [pred, os] of spo.get(iri) ?? []) {
-      const key = known.get(pred) ?? (annotationProps.has(pred) ? propLabel(pred) : undefined);
-      if (!key) continue;
+      if (pred === QM + 'hasQualityMeasurement') {
+        // Quality measurements (DQV): each is filed under the metric it measures.
+        for (const o of os) {
+          const metric = objs(key(o), QM + 'isMeasurementOf').find((x) => x.termType === 'NamedNode');
+          const value = objs(key(o), QM + 'value')[0];
+          if (!metric || !value || value.termType === 'BlankNode') continue;
+          (t.fields ??= []).push({ key: annotationKey(metric.value) ?? (own(metric.value) ? propLabel(metric.value) : byIri(metric.value)), value: value.value, ...typedValue(value), measure: true });
+        }
+        continue;
+      }
+      const key_ = annotationKey(pred);
+      if (!key_) continue;
       for (const o of os) {
-        if (o.termType === 'BlankNode' || (o.termType === 'NamedNode' && terms.has(o.value))) continue;
+        // A statement between two terms of the model that is a relationship was drawn as one.
+        if (o.termType === 'BlankNode' || (o.termType === 'NamedNode' && terms.has(o.value) && drawn(pred))) continue;
         // Whatever already became the name, the description or a synonym isn't repeated.
         // The same words in another language are another annotation, and are kept.
         if (inPref(o) && ((names.has(pred) && o.value === t.name) || (descriptions.has(pred) && o.value === t.description))) continue;
         if (hasSynonyms && pred === NS.skos + 'altLabel' && inPref(o)) continue;
-        (t.fields ??= []).push({ key, value: o.value, ...(o.termType === 'Literal' && o.language ? { lang: o.language } : {}) });
+        const typed_ = typedValue(o);
+        // A link given for one of the linking properties is written back as a link in any case.
+        const plainLink = typed_.iri && LINKS.has(key_) && /^https?:\/\//.test(o.value) && !terms.has(o.value);
+        // owl:deprecated is written as a boolean whatever it was typed as.
+        (t.fields ??= []).push({ key: key_, value: o.value, ...(plainLink || key_ === 'owl:deprecated' ? {} : typed_) });
       }
     }
   }

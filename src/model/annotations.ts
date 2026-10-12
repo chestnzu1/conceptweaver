@@ -36,11 +36,12 @@ export const ANNOTATION_PROPS: { id: string; about: string }[] = [
 ];
 
 const KNOWN = new Map(ANNOTATION_PROPS.map((p) => [p.id.toLowerCase(), p.id]));
-const CURIE = /^(rdfs|owl|skos|dcterms):[A-Za-z][\w-]*$/;
+const CURIE = /^(rdfs|owl|skos|dcterms|dcat|prov|dqv|adms):[A-Za-z][\w-]*$/;
 
 /**
  * The standard property a field name stands for, if any: one of the listed ones (matched
- * without regard to case) or any other name in the rdfs, owl, skos or dcterms vocabularies.
+ * without regard to case) or any other name in the rdfs, owl, skos, dcterms, dcat, prov, dqv or adms
+ * vocabularies.
  */
 export function standardAnnotation(key: string): string | undefined {
   const k = key.trim();

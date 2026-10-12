@@ -1,4 +1,4 @@
-import type { Model } from './types';
+import type { ExtraField, Model } from './types';
 
 /** A name that only stands in until the user types a real one; no IRI is made from it. */
 const PLACEHOLDER = /^new (class|concept|data property|individual|term|property( \d+)?)$/i;
@@ -74,7 +74,9 @@ export function moveNamespace(m: Model, from: string, to: string): Model {
   const props = m.props.map(term);
   // Class expressions kept as text mention IRIs in full; those follow too.
   const inText = (axiom: string) => axiom.replace(/<([^>]*)>/g, (all, iri: string) => (renamed.has(iri) ? `<${renamed.get(iri)}>` : all));
-  return { ...m, props, terms: terms.map((t) => (t.axioms?.some((a) => inText(a) !== a) ? { ...t, axioms: t.axioms.map(inText) } : t)) };
+  // So do annotations that point at a moved entity.
+  const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && renamed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && renamed.has(f.value) ? { ...f, value: renamed.get(f.value)! } : f)) } : x);
+  return { ...m, props: props.map(refs), terms: terms.map((t) => refs(t.axioms?.some((a) => inText(a) !== a) ? { ...t, axioms: t.axioms.map(inText) } : t)) };
 }
 
 /** Where the last part of an IRI starts: after its final # or /. */
@@ -108,16 +110,18 @@ export function setIriSuffix(m: Model, owner: IriOwner, suffix: string): { model
   const swap = (x: string) => (x === old ? next : x);
   const inText = (text: string) => (old ? text.split(`<${old}>`).join(`<${next}>`) : text);
   const all = (list: string[]) => (list.includes(old!) ? list.map(swap) : list);
+  // Annotations that point at the entity (its owner, a related asset) keep pointing at it.
+  const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (old && x.fields?.some((f) => f.iri && f.value === old) ? { ...x, fields: x.fields.map((f) => (f.iri && f.value === old ? { ...f, value: next } : f)) } : x);
   return {
     model: {
       ...m,
       // The first IRI settles the default namespace, as it does when one is made from a name.
       baseIri: m.baseIri.trim() ? m.baseIri : base,
       terms: m.terms.map((t) => {
-        const out = t === entity ? { ...t, iri: next } : t;
+        const out = refs(t === entity ? { ...t, iri: next } : t);
         return old && out.axioms?.some((a) => inText(a) !== a) ? { ...out, axioms: out.axioms.map(inText) } : out;
       }),
-      props: m.props.map((p) => (p === entity ? { ...p, iri: next } : p)),
+      props: m.props.map((p) => refs(p === entity ? { ...p, iri: next } : p)),
       ...(old
         ? {
             shapes: {

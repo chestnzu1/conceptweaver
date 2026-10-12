@@ -1,4 +1,5 @@
 import { runChecks, type Severity } from './checks';
+import { metaProblems } from './governance';
 import { baseIriOf } from './iri';
 import { isAbsoluteIri, STANDARD } from './prefixes';
 import { assertedSuperclasses, objectProperties, propKey, propLinks } from './props';
@@ -12,7 +13,7 @@ import { resolveModel } from './vocab';
  * ontology is wrong: a class without a definition, or a property without a range, is valid OWL.
  */
 
-export type RuleGroup = 'Documentation' | 'Structure' | 'IRIs and namespaces' | 'Modelling practice' | 'SKOS integrity';
+export type RuleGroup = 'Documentation' | 'Structure' | 'IRIs and namespaces' | 'Modelling practice' | 'Governance' | 'SKOS integrity';
 
 export interface QualityRule {
   id: string;
@@ -54,6 +55,9 @@ export const QUALITY_RULES: QualityRule[] = [
   { id: 'unlabelled-relationship', group: 'Modelling practice', label: 'Relationship without a label', about: 'A relationship that does not say what it means.', severity: 'warning', default: true },
   { id: 'standard-property-misuse', group: 'Modelling practice', label: 'Standard property between the wrong kinds', about: 'An RDFS or OWL property used between kinds of entity it is not meant for.', severity: 'warning', default: true },
   { id: 'invalid-cardinality', group: 'Modelling practice', label: 'Cardinality that cannot be read', about: 'A cardinality on a relationship that is not of the form 1, 0..1, 1..*.', severity: 'warning', default: true },
+
+  { id: 'required-metadata', group: 'Governance', label: 'Required metadata missing', about: 'An entity without a value for a metadata field that is marked as required for its kind. Which fields are required is set under Entities, Governance & Metadata; it is a rule of this model, not of RDF or OWL.', severity: 'warning', default: true },
+  { id: 'metadata-value', group: 'Governance', label: 'Metadata value of the wrong kind', about: 'A metadata value that is not what its field takes: text where a date or a number is expected, a value outside the controlled vocabulary, several values where one is allowed.', severity: 'warning', default: true },
 
   { id: 'skos-integrity', group: 'SKOS integrity', label: 'SKOS integrity conditions', about: 'The conditions the SKOS standard sets for a concept scheme: one preferred label per language, no overlap between label kinds, related and broader kept apart.', severity: 'error', default: true },
 ];
@@ -240,7 +244,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     const seen = new Map<string, Map<string, string[]>>();
     for (const t of model.terms) {
       for (const f of t.fields) {
-        if (/^(rdfs|owl|skos|dcterms):/.test(f.key) || !f.key.trim()) continue;
+        if (/^(rdfs|owl|skos|dcterms|dcat|prov|dqv|adms):/.test(f.key) || !f.key.trim()) continue;
         const norm = f.key.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
         const spellings = seen.get(norm) ?? seen.set(norm, new Map()).get(norm)!;
         spellings.set(f.key, [...(spellings.get(f.key) ?? []), t.id]);
@@ -322,6 +326,15 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
       if (r.kind === 'association' && !r.predicate && byId.get(r.to)?.type === 'property' && byId.get(r.from)?.type === 'concept') {
         add('property-kind', `${q(name(r.from))} is linked to the data property ${q(name(r.to))} by an ordinary relationship${r.label.trim() ? ` ${q(r.label.trim())}` : ''}. To say the class has the property, the relationship should be of the kind “Has data property”.`, { rels: [r.id] });
       }
+    }
+  }
+
+  // ---- governance
+  if (on('required-metadata') || on('metadata-value')) {
+    for (const p of metaProblems(model)) {
+      const about = 'term' in p.entity.owner ? { terms: [p.entity.owner.term] } : { prop: p.entity.owner.prop };
+      if (p.kind === 'missing') add('required-metadata', p.message, { ...about, suggestion: 'Fill it in under Entities, Governance & Metadata. Whether the field is required is set there too, under Configure fields.' });
+      else add('metadata-value', p.message, { ...about, suggestion: 'Correct the value under Entities, Governance & Metadata.' });
     }
   }
 

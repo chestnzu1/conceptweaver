@@ -525,7 +525,7 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
   );
 }
 
-const GROUPS: RuleGroup[] = ['Documentation', 'Structure', 'IRIs and namespaces', 'Modelling practice', 'SKOS integrity'];
+const GROUPS: RuleGroup[] = ['Documentation', 'Structure', 'IRIs and namespaces', 'Modelling practice', 'Governance', 'SKOS integrity'];
 
 function Rules() {
   const quality = useStore((s) => s.model.quality);

@@ -8,6 +8,7 @@ import { convertModel } from './convert';
 import { declaredProp, findProp, propKey, type RelChoice } from './props';
 import { labelKey, resolveModel, suggestFor } from './vocab';
 import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from './subgraph';
+import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaOwner, type MetaValue } from './governance';
 import { baseIriOf, moveNamespace, withIris } from './iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
 import type { SettingsDraft } from './prefixes';
@@ -18,7 +19,7 @@ import { listMappings } from './alignment';
 import { cachedOntology, cachedOntologyByIri, cacheOntology, uncacheOntology } from './library';
 import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } from './validation';
 import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
-import { emptyModel, INSTANCE_OF, PROP_LINKS, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
+import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
 
 export type View = 'graph' | 'table' | 'hierarchy' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
 export type Theme = 'light' | 'dark';
@@ -306,6 +307,10 @@ interface State {
    * knowing about an accepted one is shown as a notice.
    */
   edit: (fn: (m: Model) => Edit) => string | undefined;
+  /** Sets what an entity has for one metadata field. Returns the reason if the values were refused. */
+  setMeta: (owner: MetaOwner, fieldId: string, values: MetaValue[]) => string | undefined;
+  /** Gives a term a metadata profile (business or technical data asset), or takes it away again. */
+  setProfile: (termId: string, kind: EntityKind) => void;
   /** States that one term is a kind of another. Says so if it was already stated, is the term itself, or closes a cycle. */
   addSuperclass: (id: string, superId: string) => void;
   /** Withdraws that statement, and only that one. */
@@ -933,6 +938,30 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => {
       const next = { ...m, ontologyIri: d.ontologyIri, baseIri: d.baseIri, prefixes: d.prefixes };
       return moveFrom.reduce((acc, from) => moveNamespace(acc, from, baseIriOf(next)), next);
+    }),
+  setMeta: (owner, fieldId, values) => {
+    const { model } = get();
+    const f = registry(model).find((x) => x.id === fieldId);
+    const e = metaEntity(model, owner);
+    if (!f || !e) return 'That field or entity no longer exists.';
+    if (e.external) return 'This entity belongs to another ontology; what is said about it is said there.';
+    const refused = checkValues(f, values);
+    if (refused) return refused;
+    const first = values[0]?.value.trim() ?? '';
+    if ('term' in owner) {
+      const patch: Partial<Term> =
+        f.bind === 'name' ? { name: first } : f.bind === 'description' ? { description: first } : f.bind === 'synonyms' ? { synonyms: values.map((v) => v.value.trim()).filter(Boolean).join(', ') } : f.bind === 'range' ? { range: first || undefined } : { fields: writeValues(e.fields, f, values) };
+      get().updateTerm(owner.term, patch);
+    } else if (f.bind === 'name') {
+      if (!get().renameProp(owner.prop, first)) return 'That name could not be given to the property.';
+    } else if (f.bind === 'description') get().updateProp(owner.prop, { description: first });
+    else if (!f.bind) get().updateProp(owner.prop, { fields: writeValues(e.fields, f, values) });
+    return undefined;
+  },
+  setProfile: (termId, kind) =>
+    get().apply((m) => {
+      const t = m.terms.find((x) => x.id === termId);
+      return t ? { ...m, terms: m.terms.map((x) => (x === t ? { ...x, fields: withProfile(m, x, kind) } : x)) } : m;
     }),
   edit: (fn) => {
     const result = fn(get().model);

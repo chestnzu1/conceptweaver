@@ -10,7 +10,7 @@ pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs); need `pnpm exec vite preview --port 5181` running
 ```
 
 ## What it does
@@ -61,6 +61,18 @@ node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs
 - **Kinds follow what a line connects** – an individual and a class: *Is Instance Of* or plain;
   two classes: object property, *is a* or plain; a class and a data property: *has data property*
   or plain. Other kinds are not listed.
+- **Governance & Metadata** – a tab under *Entities* lists every entity with its kind, lifecycle
+  status, owner and whether its required metadata is complete; selecting one shows its metadata
+  in collapsible groups (general, governance, technical, operational, data quality). The values
+  are the entity's annotations, the same ones the side panel lists, stored with a standard
+  property where one exists (Dublin Core, SKOS, DCAT, PROV-O, ADMS; quality scores as DQV
+  measurements) and typed: dates as `xsd:date`, numbers as numbers, an owner chosen from the model
+  as a reference to that entity. Which fields a kind of entity has comes from a registry
+  (`src/model/governance.ts`), editable per model under *Configure fields*: add fields of your
+  own, choose where each applies, mark fields required. A missing required field is reported
+  under *Validation* as a governance rule that can be switched off; it is never an OWL axiom.
+  An entity can be given the profile of a business or technical data asset (`dcterms:type`),
+  which changes its fields, not what it is in the ontology.
 - **Several restrictions on one relationship** – a relationship that uses an object property, or
   attaches a data property, can state more than one restriction (`directs some Film` and
   `directs max 3 Film`; `min 1` with `max 2`). *Add another restriction* in the relation panel,

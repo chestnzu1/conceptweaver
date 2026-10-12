@@ -1,3 +1,5 @@
+import { STANDARD } from './prefixes';
+
 export type TermType = 'concept' | 'property' | 'instance';
 export type RelKind = 'association' | 'generalization' | 'property';
 
@@ -91,6 +93,12 @@ export interface ExtraField {
   value: string;
   /** Language tag of the value, e.g. "nl". */
   lang?: string;
+  /** Datatype of a value that is not text: "xsd:date", "xsd:decimal", "xsd:boolean" and the like. */
+  dt?: string;
+  /** The value is an IRI (an entity of this model or a resource elsewhere), not text. */
+  iri?: boolean;
+  /** A quality measurement: the property names the metric that was measured (dqv:isMeasurementOf). */
+  measure?: boolean;
 }
 
 /** What the model is: an OWL ontology, or a SKOS concept scheme (thesaurus, taxonomy, glossary). */
@@ -204,6 +212,51 @@ export interface Model {
   mappings: MappingMeta[];
   /** Suggested mappings the user turned down ("source IRI|target IRI"), so they are not suggested again. */
   rejected: string[];
+  /** How the governance metadata fields are set up for this model: fields of its own, and changes to the standard ones. */
+  governance: GovernanceConfig;
+}
+
+/** The kinds of entity a metadata field can apply to. The last two are metadata profiles an entity is given. */
+export const ENTITY_KINDS = ['class', 'objectProperty', 'dataProperty', 'individual', 'businessAsset', 'technicalAsset'] as const;
+export type EntityKind = (typeof ENTITY_KINDS)[number];
+export const VALUE_TYPES = ['text', 'longtext', 'date', 'dateTime', 'integer', 'number', 'boolean', 'iri', 'entity', 'choice'] as const;
+export type ValueType = (typeof VALUE_TYPES)[number];
+export const META_GROUPS = ['General', 'Governance', 'Technical', 'Operational', 'Data quality', 'Custom'] as const;
+export type MetaGroup = (typeof META_GROUPS)[number];
+
+/** One metadata field of the registry: what it is called, the RDF property it is stored as, and what its values are. */
+export interface MetaField {
+  id: string;
+  label: string;
+  about: string;
+  /**
+   * The property its values are stated with: a prefixed name (dcterms:modified) or a full IRI.
+   * Empty: a property of the model's own namespace, named after the field.
+   */
+  property: string;
+  appliesTo: EntityKind[];
+  type: ValueType;
+  multiple: boolean;
+  required: boolean;
+  /** The values to choose from, for a controlled vocabulary. */
+  options?: string[];
+  group: MetaGroup;
+  order: number;
+  /** Shows something the entity already has (its name, definition, synonyms, kind, datatype, findings) rather than a field of its own. */
+  bind?: 'name' | 'description' | 'synonyms' | 'type' | 'range' | 'validation';
+  /** A quality metric: its values are DQV quality measurements. */
+  measure?: boolean;
+  /** The lowest and highest number allowed. */
+  min?: number;
+  max?: number;
+  /** Added by the user, as opposed to one of the standard fields. */
+  custom?: boolean;
+}
+
+export interface GovernanceConfig {
+  custom: MetaField[];
+  /** What the user changed about a standard field, by its id. */
+  overrides: Record<string, { appliesTo?: EntityKind[]; required?: boolean }>;
 }
 
 /** A value in a SHACL constraint: an IRI, or a literal with its datatype or language. */
@@ -332,7 +385,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [] };
+  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} } };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -389,8 +442,51 @@ const fieldList = (v: unknown): ExtraField[] =>
   Array.isArray(v)
     ? (v as Record<string, unknown>[])
         .filter((f) => f && typeof f === 'object')
-        .map((f) => ({ key: str(f.key), value: str(f.value), ...(LANG.test(str(f.lang)) ? { lang: str(f.lang).toLowerCase() } : {}) }))
+        .map((f) => ({
+          key: str(f.key),
+          value: str(f.value),
+          ...(LANG.test(str(f.lang)) ? { lang: str(f.lang).toLowerCase() } : {}),
+          ...(/^(xsd|rdf):[A-Za-z]+$/.test(str(f.dt)) ? { dt: str(f.dt) } : {}),
+          ...(f.iri === true ? { iri: true } : {}),
+          ...(f.measure === true ? { measure: true } : {}),
+        }))
     : [];
+
+const kindList = (v: unknown): EntityKind[] => ENTITY_KINDS.filter((k) => Array.isArray(v) && v.includes(k));
+
+export function normalizeGovernance(raw: unknown): GovernanceConfig {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const custom: MetaField[] = [];
+  for (const f of (Array.isArray(o.custom) ? o.custom : []) as Record<string, unknown>[]) {
+    if (!f || typeof f !== 'object' || !str(f.id) || !str(f.label).trim() || custom.some((x) => x.id === str(f.id))) continue;
+    const options = Array.isArray(f.options) ? [...new Set(f.options.map((x) => str(x).trim()).filter(Boolean))] : [];
+    custom.push({
+      id: str(f.id),
+      label: str(f.label).trim(),
+      about: str(f.about),
+      property: str(f.property).trim(),
+      appliesTo: kindList(f.appliesTo),
+      type: (VALUE_TYPES as readonly string[]).includes(str(f.type)) ? (f.type as ValueType) : 'text',
+      multiple: f.multiple === true,
+      required: f.required === true,
+      ...(options.length ? { options } : {}),
+      group: (META_GROUPS as readonly string[]).includes(str(f.group)) ? (f.group as MetaGroup) : 'Custom',
+      order: num(f.order),
+      ...(typeof f.min === 'number' ? { min: f.min } : {}),
+      ...(typeof f.max === 'number' ? { max: f.max } : {}),
+      custom: true,
+    });
+  }
+  const overrides: GovernanceConfig['overrides'] = {};
+  if (o.overrides && typeof o.overrides === 'object') {
+    for (const [id, v] of Object.entries(o.overrides as Record<string, Record<string, unknown>>)) {
+      if (!v || typeof v !== 'object') continue;
+      const entry = { ...(Array.isArray(v.appliesTo) ? { appliesTo: kindList(v.appliesTo) } : {}), ...(typeof v.required === 'boolean' ? { required: v.required } : {}) };
+      if (Object.keys(entry).length) overrides[id] = entry;
+    }
+  }
+  return { custom, overrides };
+}
 
 /** Validates untrusted JSON and returns a well-formed model. Throws on anything unusable. */
 export function normalizeModel(raw: unknown): Model {
@@ -523,7 +619,9 @@ export function normalizeModel(raw: unknown): Model {
     ontologyIri: str(o.ontologyIri),
     prefixes: (Array.isArray(o.prefixes) ? (o.prefixes as Record<string, unknown>[]) : [])
       .filter((p) => p && typeof p === 'object' && /^[A-Za-z][A-Za-z0-9_-]*$/.test(str(p.prefix)) && /^[A-Za-z][A-Za-z0-9+.-]*:\S+$/.test(str(p.iri)))
-      .map((p) => ({ prefix: str(p.prefix), iri: str(p.iri) })),
+      .map((p) => ({ prefix: str(p.prefix), iri: str(p.iri) }))
+      // A prefix that only repeats a standard one (a model saved before dcat, prov, dqv and adms were standard) is not kept.
+      .filter((p) => !STANDARD.some((s) => s.prefix === p.prefix && s.iri === p.iri)),
     mode: o.mode === 'skos' ? 'skos' : 'ontology',
     lang: LANG.test(str(o.lang)) ? str(o.lang).toLowerCase() : '',
     vocab: { enabled: v.enabled === true, map },
@@ -565,6 +663,7 @@ export function normalizeModel(raw: unknown): Model {
         status: (MAPPING_STATUS as readonly string[]).includes(str(x.status)) ? (str(x.status) as MappingMeta['status']) : 'proposed',
       })),
     rejected: Array.isArray(o.rejected) ? [...new Set(o.rejected.map((x) => str(x)).filter(Boolean))] : [],
+    governance: normalizeGovernance(o.governance),
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],
       on: Array.isArray((o.quality as QualityConfig | undefined)?.on) ? [...new Set((o.quality as QualityConfig).on.map((x) => str(x)).filter(Boolean))] : [],

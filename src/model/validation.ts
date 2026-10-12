@@ -442,7 +442,7 @@ export type Scope = 'all' | Category;
 
 /** What a run covers, as a fingerprint: the same content always gives the same one. */
 export function revisionOf(model: Model, data: DataGraph): string {
-  return fingerprint(toTurtle(model) + '\n' + shapesToTurtle(model) + '\n' + JSON.stringify(model.quality) + '\n' + (data.source === 'imported' ? (data.text ?? '') + data.includeOntology : ''));
+  return fingerprint(toTurtle(model) + '\n' + shapesToTurtle(model) + '\n' + JSON.stringify(model.quality) + '\n' + JSON.stringify(model.governance) + '\n' + (data.source === 'imported' ? (data.text ?? '') + data.includeOntology : ''));
 }
 
 /** Whether results no longer describe what is in the editor. Moving terms on the canvas does not count. */

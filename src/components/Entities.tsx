@@ -4,10 +4,11 @@ import { CHARACTERISTICS, dataDomain, fitsIn, hasCardinality, objectProperties, 
 import { useStore } from '../model/store';
 import { DATATYPES, kindLabel, REL_KINDS, type Model, type RelKind, type Term, type TermType } from '../model/types';
 import { CommitInput, useLazyOptions } from './fields';
+import { GovernanceView } from './Governance';
 import { IriCell, SuperclassEditor } from './Iri';
 import { TermChips } from './TermChips';
 
-type Tab = 'concept' | 'object' | 'property' | 'instance' | 'relations';
+type Tab = 'concept' | 'object' | 'property' | 'instance' | 'relations' | 'governance';
 
 /** Remembered while the app is open. */
 let lastTab: Tab = 'concept';
@@ -65,7 +66,8 @@ export function EntitiesView() {
   const st = useStore.getState;
   const skos = model.mode === 'skos';
   const [tabState, setTabState] = useState<Tab>(lastTab);
-  const tab: Tab = skos && tabState !== 'relations' ? 'concept' : tabState;
+  const tab: Tab = skos && tabState !== 'relations' && tabState !== 'governance' ? 'concept' : tabState;
+  const [configuring, setConfiguring] = useState(false);
   const setTab = (t: Tab) => setTabState((lastTab = t));
 
   const props = useMemo(() => objectProperties(model), [model]);
@@ -92,6 +94,7 @@ export function EntitiesView() {
     ? [
         { id: 'concept', label: 'Concepts', count: model.terms.length },
         { id: 'relations', label: 'Relationships', count: model.relations.length },
+        { id: 'governance', label: 'Governance & Metadata', count: -1 },
       ]
     : [
         { id: 'concept', label: 'Classes', count: of('concept').length },
@@ -99,6 +102,7 @@ export function EntitiesView() {
         { id: 'property', label: 'Data properties', count: of('property').length },
         { id: 'instance', label: 'Individuals', count: of('instance').length },
         { id: 'relations', label: 'Relationships', count: model.relations.length },
+        { id: 'governance', label: 'Governance & Metadata', count: -1 },
       ];
 
   const addTerm = (type: TermType, label: string) => {
@@ -115,6 +119,7 @@ export function EntitiesView() {
       run: () => st().addRelation({ from: sorted[0].id, to: (sorted[1] ?? sorted[0]).id }),
       disabled: !model.terms.length,
     },
+    governance: { label: configuring ? 'Back to the entities' : 'Configure fields', run: () => setConfiguring(!configuring) },
   };
   const hint: Record<Tab, string> = {
     concept: skos ? 'Every concept in the scheme.' : 'The classes of the ontology, each with the restrictions its properties place on it. Click a row to edit it in the side panel.',
@@ -124,6 +129,9 @@ export function EntitiesView() {
     relations: skos
       ? 'Every relationship between two concepts.'
       : 'Every line drawn between two terms. One that uses an object property is a restriction or a fact; the others are plain relationships until you make their label an object property.',
+    governance: configuring
+      ? 'The metadata field registry of this model.'
+      : 'Who owns each entity, where it stands, and where its data lives. Select an entity to see the metadata that applies to its kind. Every value is an annotation on the entity, stored with a standard RDF property where one exists; none of it changes what a class means.',
   };
 
   const termSelect = (value: string, onChange: (id: string) => void, label: string) => <TermSelect value={value} onChange={onChange} label={label} sorted={sorted} current={name.get(value) ?? 'Unnamed'} />;
@@ -151,7 +159,7 @@ export function EntitiesView() {
   const [limits, setLimits] = useState<Record<string, number>>({});
   const limit = limits[tab + '|' + q] ?? PAGE;
   const all = {
-    terms: of(tab === 'object' || tab === 'relations' ? 'concept' : tab).filter((t) => !q || `${t.name}\n${t.description}\n${t.synonyms}`.toLowerCase().includes(q)),
+    terms: of(tab === 'object' || tab === 'relations' || tab === 'governance' ? 'concept' : tab).filter((t) => !q || `${t.name}\n${t.description}\n${t.synonyms}`.toLowerCase().includes(q)),
     props: props.filter((p) => !q || p.name.toLowerCase().includes(q)),
     relations: model.relations.filter((r) => !q || `${r.label}\n${name.get(r.from)}\n${name.get(r.to)}`.toLowerCase().includes(q)),
   };
@@ -166,7 +174,7 @@ export function EntitiesView() {
         <div className="tabs" role="tablist" aria-label="Kind of entity">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
-              {t.label} ({t.count})
+              {t.label}{t.count >= 0 ? ` (${t.count})` : ''}
             </button>
           ))}
         </div>
@@ -176,9 +184,10 @@ export function EntitiesView() {
       </div>
       <p className="muted note">
         {hint[tab]}
-        {q && <strong> Filtered by “{filter.trim()}”: {total} shown.</strong>}
+        {q && tab !== 'governance' && <strong> Filtered by “{filter.trim()}”: {total} shown.</strong>}
       </p>
-      <div className="table-wrap">
+      {tab === 'governance' && <GovernanceView configuring={configuring} />}
+      <div className="table-wrap" hidden={tab === 'governance'}>
         {tab === 'concept' && (
           <table className={skos ? '' : 'wide'}>
             <thead>
@@ -516,7 +525,7 @@ export function EntitiesView() {
             </tbody>
           </table>
         )}
-        {total === 0 && <p className="muted pad">{q ? `Nothing matches “${filter.trim()}”.` : 'Nothing here yet.'}</p>}
+        {total === 0 && tab !== 'governance' && <p className="muted pad">{q ? `Nothing matches “${filter.trim()}”.` : 'Nothing here yet.'}</p>}
         {total > limit && (
           <p className="pager">
             Showing {limit} of {total}.

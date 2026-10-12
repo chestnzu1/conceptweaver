@@ -35,7 +35,10 @@ export function Metadata({ fields, onChange, title = 'Metadata' }: { fields: Ext
   const confirm = () => {
     if (!draft || !ready) return;
     const lang = draft.lang.trim().toLowerCase();
-    const field = { key: standardAnnotation(draft.key) ?? draft.key.trim(), value: draft.value.trim(), ...(lang ? { lang } : {}) };
+    // What kind of value it is (a date, a number, a reference) stays as it was when only its text is changed.
+    const key = standardAnnotation(draft.key) ?? draft.key.trim();
+    const { dt, iri, measure } = draft.index === null || fields[draft.index].key !== key ? ({} as Partial<ExtraField>) : fields[draft.index];
+    const field: ExtraField = { key, value: draft.value.trim(), ...(lang && !dt && !iri ? { lang } : {}), ...(dt ? { dt } : {}), ...(iri ? { iri } : {}), ...(measure ? { measure } : {}) };
     // The same property can be given several times, once for each language or value; only an exact repeat is refused.
     if (fields.some((f, i) => i !== draft.index && f.key === field.key && f.value === field.value && (f.lang ?? '') === (field.lang ?? ''))) {
       notify(`This ${field.key} value is already there${field.lang ? ` in ${field.lang}` : ''}.`);

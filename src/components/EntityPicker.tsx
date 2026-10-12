@@ -61,7 +61,7 @@ export function EntityPicker({ values, options, onAdd, onRemove, onOpen, noun, o
     }
     const top: Choice[] = scored.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name)).slice(0, 8);
     const typed = q ? custom?.(query.trim()) : undefined;
-    if (typed && !chosen.has(typed.id) && !top.some((o) => o.id === typed.id)) top.push({ ...typed, tag: 'use this IRI' });
+    if (typed && !chosen.has(typed.id) && !top.some((o) => o.id === typed.id)) top.push({ tag: 'use this IRI', ...typed });
     return top;
     // `options` and `short` read the model, which is a dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps

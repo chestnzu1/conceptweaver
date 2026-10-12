@@ -26,6 +26,7 @@ export function stable(model: Model): Model {
     prev.prefixes === model.prefixes &&
     prev.shapes === model.shapes &&
     prev.quality === model.quality &&
+    prev.governance === model.governance &&
     prev.externals === model.externals &&
     prev.mappings === model.mappings &&
     prev.rejected === model.rejected &&
