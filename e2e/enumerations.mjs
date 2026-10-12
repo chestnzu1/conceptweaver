@@ -178,7 +178,7 @@ const zoom = page.locator('.zoom');
 const dotted = async () => Number(flat(await zoom.getByRole('button', { name: /^Inferred types/ }).innerText()).match(/\((\d+)\)/)?.[1]);
 
 await validation();
-ok((await owl()) === 'Status: Consistent', 'with an enumeration and an enumerated datatype in it, the ontology is consistent: ' + (await owl()));
+ok((await owl()) === 'Status: No contradiction found', 'with an enumeration and an enumerated datatype in it, the ontology is consistent: ' + (await owl()));
 await tab('Graph');
 
 // What a class lists are its instances. The reasoner says so; the canvas does not draw it twice.
@@ -223,7 +223,7 @@ await tab('Graph');
 await node('Running time : Length class').locator('.node-box').click();
 await addValue('feature');
 await validation();
-ok((await owl()) === 'Status: Consistent', 'with the value back on the list the ontology is consistent again');
+ok((await owl()) === 'Status: No contradiction found', 'with the value back on the list the ontology is consistent again');
 
 // An enumeration that lists nothing is worth a look, and the rules about enumerations can be switched like the others.
 await tab('Graph');

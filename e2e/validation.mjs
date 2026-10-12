@@ -44,7 +44,7 @@ await tab(/^Validation/);
 await settled();
 ok(/^Validated \d.* · revision [0-9a-f]{8} · \d+ entities$/.test(flat(await v.locator('.run-state').innerText())), 'opening the tab runs the checks once and says when, which revision, and how much: ' + flat(await v.locator('.run-state').innerText()));
 ok((await v.locator('.card h3').allInnerTexts()).map(flat).join(' | ').toUpperCase() === 'OWL CONSISTENCY | SHACL VALIDATION | ONTOLOGY QUALITY', 'three categories, each with a card of its own');
-ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: Consistent' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0'), 'OWL: consistent, 0 unsatisfiable classes');
+ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: No contradiction found' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0'), 'OWL: consistent, 0 unsatisfiable classes');
 ok(flat(await card('SHACL validation').innerText()).includes('No shapes yet'), 'SHACL: nothing to validate against until there are shapes');
 ok(/Warnings: \d+/.test(flat(await card('Ontology quality').innerText())) && flat(await card('Ontology quality').innerText()).includes('not errors'), 'Quality: counts, and a reminder that these are not errors');
 const first = await rowTexts();
@@ -133,7 +133,7 @@ await add('Disjoint classes', 'Person');
 await pick('Documentary');
 await add('Asserted superclasses', 'Person');
 await run('Run all checks');
-ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: Consistent' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 1'), 'a class under two disjoint classes: the ontology is still consistent, with 1 unsatisfiable class');
+ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: No contradiction found' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 1'), 'a class under two disjoint classes: the ontology is still consistent, with 1 unsatisfiable class');
 await v.getByLabel('Category').selectOption('owl');
 ok((await rowTexts()).join(' / ').startsWith('Error OWL Documentary class Unsatisfiable class'), 'it is reported as an unsatisfiable class: ' + (await rowTexts()).join(' / '));
 await tab('Entities');
@@ -151,7 +151,7 @@ ok(why.includes('Justification The reasoner derives this from:') && why.includes
 await page.screenshot({ path: shots + 'validation-owl.png' });
 for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Undo' }).click();
 await run('Run all checks');
-ok(flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0') && flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: Consistent', 'undoing the three edits and rerunning: consistent again');
+ok(flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0') && flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: No contradiction found', 'undoing the three edits and rerunning: consistent again');
 await v.getByLabel('Category').selectOption('');
 
 // ---------------------------------------------------------------- a quick fix shows the change first

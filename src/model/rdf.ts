@@ -35,7 +35,7 @@ interface RdfNode {
   props: [string, Val][];
 }
 
-function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string, string> } {
+function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string, string>; propRef: Map<string, string> } {
   const m = resolveModel(model);
   const base = baseIriOf(m);
   const used = new Set<string>();
@@ -156,7 +156,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       nodes.get(t.id)!.props.push(['skos:topConceptOf', { id: scheme.id }]);
       scheme.props.push(['skos:hasTopConcept', { id: ref.get(t.id)! }]);
     }
-    return { base, nodes: [scheme, ...annProps, ...own.values(), ...m.terms.map((t) => nodes.get(t.id)!)], ref };
+    return { base, nodes: [scheme, ...annProps, ...own.values(), ...m.terms.map((t) => nodes.get(t.id)!)], ref, propRef: new Map() };
   }
 
   const ontology: RdfNode = { id: modelIri, props: [['rdf:type', { id: 'owl:Ontology' }], ['rdfs:label', text(m.name)]] };
@@ -328,7 +328,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     if (t.allDifferent && members.length > 1) allDifferent.push({ id: '', props: [['rdf:type', { id: 'owl:AllDifferent' }], ['owl:distinctMembers', { list: members }]] });
   }
   const of = (type: Term['type']) => m.terms.filter((t) => t.type === type).map((t) => nodes.get(t.id)!);
-  return { base, nodes: [ontology, ...annProps, ...of('concept'), ...objProps, ...datatypeNodes, ...of('property'), ...of('instance'), ...allDifferent], ref };
+  return { base, nodes: [ontology, ...annProps, ...of('concept'), ...objProps, ...datatypeNodes, ...of('property'), ...of('instance'), ...allDifferent], ref, propRef };
 }
 
 function ttlBody(n: RdfNode, indent: string): string {
@@ -988,8 +988,20 @@ export function prefixesOf(m: Model): [string, string][] {
 
 /** Full IRI of each term in the exports, mapped back to the term's id. */
 export function termIris(m: Model): Map<string, string> {
-  const { base, ref } = toRdf(m);
-  const out = new Map<string, string>();
-  for (const [id, r] of ref) out.set(r.startsWith('<') ? r.slice(1, -1) : (expandIri(m, r) ?? base + r.slice(1)), id);
-  return out;
+  return entityIris(m).terms;
+}
+
+/**
+ * The IRI each entity is written with, the other way round: from an IRI in the exported RDF to
+ * the term (its id) or the object property (its key) it stands for. This is how what a reasoner
+ * says about the RDF is found again in the editor.
+ */
+export function entityIris(m: Model): { terms: Map<string, string>; props: Map<string, string> } {
+  const { base, ref, propRef } = toRdf(m);
+  const full = (r: string) => (r.startsWith('<') ? r.slice(1, -1) : (expandIri(m, r) ?? base + r.slice(1)));
+  const terms = new Map<string, string>();
+  const props = new Map<string, string>();
+  for (const [id, r] of ref) terms.set(full(r), id);
+  for (const [key, r] of propRef) props.set(full(r), key);
+  return { terms, props };
 }

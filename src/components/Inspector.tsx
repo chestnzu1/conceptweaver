@@ -1,4 +1,5 @@
-import { useStore } from '../model/store';
+import { currentDl, useStore } from '../model/store';
+import { creditOf, entailmentsOf } from '../model/reasoning';
 import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
 import { QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type Relation, type Term } from '../model/types';
@@ -571,7 +572,13 @@ export function Sources({ sources }: { sources: RestrictionSource[] }) {
  */
 function InferredRestrictionsPanel({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
-  const inferred = useMemo(() => inferredRestrictions(model, term.id), [model, term.id]);
+  const dl = useStore(currentDl);
+  const inferred = useMemo(() => {
+    if (!dl || dl.consistency !== 'consistent') return inferredRestrictions(model, term.id);
+    // Superclasses that only the OWL 2 DL reasoner finds are inherited from in the same way.
+    const of = entailmentsOf(dl, term.id);
+    return inferredRestrictions(model, term.id, { unsatisfiable: of.unsatisfiable, supers: of.superclasses.map((x) => ({ id: x.superclass, asserted: x.asserted, equivalent: of.equivalents.includes(x.superclass), because: creditOf(dl), rels: [] })) });
+  }, [model, term.id, dl]);
   const count = inferred.restrictions.length + inferred.expressions.length;
   const [open, setOpen] = useState(true);
   return (

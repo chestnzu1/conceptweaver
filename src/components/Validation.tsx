@@ -4,8 +4,10 @@ import { QUALITY_RULES, ruleEnabled, setRule, type RuleGroup } from '../model/qu
 import { reason } from '../model/reasoner';
 import { stable } from '../model/stable';
 import { useStore } from '../model/store';
-import { categoryLabel, isStale, MODEL_DATA, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE, type Category, type EntityType, type Finding, type Level, type Scope } from '../model/validation';
+import { creditOf, ENGINES, reasonerHealth, type ReasoningResult } from '../model/reasoning';
+import { categoryLabel, DL_LIMITS, isStale, MODEL_DATA, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../model/validation';
 import { ShapesPanel } from './Shapes';
+import { CommitInput } from './fields';
 import { Disclosure } from './Icon';
 
 /**
@@ -89,38 +91,7 @@ export function ValidationView() {
       )}
 
       <div className="summary" aria-label="Summary">
-        <section className={'card ' + (run?.owl ? (run.owl.status === 'inconsistent' ? 'is-bad' : run.owl.unsatisfiable.length ? 'is-warn' : 'is-good') : '')}>
-          <h3>OWL consistency</h3>
-          {!run?.owl ? (
-            <p className="muted">Not run for this revision.</p>
-          ) : run.owl.status === 'not-applicable' ? (
-            <p className="muted">A SKOS concept scheme has no OWL axioms to contradict each other. Its integrity conditions are checked under Quality.</p>
-          ) : (
-            <>
-              <p className="status">
-                Status: <strong>{run.owl.status === 'consistent' ? (run.owl.partial ? 'No contradiction found (partial)' : 'Consistent') : `Inconsistent: ${run.owl.contradictions} contradiction${run.owl.contradictions === 1 ? '' : 's'}`}</strong>
-              </p>
-              <p>
-                Unsatisfiable classes: <strong>{run.owl.unsatisfiable.length}</strong>
-              </p>
-              <p className="muted">
-                {run.owl.asserted} stated facts, {run.owl.inferred} inferred · {run.owl.ms} ms
-              </p>
-            </>
-          )}
-          <details>
-            <summary>What this covers</summary>
-            <p>The app’s own reasoner: {run?.owl?.profile ?? 'RDFS and a subset of OWL 2 RL'}.</p>
-            <ul>
-              {REASONER_LIMITS.map((x) => (
-                <li key={x}>{x}</li>
-              ))}
-              <li>OWL is open-world: something that is not stated is unknown, not wrong. A missing value is never an inconsistency. To require data, use a SHACL shape.</li>
-              <li>An unsatisfiable class does not make the ontology inconsistent: the class exists, it just cannot have members.</li>
-              {!model.vocab.enabled && model.mode !== 'skos' && <li>“Use RDFS &amp; OWL properties” is off, so only the hierarchy and property declarations are reasoned with.</li>}
-            </ul>
-          </details>
-        </section>
+        <OwlCard />
 
         <section className={'card ' + (run?.shacl ? (run.shacl.status === 'conforms' ? 'is-good' : run.shacl.status === 'skipped' ? '' : run.shacl.violations || run.shacl.status === 'failed' ? 'is-bad' : 'is-warn') : '')}>
           <h3>SHACL validation</h3>
@@ -241,7 +212,7 @@ export function ValidationView() {
       {tab === 'results' && <Results findings={findings} counts={{ owl: count('owl'), shacl: count('shacl'), quality: count('quality') }} stale={stale} ran={!!run} />}
       {tab === 'shapes' && <ShapesPanel />}
       {tab === 'rules' && <Rules />}
-      {tab === 'inferences' && <Inferences inferences={inferences} />}
+      {tab === 'inferences' && (run?.dl && !stale && run.dl.result.status !== 'failed' ? <DlInferences result={run.dl.result} /> : <Inferences inferences={inferences} />)}
 
       <input
         ref={dataRef}
@@ -258,6 +229,237 @@ export function ValidationView() {
   );
 }
 
+/**
+ * What the reasoner says: which reasoner, whether the ontology is consistent, and which classes
+ * can have no members. The engine is chosen here. The two do not promise the same, and the card
+ * says which one answered and how far its answer goes.
+ */
+function OwlCard() {
+  const model = useStore((s) => s.model);
+  const { run, running, engine, reasonerUrl } = useStore((s) => s.validation);
+  const st = useStore.getState;
+  const owl = run?.owl;
+  const [health, setHealth] = useState<Awaited<ReturnType<typeof reasonerHealth>> | 'asking' | null>(null);
+  // Whether the service is there is asked when the advanced reasoner is chosen, when its address changes, and after each run.
+  useEffect(() => {
+    if (engine !== 'dl') return;
+    let live = true;
+    setHealth('asking');
+    void reasonerHealth(reasonerUrl).then((h) => live && setHealth(h));
+    return () => {
+      live = false;
+    };
+  }, [engine, reasonerUrl, run?.at]);
+
+  const names = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
+  const chosen = ENGINES.find((e) => e.id === engine)!;
+  const dl = owl?.engine === 'dl';
+  const status = !owl
+    ? ''
+    : owl.status === 'unknown'
+      ? 'Unknown: the reasoner gave no answer'
+      : owl.status === 'inconsistent'
+        ? dl
+          ? 'Inconsistent'
+          : `Inconsistent: ${owl.contradictions} contradiction${owl.contradictions === 1 ? '' : 's'}`
+        : dl
+          ? owl.proved
+            ? 'Consistent'
+            : 'Consistent, for what could be reasoned over (partial)'
+          : owl.partial
+            ? 'No contradiction found (partial)'
+            : 'No contradiction found';
+  const tone = !owl || owl.status === 'not-applicable' ? '' : owl.status === 'inconsistent' ? 'is-bad' : owl.status === 'unknown' || owl.unsatisfiable.length || (dl && !owl.proved) ? 'is-warn' : 'is-good';
+  // The finding that explains a class, to open it in the results.
+  const findingOf = (id: string) => run?.findings.find((f) => f.category === 'owl' && (f.ruleId === 'owl-unsatisfiable' || f.ruleId === 'owl-restrictions') && f.entity?.kind === 'term' && f.entity.id === id)?.id;
+  const explain = (id: string | undefined) => id && st().setValidation({ tab: 'results', focus: id });
+  const contradiction = run?.findings.find((f) => f.category === 'owl' && f.ruleId === 'owl-inconsistent')?.id;
+  const SHOWN = 12;
+
+  return (
+    <section className={'card owl-card ' + tone}>
+      <h3>OWL consistency</h3>
+      {model.mode === 'skos' ? (
+        <p className="muted">A SKOS concept scheme has no OWL axioms to contradict each other. Its integrity conditions are checked under Quality.</p>
+      ) : (
+        <>
+          <fieldset className="engine" disabled={running}>
+            <legend>Reasoning engine</legend>
+            {ENGINES.map((e) => (
+              <label key={e.id} title={e.about}>
+                <input type="radio" name="reasoning-engine" checked={engine === e.id} onChange={() => st().setValidation({ engine: e.id })} />
+                <span>{e.label}</span>
+              </label>
+            ))}
+            <button className="btn small" title={`Reasons over the ontology with the ${engine === 'dl' ? 'OWL 2 DL reasoner' : 'app’s own rules'}. The other checks are left as they are.`} onClick={() => void st().runValidation('owl')}>
+              Run reasoning
+            </button>
+          </fieldset>
+          {engine === 'dl' && (
+            <div className="service">
+              <label>
+                <span>Reasoning service</span>
+                <CommitInput aria-label="Address of the reasoning service" value={reasonerUrl} spellCheck={false} onCommit={(v) => st().setValidation({ reasonerUrl: v.trim() || 'http://localhost:5190' })} />
+              </label>
+              <span className={'health ' + (health === 'asking' || !health ? '' : health.ok ? 'up' : 'down')} role="status">
+                {health === 'asking' || !health ? 'Looking for it…' : health.ok ? `${health.engine} ${health.engineVersion} is running` : 'Not running'}
+              </span>
+              {/* Said once: below, where a run that could not reach it reports the same. */}
+              {health && health !== 'asking' && !health.ok && !(dl && owl?.errors?.length) && <p className="muted">{health.error}</p>}
+            </div>
+          )}
+          {!owl || owl.status === 'not-applicable' ? (
+            <p className="muted">Not run for this revision.</p>
+          ) : (
+            <div className="reasoned" data-engine={owl.engine}>
+              {owl.engine !== engine && (
+                <p className="muted">
+                  What follows is the answer of the {dl ? 'OWL 2 DL reasoner' : 'fast reasoner'}. Run reasoning to ask the {engine === 'dl' ? 'OWL 2 DL reasoner' : 'fast reasoner'}.
+                </p>
+              )}
+              <p className="reasoner">
+                Reasoner: <strong>{owl.engineName}</strong>
+              </p>
+              <p className="status">
+                Status: <strong>{status}</strong>
+                {contradiction && dl && (
+                  <button className="link" onClick={() => explain(contradiction)}>
+                    View explanation
+                  </button>
+                )}
+              </p>
+              {!dl && owl.status === 'consistent' && <p className="muted">Its rules reached no contradiction. That is not a proof that the ontology is consistent: the OWL 2 DL reasoner gives one.</p>}
+              {owl.errors?.map((e) => (
+                <p key={e} className="reasoner-error" role="alert">
+                  {e}
+                </p>
+              ))}
+              {owl.status !== 'unknown' && !(dl && owl.status === 'inconsistent') && (
+                <>
+                  <p>
+                    Unsatisfiable classes: <strong>{owl.unsatisfiable.length}</strong>
+                  </p>
+                  {owl.unsatisfiable.length > 0 && (
+                    <ul className="unsat" aria-label="Unsatisfiable classes">
+                      {owl.unsatisfiable.slice(0, SHOWN).map((id) => (
+                        <li key={id}>
+                          <button className="link" title="Open this class in the editor" onClick={() => st().select([id])}>
+                            {names.get(id) ?? 'A class no longer in the model'}
+                          </button>
+                          {findingOf(id) && (
+                            <button className="link explain" onClick={() => explain(findingOf(id))}>
+                              View explanation
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                      {owl.unsatisfiable.length > SHOWN && <li className="muted">and {owl.unsatisfiable.length - SHOWN} more, in the results below</li>}
+                    </ul>
+                  )}
+                </>
+              )}
+              {owl.notes?.map((n) => (
+                <p key={n} className="muted reasoner-note">
+                  {n}
+                </p>
+              ))}
+              {owl.status === 'unknown' && !owl.asserted ? null : (
+                <p className="muted">
+                  {owl.asserted} {dl ? 'logical axioms' : 'stated facts'}
+                  {owl.status === 'unknown' || (dl && owl.status === 'inconsistent') ? '' : `, ${owl.inferred} inferred`} · {owl.ms} ms
+                </p>
+              )}
+            </div>
+          )}
+          <details>
+            <summary>What this covers</summary>
+            {(owl?.engine ?? engine) === 'dl' ? (
+              <>
+                <p>{owl?.engineName ?? 'HermiT'}: {owl?.profile ?? chosen.about}.</p>
+                <ul>
+                  {DL_LIMITS.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                  <li>An unsatisfiable class does not make the ontology inconsistent: the class exists, it just cannot have members. It becomes inconsistent when something is stated to be an instance of it.</li>
+                </ul>
+              </>
+            ) : (
+              <>
+                <p>The app’s own reasoner: {owl?.profile ?? 'RDFS and a subset of OWL 2 RL'}.</p>
+                <ul>
+                  {REASONER_LIMITS.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                  <li>OWL is open-world: something that is not stated is unknown, not wrong. A missing value is never an inconsistency. To require data, use a SHACL shape.</li>
+                  <li>An unsatisfiable class does not make the ontology inconsistent: the class exists, it just cannot have members.</li>
+                  {!model.vocab.enabled && <li>“Use RDFS &amp; OWL properties” is off, so only the hierarchy and property declarations are reasoned with.</li>}
+                </ul>
+              </>
+            )}
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+const KEYWORDS = /\b(SubClassOf|EquivalentTo|DisjointWith|DisjointClasses|SubPropertyOf|InverseOf|Domain|Range|Type|Types|SameAs|DifferentFrom|DifferentIndividuals|SameIndividual|Functional|InverseFunctional|Transitive|Symmetric|Asymmetric|Reflexive|Irreflexive|some|only|min|max|exactly|value|Self|and|or|not|that|inverse)\b/;
+
+/**
+ * One asserted axiom of a justification, in Manchester syntax as the reasoner's library wrote it.
+ * The entities in it that are in the model can be clicked, to open them in the editor.
+ */
+function Axiom({ text, entities }: { text: string; entities: JustifiedEntity[] }) {
+  const st = useStore.getState;
+  const byToken = new Map<string, JustifiedEntity>();
+  for (const e of entities) if (e.kind !== 'external') byToken.set(e.token ?? e.name, e);
+  const tokens = [...byToken.keys()].sort((a, b) => b.length - a.length);
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = tokens.length ? text.split(new RegExp(`(?<![\\p{L}\\p{N}_'])(${tokens.map(esc).join('|')})(?![\\p{L}\\p{N}_'])`, 'u')) : [text];
+  return (
+    <code className="axiom">
+      {parts.map((part, i) => {
+        const e = byToken.get(part);
+        if (e)
+          return (
+            <button key={i} className="link" title={`Open this ${e.type}`} onClick={() => (e.kind === 'term' ? st().select([e.id]) : st().selectProp(e.id))}>
+              {part}
+            </button>
+          );
+        return part.split(KEYWORDS).map((bit, j) => (j % 2 ? <b key={`${i}.${j}`}>{bit}</b> : bit));
+      })}
+    </code>
+  );
+}
+
+/** The explanation of a finding of the OWL 2 DL reasoner: its justifications, or the plain statement that there is none. */
+function Explanation({ f }: { f: Finding }) {
+  const list = f.justifications ?? [];
+  if (!list.length) return <p className="muted">{f.justificationNote ?? 'The reasoner gives none for this.'}</p>;
+  return (
+    <div className="explanation" role="group" aria-label="Explanation">
+      {list.map((axioms, n) => (
+        <div key={n} className="justification">
+          <p className="muted">
+            {list.length > 1 ? `Justification ${n + 1} of ${list.length}. ` : ''}
+            {axioms.length === 1 ? 'One asserted axiom is enough for it' : `These ${axioms.length} asserted axioms are enough for it, and no fewer of them are`}, according to {f.engine ?? 'the reasoner'}:
+          </p>
+          <ol>
+            {axioms.map((a, i) => (
+              <li key={i}>
+                <Axiom text={a.text} entities={a.entities} />
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+      <p className="conclusion">
+        <strong>Conclusion:</strong> {f.ruleId === 'owl-inconsistent' ? 'these cannot all be true at once, so the ontology is inconsistent.' : `${f.entity?.name ? `“${f.entity.name}”` : 'the class'} cannot have any instances.`}
+      </p>
+    </div>
+  );
+}
+
 function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts: Record<Category, number>; stale: boolean; ran: boolean }) {
   const st = useStore.getState;
   const [category, setCategory] = useState<Category | ''>('');
@@ -269,6 +471,23 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
   const [limit, setLimit] = useState(PAGE);
   const types = useMemo(() => [...new Set(findings.map((f) => f.entity?.type).filter((t): t is EntityType => !!t))].sort(), [findings]);
   const q = query.trim().toLowerCase();
+  // A finding asked for from the summary is opened here: the filters step aside, and it is brought into view.
+  const focus = useStore((s) => s.validation.focus);
+  useEffect(() => {
+    if (!focus) return;
+    const at = findings.findIndex((f) => f.id === focus);
+    st().setValidation({ focus: null });
+    if (at < 0) return;
+    setCategory('');
+    setSeverity('');
+    setType('');
+    setQuery('');
+    setLimit((n) => Math.max(n, at + 1));
+    setOpen(focus);
+    setFixing(null);
+    requestAnimationFrame(() => document.querySelector('tr.result.sel')?.scrollIntoView({ block: 'nearest' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
   const shown = useMemo(
     () => findings.filter((f) => (!category || f.category === category) && (!severity || f.severity === severity) && (!type || f.entity?.type === type) && (!q || `${f.message}\n${f.rule}\n${f.entity?.name ?? ''}\n${f.entity?.iri ?? ''}\n${f.property ?? ''}`.toLowerCase().includes(q))),
     [findings, category, severity, type, q],
@@ -395,7 +614,7 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
                       <dl>
                         <dt>Category</dt>
                         <dd>
-                          {f.category === 'owl' ? 'OWL logical consistency: from the reasoner' : f.category === 'shacl' ? 'SHACL constraint: the data does not have the required shape' : 'Ontology quality: a modelling diagnostic, not an error in the logic'}
+                          {f.category === 'owl' ? `OWL logical consistency: from ${f.engine ? `${f.engine}, the OWL 2 DL reasoner` : 'the app’s own reasoner'}` : f.category === 'shacl' ? 'SHACL constraint: the data does not have the required shape' : 'Ontology quality: a modelling diagnostic, not an error in the logic'}
                         </dd>
                         {f.entity && (
                           <>
@@ -414,13 +633,22 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
                         )}
                         <dt>{f.category === 'shacl' ? 'Constraint' : 'Rule'}</dt>
                         <dd>{f.rule}</dd>
-                        {f.explanation && (
+                        {f.justifications ? (
                           <>
-                            <dt>{f.category === 'owl' ? 'Justification' : 'About this rule'}</dt>
-                            <dd>{f.explanation}</dd>
+                            <dt>Explanation</dt>
+                            <dd>
+                              <Explanation f={f} />
+                            </dd>
                           </>
+                        ) : (
+                          f.explanation && (
+                            <>
+                              <dt>{f.category === 'owl' ? 'Justification' : 'About this rule'}</dt>
+                              <dd>{f.explanation}</dd>
+                            </>
+                          )
                         )}
-                        {f.category === 'owl' && !f.explanation && (
+                        {f.category === 'owl' && !f.explanation && !f.justifications && (
                           <>
                             <dt>Justification</dt>
                             <dd className="muted">The reasoner gives none for this.</dd>
@@ -566,6 +794,72 @@ function Rules() {
 }
 
 /** What follows from the model: not problems, but the other half of what the reasoner works out. */
+/**
+ * What the OWL 2 DL reasoner entails beyond what is stated: which class is a kind of which, and
+ * which individual is an instance of which class. The nearest ones first; the rest follow from them.
+ */
+function DlInferences({ result }: { result: ReasoningResult }) {
+  const model = useStore((s) => s.model);
+  const st = useStore.getState;
+  const [limit, setLimit] = useState(PAGE);
+  const names = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
+  const facts = useMemo(() => {
+    const q = (id: string) => `“${names.get(id) ?? 'Unnamed'}”`;
+    const out = [
+      ...result.types.filter((x) => !x.asserted).map((x) => ({ key: `t|${x.individual}|${x.class}`, from: x.individual, to: x.class, direct: x.direct, text: `${q(x.individual)} is an instance of ${q(x.class)}` })),
+      ...result.subclasses.filter((x) => !x.asserted).map((x) => ({ key: `s|${x.subclass}|${x.superclass}`, from: x.subclass, to: x.superclass, direct: x.direct, text: `${q(x.subclass)} is a kind of ${q(x.superclass)}` })),
+    ];
+    return out.sort((a, b) => Number(b.direct) - Number(a.direct) || a.text.localeCompare(b.text));
+  }, [result, names]);
+  const credit = creditOf(result);
+  if (result.consistency !== 'consistent')
+    return (
+      <div className="issues">
+        <p className="muted note">The OWL 2 DL reasoner finds the ontology inconsistent. From a contradiction everything follows, so nothing is listed as inferred.</p>
+      </div>
+    );
+  return (
+    <div className="issues" data-engine="dl">
+      <p className="muted note">
+        What {result.engine.name} entails beyond what is stated: class memberships and the class hierarchy. {result.proves ? '' : 'The reasoning was partial, so there may be more. '}These are not stored: “Add to model” states one explicitly.
+      </p>
+      {!facts.length && <p className="muted note">Nothing new follows from the model.</p>}
+      {facts.slice(0, limit).map((f) => (
+        <div key={f.key} className="issue inference">
+          <span className="sev inferred">inferred</span>
+          <button
+            className="issue-rule link"
+            title="Show the two on the canvas"
+            onClick={() => {
+              st().focusTerm(f.from);
+              st().select([f.from, f.to]);
+            }}
+          >
+            {f.text}
+          </button>
+          <span className="issue-msg">
+            <span className="why">
+              {credit}
+              {f.direct ? '' : ' It follows through what is between them.'}
+            </span>
+          </span>
+          <button className="btn small" title="State this explicitly as a relation in the model" onClick={() => st().addRelation({ from: f.from, to: f.to, kind: 'generalization' })}>
+            Add to model
+          </button>
+        </div>
+      ))}
+      {facts.length > limit && (
+        <p className="pager">
+          Showing {limit} of {facts.length} inferred facts.
+          <button className="btn small" onClick={() => setLimit(facts.length)}>
+            Show all
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Inferences({ inferences }: { inferences: ReturnType<typeof reason>['inferences'] }) {
   const st = useStore.getState;
   const [limit, setLimit] = useState(PAGE);

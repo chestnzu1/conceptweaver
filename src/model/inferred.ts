@@ -53,7 +53,11 @@ const expressionOf = (axiom: string) => axiom.replace(/^(rdfs:subClassOf|owl:equ
 
 const EMPTY = { restrictions: [], expressions: [] };
 
-export function inferredRestrictions(model: Model, classId: string): InferredRestrictions {
+/**
+ * `more` is what another reasoner (the OWL 2 DL one) entails beyond the app's own: further
+ * superclasses to inherit from in the same way, and whether the class is unsatisfiable.
+ */
+export function inferredRestrictions(model: Model, classId: string, more?: { supers: SuperLink[]; unsatisfiable: boolean }): InferredRestrictions {
   const m = resolveModel(model);
   const byId = new Map(m.terms.map((t) => [t.id, t]));
   const self = byId.get(classId);
@@ -67,7 +71,9 @@ export function inferredRestrictions(model: Model, classId: string): InferredRes
   const restrictions = new Map<string, InferredRestriction>();
   const expressions = new Map<string, InferredExpression>();
   // Directly stated superclasses first, so that the nearest source is named first.
-  const supers = [...reasoning.superclasses(classId)].sort((a, b) => Number(b.asserted) - Number(a.asserted));
+  const own_ = reasoning.superclasses(classId);
+  const known = new Set(own_.map((l) => l.id));
+  const supers = [...own_, ...(more?.supers ?? []).filter((l) => l.id !== classId && !known.has(l.id) && byId.get(l.id)?.type === 'concept')].sort((a, b) => Number(b.asserted) - Number(a.asserted));
   for (const link of supers) {
     const source: RestrictionSource = { ...link, name: byId.get(link.id)?.name || 'Unnamed' };
     for (const r of restrictionsOf(model, link.id)) {
@@ -86,7 +92,7 @@ export function inferredRestrictions(model: Model, classId: string): InferredRes
     }
   }
   return {
-    status: reasoning.unsatisfiable.has(classId) ? 'unsatisfiable' : reasoning.truncated ? 'partial' : 'ok',
+    status: reasoning.unsatisfiable.has(classId) || more?.unsatisfiable ? 'unsatisfiable' : reasoning.truncated ? 'partial' : 'ok',
     restrictions: [...restrictions.values()],
     expressions: [...expressions.values()],
   };

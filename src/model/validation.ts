@@ -6,6 +6,7 @@ import { objectProperties, propKey, restrictionsOf, type Restriction } from './p
 import { QUALITY_RULES, qualityDiagnostics, ruleById, ruleEnabled, type QuickFix } from './quality';
 import { termIris, toTurtle } from './rdf';
 import { reason } from './reasoner';
+import { dlResult, entityLinks, readable, type DlReport, type EngineId, type EntityLink, type ReasoningResult } from './reasoning';
 import { SH, shapesToTurtle } from './shapes';
 import { stable } from './stable';
 import type { Model } from './types';
@@ -68,19 +69,46 @@ export interface Finding {
   /** The editable shape a SHACL result comes from, when it is one. */
   shapeId?: string;
   fix?: QuickFix;
+  /**
+   * For a finding of the OWL 2 DL reasoner: its justifications, each a smallest set of asserted
+   * axioms from which the finding follows, in Manchester syntax. They are the reasoner's own.
+   */
+  justifications?: { text: string; entities: JustifiedEntity[] }[][];
+  /** Why there is no justification, when the reasoner gave none. */
+  justificationNote?: string;
+  /** Which reasoner found it, when it was not the app's own. */
+  engine?: string;
 }
 
+/** An entity an axiom of a justification mentions, with how it is written in that axiom. */
+export type JustifiedEntity = EntityRef & { token?: string };
+
 export interface OwlSummary {
-  /** not-applicable: a SKOS concept scheme has no OWL semantics to contradict. */
-  status: 'consistent' | 'inconsistent' | 'not-applicable';
+  /** Which reasoner this is the answer of. */
+  engine: EngineId;
+  /** Its name, with its version where it has one: "HermiT 1.4.5.456". */
+  engineName: string;
+  /**
+   * not-applicable: a SKOS concept scheme has no OWL semantics to contradict.
+   * unknown: the reasoner gave no answer (it could not be reached, failed, or cannot reason over this ontology).
+   */
+  status: 'consistent' | 'inconsistent' | 'unknown' | 'not-applicable';
+  /**
+   * Whether "consistent" is proved. Only a complete reasoner that finished over all of the
+   * ontology proves it; from the app's own rules it means that no contradiction was found.
+   */
+  proved: boolean;
   contradictions: number;
   unsatisfiable: string[];
   asserted: number;
   inferred: number;
-  /** The reasoner stopped early, so "consistent" means "no contradiction found so far". */
+  /** The reasoner stopped early or left something out, so "consistent" is about what it looked at. */
   partial: boolean;
   profile: string;
   ms: number;
+  /** What kept the reasoner from answering, or from answering for all of the ontology. */
+  errors?: string[];
+  notes?: string[];
 }
 
 export interface ShaclSummary {
@@ -120,6 +148,8 @@ export interface ValidationRun {
   shacl?: ShaclSummary;
   quality?: QualitySummary;
   findings: Finding[];
+  /** What the OWL 2 DL reasoner answered, when the run used it: its own report, and the same in the terms of the model. */
+  dl?: { report: DlReport; result: ReasoningResult };
 }
 
 /** What SHACL validates: the model's own RDF, or RDF brought in for the purpose. */
@@ -173,6 +203,8 @@ function entityIndex(model: Model) {
 
 // ---------------------------------------------------------------- OWL
 
+export const FAST_ENGINE_NAME = 'Fast reasoner';
+
 /** The rules the app's reasoner applies, for saying honestly what a "consistent" covers. */
 export const REASONER_PROFILE = 'RDFS and a subset of OWL 2 RL: class and property hierarchies, equivalence, disjointness and complements, domains and ranges, inverse, symmetric, transitive, functional and inverse-functional properties, sameAs and differentFrom, enumerations (owl:oneOf) and owl:AllDifferent';
 export const REASONER_LIMITS = [
@@ -194,7 +226,7 @@ export function owlFindings(model: Model, fresh = false): { summary: OwlSummary;
   const findings: Finding[] = [];
   const ix = entityIndex(model);
   if (model.mode === 'skos') {
-    return { summary: { status: 'not-applicable', contradictions: 0, unsatisfiable: [], asserted: 0, inferred: 0, partial: false, profile: REASONER_PROFILE, ms: 0 }, findings };
+    return { summary: { engine: 'fast', engineName: FAST_ENGINE_NAME, status: 'not-applicable', proved: false, contradictions: 0, unsatisfiable: [], asserted: 0, inferred: 0, partial: false, profile: REASONER_PROFILE, ms: 0 }, findings };
   }
   const reasoning = reason(model, fresh);
   const unsatisfiable = new Set(reasoning.unsatisfiable);
@@ -280,7 +312,11 @@ export function owlFindings(model: Model, fresh = false): { summary: OwlSummary;
   const contradictions = reasoning.conflicts.filter((c) => c.severity === 'error').length;
   return {
     summary: {
+      engine: 'fast',
+      engineName: FAST_ENGINE_NAME,
       status: reasoning.consistent ? 'consistent' : 'inconsistent',
+      // A rule reasoner that finds nothing has not proved there is nothing.
+      proved: false,
       contradictions,
       unsatisfiable: [...unsatisfiable],
       asserted: reasoning.asserted,
@@ -290,6 +326,135 @@ export function owlFindings(model: Model, fresh = false): { summary: OwlSummary;
       ms: Math.round(performance.now() - t0),
     },
     findings,
+  };
+}
+
+// ---------------------------------------------------------------- OWL 2 DL
+
+/** What an answer of the OWL 2 DL reasoner is and is not about, said where its results are shown. */
+export const DL_LIMITS = [
+  'HermiT is a complete OWL 2 DL reasoner: when it says “consistent”, that is proved for the ontology it was given.',
+  'It is given the ontology exactly as the app exports it. What the app does not keep when it reads a file (property chains, keys, negative property assertions) is not in it.',
+  'A relationship kept plain is not an OWL axiom, so it plays no part. Relationships that use an object property, restrictions, and expressions kept as text all do.',
+  'An ontology outside OWL 2 DL (a transitive property in a cardinality restriction, for one) may be refused: the status is then “unknown”, and the violations are listed.',
+  'Datatypes outside the OWL 2 datatype map (xsd:date, xsd:time, xsd:gYear, xsd:duration) have no meaning to it: their values are not checked or compared, and the result is marked partial.',
+  'An imported ontology is reasoned over only if its content is in this browser; nothing is fetched. One that is missing is named, and the result is marked partial.',
+  'Justifications are the reasoner’s own, one for each finding, worked out within a time limit; where there is none, that is said.',
+];
+
+export const DL_PROFILE = 'OWL 2 DL, by a complete reasoner: every class expression and restriction the ontology states, property characteristics and hierarchies, individuals, and the datatypes of the OWL 2 datatype map';
+
+const ROLE: Record<string, EntityType> = { Class: 'class', ObjectProperty: 'object property', DataProperty: 'data property', NamedIndividual: 'individual' };
+
+/**
+ * The findings of the OWL 2 DL reasoner. Everything here is what the reasoner answered: the
+ * verdict on consistency, the classes it found unsatisfiable, and for each the justification it
+ * gave. Where it gave no answer, the status is "unknown" and nothing is reported as consistent.
+ */
+export function dlFindings(model: Model, report: DlReport): { summary: OwlSummary; findings: Finding[]; result: ReasoningResult } {
+  const ix = entityIndex(model);
+  const result = dlResult(model, report);
+  const link = entityLinks(model);
+  const engineName = `${report.engine || 'HermiT'}${report.engineVersion ? ' ' + report.engineVersion : ''}`;
+  const findings: Finding[] = [];
+  const say = (text: string) => readable(model, text);
+  const ref = (e: EntityLink): JustifiedEntity => ({
+    ...((e.kind === 'term' ? ix.term(e.id) : e.kind === 'prop' ? ix.prop(e.id) : undefined) ?? { kind: 'external', id: e.id, name: e.name, type: ROLE[e.role ?? ''] ?? 'data', iri: e.iri }),
+    ...(e.token ? { token: e.token } : {}),
+  });
+  const termsOf = (list: { entities: EntityRef[] }[]) => [...new Set(list.flatMap((a) => a.entities.filter((e) => e.kind === 'term').map((e) => e.id)))];
+  const justified = (x: { justifications: { text: string; entities: EntityLink[] }[][]; note?: string } | undefined) => {
+    const justifications = (x?.justifications ?? []).map((j) => j.map((a) => ({ text: a.text, entities: a.entities.map(ref) })));
+    return {
+      justifications,
+      ...(justifications.length ? {} : { justificationNote: x?.note ?? 'The reasoner was not asked for a justification of this.' }),
+      // In words, for the report and for searching: the axioms of the first justification.
+      ...(justifications.length ? { explanation: `${engineName} derives this from ${justifications[0].length === 1 ? 'one asserted axiom' : `${justifications[0].length} asserted axioms`}: ${justifications[0].map((a) => a.text).join('; ')}.` } : {}),
+    };
+  };
+
+  if (report.status === 'failed') {
+    report.errors.forEach((e, n) =>
+      findings.push({ id: `owl:dl:failed:${n}`, category: 'owl', severity: 'warning', rule: 'Reasoning did not finish', ruleId: 'dl-failed', message: say(e), entity: ix.ontology, terms: [], rels: [], engine: engineName, suggestion: report.unreachable ? undefined : 'Until this is resolved the OWL 2 DL reasoner has no answer for this ontology. The fast reasoner can still be run, for what its rules reach.' }),
+    );
+  }
+  if (report.consistency === 'inconsistent') {
+    const x = result.explanations.find((e) => e.kind === 'inconsistent');
+    const j = justified(x);
+    findings.push({
+      id: 'owl:dl:inconsistent',
+      category: 'owl',
+      severity: 'error',
+      rule: 'Inconsistent ontology',
+      ruleId: 'owl-inconsistent',
+      message: 'The ontology is inconsistent: what it states cannot all be true at once. From a contradiction everything follows, so no hierarchy or class membership is inferred from it.',
+      entity: j.justifications[0]?.flatMap((a) => a.entities).find((e) => e.type === 'individual') ?? ix.ontology,
+      terms: termsOf(j.justifications[0] ?? []),
+      rels: [],
+      engine: engineName,
+      suggestion: 'One of the axioms it rests on has to go; which one is a modelling decision.',
+      ...j,
+    });
+  }
+  for (const id of result.unsatisfiableClasses) {
+    const t = ix.byId.get(id)!;
+    const x = result.explanations.find((e) => e.kind === 'unsatisfiable' && e.subject?.kind === 'term' && e.subject.id === id);
+    const j = justified(x);
+    findings.push({
+      id: `owl:dl:unsat:${id}`,
+      category: 'owl',
+      severity: 'error',
+      rule: 'Unsatisfiable class',
+      ruleId: 'owl-unsatisfiable',
+      message: `${q(t.name || 'Unnamed')} can never have an instance: it is a subclass of owl:Nothing.`,
+      entity: ix.term(id),
+      terms: [...new Set([id, ...termsOf(j.justifications[0] ?? [])])],
+      rels: [],
+      engine: engineName,
+      suggestion: 'The class can exist, and the ontology is still consistent as long as nothing is stated to be an instance of it. Change one of the axioms it rests on, unless this is intended.',
+      ...j,
+    });
+  }
+  // What puts the ontology outside OWL 2 DL: the reasoner's answer is then not guaranteed, or not given at all.
+  (report.profile?.violations ?? []).forEach((v, n) => {
+    const entities = v.entities.map((e) => ref(link(e)));
+    findings.push({
+      id: `owl:dl:profile:${n}`,
+      category: 'owl',
+      severity: 'warning',
+      rule: 'Outside OWL 2 DL',
+      ruleId: 'owl-profile',
+      message: `${v.rule}${v.text ? `: ${v.text}` : ''}.`,
+      explanation: 'OWL 2 DL does not allow this, because with it reasoning is no longer decidable. A reasoner may refuse the ontology or answer incompletely.',
+      entity: entities.find((e) => e.kind !== 'external') ?? ix.ontology,
+      terms: entities.filter((e) => e.kind === 'term').map((e) => e.id),
+      rels: [],
+      engine: engineName,
+    });
+  });
+
+  const notes = report.warnings.map(say);
+  const undeclared = report.profile?.undeclaredCount ?? 0;
+  if (undeclared) notes.push(`${undeclared} ${undeclared === 1 ? 'entity is' : 'entities are'} used without being declared (${(report.profile?.undeclared ?? []).slice(0, 4).join(', ')}${undeclared > 4 ? '…' : ''}). Each was read as what its use implies, which changes no axiom.`);
+  const inferred = result.subclasses.filter((x) => !x.asserted).length + result.types.filter((x) => !x.asserted).length;
+  return {
+    summary: {
+      engine: 'dl',
+      engineName,
+      status: report.consistency,
+      proved: result.proves && report.consistency === 'consistent',
+      contradictions: report.consistency === 'inconsistent' ? 1 : 0,
+      unsatisfiable: result.unsatisfiableClasses,
+      asserted: report.logicalAxioms ?? 0,
+      inferred,
+      partial: report.status === 'partial',
+      profile: DL_PROFILE,
+      ms: report.roundTripMs ?? report.ms,
+      ...(report.status === 'failed' ? { errors: report.errors.map(say) } : {}),
+      ...(notes.length ? { notes } : {}),
+    },
+    findings,
+    result,
   };
 }
 
@@ -457,16 +622,33 @@ export function isStale(run: ValidationRun | null, model: Model, data: DataGraph
  * `previous` when that was of the very same model and data; otherwise they are left out rather
  * than shown as if they were current. `tick` is awaited between parts so the page can redraw.
  */
-export async function validate(model: Model, data: DataGraph, scope: Scope, previous: ValidationRun | null, tick: (phase: string) => Promise<void> = async () => {}, withImports?: Model): Promise<ValidationRun> {
+export async function validate(
+  model: Model,
+  data: DataGraph,
+  scope: Scope,
+  previous: ValidationRun | null,
+  tick: (phase: string) => Promise<void> = async () => {},
+  withImports?: Model,
+  /** Asks the OWL 2 DL reasoner, when that is the engine chosen. Without it the app's own reasoner answers. */
+  askDl?: () => Promise<DlReport>,
+): Promise<ValidationRun> {
   const subject = stable(model);
   const keep = previous && previous.model === subject && previous.data === data ? previous : null;
-  const run: ValidationRun = { at: Date.now(), revision: '', model: subject, data, entities: model.terms.length + model.props.length, owl: keep?.owl, shacl: keep?.shacl, quality: keep?.quality, findings: keep ? keep.findings.filter((f) => scope !== 'all' && f.category !== scope) : [] };
+  const run: ValidationRun = { at: Date.now(), revision: '', model: subject, data, entities: model.terms.length + model.props.length, owl: keep?.owl, dl: keep?.dl, shacl: keep?.shacl, quality: keep?.quality, findings: keep ? keep.findings.filter((f) => scope !== 'all' && f.category !== scope) : [] };
   const wants = (c: Category) => scope === 'all' || scope === c;
-  if (wants('owl')) {
+  if (wants('owl') && askDl && model.mode !== 'skos') {
+    await tick('Reasoning with the OWL 2 DL reasoner…');
+    const report = await askDl();
+    const r = dlFindings(model, report);
+    run.owl = r.summary;
+    run.dl = { report, result: r.result };
+    run.findings.push(...r.findings);
+  } else if (wants('owl')) {
     await tick('Reasoning…');
     // An ontology that imports others is consistent only together with them, so they are reasoned over as one.
     const r = owlFindings(withImports ?? model, true);
     run.owl = r.summary;
+    run.dl = undefined;
     run.findings.push(...r.findings);
   }
   if (wants('quality')) {
@@ -494,13 +676,15 @@ export const categoryLabel = (c: Category) => CATEGORY_LABEL[c];
 
 /** The run as JSON: everything shown, without the model itself. */
 export function reportJson(run: ValidationRun, model: Model): string {
-  const { model: _m, data, findings, shacl, ...rest } = run;
+  const { model: _m, data, findings, shacl, dl, ...rest } = run;
   return JSON.stringify(
     {
       ontology: { name: model.name, iri: ontologyIriOf(model) },
       validatedAt: new Date(run.at).toISOString(),
       ...rest,
       at: undefined,
+      // The OWL 2 DL reasoner's own answer, as it gave it, when the run used it.
+      reasoner: dl?.report,
       shacl: shacl ? { ...shacl, report: undefined } : undefined,
       dataGraph: { source: data.source, name: data.name, includesOntologyTriples: data.source === 'model' || data.includeOntology },
       findings: findings.map(({ fix, id: _id, ...f }) => ({ ...f, category: CATEGORY_LABEL[f.category], ...(fix ? { quickFix: fix.label } : {}) })),
@@ -528,7 +712,7 @@ export function reportTurtle(run: ValidationRun, model: Model): string {
     '[] a cw:ValidationRun ;',
     `    cw:ontology <${ontologyIriOf(model)}> ;`,
     `    dcterms:created "${new Date(run.at).toISOString()}"^^xsd:dateTime ;`,
-    `    cw:revision ${lit(run.revision)}${run.owl ? ` ;\n    cw:owlStatus ${lit(run.owl.status)} ;\n    cw:unsatisfiableClasses ${run.owl.unsatisfiable.length}` : ''}${own.length ? ' ;\n    cw:finding' : ' .'}`,
+    `    cw:revision ${lit(run.revision)}${run.owl ? ` ;\n    cw:owlReasoner ${lit(run.owl.engineName)} ;\n    cw:owlStatus ${lit(run.owl.status)} ;\n    cw:owlStatusProved ${run.owl.proved} ;\n    cw:unsatisfiableClasses ${run.owl.unsatisfiable.length}` : ''}${own.length ? ' ;\n    cw:finding' : ' .'}`,
     ...own.map(
       (f, i) =>
         `        [ a cw:Finding ; cw:category ${lit(CATEGORY_LABEL[f.category])} ; cw:severity ${lit(f.severity)} ; cw:rule ${lit(f.rule)} ; cw:message ${lit(f.message)}${f.explanation ? ` ; cw:explanation ${lit(f.explanation)}` : ''}${node(f) ? ` ; cw:entity ${node(f)}` : ''} ]${i === own.length - 1 ? ' .' : ' ,'}`,

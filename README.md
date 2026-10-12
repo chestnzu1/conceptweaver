@@ -5,14 +5,73 @@ spirit of [Termboard](https://termboard.com). Draw terms as boxes, connect them 
 relations, and export a standards-compliant model. Everything stays in the browser: no
 account, no server.
 
+All commands at a glance (see *Getting started* below for how to use them):
+
 ```bash
 pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs); need `pnpm exec vite preview --port 5181` running
+pnpm reasoner   # the OWL 2 DL reasoning service (HermiT) on http://localhost:5190; needs a JDK, 11 or later
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
+
+## Getting started
+
+You need [Node.js](https://nodejs.org) 22 or later and [pnpm](https://pnpm.io). Install once:
+
+```bash
+pnpm install
+```
+
+**Start the app.** In a terminal in the project folder:
+
+```bash
+pnpm dev
+```
+
+Leave it running and open <http://localhost:5180> in your browser. That is all the app needs:
+drawing, the entity editor, import and export, validation with the fast reasoner, SHACL and
+SPARQL all work with this one command. Your work is kept in the browser, so closing the
+terminal or restarting the machine loses nothing; start `pnpm dev` again and it is there.
+
+**Start the advanced reasoner (optional).** Only if you want complete OWL 2 DL reasoning with
+HermiT. It needs Java 11 or later, as a JDK (`java -version` and `javac -version` should both
+answer). In a second terminal in the project folder:
+
+```bash
+pnpm reasoner
+```
+
+Leave this running too. The first start fetches the reasoner's libraries (about 90 MB, once)
+and compiles the service; after that it starts in a couple of seconds and prints
+`ConceptWeaver reasoning service: HermiT … on http://127.0.0.1:5190`.
+
+Then, in the app:
+
+1. Open **Validation**.
+2. Under *OWL consistency*, choose **Advanced reasoner (OWL 2 DL)**. The line below the address
+   should say "HermiT … is running".
+3. Press **Run reasoning**. The card shows whether the ontology is consistent and which classes
+   are unsatisfiable; **View explanation** opens the reasoner's justification.
+4. After you edit the model the results are marked stale: press **Run reasoning** again.
+
+So after a restart there are two commands, each in its own terminal: `pnpm dev` always, and
+`pnpm reasoner` when you want the advanced reasoner.
+
+If the app says the reasoning service did not answer:
+
+- Check that the terminal running `pnpm reasoner` is still open and shows no error.
+- Open <http://localhost:5190/health> in the same browser. A line starting with
+  `{"service":"conceptweaver-reasoner"` means the service can be reached; an error page means
+  the browser cannot reach it.
+- In the Validation card, the *Reasoning service* address should be `http://localhost:5190`.
+- If you open the app from an address other than `localhost` or `127.0.0.1`, start the service
+  with `pnpm reasoner --allow-origin=<that address>`.
+
+More on what the advanced reasoner does and does not cover is under
+[OWL 2 DL reasoning](#owl-2-dl-reasoning-hermit) below.
 
 ## What it does
 
@@ -146,9 +205,18 @@ node e2e/ui-audit.mjs       # measures every view in both themes: text contrast,
 - **Validation** – one tab for three kinds of check that answer different questions and are
   never mixed up. They run when asked; results say when and which revision of the model they
   are about, and are marked stale as soon as the model changes.
-  - *OWL consistency*: the built-in RDFS / OWL RL rule reasoner. Reports whether the ontology
-    contradicts itself and which classes can never have a member (not the same thing), each
-    with the stated facts the reasoner derived it from. Also restrictions that cannot hold
+  - *OWL consistency*: answered by one of two reasoners, chosen in the card (**Reasoning
+    engine**), which always says which one answered.
+    The **fast reasoner** is the built-in RDFS / OWL RL rule reasoner: in the page, at once,
+    and incomplete. It reports the contradictions and unsatisfiable classes its rules reach,
+    each with the stated facts it derived them from; when it finds none it says "No
+    contradiction found", which is not a proof of consistency.
+    The **advanced reasoner** is HermiT, a complete OWL 2 DL reasoner, run by a service beside
+    the app (see *OWL 2 DL reasoning* below). It says whether the ontology is consistent,
+    which named classes are unsatisfiable, and what the inferred class hierarchy and class
+    memberships are, with a justification for each finding: the asserted axioms it follows
+    from, in Manchester syntax, each entity a link to the editor.
+    With the fast reasoner, also restrictions that cannot hold
     together, and property characteristics that exclude each other. Enumerations are part of
     it: what a class lists are its instances, members declared all different are different, an
     instance of an enumeration that is different from all members but one is that one (and
@@ -267,10 +335,72 @@ annotations other than its name and description, and a domain or range that is a
 expression other than a union of named classes. A value whose datatype is not one of the twelve
 the app offers is kept as plain text.
 
+## OWL 2 DL reasoning (HermiT)
+
+The app runs in the browser, and there is no complete OWL 2 DL reasoner for the browser: HermiT
+is a Java program. So the advanced reasoner is a small service that runs beside the app, on the
+same machine, and is asked over HTTP.
+
+```bash
+pnpm reasoner          # http://localhost:5190; Ctrl+C stops it
+```
+
+- **What it needs**: Java 11 or later, as a JDK (the service is one source file,
+  `reasoner/ReasonerService.java`, compiled on the first start). The first start also fetches
+  the libraries, once, about 90 MB: the OWL API 4.5.29, HermiT 1.4.5.456 and the OWL API's
+  explanation library 2.0.0, in the one file the ROBOT project publishes them in. It is checked
+  against a pinned SHA-256 and kept in `reasoner/lib/`.
+- **What it does with an ontology**: nothing but reason over it. The app sends the ontology as
+  the Turtle it exports, and the ontologies it imports as the Turtle that is cached in the
+  browser. The service loads them into memory, answers, and forgets them. It writes nothing to
+  disk and fetches nothing from the network: an import whose content was not sent is reported
+  as missing.
+- **Who can ask it**: it listens on 127.0.0.1 only and answers pages served from this machine
+  (`localhost`, `127.0.0.1`). An app served from elsewhere has to be named when the service is
+  started: `pnpm reasoner --allow-origin=https://where.the.app.is`. `--port=` and `--host=`
+  change where it listens; the address the app asks is set beside the engine choice.
+- **Without it** the app is what it was. The fast reasoner needs nothing. Choosing the advanced
+  reasoner while the service is not running gives the status "Unknown: the reasoner gave no
+  answer" and says how to start it; it is never reported as consistent.
+
+What the answer covers, and where it stops:
+
+- HermiT reasons over what the app exports. Everything the app keeps is in it, including class
+  expressions kept as text (unions, intersections, complements, nested restrictions, `hasValue`,
+  unqualified cardinalities), enumerations, datatype restrictions and RDF lists. What the app
+  does not keep when it reads a file is not: property chains, keys, negative property
+  assertions (see *OWL constructs without an editor*). A relationship kept plain is not an OWL
+  axiom and plays no part.
+- The status says how far the answer goes. *Complete*: the ontology is OWL 2 DL and all of it
+  was reasoned over; "consistent" is then proved. *Partial*: reasoned, with something taken
+  loosely or left out, which is named: a datatype outside the OWL 2 datatype map (`xsd:date`,
+  `xsd:time`, `xsd:gYear`, `xsd:duration`), whose values HermiT then neither checks nor
+  compares, or an import that was not available. *Failed*: no answer. HermiT refuses an
+  ontology outside OWL 2 DL in ways that make reasoning undecidable, such as a transitive
+  property in a cardinality restriction; the violations are listed as findings, on the
+  entities they are about.
+- Something used without being declared (`skos:definition`, most often) is read as what its use
+  implies and is not counted as being outside OWL 2 DL: it changes no axiom.
+- An inconsistent ontology has no inferred hierarchy or memberships: none are shown.
+- Justifications come from the OWL API's explanation library, one for each finding, within a
+  time limit (20 seconds a run, and the first 25 unsatisfiable classes). Where none was worked
+  out, the finding says so. Nothing is composed by hand.
+- Reasoning is stopped after 60 seconds and reported as failed. Results belong to the revision
+  of the model they were made for: after an edit they are marked stale, and what the editor
+  and the graph show of them is withdrawn until the reasoning is run again.
+- Inferred relationships between individuals are worked out and are in the JSON report, but the
+  editor shows only inferred superclasses, subclasses, instances, types and same individuals.
+
+Both reasoners feed the same places: the Validation results, the *Inferred* sections of the
+entity editor (each line credited to the reasoner it is from), the inferred class memberships on
+the canvas, and *Inferred facts*. Nothing inferred is ever added to the model unless you state
+it with *Add to model*. The interface between the app and a reasoner is `src/model/reasoning.ts`.
+
 ## Validation: what is and is not covered
 
-- The reasoner is a rule reasoner, not a complete OWL 2 DL reasoner: "consistent" means its
-  rules found no contradiction. Class expressions kept as text are not interpreted.
+- The fast reasoner is a rule reasoner, not a complete OWL 2 DL reasoner: "No contradiction
+  found" means its rules reached none. Class expressions kept as text are not interpreted by
+  it. The advanced reasoner (above) is complete, and interprets them.
 - Enumerations are not reasoned with by cases. An instance of `{ A, B }` is concluded to be `A`
   only once it is known to be different from `B`; what holds for `A` and for `B` alike is not
   concluded of it. Nothing is counted: a class that needs three different values out of an

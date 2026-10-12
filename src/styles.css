@@ -3091,6 +3091,150 @@ code.pred {
   color: var(--ink-2);
 }
 
+/* The reasoner: which one, and what it said. */
+.owl-card .engine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 2px 0 4px;
+  padding: 0;
+  border: 0;
+}
+
+.owl-card .engine legend {
+  padding: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.owl-card .engine label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  cursor: pointer;
+}
+
+.owl-card .service {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+}
+
+.owl-card .service label {
+  display: flex;
+  flex: 1 1 200px;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+
+.owl-card .service input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--canvas);
+  font: 12px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.owl-card .service p {
+  flex-basis: 100%;
+}
+
+.owl-card .health {
+  color: var(--ink-2);
+}
+
+.owl-card .health::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.owl-card .health.up::before {
+  background: var(--accent);
+}
+
+.owl-card .health.down::before {
+  background: var(--danger);
+}
+
+.owl-card .reasoned {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.owl-card .status .link,
+.owl-card .unsat .explain {
+  margin-left: 10px;
+  font-size: 12px;
+}
+
+.owl-card .unsat {
+  margin: 0;
+  padding: 0 0 0 2px;
+  list-style: none;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.owl-card .unsat li {
+  display: flex;
+  align-items: baseline;
+  min-height: 24px;
+}
+
+.owl-card .reasoner-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.owl-card .reasoner-note {
+  font-size: 12px;
+}
+
+/* An explanation: the asserted axioms a finding follows from, as the reasoner gave them. */
+.explanation ol {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+
+.explanation li {
+  padding: 2px 0;
+}
+
+.explanation .axiom {
+  font: 12.5px/1.6 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.explanation .axiom b {
+  color: var(--tok-voc);
+  font-weight: 600;
+}
+
+.explanation .axiom .link {
+  font: inherit;
+}
+
+.explanation .conclusion {
+  margin: 0;
+}
+
 .validation .card details {
   margin-top: 4px;
   font-size: 12px;

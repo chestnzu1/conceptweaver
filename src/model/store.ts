@@ -20,6 +20,8 @@ import { collisions } from './external';
 import { listMappings } from './alignment';
 import { cachedOntology, cachedOntologyByIri, cacheOntology, uncacheOntology } from './library';
 import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } from './validation';
+import { askReasoner, DEFAULT_REASONER_URL, dlRequest, type EngineId, type ReasoningResult } from './reasoning';
+import { stable } from './stable';
 import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
 import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
 
@@ -258,6 +260,12 @@ interface State {
     tab: 'results' | 'shapes' | 'rules' | 'inferences';
     /** The shape open in the shape editor. */
     shapeId: string | null;
+    /** Which reasoner answers the OWL questions: the app's own rules, or the OWL 2 DL reasoning service. */
+    engine: EngineId;
+    /** Where the reasoning service is. */
+    reasonerUrl: string;
+    /** A finding to open in the results, asked for from elsewhere on the page. */
+    focus: string | null;
   };
   graphScope: GraphScope;
   setGraphScope: (scope: GraphScope) => void;
@@ -283,7 +291,7 @@ interface State {
   removeExternalRef: (id: string) => string | undefined;
   /** Runs the checks in `scope`. A run already under way is left to finish. */
   runValidation: (scope?: Scope) => Promise<void>;
-  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'shapeId'>>) => void;
+  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'shapeId' | 'engine' | 'reasonerUrl' | 'focus'>>) => void;
   /** Changes the model's SHACL shapes; an edit like any other, so it can be undone and is saved with the model. */
   setShapes: (fn: (s: Shapes) => Shapes) => void;
 
@@ -417,6 +425,15 @@ const initialModel = loadModel();
 /** The widths the sidebar on the left can be given: narrow enough to be out of the way, wide enough for long names. */
 export const SIDEBAR_WIDTH = { min: 180, max: 720, initial: 232 } as const;
 const sidebarWidthOf = (width: number) => (Number.isFinite(width) ? Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width))) : SIDEBAR_WIDTH.initial);
+
+/**
+ * The OWL 2 DL reasoner's result for the model as it is now. There is none once the model has
+ * changed since it was asked, or when it gave no answer: an old result is never shown as current.
+ */
+export const currentDl = (s: Pick<State, 'model' | 'validation'>): ReasoningResult | undefined => {
+  const run = s.validation.run;
+  return run?.dl && run.model === stable(s.model) && run.dl.result.status !== 'failed' ? run.dl.result : undefined;
+};
 
 export const useStore = create<State>((set, get) => ({
   model: initialModel,
@@ -611,15 +628,44 @@ export const useStore = create<State>((set, get) => ({
     void uncacheOntology(id).catch(() => undefined);
     return undefined;
   },
-  validation: { run: null, running: false, phase: '', data: MODEL_DATA, tab: 'results', shapeId: null },
+  validation: {
+    run: null,
+    running: false,
+    phase: '',
+    data: MODEL_DATA,
+    tab: 'results',
+    shapeId: null,
+    focus: null,
+    ...(() => {
+      try {
+        return { engine: (localStorage.getItem('conceptweaver:reasoning-engine') === 'dl' ? 'dl' : 'fast') as EngineId, reasonerUrl: localStorage.getItem('conceptweaver:reasoner-url') || DEFAULT_REASONER_URL };
+      } catch {
+        return { engine: 'fast' as EngineId, reasonerUrl: DEFAULT_REASONER_URL };
+      }
+    })(),
+  },
   runValidation: async (scope = 'all') => {
     if (get().validation.running || !supports(get().model, 'validation')) return;
     const { model } = get();
-    const { run, data } = get().validation;
+    const { run, data, engine, reasonerUrl } = get().validation;
     set((s) => ({ validation: { ...s.validation, running: true, phase: 'Starting…' } }));
     try {
       // Between parts the page gets a moment to redraw, so a long validation shows its progress.
       const closure = model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined;
+      // The OWL 2 DL reasoner is given the ontology as it is exported, and what it imports as it was read:
+      // the Turtle kept in this browser. An import that is not there is named in the answer.
+      const askDl =
+        engine === 'dl' && supports(model, 'reasoning')
+          ? async () => {
+              const imports: { iri: string; text: string }[] = [];
+              for (const ref of model.externals) {
+                if (!ref.imports || !ref.iri) continue;
+                const hit = await cachedOntology(ref.id).catch(() => undefined);
+                if (hit) imports.push({ iri: ref.iri, text: hit.text });
+              }
+              return askReasoner(reasonerUrl, dlRequest(model, imports));
+            }
+          : undefined;
       const next = await validate(
         model,
         data,
@@ -630,6 +676,7 @@ export const useStore = create<State>((set, get) => ({
           await new Promise((r) => setTimeout(r, 16));
         },
         closure,
+        askDl,
       );
       set((s) => ({ validation: { ...s.validation, run: next, running: false, phase: '' } }));
     } catch (e) {
@@ -637,7 +684,15 @@ export const useStore = create<State>((set, get) => ({
       get().notify(`Validation stopped: ${e instanceof Error ? e.message : 'unknown error'}`);
     }
   },
-  setValidation: (patch) => set((s) => ({ validation: { ...s.validation, ...patch } })),
+  setValidation: (patch) => {
+    try {
+      if (patch.engine) localStorage.setItem('conceptweaver:reasoning-engine', patch.engine);
+      if (patch.reasonerUrl !== undefined) localStorage.setItem('conceptweaver:reasoner-url', patch.reasonerUrl);
+    } catch {
+      // Remembered for this visit only.
+    }
+    set((s) => ({ validation: { ...s.validation, ...patch } }));
+  },
   setShapes: (fn) => get().apply((m) => ({ ...m, shapes: fn(m.shapes) })),
 
   apply: (fn, history = true) =>

@@ -23,7 +23,8 @@ import { compactIri } from '../model/prefixes';
 import { findProp, objectProperties, propLinks, type PropView } from '../model/props';
 import { reason } from '../model/reasoner';
 import { stable } from '../model/stable';
-import { isDirty, useStore } from '../model/store';
+import { creditOf, entailmentsOf } from '../model/reasoning';
+import { currentDl, isDirty, useStore } from '../model/store';
 import { DATATYPES, type PropLink, type Term, type TermType } from '../model/types';
 import { EntityPicker, type Choice } from './EntityPicker';
 import { IriCell } from './Iri';
@@ -244,26 +245,75 @@ export function ClassProperties({ term }: { term: Term }) {
 /** What the reasoner entails the entity to be a kind (or an instance) of, beyond what is stated. Read-only. */
 export function InferredSupers({ term }: { term: Term }) {
   const model = stable(useStore((s) => s.model));
+  // What the OWL 2 DL reasoner entails, when it was asked about the model as it is now. It is shown
+  // beside what the app's own reasoner works out, each credited to the reasoner it is from.
+  const dl = useStore(currentDl);
   const st = useStore.getState;
   const isClass = term.type === 'concept';
   const result = useMemo(() => {
     const reasoning = reason(model);
-    if (!reasoning.consistent) return { consistent: false as const, links: [], inherited: [] };
-    const stated = new Set(isClass ? linkedTerms(model, term.id, 'equivalentClass').map((x) => x.id) : []);
     const byId = new Map(model.terms.map((t) => [t.id, t]));
-    const links = (isClass ? reasoning.superclasses(term.id) : reasoning.types(term.id))
-      .filter((l) => !l.asserted && !stated.has(l.id))
-      .map((l) => ({ ...l, name: byId.get(l.id)?.name || 'Unnamed', iri: byId.get(l.id)?.iri }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return { consistent: true as const, links, inherited: isClass ? inheritedPropertiesOfClass(model, term.id) : [] };
-  }, [model, term.id, isClass]);
+    const named = (id: string) => ({ id, name: byId.get(id)?.name || 'Unnamed', iri: byId.get(id)?.iri });
+    if (!reasoning.consistent || dl?.consistency === 'inconsistent') return { consistent: false as const, by: reasoning.consistent ? 'The OWL 2 DL reasoner' : 'The reasoner', links: [], inherited: [], unsatisfiable: false, below: [], instances: [], same: [] };
+    const stated = new Set(isClass ? linkedTerms(model, term.id, 'equivalentClass').map((x) => x.id) : []);
+    const own = (isClass ? reasoning.superclasses(term.id) : reasoning.types(term.id)).filter((l) => !l.asserted && !stated.has(l.id));
+    const found = new Set(own.map((l) => l.id));
+    const of = dl ? entailmentsOf(dl, term.id) : undefined;
+    // What only the OWL 2 DL reasoner sees: a superclass through a definition, a type that needs two cases.
+    const further = (of ? (isClass ? of.superclasses.map((x) => ({ id: x.superclass, asserted: x.asserted })) : of.types.map((x) => ({ id: x.class, asserted: x.asserted }))) : [])
+      .filter((x) => !x.asserted && !stated.has(x.id) && !found.has(x.id))
+      .map((x) => ({ id: x.id, asserted: false, equivalent: !!of?.equivalents.includes(x.id), because: creditOf(dl!), rels: [] as string[] }));
+    const links = [...own, ...further].map((l) => ({ ...l, ...named(l.id) })).sort((a, b) => a.name.localeCompare(b.name));
+    const sort = (ids: string[]) => ids.map(named).sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      consistent: true as const,
+      by: '',
+      links,
+      inherited: isClass ? inheritedPropertiesOfClass(model, term.id) : [],
+      unsatisfiable: !!of?.unsatisfiable,
+      // The other way round, which only a complete reasoner can say: what is entailed to be below this class, or in it.
+      below: sort(of && isClass ? of.subclasses.filter((x) => !x.asserted).map((x) => x.subclass) : []),
+      instances: sort(of && isClass ? of.instances.filter((x) => !x.asserted).map((x) => x.individual) : []),
+      same: sort(of && !isClass ? of.same : []),
+    };
+  }, [model, term.id, isClass, dl]);
   const what = isClass ? 'superclasses' : 'types';
+  const credit = dl ? creditOf(dl) : '';
+  const others = (id: string, title: string, list: { id: string; name: string; iri?: string }[]) =>
+    list.length > 0 && (
+      <Section id={id} title={title} count={list.length} inferred>
+        <ul className="inferred-list" aria-label={title}>
+          {list.map((l) => (
+            <li key={l.id}>
+              <button className="link" title={`${l.iri ?? ''}\nOpen it`} onClick={() => st().select([l.id])}>
+                {l.name}
+              </button>
+              <span className="sources">{credit}</span>
+            </li>
+          ))}
+        </ul>
+      </Section>
+    );
   return (
     <>
       <Section id={'inferred-' + what} title={`Inferred ${what}`} count={result.consistent ? result.links.length : '—'} inferred>
         {!result.consistent && (
           <p className="bad" role="status">
-            The reasoner finds the ontology inconsistent, so nothing reliable can be inferred. See the Validation tab.
+            {result.by} finds the ontology inconsistent, so nothing reliable can be inferred. See the Validation tab.
+          </p>
+        )}
+        {result.unsatisfiable && (
+          <p className="bad" role="status">
+            The OWL 2 DL reasoner finds that this class can never have an instance: it is a subclass of owl:Nothing.{' '}
+            <button
+              className="link"
+              onClick={() => {
+                st().setView('checks');
+                st().setValidation({ tab: 'results', focus: `owl:dl:unsat:${term.id}` });
+              }}
+            >
+              View explanation
+            </button>
           </p>
         )}
         {result.consistent && !result.links.length && <p className="muted">None beyond what is asserted.</p>}
@@ -279,6 +329,9 @@ export function InferredSupers({ term }: { term: Term }) {
           ))}
         </ul>
       </Section>
+      {others('inferred-subclasses', 'Inferred subclasses', result.below)}
+      {others('inferred-instances', 'Inferred instances', result.instances)}
+      {others('inferred-same', 'Inferred to be the same individual', result.same)}
       {isClass && result.inherited.length > 0 && (
         <Section id="inferred-domain" title="Properties from superclass domains" count={result.inherited.length} inferred>
           <ul className="inferred-list" aria-label="Properties from superclass domains">

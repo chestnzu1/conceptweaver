@@ -3,7 +3,8 @@ import { displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, node
 import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL, type DerivedEdge } from '../model/edgeKinds';
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
-import { useStore, viewOf, type SubgraphState } from '../model/store';
+import { currentDl, useStore, viewOf, type SubgraphState } from '../model/store';
+import { creditOf } from '../model/reasoning';
 import { allowsKind, configOf, supports } from '../model/modelTypes';
 import { INSTANCE_OF, newRelation, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
 import { isInstanceOf, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices } from '../model/props';
@@ -280,7 +281,18 @@ export function Canvas() {
 
   // Class memberships the reasoner works out, when asked for: drawn beside the asserted ones, never stored.
   const meaning = stable(full);
-  const entailed = useMemo(() => (showInferred && supports(meaning, 'reasoning') ? inferredMemberships(meaning) : undefined), [showInferred, meaning]);
+  const dl = useStore(currentDl);
+  const entailed = useMemo(() => {
+    if (!showInferred || !supports(meaning, 'reasoning')) return undefined;
+    const own = inferredMemberships(meaning);
+    // The OWL 2 DL reasoner, when it was asked about the model as it is now, may know of more.
+    if (!dl) return own;
+    if (dl.consistency !== 'consistent') return { ...own, consistent: false, memberships: [] };
+    if (!own.consistent) return own;
+    const have = new Set(own.memberships.map((x) => `${x.from}|${x.to}`));
+    const more = dl.types.filter((x) => !x.asserted && !have.has(`${x.individual}|${x.class}`)).map((x) => ({ id: `inferred:${x.individual}|${x.class}`, from: x.individual, to: x.class, because: creditOf(dl) }));
+    return more.length ? { ...own, memberships: [...own.memberships, ...more] } : own;
+  }, [showInferred, meaning, dl]);
   const inferred = useMemo(() => entailed?.memberships.filter((x) => byId.has(x.from) && byId.has(x.to)) ?? NONE, [entailed, byId]);
   // What each enumeration class lists, as a line to each member: a picture of its definition, not a
   // relationship. Drawn unless switched off; in a subgraph, where its filters let the line through.
