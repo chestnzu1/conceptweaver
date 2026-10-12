@@ -10,7 +10,7 @@ pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs); need `pnpm exec vite preview --port 5181` running
 ```
 
 ## What it does
@@ -55,7 +55,17 @@ node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs
   (Protégé-style annotation properties such as `rdfs:comment`, or your own) that are confirmed
   before they are saved and read-only afterwards.
 - **Relations** – association, "is a" (generalization), "Is Instance Of" or "has property"; label,
-  cardinalities, description; several relations between the same two terms fan out.
+  description; several relations between the same two terms fan out. Cardinalities at the two
+  ends are for plain relationships only: an object or data property says "how many" with
+  restrictions, and "is a" and "Is Instance Of" do not say it at all.
+- **Kinds follow what a line connects** – an individual and a class: *Is Instance Of* or plain;
+  two classes: object property, *is a* or plain; a class and a data property: *has data property*
+  or plain. Other kinds are not listed.
+- **Several restrictions on one relationship** – a relationship that uses an object property, or
+  attaches a data property, can state more than one restriction (`directs some Film` and
+  `directs max 3 Film`; `min 1` with `max 2`). *Add another restriction* in the relation panel,
+  or add the same property and class again in the class editor. Each is exported as its own
+  `owl:Restriction`, and they come back from RDF as one relationship.
 - **Is Instance Of** – the class membership of an individual, exported as `rdf:type` (never as a
   predicate of its own). It is offered only between an individual and a class, always points
   from the individual to the class (drawn the other way, it is turned around), and is not

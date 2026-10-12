@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addIsA, makeInstanceOf, removeIsA } from './axioms';
 import { inferredMemberships } from './inferred';
-import { isInstanceOf, relChoice, relChoices } from './props';
+import { isInstanceOf, offeredChoices, relChoice, relChoices } from './props';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { reason } from './reasoner';
 import { emptyModel, INSTANCE_OF, newRelation, newTerm, normalizeModel, relLabel, type Model } from './types';
@@ -46,7 +46,8 @@ describe('is instance of', () => {
     const drawn = draw(m, person.id, john.id, { fromCard: '1', toCard: '*' });
     const edit = makeInstanceOf(drawn.model, drawn.id);
     const rel = edit.model!.relations.find((r) => r.id === drawn.id)!;
-    expect(rel).toMatchObject({ from: john.id, to: person.id, fromCard: '*', toCard: '1' });
+    // Cardinalities belong to a plain relationship; a membership has none.
+    expect(rel).toMatchObject({ from: john.id, to: person.id, fromCard: '', toCard: '' });
     expect(edit.note).toContain('turned around');
     expect(toTurtle(edit.model!)).toContain(':John a owl:NamedIndividual , :Person');
   });
@@ -67,14 +68,25 @@ describe('is instance of', () => {
     expect(makeInstanceOf({ ...draw(m, john.id, person.id).model, mode: 'skos' }, m.relations[0].id).error).toBeTruthy();
   });
 
-  it('offers the kind only where it applies, in place of "is a"', () => {
+  it('offers each pair of terms only the kinds that fit it', () => {
     const { m, john, mary, person, employee, age } = people();
-    const offered = (from: string, to: string) => Object.fromEntries(relChoices(m, { from, to }).map((c) => [c.value, !c.disabled]));
-    expect(offered(john.id, person.id)).toMatchObject({ instanceOf: true, generalization: false });
-    expect(offered(person.id, john.id)).toMatchObject({ instanceOf: true, generalization: false });
-    expect(offered(person.id, employee.id)).toMatchObject({ instanceOf: false, generalization: true });
-    expect(offered(john.id, mary.id)).toMatchObject({ instanceOf: false });
-    expect(offered(person.id, age.id)).toMatchObject({ instanceOf: false, property: true });
+    const offered = (from: string, to: string) => relChoices(m, { from, to }).filter((c) => !c.disabled).map((c) => c.value);
+    // An individual and a class, either way round.
+    expect(offered(john.id, person.id)).toEqual(['plain', 'instanceOf']);
+    expect(offered(person.id, john.id)).toEqual(['plain', 'instanceOf']);
+    // Two classes.
+    expect(offered(person.id, employee.id)).toEqual(['plain', 'object', 'generalization']);
+    // A class and a data property, either way round.
+    expect(offered(person.id, age.id)).toEqual(['plain', 'property']);
+    expect(offered(age.id, person.id)).toEqual(['plain', 'property']);
+    // Anything else: never "Is Instance Of".
+    expect(offered(john.id, mary.id)).not.toContain('instanceOf');
+    expect(offered(john.id, age.id)).not.toContain('instanceOf');
+    // A relationship of a kind its ends no longer allow still shows what it is.
+    const odd = newRelation({ from: john.id, to: person.id, label: 'knows' });
+    const model = { ...m, props: [{ name: 'knows', description: '', chars: [] }], relations: [...m.relations, odd] };
+    expect(relChoice(model, odd)).toBe('object');
+    expect(offeredChoices(model, odd).map((c) => `${c.value}${c.disabled ? ' (not allowed)' : ''}`)).toEqual(['plain', 'object (not allowed)', 'instanceOf']);
   });
 
   it('does not state the same membership twice', () => {

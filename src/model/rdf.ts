@@ -2,9 +2,9 @@ import { Parser } from 'n3';
 import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
 import { baseIriOf, localName } from './iri';
 import { hierarchyLayout } from './layout';
-import { DATATYPES, emptyModel, newRelation, newTerm, PROP_LINKS, type DataValue, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type Term } from './types';
+import { DATATYPES, emptyModel, newRelation, newTerm, PROP_LINKS, type DataValue, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, ontologyIriOf, STANDARD } from './prefixes';
-import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, propKey, quantifierOf } from './props';
+import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, propKey, restrictionSpecs, specsPatch } from './props';
 import { resolveModel, STD_PROPS } from './vocab';
 
 const NS = {
@@ -176,9 +176,9 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     return n;
   });
   // A class restricted by a property: "every member has it to some / only / N members of the target".
-  const restrict = (r: Relation, property: string, target: string, data: boolean): Val => {
-    const q = quantifierOf(r);
-    const count: Val = { lit: String(r.restrictionN ?? 1), dt: 'xsd:nonNegativeInteger' };
+  const restrict = (spec: RestrictionSpec, property: string, target: string, data: boolean): Val => {
+    const q = spec.restriction;
+    const count: Val = { lit: String(spec.restrictionN ?? 1), dt: 'xsd:nonNegativeInteger' };
     const body: [string, Val][] =
       q === 'some'
         ? [['owl:someValuesFrom', { id: target }]]
@@ -208,11 +208,12 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     } else if (r.kind === 'property' && b.type === 'property') {
       // A class that has a data property is restricted by it: its members have such a value.
       // The property's own domain and datatype are written on the property below.
-      if (a.type === 'concept') A.props.push(['rdfs:subClassOf', restrict(r, bRef.id, b.range ?? 'rdfs:Literal', true)]);
+      // One superclass for each restriction the relationship states.
+      if (a.type === 'concept') for (const spec of restrictionSpecs(r)) A.props.push(['rdfs:subClassOf', restrict(spec, bRef.id, b.range ?? 'rdfs:Literal', true)]);
     } else {
       const declared = r.kind === 'association' && !r.plain ? propRef.get(propKey(r.label)) : undefined;
       if (declared && a.type === 'concept' && b.type === 'concept') {
-        A.props.push(['rdfs:subClassOf', restrict(r, declared, bRef.id, false)]);
+        for (const spec of restrictionSpecs(r)) A.props.push(['rdfs:subClassOf', restrict(spec, declared, bRef.id, false)]);
         continue;
       }
       let p = declared;
@@ -416,6 +417,21 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     m.relations.push(newRelation({ from: a.id, to: b.id, kind, label, ...(predicate ? { predicate } : {}), ...restriction }));
     return true;
   };
+  // Several restrictions by one property on one target are one relationship that states them all.
+  const restricted = new Map<string, Relation>();
+  const restrictBy = (from: string, to: string, kind: Relation['kind'], label: string, how: Pick<Relation, 'restriction' | 'restrictionN'>): boolean => {
+    const k = `${from}|${to}|${kind}|${label}`;
+    const drawn = restricted.get(k);
+    if (drawn) {
+      Object.assign(drawn, specsPatch([...restrictionSpecs(drawn), { restriction: how.restriction ?? 'some', restrictionN: how.restrictionN }]));
+      for (const key of ['restriction', 'restrictionN', 'more'] as const) if (drawn[key] === undefined) delete drawn[key];
+      return true;
+    }
+    const before = m.relations.length;
+    if (!relate(from, to, kind, label, undefined, how)) return false;
+    if (m.relations.length > before) restricted.set(k, m.relations[before]);
+    return true;
+  };
   const full = (curie: string) => NS[curie.split(':')[0] as keyof typeof NS] + curie.split(':')[1];
 
   const objProps = new Set(typed(NS.owl + 'ObjectProperty'));
@@ -488,9 +504,9 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     if (fillers.length !== 1 || fillers[0].termType !== 'NamedNode') return false;
     if (dataProps.has(prop.value)) {
       ensure(prop.value, 'property');
-      return relate(c, prop.value, 'property', '', undefined, how);
+      return restrictBy(c, prop.value, 'property', '', how);
     }
-    return objProps.has(prop.value) && classes.has(fillers[0].value) && relate(c, fillers[0].value, 'association', propLabel(prop.value), undefined, how);
+    return objProps.has(prop.value) && classes.has(fillers[0].value) && restrictBy(c, fillers[0].value, 'association', propLabel(prop.value), how);
   };
 
   // Hierarchy and class-level relations.

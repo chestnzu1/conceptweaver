@@ -34,11 +34,11 @@ export function sampleModel(): Model {
   rel('Director', '', 'Person', 'generalization');
   rel('Documentary', '', 'Film', 'generalization');
   rel('Parasite', '', 'Film', 'generalization');
-  rel('Actor', 'acts in', 'Film', 'association', '1..*', '*');
-  rel('Director', 'directs', 'Film', 'association', '1', '*');
-  rel('Studio', 'produces', 'Film', 'association', '1..*', '*');
-  rel('Film', 'belongs to', 'Genre', 'association', '*', '1..*');
-  rel('Film', 'wins', 'Award', 'association');
+  rel('Actor', 'acts in', 'Film');
+  rel('Director', 'directs', 'Film');
+  rel('Studio', 'produces', 'Film');
+  rel('Film', 'belongs to', 'Genre');
+  rel('Film', 'wins', 'Award', 'association', '*', '0..*');
   rel('Film', '', 'Release date', 'property');
   rel('Film', '', 'Running time', 'property');
 

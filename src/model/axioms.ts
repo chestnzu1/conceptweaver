@@ -130,9 +130,9 @@ export function makeInstanceOf(model: Model, relId: string): Edit {
     return refuse(`${q(ind.name || 'Unnamed')} is already stated to be an instance of ${q(cls.name || 'Unnamed')}.`);
   }
   const reversed = rel.from !== ind.id;
-  // Nothing of what it was before applies to a membership: no name, no standard property, no quantifier.
-  const { plain: _plain, predicate: _predicate, restriction: _restriction, restrictionN: _n, ...base } = rel;
-  const next = { ...base, from: ind.id, to: cls.id, label: '', kind: 'generalization' as const, ...(reversed ? { fromCard: rel.toCard, toCard: rel.fromCard } : {}) };
+  // Nothing of what it was before applies to a membership: no name, no standard property, no quantifier, no cardinalities.
+  const { plain: _plain, predicate: _predicate, restriction: _restriction, restrictionN: _n, more: _more, ...base } = rel;
+  const next = { ...base, from: ind.id, to: cls.id, label: '', kind: 'generalization' as const, fromCard: '', toCard: '' };
   return {
     model: { ...model, relations: model.relations.map((r) => (r.id === rel.id ? next : r)) },
     ...(reversed ? { note: `“${INSTANCE_OF}” always points from the individual to the class, so the relationship was turned around: ${q(ind.name || 'Unnamed')} → ${q(cls.name || 'Unnamed')}.` } : {}),

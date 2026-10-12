@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { inferredRestrictions } from '../model/inferred';
-import { CHARACTERISTICS, dataDomain, fitsIn, objectProperties, isInstanceOf, plainRelationships, propKey, propLinks, relChoice, relChoices, restrictionsOf, type RelChoice } from '../model/props';
+import { CHARACTERISTICS, dataDomain, fitsIn, hasCardinality, objectProperties, isInstanceOf, plainRelationships, propKey, propLinks, offeredChoices, relChoice, restrictionsOf, type RelChoice } from '../model/props';
 import { useStore } from '../model/store';
 import { DATATYPES, kindLabel, REL_KINDS, type Model, type RelKind, type Term, type TermType } from '../model/types';
 import { CommitInput, useLazyOptions } from './fields';
@@ -219,7 +219,7 @@ export function EntitiesView() {
                   {!skos && (
                     <td className="ro restrictions-cell">
                       {restrictionsOf(model, t.id).map((r) => (
-                        <div key={r.rel.id}>
+                        <div key={`${r.rel.id}:${r.index}`}>
                           {r.property} <em>{r.quantifier}{r.n !== undefined ? ' ' + r.n : ''}</em> {r.filler}
                         </div>
                       ))}
@@ -461,7 +461,7 @@ export function EntitiesView() {
                       </select>
                     ) : (
                       <select aria-label="Kind" value={relChoice(model, r)} onChange={(e) => st().setRelChoice(r.id, e.target.value as RelChoice)}>
-                        {relChoices(model, r).map((k) => (
+                        {offeredChoices(model, r).map((k) => (
                           <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
                             {k.label}
                           </option>
@@ -488,12 +488,21 @@ export function EntitiesView() {
                       ) : null}
                     </td>
                   )}
-                  <td>
-                    <CommitInput aria-label="From cardinality" value={r.fromCard} onCommit={(v) => st().updateRelation(r.id, { fromCard: v.trim() })} />
-                  </td>
-                  <td>
-                    <CommitInput aria-label="To cardinality" value={r.toCard} onCommit={(v) => st().updateRelation(r.id, { toCard: v.trim() })} />
-                  </td>
+                  {/* Only a plain relationship has cardinalities; the other kinds say "how many" with restrictions, or not at all. */}
+                  {hasCardinality(model, r) ? (
+                    <>
+                      <td>
+                        <CommitInput aria-label="From cardinality" value={r.fromCard} onCommit={(v) => st().updateRelation(r.id, { fromCard: v.trim() })} />
+                      </td>
+                      <td>
+                        <CommitInput aria-label="To cardinality" value={r.toCard} onCommit={(v) => st().updateRelation(r.id, { toCard: v.trim() })} />
+                      </td>
+                    </>
+                  ) : (
+                    <td colSpan={2} className="ro muted" title="Cardinalities are for plain relationships">
+                      —
+                    </td>
+                  )}
                   <td className="row-actions">
                     <button className="btn small ghost" title="Show on the canvas" onClick={() => st().focusRelation(r.id)}>
                       Show

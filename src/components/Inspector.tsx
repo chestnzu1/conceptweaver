@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
 import { DATATYPES, QUANTIFIERS, type Quantifier, isLang, kindLabel, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Relation, type ModelMode, type RelKind, type Term } from '../model/types';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
-import { isInstanceOf, relChoice, relChoices, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, quantifierOf, restrictionsOf, type PropView } from '../model/props';
+import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { CommitInput, CommitTextarea } from './fields';
@@ -380,11 +380,13 @@ function PropertyFields({ term }: { term: Term }) {
   );
 }
 
-/** Quantifier of a restriction, with its number where one is needed. */
-function QuantifierSelect({ rel }: { rel: Relation }) {
+/** Quantifier of one of a relationship's restrictions, with its number where one is needed. */
+function QuantifierSelect({ rel, index = 0 }: { rel: Relation; index?: number }) {
   const update = useStore((s) => s.updateRelation);
-  const q = quantifierOf(rel);
+  const specs = restrictionSpecs(rel);
+  const q = specs[index]?.restriction ?? 'some';
   const counted = q === 'min' || q === 'max' || q === 'exactly';
+  const set = (spec: (typeof specs)[number]) => update(rel.id, specsPatch(specs.map((s, i) => (i === index ? spec : s))));
   return (
     <span className="quant">
       <select
@@ -393,7 +395,7 @@ function QuantifierSelect({ rel }: { rel: Relation }) {
         onChange={(e) => {
           const next = e.target.value as Quantifier;
           const n = next === 'min' || next === 'max' || next === 'exactly';
-          update(rel.id, { restriction: next === 'some' ? undefined : next, restrictionN: n ? (rel.restrictionN ?? 1) : undefined });
+          set({ restriction: next, restrictionN: n ? (specs[index]?.restrictionN ?? 1) : undefined });
         }}
       >
         {QUANTIFIERS.map((x) => (
@@ -407,8 +409,8 @@ function QuantifierSelect({ rel }: { rel: Relation }) {
           type="number"
           min={0}
           aria-label="Number"
-          value={rel.restrictionN ?? 1}
-          onChange={(e) => update(rel.id, { restrictionN: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+          value={specs[index]?.restrictionN ?? 1}
+          onChange={(e) => set({ restriction: q, restrictionN: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
         />
       )}
     </span>
@@ -427,10 +429,22 @@ function ClassRestrictions({ term }: { term: Term }) {
   const [target, setTarget] = useState('');
   const isData = prop.startsWith('d:');
   const add = () => {
-    if (isData) st().addRelation({ from: term.id, to: prop.slice(2), kind: 'property' });
+    // A further restriction by a property the class already has towards the same target joins that relationship.
+    const drawn = restrictions.find((r) => (isData ? r.data && r.rel.to === prop.slice(2) : !r.data && r.rel.to === target && propKey(r.rel.label) === prop.slice(2)))?.rel;
+    const further = drawn && nextSpec(drawn);
+    if (drawn) {
+      if (further) st().updateRelation(drawn.id, specsPatch([...restrictionSpecs(drawn), further]));
+      else st().notify('That relationship already states a restriction of every kind.');
+    } else if (isData) st().addRelation({ from: term.id, to: prop.slice(2), kind: 'property' });
     else st().addRelation({ from: term.id, to: target, label: objProps.find((p) => p.key === prop.slice(2))!.name });
     setProp('');
     setTarget('');
+  };
+  // Takes one restriction away; the relationship goes with its last one.
+  const removeOne = (rel: Relation, index: number) => {
+    const specs = restrictionSpecs(rel);
+    if (specs.length > 1) st().updateRelation(rel.id, specsPatch(specs.filter((_, i) => i !== index)));
+    else st().remove([], [rel.id]);
   };
   return (
     <>
@@ -438,13 +452,13 @@ function ClassRestrictions({ term }: { term: Term }) {
       {restrictions.length === 0 && <p className="muted">None stated on this class. A restriction says what every member of the class has: “directs some Film”, “release date some date”.</p>}
       <ul className="restrictions">
         {restrictions.map((r) => (
-          <li key={r.rel.id}>
+          <li key={`${r.rel.id}:${r.index}`}>
             <button className="link" title="Show on the canvas" onClick={() => st().focusRelation(r.rel.id)}>
               {r.property}
             </button>
-            <QuantifierSelect rel={r.rel} />
+            <QuantifierSelect rel={r.rel} index={r.index} />
             <span className={r.data ? 'datatype' : ''}>{r.filler}</span>
-            <button className="btn icon ghost" title="Remove this restriction" aria-label={`Remove ${r.text}`} onClick={() => st().remove([], [r.rel.id])}>
+            <button className="btn icon ghost" title="Remove this restriction" aria-label={`Remove ${r.text}`} onClick={() => removeOne(r.rel, r.index)}>
               ×
             </button>
           </li>
@@ -461,9 +475,7 @@ function ClassRestrictions({ term }: { term: Term }) {
             ))}
           </optgroup>
           <optgroup label="Data properties">
-            {dataProps
-              .filter((p) => !restrictions.some((r) => r.rel.to === p.id))
-              .map((p) => (
+            {dataProps.map((p) => (
                 <option key={p.id} value={'d:' + p.id}>
                   {p.name}
                 </option>
@@ -653,7 +665,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
             <li key={r.id}>
               <button onClick={() => st().focusRelation(r.id)} title="Show on the canvas">
                 {judged && <span className={badFrom || badTo ? 'bad' : 'good'}>{badFrom || badTo ? '✗ ' : '✓ '}</span>}
-                {name.get(r.from)} <em>{classLevel ? quantifierOf(r) : '→'}</em> {name.get(r.to)}
+                {name.get(r.from)} <em>{classLevel ? restrictionSpecs(r).map((s) => s.restriction + (s.restrictionN !== undefined ? ' ' + s.restrictionN : '')).join(', ') : '→'}</em> {name.get(r.to)}
                 {badFrom && <small className="bad"> {name.get(r.from)} is not a kind of {prop.domain.map((id) => name.get(id)).join(' or ')}</small>}
                 {badTo && <small className="bad"> {name.get(r.to)} is not a kind of {prop.range.map((id) => name.get(id)).join(' or ')}</small>}
               </button>
@@ -692,7 +704,10 @@ function RelationPanel({ rel }: { rel: Relation }) {
   const usesProp = !skos && rel.kind === 'association' && !own && !model.vocab.map[rel.label.trim().toLowerCase()];
   const objProps = usesProp ? objectProperties(model) : [];
   const prop = usesProp ? objProps.find((p) => p.key === propKey(rel.label)) : undefined;
-  const restriction = !skos ? restrictionsOf(model, rel.from).find((r) => r.rel.id === rel.id) : undefined;
+  // Every restriction this relationship puts on its class: one or several.
+  const stated = !skos ? restrictionsOf(model, rel.from).filter((r) => r.rel.id === rel.id) : [];
+  const restriction = stated[0];
+  const further = nextSpec(rel);
   // A class membership: it points from an individual to a class and cannot be turned around.
   const instanceOf = isInstanceOf(model, rel);
 
@@ -761,7 +776,7 @@ function RelationPanel({ rel }: { rel: Relation }) {
           </select>
         ) : (
           <select value={relChoice(model, rel)} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
-            {relChoices(model, rel).map((k) => (
+            {offeredChoices(model, rel).map((k) => (
               <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
                 {k.label}
               </option>
@@ -794,26 +809,54 @@ function RelationPanel({ rel }: { rel: Relation }) {
       )}
       {restriction && (
         <div className="field">
-          <span>Restriction on {names([rel.from])}</span>
-          <div className="row">
-            <QuantifierSelect rel={rel} />
-          </div>
+          {/* A restriction is on a property: the data property, or the object property, the class has. */}
+          <span>
+            {stated.length > 1 ? 'Restrictions' : 'Restriction'} on {restriction.property}
+          </span>
+          <ul className="restrictions">
+            {stated.map((r) => (
+              <li key={r.index}>
+                <QuantifierSelect rel={rel} index={r.index} />
+                <span className={r.data ? 'datatype' : ''}>{r.filler}</span>
+                {stated.length > 1 && (
+                  <button className="btn icon ghost" title="Remove this restriction" aria-label={`Remove ${r.text}`} onClick={() => update(rel.id, specsPatch(restrictionSpecs(rel).filter((_, i) => i !== r.index)))}>
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {further && (
+            <button className="btn small" title="State a further restriction with the same property and target" onClick={() => update(rel.id, specsPatch([...restrictionSpecs(rel), further]))}>
+              Add another restriction
+            </button>
+          )}
           <small>
-            Every {names([rel.from])}: <strong>{restriction.text}</strong>.
+            Every {names([rel.from])}:{' '}
+            {stated.map((r, i) => (
+              <span key={r.index}>
+                {i > 0 && ', and '}
+                <strong>{r.text}</strong>
+              </span>
+            ))}
+            .
           </small>
         </div>
       )}
 
-      <div className="field two">
-        <label>
-          <span>From cardinality</span>
-          <CommitInput value={rel.fromCard} placeholder="1..*" onCommit={(v) => update(rel.id, { fromCard: v.trim() })} />
-        </label>
-        <label>
-          <span>To cardinality</span>
-          <CommitInput value={rel.toCard} placeholder="0..1" onCommit={(v) => update(rel.id, { toCard: v.trim() })} />
-        </label>
-      </div>
+      {/* Cardinalities are a plain relationship's; the other kinds say "how many" with restrictions, or not at all. */}
+      {hasCardinality(model, rel) && (
+        <div className="field two">
+          <label>
+            <span>From cardinality</span>
+            <CommitInput value={rel.fromCard} placeholder="1..*" onCommit={(v) => update(rel.id, { fromCard: v.trim() })} />
+          </label>
+          <label>
+            <span>To cardinality</span>
+            <CommitInput value={rel.toCard} placeholder="0..1" onCommit={(v) => update(rel.id, { toCard: v.trim() })} />
+          </label>
+        </div>
+      )}
       <label className="field">
         <span>Description</span>
         <CommitTextarea rows={4} value={rel.description} onCommit={(description) => update(rel.id, { description })} />

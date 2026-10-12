@@ -75,10 +75,10 @@ ok((await toast()).includes('already stated to be an instance of'), 'with the re
 // ---------------------------------------------------------------- the kind selector
 const classEdge = page.locator('.edge', { has: page.locator('.edge-label', { hasText: /^wins$/ }) });
 let m = await menu(classEdge);
-ok(m['Is Instance Of'] && m['Is Instance Of'].disabled && !m['Is a (generalization)'].disabled, 'between two classes the menu offers “Is Instance Of” disabled');
+ok(Object.keys(m).filter((k) => 'Relationship (plain)|Object property|Is a (generalization)|Is Instance Of|Has data property'.split('|').includes(k)).join() === 'Relationship (plain),Object property,Is a (generalization)', 'between two classes the kinds are plain, object property and “is a”');
 await page.keyboard.press('Escape');
 m = await menu(asserted.first());
-ok(m['Is Instance Of'].checked && !m['Is Instance Of'].disabled && m['Is a (generalization)'].disabled && m['Reverse direction'].disabled, 'on a membership it is ticked, “is a” is not offered and it cannot be reversed');
+ok(m['Is Instance Of'].checked && m['Relationship (plain)'] && !m['Is a (generalization)'] && !m['Object property'] && !m['Has data property'] && m['Reverse direction'].disabled, 'between an individual and a class the kinds are plain and “Is Instance Of” (ticked), and it cannot be reversed');
 await page.keyboard.press('Escape');
 
 await asserted.first().locator('.edge-label-bg').click();
@@ -87,7 +87,9 @@ const kind = panel.locator('.field', { has: page.locator(':scope > span:has-text
 ok((await kind.inputValue()) === 'instanceOf', 'with the kind selector on “Is Instance Of”');
 ok(await panel.getByRole('button', { name: 'Reverse direction' }).isDisabled(), 'and no way to reverse it');
 await classEdge.locator('.edge-label-bg').click();
-ok(await kind.locator('option[value="instanceOf"]').evaluate((o) => o.disabled), 'for a relationship between two classes the option is disabled: ' + flat(await panel.locator('h2').first().innerText()) + ' / ' + (await kind.inputValue()));
+ok((await kind.locator('option').evaluateAll((os) => os.map((o) => o.value))).join() === 'plain,object,generalization', 'for a relationship between two classes the selector lists plain, object property and “is a”');
+await page.locator('.edge', { has: page.locator('.edge-label', { hasText: /^has some$/ }) }).first().locator('.edge-label-bg').click();
+ok((await kind.locator('option').evaluateAll((os) => os.map((o) => o.value))).join() === 'plain,property', 'between a class and a data property it lists plain and “has data property”');
 
 // ---------------------------------------------------------------- asserted and inferred
 await node('Film').locator('.node-box').click();

@@ -3,7 +3,7 @@ import { displayName, edgeGeom, edgeOffsets, LABEL_FONT, nodeLabel, nodeSize, po
 import { stable } from '../model/stable';
 import { useStore, viewOf, type SubgraphState } from '../model/store';
 import { INSTANCE_OF, kindLabel, newRelation, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
-import { isInstanceOf, objectProperties, plainRelationships, relChoice, relChoices, restrictionByRelation } from '../model/props';
+import { isInstanceOf, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices, restrictionByRelation } from '../model/props';
 import { inferredMemberships, type InferredMembership } from '../model/inferred';
 import { activeProps, resolveModel, suggestFor } from '../model/vocab';
 import { SubgraphPanel } from './SubgraphPanel';
@@ -265,7 +265,7 @@ export function Canvas() {
       { heading: 'Kind' },
       ...(skos
         ? REL_KINDS.map((k) => ({ label: kindLabel(k.value, skos), checked: r.kind === k.value, onClick: () => st().updateRelation(r.id, { kind: k.value }) }))
-        : relChoices(st().model, r).map((k) => ({ label: k.label, checked: relChoice(st().model, r) === k.value, disabled: !!k.disabled, onClick: () => st().setRelChoice(r.id, k.value) }))),
+        : offeredChoices(st().model, r).map((k) => ({ label: k.label, checked: relChoice(st().model, r) === k.value, disabled: !!k.disabled, onClick: () => st().setRelChoice(r.id, k.value) }))),
       'sep',
       { label: 'Delete', onClick: () => st().remove([], [r.id]), danger: true, hint: 'Del' },
     ]);
@@ -473,11 +473,14 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
         const g = geoms.get(r.id);
         if (!g) return null;
         // A restriction reads "directs some Film"; a relationship nobody has classified is drawn fainter.
-        const restriction = restrictions.get(r.id);
+        const stated = restrictions.get(r.id);
         const instanceOf = isInstanceOf(meaning, r);
-        const label = restriction ? `${restriction.data ? 'has' : restriction.property} ${restriction.quantifier}${restriction.n !== undefined ? ' ' + restriction.n : ''}` : relLabel(r, skos, instanceOf);
+        // Several restrictions on one line read "directs some, only".
+        const label = stated ? `${stated[0].data ? 'has' : stated[0].property} ${stated.map((x) => x.quantifier + (x.n !== undefined ? ' ' + x.n : '')).join(', ')}` : relLabel(r, skos, instanceOf);
+        // Cardinalities are drawn for plain relationships only.
+        const cards = skos ? r.kind === 'association' : plain.has(r.id);
         const cls = `edge ${r.kind}${instanceOf ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}`;
-        return <EdgeView key={r.id} r={r} geom={g.geom} label={editing?.kind === 'rel' && editing.id === r.id ? '' : label} cls={cls} actions={actions} />;
+        return <EdgeView key={r.id} r={r} geom={g.geom} label={editing?.kind === 'rel' && editing.id === r.id ? '' : label} cls={cls} cards={cards} actions={actions} />;
       })}
       {inferred.map((x) => {
         const a = byId.get(x.from);
@@ -504,7 +507,7 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
   );
 });
 
-const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, actions }: { r: Relation; geom: EdgeGeom; label: string; cls: string; actions: SceneActions }) {
+const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, cards, actions }: { r: Relation; geom: EdgeGeom; label: string; cls: string; cards: boolean; actions: SceneActions }) {
   const lw = label ? textWidth(label, LABEL_FONT) + 10 : 0;
   return (
     <g
@@ -531,12 +534,12 @@ const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, actions }: { r
           </text>
         </>
       )}
-      {r.fromCard && (
+      {cards && r.fromCard && (
         <text className="edge-card" x={g.fromCard.x} y={g.fromCard.y}>
           {r.fromCard}
         </text>
       )}
-      {r.toCard && (
+      {cards && r.toCard && (
         <text className="edge-card" x={g.toCard.x} y={g.toCard.y}>
           {r.toCard}
         </text>

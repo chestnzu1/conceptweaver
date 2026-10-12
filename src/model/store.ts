@@ -840,11 +840,18 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => {
       const rel = m.relations.find((r) => r.id === id);
       if (!rel) return m;
-      const { plain: _plain, predicate: _predicate, ...base } = rel;
-      if (choice === 'property') return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...base, kind: choice } : r)) };
+      const { plain: _plain, predicate: _predicate, ...kept } = rel;
+      // Only a plain relationship has cardinalities at its ends.
+      const base = choice === 'plain' ? kept : { ...kept, fromCard: '', toCard: '' };
+      if (choice === 'property') {
+        // "Has data property" points from the class to the property, whichever way the line was drawn.
+        const type = (x: string) => m.terms.find((t) => t.id === x)?.type;
+        const ends = type(rel.from) === 'property' && type(rel.to) === 'concept' ? { from: rel.to, to: rel.from } : {};
+        return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...base, ...ends, kind: choice } : r)) };
+      }
       if (choice === 'generalization') {
         // "Is a" restricts nothing, so a quantifier left over from before goes.
-        const { restriction: _restriction, restrictionN: _n, ...bare } = base;
+        const { restriction: _restriction, restrictionN: _n, more: _more, ...bare } = base;
         return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...bare, kind: choice } : r)) };
       }
       const key = propKey(rel.label);

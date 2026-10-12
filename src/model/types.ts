@@ -149,11 +149,21 @@ export interface Relation {
   restriction?: Quantifier;
   /** The number for min, max and exactly. */
   restrictionN?: number;
+  /**
+   * Further restrictions the same relationship states beside that first one: "directs some Film"
+   * and also "directs only Film", or "min 1" together with "max 3".
+   */
+  more?: RestrictionSpec[];
   /** Kept as a plain relationship even though its label is the name of an object property. */
   plain?: boolean;
 }
 
 export type Quantifier = 'some' | 'only' | 'min' | 'max' | 'exactly';
+/** One restriction by a relationship: its quantifier, and the number where it has one. */
+export interface RestrictionSpec {
+  restriction: Quantifier;
+  restrictionN?: number;
+}
 export const QUANTIFIERS: { id: Quantifier; about: string }[] = [
   { id: 'some', about: 'at least one such value' },
   { id: 'only', about: 'no values of any other kind' },
@@ -370,6 +380,11 @@ const LANG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback);
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
+const moreSpecs = (v: unknown): RestrictionSpec[] =>
+  (Array.isArray(v) ? (v as Record<string, unknown>[]) : [])
+    .filter((s) => s && typeof s === 'object' && QUANTIFIERS.some((q) => q.id === s.restriction))
+    .map((s) => ({ restriction: s.restriction as Quantifier, ...(typeof s.restrictionN === 'number' && s.restrictionN >= 0 ? { restrictionN: Math.floor(s.restrictionN) } : {}) }));
+
 const fieldList = (v: unknown): ExtraField[] =>
   Array.isArray(v)
     ? (v as Record<string, unknown>[])
@@ -446,6 +461,7 @@ export function normalizeModel(raw: unknown): Model {
       kind: kind === 'generalization' || kind === 'property' ? kind : 'association',
       ...(QUANTIFIERS.some((q) => q.id === r.restriction) ? { restriction: r.restriction as Quantifier } : {}),
       ...(typeof r.restrictionN === 'number' && r.restrictionN >= 0 ? { restrictionN: Math.floor(r.restrictionN) } : {}),
+      ...(moreSpecs(r.more).length ? { more: moreSpecs(r.more) } : {}),
       ...(r.plain === true ? { plain: true } : {}),
       description: str(r.description),
       fromCard: str(r.fromCard),

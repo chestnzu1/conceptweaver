@@ -1,6 +1,7 @@
 import { flushSync } from 'react-dom';
 import { convertModel } from './convert';
 import { bounds } from './geometry';
+import { hasCardinality } from './props';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { useStore, viewOf } from './store';
 import { normalizeModel, type Model } from './types';
@@ -27,7 +28,7 @@ export function relationsCsv(m: Model): string {
   const name = new Map(m.terms.map((t) => [t.id, t.name]));
   return csv([
     ['From', 'Label', 'To', 'Kind', 'From cardinality', 'To cardinality', 'Description'],
-    ...m.relations.map((r) => [name.get(r.from) ?? '', r.label, name.get(r.to) ?? '', r.kind, r.fromCard, r.toCard, r.description]),
+    ...m.relations.map((r) => [name.get(r.from) ?? '', r.label, name.get(r.to) ?? '', r.kind, ...(hasCardinality(m, r) ? [r.fromCard, r.toCard] : ['', '']), r.description]),
   ]);
 }
 
