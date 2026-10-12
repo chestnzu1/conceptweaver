@@ -1,10 +1,16 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { displayName, edgeGeom, edgeOffsets, LABEL_FONT, nodeLabel, nodeSize, pointInNode, textWidth, type EdgeGeom, type Pt } from '../model/geometry';
+import { displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nodeLabel, nodeSize, placeLabels, pointInNode, setNodeLook, textWidth, type EdgeGeom, type LabelSpec, type Pt } from '../model/geometry';
+import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL, type DerivedEdge } from '../model/edgeKinds';
+import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
-import { useStore, viewOf, type SubgraphState } from '../model/store';
-import { kindLabel, newRelation, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
-import { objectProperties, plainRelationships, REL_CHOICES, relChoice, restrictionByRelation } from '../model/props';
+import { currentDl, useStore, viewOf, type SubgraphState } from '../model/store';
+import { creditOf } from '../model/reasoning';
+import { allowsKind, configOf, supports } from '../model/modelTypes';
+import { INSTANCE_OF, newRelation, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
+import { isInstanceOf, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices } from '../model/props';
+import { inferredMemberships, type InferredMembership } from '../model/inferred';
 import { activeProps, resolveModel, suggestFor } from '../model/vocab';
+import { StylePanel } from './StylePanel';
 import { SubgraphPanel } from './SubgraphPanel';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 
@@ -32,6 +38,9 @@ export function Canvas() {
   const highlight = useStore((s) => s.highlight);
   const highlightLabel = useStore((s) => s.highlightLabel);
   const filter = useStore((s) => s.filter);
+  const showInferred = useStore((s) => s.showInferred);
+  const showEnumerations = useStore((s) => s.showEnumerations);
+  const stylePanel = useStore((s) => s.stylePanel);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [connect, setConnect] = useState<{ from: string; to: Pt } | null>(null);
   const [box, setBox] = useState<{ a: Pt; b: Pt } | null>(null);
@@ -40,7 +49,6 @@ export function Canvas() {
   const st = useStore.getState;
 
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
-  const skos = model.mode === 'skos';
 
   const toWorld = (clientX: number, clientY: number): Pt => {
     const r = wrapRef.current!.getBoundingClientRect();
@@ -161,9 +169,7 @@ export function Canvas() {
         if (target && target.id !== t.id) {
           // Drawing a term onto a data property attaches it: the term becomes (part of) its domain.
           let kind: RelKind = 'association';
-          if (st().model.mode !== 'skos') {
-            if (target.type === 'property' && t.type !== 'property') kind = 'property';
-          }
+          if (allowsKind(st().model, 'property') && target.type === 'property' && t.type !== 'property') kind = 'property';
           const id = st().addRelation({ from: t.id, to: target.id, kind });
           st().select([], [id]);
           st().setEditing({ kind: 'rel', id, isNew: true });
@@ -205,12 +211,17 @@ export function Canvas() {
     const many = ids.length > 1;
     openMenu(e, [
       { label: 'Rename', onClick: () => st().setEditing({ kind: 'term', id: t.id }), hint: 'F2', disabled: many },
-      { heading: 'Type' },
-      ...TYPE_CHOICES.map((tt) => ({
-        label: tt.label,
-        checked: !many && typeChoice(t) === tt.value,
-        onClick: () => st().updateTerms(ids, tt.patch),
-      })),
+      // The kinds of term the type of model has; with only one there is nothing to choose.
+      ...(configOf(st().model).termTypes.length > 1
+        ? [
+            { heading: 'Type' },
+            ...TYPE_CHOICES.filter((tt) => configOf(st().model).termTypes.includes(tt.value)).map((tt) => ({
+              label: tt.label,
+              checked: !many && typeChoice(t) === tt.value,
+              onClick: () => st().updateTerms(ids, tt.patch),
+            })),
+          ]
+        : []),
       { heading: 'Colour' },
       { swatches: (color) => st().updateTerms(ids, { color }), current: many ? undefined : t.color },
       { heading: 'Highlight' },
@@ -258,15 +269,42 @@ export function Canvas() {
     st().select([], [r.id]);
     openMenu(e, [
       { label: 'Edit label', onClick: () => st().setEditing({ kind: 'rel', id: r.id }), hint: 'F2' },
-      { label: 'Reverse direction', onClick: () => st().reverseRelation(r.id) },
+      // A class membership has one direction only: from the individual to the class.
+      { label: 'Reverse direction', onClick: () => st().reverseRelation(r.id), disabled: isInstanceOf(st().model, r) },
       { heading: 'Kind' },
-      ...(skos
-        ? REL_KINDS.map((k) => ({ label: kindLabel(k.value, skos), checked: r.kind === k.value, onClick: () => st().updateRelation(r.id, { kind: k.value }) }))
-        : REL_CHOICES.map((k) => ({ label: k.label, checked: relChoice(st().model, r) === k.value, onClick: () => st().setRelChoice(r.id, k.value) }))),
+      // The kinds the type of model has, of those the ones that fit what the line connects.
+      ...offeredChoices(st().model, r).map((k) => ({ label: k.label, checked: relChoice(st().model, r) === k.value, disabled: !!k.disabled, onClick: () => st().setRelChoice(r.id, k.value) })),
       'sep',
       { label: 'Delete', onClick: () => st().remove([], [r.id]), danger: true, hint: 'Del' },
     ]);
   };
+
+  // Class memberships the reasoner works out, when asked for: drawn beside the asserted ones, never stored.
+  const meaning = stable(full);
+  const dl = useStore(currentDl);
+  const entailed = useMemo(() => {
+    if (!showInferred || !supports(meaning, 'reasoning')) return undefined;
+    const own = inferredMemberships(meaning);
+    // The OWL 2 DL reasoner, when it was asked about the model as it is now, may know of more.
+    if (!dl) return own;
+    if (dl.consistency !== 'consistent') return { ...own, consistent: false, memberships: [] };
+    if (!own.consistent) return own;
+    const have = new Set(own.memberships.map((x) => `${x.from}|${x.to}`));
+    const more = dl.types.filter((x) => !x.asserted && !have.has(`${x.individual}|${x.class}`)).map((x) => ({ id: `inferred:${x.individual}|${x.class}`, from: x.individual, to: x.class, because: creditOf(dl) }));
+    return more.length ? { ...own, memberships: [...own.memberships, ...more] } : own;
+  }, [showInferred, meaning, dl]);
+  const inferred = useMemo(() => entailed?.memberships.filter((x) => byId.has(x.from) && byId.has(x.to)) ?? NONE, [entailed, byId]);
+  // What each enumeration class lists, as a line to each member: a picture of its definition, not a
+  // relationship. Drawn unless switched off; in a subgraph, where its filters let the line through.
+  const hasEnumerations = useMemo(() => full.terms.some((t) => t.type === 'concept' && t.oneOf?.length), [full.terms]);
+  const listed = useMemo(() => {
+    if (!showEnumerations || !hasEnumerations) return NO_DERIVED;
+    const through = subgraph.active && subgraph.result ? new Set(subgraph.result.rels) : undefined;
+    return enumerationEdges(model).filter((e) => byId.has(e.from) && byId.has(e.to) && (!through || through.has(e.id)));
+  }, [showEnumerations, hasEnumerations, model, byId, subgraph]);
+  // A member of an enumeration is an instance of it, which its line says already: that membership is not drawn a second time.
+  const dotted = useMemo(() => beyondEnumerations(inferred, listed), [inferred, listed]);
+  const derived = useMemo(() => (dotted.length || listed.length ? [...dotted.map((x): DerivedEdge => ({ ...x, kind: 'inferred' })), ...listed] : NO_DERIVED), [dotted, listed]);
 
   const connectFrom = connect && byId.get(connect.from);
   // The term a new relation would land on if the pointer were released now.
@@ -304,7 +342,7 @@ export function Canvas() {
         onContextMenu={backgroundMenu}
       >
         <g data-world transform={`translate(${vp.x},${vp.y}) scale(${vp.k})`}>
-          <Scene model={model} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} />
+          <Scene model={model} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} />
           {connectFrom && <line data-noexport className="connect-line" x1={connectFrom.x} y1={connectFrom.y} x2={connect.to.x} y2={connect.to.y} />}
 
           {box && (
@@ -330,6 +368,7 @@ export function Canvas() {
       )}
 
       <SubgraphPanel />
+      {stylePanel && <StylePanel />}
       {subgraph.active && full.terms.length > 0 && model.terms.length === 0 && (
         <div className="empty-hint">
           <strong>Nothing in this subgraph</strong>
@@ -359,6 +398,33 @@ export function Canvas() {
         <button className="btn" title="Fit the whole model on screen (F)" onClick={() => st().fit()}>
           Fit
         </button>
+        {supports(model, 'reasoning') && (
+          <button
+            className={'btn' + (showInferred ? ' on' : '')}
+            aria-pressed={showInferred}
+            title={
+              !showInferred
+                ? 'Also draw the class memberships the reasoner works out, dotted, beside the asserted ones'
+                : !entailed?.consistent
+                  ? 'The reasoner finds the ontology inconsistent, so nothing reliable can be inferred. See the Validation tab.'
+                  : `${dotted.length} inferred class membership${dotted.length === 1 ? '' : 's'} drawn dotted${entailed.truncated ? '; the reasoner stopped early on this large model, so there may be more' : ''}. They are not part of the model.`
+            }
+            onClick={() => st().setShowInferred(!showInferred)}
+          >
+            Inferred types{showInferred ? (entailed?.consistent ? ` (${dotted.length})` : ' (inconsistent)') : ''}
+          </button>
+        )}
+        {/* Only where there is an enumeration to draw: the bar stays as short as it can. */}
+        {hasEnumerations && (
+          <button
+            className={'btn' + (showEnumerations ? ' on' : '')}
+            aria-pressed={showEnumerations}
+            title={showEnumerations ? 'Each enumeration class is joined to the individuals it lists (owl:oneOf). Click to hide those lines.' : 'Draw a line from each enumeration class to the individuals it lists (owl:oneOf)'}
+            onClick={() => st().setShowEnumerations(!showEnumerations)}
+          >
+            Enumerations
+          </button>
+        )}
       </div>
 
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}
@@ -384,53 +450,116 @@ interface SceneProps {
   actions: SceneActions;
   /** Set in subgraph mode: which terms are starting points, which are expanded, and which have more to show. */
   sub?: SubgraphState;
+  /** Lines that are worked out rather than stored: inferred class memberships when asked for, and what enumerations list. */
+  derived: DerivedEdge[];
 }
+
+const NONE: InferredMembership[] = [];
+const NO_DERIVED: DerivedEdge[] = [];
+
+const INFERRED_LABEL = `${INSTANCE_OF} (inferred)`;
+/** Where the scene last put each edge label, for the editor that opens on one. */
+let labelSpots = new Map<string, Pt>();
 
 /**
  * Every term and relation of the model. Memoised at three levels so that a large model stays
  * responsive: the scene itself does not change while the view is panned or zoomed, and within it
  * a term or relation is redrawn only when something about it changed.
  */
-const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targetId, actions, sub }: SceneProps) {
+const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targetId, actions, sub, derived }: SceneProps) {
   const rootSet = useMemo(() => new Set(sub?.roots), [sub?.roots]);
   const expandedSet = useMemo(() => new Set(sub?.expanded), [sub?.expanded]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
+  // How the nodes are drawn decides how big they are and where edges meet them, so the geometry
+  // is told before anything is measured. Layout, fitting and the picture export read the same.
+  const style = model.style;
+  useMemo(() => setNodeLook(nodeLookFor(model)), [style, model.mode, model.prefixes, model.baseIri, model.datatypes]); // eslint-disable-line react-hooks/exhaustive-deps
   // Relations as they should be read: with the RDFS/OWL layer on, a mapped relation takes the
   // kind and label of its standard property.
   const meaning = stable(model);
   const relations = useMemo(() => resolveModel(meaning).relations, [meaning]);
-  const offsets = useMemo(() => edgeOffsets(relations), [relations]);
+  const skos = model.mode === 'skos';
+  const plain = useMemo(() => {
+    const plain = new Set<string>();
+    if (meaning.mode !== 'skos') for (const p of plainRelationships(meaning)) for (const r of p.rels) plain.add(r.id);
+    return plain;
+  }, [meaning]);
+  // The style of each edge: that of its kind of relationship, with its own on top.
+  const edgeStyles = useMemo(() => {
+    const types = edgeTypesOf(meaning);
+    const out = new Map<string, EdgeStyle>();
+    for (const r of relations) out.set(r.id, resolveEdge(style, types.get(r.id) ?? 'plain', r.id));
+    return out;
+  }, [relations, meaning, style]);
+  const inferredStyle = resolveEdge(style, 'inferred', '');
+  const oneOfStyle = resolveEdge(style, 'oneOf', '');
+  // A derived line takes its place among the relations between the same two terms.
+  const offsets = useMemo(() => edgeOffsets(derived.length ? [...relations, ...derived] : relations), [relations, derived]);
   // Geometry is kept per relation and reused while its two ends stay where they are.
-  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; geom: EdgeGeom }>());
+  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; geom: EdgeGeom }>());
   const geoms = useMemo(() => {
-    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; geom: EdgeGeom }>();
+    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; geom: EdgeGeom }>();
     for (const r of relations) {
       const a = byId.get(r.from);
       const b = byId.get(r.to);
       if (!a || !b) continue;
-      const offset = offsets.get(r.id) ?? 0;
+      const es = edgeStyles.get(r.id) ?? NO_EDGE_STYLE;
+      // The style can bow the line further, on top of what keeps parallel edges apart.
+      const offset = (offsets.get(r.id) ?? 0) + (es.curve ?? 0);
       const old = cache.current.get(r.id);
-      // Only position and size matter, and size follows from the label.
-      const same = old && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
-      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, geom: edgeGeom(a, b, offset, r.kind) });
+      // Only position and size matter, and size follows from the label. Any change of style is a new style object.
+      const same = old && old.es === es && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
+      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, es, geom: edgeGeom(a, b, offset, r.kind, es.arrow) });
     }
     cache.current = next;
     return next;
-  }, [relations, offsets, byId]);
-
-  const skos = model.mode === 'skos';
-  const { restrictions, plain } = useMemo(() => {
-    const plain = new Set<string>();
-    if (meaning.mode !== 'skos') for (const p of plainRelationships(meaning)) for (const r of p.rels) plain.add(r.id);
-    return { restrictions: restrictionByRelation(meaning), plain };
-  }, [meaning]);
+    // The style object stands for everything about the nodes' sizes and shapes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relations, offsets, byId, edgeStyles, style]);
+  // What each edge says. A restriction reads "directs some Film", and several on one line "directs some, only".
+  const labels = useMemo(() => edgeLabelsOf(meaning), [meaning]);
+  const labelOf = useCallback((r: Relation) => labels.get(r.id) ?? '', [labels]);
+  const derivedGeoms = useMemo(() => {
+    const out = new Map<string, { a: Term; b: Term; es: EdgeStyle; geom: EdgeGeom }>();
+    for (const x of derived) {
+      const a = byId.get(x.from);
+      const b = byId.get(x.to);
+      const es = x.kind === 'oneOf' ? oneOfStyle : inferredStyle;
+      // An inferred membership ends like the asserted ones, hollow; an enumeration's line has a plain head at the member.
+      if (a && b) out.set(x.id, { a, b, es, geom: edgeGeom(a, b, (offsets.get(x.id) ?? 0) + (es.curve ?? 0), x.kind === 'oneOf' ? 'association' : 'generalization', es.arrow) });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derived, byId, offsets, inferredStyle, oneOfStyle, style]);
+  // Where each label goes: in the middle of its edge, or along it where the middle is taken.
+  const spots = useMemo(() => {
+    const specs: LabelSpec[] = [];
+    for (const r of relations) {
+      const g = geoms.get(r.id);
+      const label = g && g.es.labels !== false && labelOf(r);
+      if (g && label) specs.push({ id: r.id, geom: g.geom, w: textWidth(label, labelFont(g.es)) + 10, ends: [g.a, g.b] });
+    }
+    for (const x of derived) {
+      const g = derivedGeoms.get(x.id);
+      if (g && g.es.labels !== false) specs.push({ id: x.id, geom: g.geom, w: textWidth(x.kind === 'oneOf' ? ONE_OF_LABEL : INFERRED_LABEL, labelFont(g.es)) + 10, ends: [g.a, g.b] });
+    }
+    // The cardinalities written at the ends of plain relationships stay where they are; labels keep off them.
+    const cards: { x: number; y: number; w: number; h: number }[] = [];
+    for (const r of relations) {
+      const g = geoms.get(r.id);
+      if (!g || !(skos ? r.kind === 'association' : plain.has(r.id))) continue;
+      if (r.fromCard) cards.push({ ...g.geom.fromCard, w: textWidth(r.fromCard, LABEL_FONT) + 4, h: 14 });
+      if (r.toCard) cards.push({ ...g.geom.toCard, w: textWidth(r.toCard, LABEL_FONT) + 4, h: 14 });
+    }
+    return (labelSpots = placeLabels(specs, cards));
+  }, [relations, geoms, derived, derivedGeoms, labelOf, skos, plain]);
   const selTerms = useMemo(() => new Set(sel.terms), [sel.terms]);
   const selRels = useMemo(() => new Set(sel.rels), [sel.rels]);
   const spot = useMemo(() => new Set(highlight), [highlight]);
   const query = filter.trim().toLowerCase();
   const matches = (t: Term) => !query || `${t.name}\n${t.description}\n${t.synonyms}`.toLowerCase().includes(query);
   const termDim = (t: Term) => (spot.size ? !spot.has(t.id) : !matches(t));
-  const relDim = (r: Relation) => {
+  const relDim = (r: Pick<Relation, 'id' | 'from' | 'to'>) => {
     if (spot.size) return !spot.has(r.id);
     if (!query) return false;
     const a = byId.get(r.from);
@@ -443,11 +572,20 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
       {relations.map((r) => {
         const g = geoms.get(r.id);
         if (!g) return null;
-        // A restriction reads "directs some Film"; a relationship nobody has classified is drawn fainter.
-        const restriction = restrictions.get(r.id);
-        const label = restriction ? `${restriction.data ? 'has' : restriction.property} ${restriction.quantifier}${restriction.n !== undefined ? ' ' + restriction.n : ''}` : relLabel(r, skos);
-        const cls = `edge ${r.kind}${r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}`;
-        return <EdgeView key={r.id} r={r} geom={g.geom} label={editing?.kind === 'rel' && editing.id === r.id ? '' : label} cls={cls} actions={actions} />;
+        // A relationship nobody has classified is drawn fainter.
+        const instanceOf = isInstanceOf(meaning, r);
+        const label = labelOf(r);
+        const at = spots.get(r.id) ?? g.geom.label;
+        // Cardinalities are drawn for plain relationships only.
+        const cards = skos ? r.kind === 'association' : plain.has(r.id);
+        const cls = `edge ${r.kind}${instanceOf ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}`;
+        return <EdgeView key={r.id} r={r} geom={g.geom} es={g.es} lx={at.x} ly={at.y} label={(editing?.kind === 'rel' && editing.id === r.id) || g.es.labels === false ? '' : label} cls={cls} cards={cards} actions={actions} />;
+      })}
+      {derived.map((x) => {
+        const g = derivedGeoms.get(x.id);
+        if (!g) return null;
+        const at = spots.get(x.id) ?? g.geom.label;
+        return <DerivedView key={x.id} x={x} geom={g.geom} es={g.es} lx={at.x} ly={at.y} dim={relDim(x)} />;
       })}
       {model.terms.map((t) => {
         const cls = `node ${t.type}${t.external !== undefined ? ' external' : ''}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}`;
@@ -456,6 +594,8 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
           <NodeView
             key={t.id}
             t={t}
+            ns={resolveNode(style, nodeTypeOf(model.mode, t.type), t)}
+            label={nodeLabel(t)}
             cls={cls + (rootSet.has(t.id) ? ' root' : '')}
             hideText={editing?.kind === 'term' && editing.id === t.id}
             actions={actions}
@@ -468,11 +608,47 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
   );
 });
 
-const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, actions }: { r: Relation; geom: EdgeGeom; label: string; cls: string; actions: SceneActions }) {
-  const lw = label ? textWidth(label, LABEL_FONT) + 10 : 0;
+const NO_EDGE_STYLE: EdgeStyle = {};
+const labelFont = (es: EdgeStyle) => (es.labelSize ? `400 ${es.labelSize}px system-ui, sans-serif` : LABEL_FONT);
+const labelHeight = (es: EdgeStyle) => Math.max(LABEL_H, (es.labelSize ?? 12) + 6);
+
+/**
+ * An edge's style as the stylesheet takes it: custom properties that the rules for lines, arrows
+ * and labels read, falling back to the theme where one is not set. Being selected or
+ * spotlighted is said by rules of their own, which still win.
+ */
+function edgeLook(es: EdgeStyle): { cls: string; vars: React.CSSProperties | undefined } {
+  if (es === NO_EDGE_STYLE || !Object.keys(es).length) return { cls: '', vars: undefined };
+  const vars: Record<string, string | number> = {};
+  const color = paint(es.color, 'line');
+  if (color) vars['--e-color'] = color;
+  if (es.width) vars['--e-width'] = es.width;
+  const dash = dashOf(es.line, es.width);
+  if (dash) vars['--e-dash'] = dash;
+  const label = paint(es.labelColor, 'line');
+  if (label) vars['--e-label'] = label;
+  if (es.labelSize) vars['--e-label-size'] = es.labelSize + 'px';
+  return { cls: (es.arrow ? ` arrow-${es.arrow}` : '') + (es.line === 'dotted' ? ' line-dotted' : ''), vars: vars as React.CSSProperties };
+}
+
+/** The end of an edge: a closed head, for the open kind two strokes that meet at the tip, or nothing at all. */
+function Arrow({ points, head }: { points: string; head: EdgeStyle['arrow'] }) {
+  // Left out rather than hidden, so that a picture exported from the canvas has none either.
+  if (head === 'none') return null;
+  if (head !== 'open') return <polygon className="edge-arrow" data-part="head" points={points} />;
+  const [tip, a, b] = points.split(' ');
+  return <polyline className="edge-arrow" data-part="head" points={`${a} ${tip} ${b}`} />;
+}
+
+const EdgeView = memo(function EdgeView({ r, geom: g, es, lx, ly, label, cls, cards, actions }: { r: Relation; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; label: string; cls: string; cards: boolean; actions: SceneActions }) {
+  const lw = label ? textWidth(label, labelFont(es)) + 10 : 0;
+  const lh = labelHeight(es);
+  const look = edgeLook(es);
   return (
     <g
-      className={cls}
+      className={cls + look.cls}
+      data-rel={r.id}
+      style={look.vars}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -485,23 +661,23 @@ const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, actions }: { r
       onContextMenu={(e) => actions.relMenu(e, r)}
     >
       <path data-noexport className="edge-hit" d={g.path} />
-      <path className="edge-line" d={g.path} />
-      <polygon className="edge-arrow" points={g.arrow} />
+      <path className="edge-line" data-part="line" d={g.path} />
+      <Arrow points={g.arrow} head={es.arrow} />
       {label && (
         <>
-          <rect className="edge-label-bg" x={g.label.x - lw / 2} y={g.label.y - 9} width={lw} height={18} rx={4} />
-          <text className="edge-label" x={g.label.x} y={g.label.y}>
+          <rect className="edge-label-bg" data-part="label-bg" x={lx - lw / 2} y={ly - lh / 2} width={lw} height={lh} rx={4} />
+          <text className="edge-label" data-part="label" x={lx} y={ly}>
             {label}
           </text>
         </>
       )}
-      {r.fromCard && (
-        <text className="edge-card" x={g.fromCard.x} y={g.fromCard.y}>
+      {cards && r.fromCard && (
+        <text className="edge-card" data-part="from-card" x={g.fromCard.x} y={g.fromCard.y}>
           {r.fromCard}
         </text>
       )}
-      {r.toCard && (
-        <text className="edge-card" x={g.toCard.x} y={g.toCard.y}>
+      {cards && r.toCard && (
+        <text className="edge-card" data-part="to-card" x={g.toCard.x} y={g.toCard.y}>
           {r.toCard}
         </text>
       )}
@@ -509,12 +685,86 @@ const EdgeView = memo(function EdgeView({ r, geom: g, label, cls, actions }: { r
   );
 });
 
-const NodeView = memo(function NodeView({ t, cls, hideText, actions, badge }: { t: Term; cls: string; hideText: boolean; actions: SceneActions; badge: string }) {
+/**
+ * A line that is worked out rather than stored, so nothing about it can be edited here. A class
+ * membership the reasoner entails is dotted and labelled as inferred. What an enumeration lists
+ * is a line of its own kind from the class to the member, and clicking it opens the class, where
+ * the list is.
+ */
+function DerivedView({ x, geom: g, es, lx, ly, dim }: { x: DerivedEdge; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; dim: boolean }) {
+  const oneOf = x.kind === 'oneOf';
+  const label = es.labels === false ? '' : oneOf ? ONE_OF_LABEL : INFERRED_LABEL;
+  const lw = textWidth(label, labelFont(es)) + 10;
+  const lh = labelHeight(es);
+  const look = edgeLook(es);
+  return (
+    <g
+      className={(oneOf ? 'edge one-of' : 'edge generalization instance-of inferred') + (dim ? ' dim' : '') + look.cls}
+      data-rel={x.id}
+      style={look.vars}
+      onPointerDown={
+        oneOf
+          ? (e) => {
+              if (e.button !== 0) return;
+              e.stopPropagation();
+              useStore.getState().select([x.from]);
+            }
+          : undefined
+      }
+    >
+      <title>{oneOf ? `Enumeration membership (owl:oneOf): part of how the class is defined, not a relationship of its own. ${x.because}` : `Inferred, not asserted. ${x.because}`}</title>
+      <path data-noexport className="edge-hit" d={g.path} />
+      <path className="edge-line" data-part="line" d={g.path} />
+      <Arrow points={g.arrow} head={es.arrow} />
+      {label && (
+        <>
+          <rect className="edge-label-bg" data-part="label-bg" x={lx - lw / 2} y={ly - lh / 2} width={lw} height={lh} rx={4} />
+          <text className="edge-label" data-part="label" x={lx} y={ly}>
+            {label}
+          </text>
+        </>
+      )}
+    </g>
+  );
+}
+
+/** The outline of a node: the standard box of its kind, or the shape its style asks for. */
+function NodeShape({ t, ns, w, h, paintStyle }: { t: Term; ns: NodeStyle; w: number; h: number; paintStyle: React.CSSProperties }) {
+  switch (ns.shape) {
+    case 'ellipse':
+    case 'circle':
+      return <ellipse className="node-box" cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} style={paintStyle} />;
+    case 'diamond':
+      return <polygon className="node-box" points={`${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`} style={paintStyle} />;
+    case 'hexagon': {
+      const c = hexInset(w, h);
+      return <polygon className="node-box" points={`${c},0 ${w - c},0 ${w},${h / 2} ${w - c},${h} ${c},${h} 0,${h / 2}`} style={paintStyle} />;
+    }
+    default:
+      return <rect className="node-box" width={w} height={h} rx={ns.shape === 'rectangle' ? 0 : ns.shape === 'rounded' ? 9 : t.type === 'property' ? h / 2 : t.type === 'instance' ? 2 : 9} style={paintStyle} />;
+  }
+}
+
+// `label` is what nodeLabel(t) gives now: it is a prop so that the node is drawn again when the words change though the term did not.
+const NodeView = memo(function NodeView({ t, ns, label, cls, hideText, actions, badge }: { t: Term; ns: NodeStyle; label: string; cls: string; hideText: boolean; actions: SceneActions; badge: string }) {
   const { w, h } = nodeSize(t);
   const color = t.color || 'default';
+  // A colour of the node's own, then the colour it was given on the canvas, then the theme's.
+  const fill = paint(ns.fill, 'fill') ?? `var(--nc-${color}-fill)`;
+  const stroke = paint(ns.stroke, 'line') ?? (ns.fill && !isHex(ns.fill) ? paint(ns.fill, 'line')! : `var(--nc-${color}-stroke)`);
+  const vars: Record<string, string | number> = {};
+  if (ns.strokeWidth !== undefined) vars['--n-sw'] = ns.strokeWidth;
+  // On a freely picked fill the words are black or white, whichever reads, unless a colour was chosen for them.
+  const ink = paint(ns.labelColor, 'line') ?? (isHex(ns.fill) ? readableOn(ns.fill) : undefined);
+  if (ink) vars['--n-ink'] = ink;
+  if (ns.fontSize) vars['--n-fs'] = ns.fontSize + 'px';
+  if (ns.fontWeight) vars['--n-fw'] = ns.fontWeight;
+  if (ns.opacity !== undefined) vars['--n-op'] = ns.opacity;
   return (
     <g
       className={cls}
+      data-term={t.id}
+      style={vars as React.CSSProperties}
       transform={`translate(${t.x - w / 2},${t.y - h / 2})`}
       onPointerDown={(e) => actions.nodeDown(e, t)}
       onDoubleClick={(e) => {
@@ -523,10 +773,10 @@ const NodeView = memo(function NodeView({ t, cls, hideText, actions, badge }: { 
       }}
       onContextMenu={(e) => actions.termMenu(e, t)}
     >
-      <rect className="node-box" width={w} height={h} rx={t.type === 'property' ? h / 2 : t.type === 'instance' ? 2 : 9} style={{ fill: `var(--nc-${color}-fill)`, stroke: `var(--nc-${color}-stroke)` }} />
+      <NodeShape t={t} ns={ns} w={w} h={h} paintStyle={{ fill, stroke }} />
       {!hideText && (
         <text className="node-text" x={w / 2} y={h / 2}>
-          {t.name ? displayName(nodeLabel(t)) : 'Unnamed'}
+          {t.name ? displayName(label, t) : 'Unnamed'}
         </text>
       )}
       {badge && (
@@ -546,6 +796,9 @@ const NodeView = memo(function NodeView({ t, cls, hideText, actions, badge }: { 
   );
 });
 
+/** Labels that mean class membership when typed on a line between an individual and a class. */
+const INSTANCE_OF_WORDS = /^(is )?(an? )?instance of$/i;
+
 /** Text box placed over the term or relation label being renamed. */
 function InlineEditor({ byId }: { byId: Map<string, Term> }) {
   const editing = useStore((s) => s.editing)!;
@@ -563,7 +816,8 @@ function InlineEditor({ byId }: { byId: Map<string, Term> }) {
     const a = byId.get(rel.from);
     const b = byId.get(rel.to);
     const resolved = resolveModel(view).relations;
-    if (a && b) at = edgeGeom(a, b, edgeOffsets(resolved).get(rel.id) ?? 0, resolved.find((r) => r.id === rel.id)?.kind ?? rel.kind).label;
+    // Where its label is drawn, so that the box opens on the words it replaces.
+    if (a && b) at = labelSpots.get(rel.id) ?? edgeGeom(a, b, edgeOffsets(resolved).get(rel.id) ?? 0, resolved.find((r) => r.id === rel.id)?.kind ?? rel.kind).label;
   }
   if (!at || (!term && !rel)) return null;
 
@@ -575,24 +829,31 @@ function InlineEditor({ byId }: { byId: Map<string, Term> }) {
     // words do too: "broader", "related", "exact match".
     const exact = props.find((p) => p.id.toLowerCase() === text.toLowerCase());
     const std = exact ?? (model.mode === 'skos' ? suggestFor(model, text) : undefined);
+    // In an ontology, naming a line from an individual to a class "is instance of" makes it one.
+    const membership = !!rel && save && model.mode !== 'skos' && !exact && INSTANCE_OF_WORDS.test(text) && !relChoices(model, rel).find((c) => c.value === 'instanceOf')!.disabled;
     st().setEditing(null);
     if (term) {
       if (editing.isNew && (!save || !text)) st().discardLast();
       else if (save && text !== term.name) st().updateTerm(term.id, { name: text }, !editing.isNew);
     } else if (rel) {
       if (editing.isNew && !save) st().discardLast();
-      else if (save && std?.hierarchical && !exact) st().updateRelation(rel.id, { label: '', kind: 'generalization', predicate: undefined }, !editing.isNew);
+      else if (membership) {
+        // Refused (it is already stated): a line just drawn for it goes again.
+        if (!st().setRelChoice(rel.id, 'instanceOf', !editing.isNew) && editing.isNew) st().discardLast();
+      } else if (save && std?.hierarchical && !exact) st().updateRelation(rel.id, { label: '', kind: 'generalization', predicate: undefined }, !editing.isNew);
       else if (save && std) st().updateRelation(rel.id, { label: '', predicate: std.id }, !editing.isNew);
       else if (save && text !== rel.label) st().updateRelation(rel.id, { label: text }, !editing.isNew);
     }
   };
 
   const own = model.mode === 'skos' ? [] : objectProperties(model);
-  const suggest = !term && props.length + own.length > 0;
+  const canBeInstanceOf = !!rel && model.mode !== 'skos' && !relChoices(model, rel).find((c) => c.value === 'instanceOf')!.disabled;
+  const suggest = !term && props.length + own.length + Number(canBeInstanceOf) > 0;
   return (
     <>
       {suggest && (
         <datalist id="std-props">
+          {canBeInstanceOf && <option value={INSTANCE_OF} />}
           {/* The object properties already in the model come first: reusing one is the common case. */}
           {own.map((p) => (
             <option key={p.key} value={p.name} />

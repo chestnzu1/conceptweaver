@@ -1,6 +1,8 @@
-import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, objectProperties, propKey, propLinks, wouldCycle } from './props';
+import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, isInstanceOf, objectProperties, propKey, propLinks, wouldCycle } from './props';
 import { reason } from './reasoner';
-import { DATATYPES, isLang, newRelation, type DataValue, type Model, type PropLink, type Term, type TermType } from './types';
+import { outsideEnumeration } from './datatypes';
+import { validateLiteral } from './literals';
+import { DATATYPES, INSTANCE_OF, isLang, newRelation, newTerm, type DataValue, type Model, type PropLink, type Term, type TermType } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -63,6 +65,9 @@ export function addLink(model: Model, id: string, other: string, kind: LinkKind)
   if (opposite && linkedTerms(on, id, opposite).some((x) => x.id === other)) {
     return refuse(`${q(a.name)} is stated to be ${LINKS[opposite].phrase} ${q(b.name)}. Both cannot hold; remove that statement first.`);
   }
+  // Two members of an enumeration whose members are declared all different are different, each from the other.
+  const apart = kind === 'sameAs' ? model.terms.find((t) => isEnumeration(t) && t.allDifferent && t.oneOf!.includes(id) && t.oneOf!.includes(other)) : undefined;
+  if (apart) return refuse(`${q(a.name)} and ${q(b.name)} are members of ${q(apart.name)}, whose members are declared all different. Both cannot hold; take that declaration off the class first.`);
   let note: string | undefined;
   if (kind === 'disjointWith' && (wouldCycle(on, id, other) || wouldCycle(on, other, id))) {
     note = `${q(a.name)} and ${q(b.name)} are a kind of one another, so the more specific one can now have no members. Validation will list it.`;
@@ -111,6 +116,32 @@ export function addIsA(model: Model, id: string, superId: string): Edit {
 export function removeIsA(model: Model, id: string, superId: string): Model {
   const stated = new Set(resolveModel(model).relations.filter((r) => r.kind === 'generalization' && r.from === id && r.to === superId).map((r) => r.id));
   return stated.size ? { ...model, relations: model.relations.filter((r) => !stated.has(r.id)) } : model;
+}
+
+/**
+ * Makes a drawn relationship say that an individual is an instance of a class (rdf:type). It has
+ * to join an individual and a class, and is pointed from the individual to the class whichever
+ * way it was drawn. A membership that is already stated is not stated twice.
+ */
+export function makeInstanceOf(model: Model, relId: string): Edit {
+  const rel = model.relations.find((r) => r.id === relId);
+  const a = model.terms.find((t) => t.id === rel?.from);
+  const b = model.terms.find((t) => t.id === rel?.to);
+  if (!rel || !a || !b) return refuse('That relationship no longer exists.');
+  if (model.mode === 'skos') return refuse(`A concept scheme has no individuals, so nothing in it can be “${INSTANCE_OF}”.`);
+  const [ind, cls] = a.type === 'instance' && b.type === 'concept' ? [a, b] : a.type === 'concept' && b.type === 'instance' ? [b, a] : [];
+  if (!ind || !cls) return refuse(`“${INSTANCE_OF}” joins an individual and a class. ${q(a.name || 'Unnamed')} is ${a.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[a.type]} and ${q(b.name || 'Unnamed')} is ${b.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[b.type]}.`);
+  if (model.relations.some((r) => r.id !== rel.id && r.from === ind.id && r.to === cls.id && isInstanceOf(model, r))) {
+    return refuse(`${q(ind.name || 'Unnamed')} is already stated to be an instance of ${q(cls.name || 'Unnamed')}.`);
+  }
+  const reversed = rel.from !== ind.id;
+  // Nothing of what it was before applies to a membership: no name, no standard property, no quantifier, no cardinalities.
+  const { plain: _plain, predicate: _predicate, restriction: _restriction, restrictionN: _n, more: _more, ...base } = rel;
+  const next = { ...base, from: ind.id, to: cls.id, label: '', kind: 'generalization' as const, fromCard: '', toCard: '' };
+  return {
+    model: { ...model, relations: model.relations.map((r) => (r.id === rel.id ? next : r)) },
+    ...(reversed ? { note: `“${INSTANCE_OF}” always points from the individual to the class, so the relationship was turned around: ${q(ind.name || 'Unnamed')} → ${q(cls.name || 'Unnamed')}.` } : {}),
+  };
 }
 
 // ---------------------------------------------------------------- object properties
@@ -254,32 +285,7 @@ export function removeFromDomain(model: Model, classId: string, p: { ref: string
 
 // ---------------------------------------------------------------- individuals
 
-const INTEGER = /^[+-]?\d+$/;
-const DECIMAL = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
-const DOUBLE = /^([+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?|[+-]?INF|NaN)$/;
-const ZONE = '(Z|[+-]\\d{2}:\\d{2})?';
-const DATE = '-?\\d{4,}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])';
-const TIME = '([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?';
-const SHAPES: Record<string, { test: RegExp; example: string; what: string }> = {
-  'xsd:integer': { test: INTEGER, example: '42', what: 'a whole number' },
-  'xsd:decimal': { test: DECIMAL, example: '3.14', what: 'a decimal number' },
-  'xsd:double': { test: DOUBLE, example: '6.02e23', what: 'a number' },
-  'xsd:boolean': { test: /^(true|false|1|0)$/, example: 'true', what: 'true or false' },
-  'xsd:date': { test: new RegExp(`^${DATE}${ZONE}$`), example: '2024-05-17', what: 'a date' },
-  'xsd:dateTime': { test: new RegExp(`^${DATE}T${TIME}${ZONE}$`), example: '2024-05-17T09:30:00', what: 'a date and time' },
-  'xsd:time': { test: new RegExp(`^${TIME}${ZONE}$`), example: '09:30:00', what: 'a time' },
-  'xsd:gYear': { test: new RegExp(`^-?\\d{4,}${ZONE}$`), example: '1999', what: 'a year' },
-  'xsd:duration': { test: /^-?P(?=.)(\d+Y)?(\d+M)?(\d+D)?(T(?=.)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$/, example: 'PT2H30M', what: 'a duration' },
-  'xsd:anyURI': { test: /^[^\s<>"{}|\\^`]+$/, example: 'https://example.org/page', what: 'a link without spaces' },
-};
-
-/** What is wrong with a value as a literal of the datatype, in words; undefined when it is fine. */
-export function validateLiteral(value: string, datatype?: string): string | undefined {
-  if (!value.trim()) return 'Enter a value.';
-  const shape = datatype ? SHAPES[datatype] : undefined;
-  if (shape && !shape.test.test(value.trim())) return `${q(value.trim())} is not ${shape.what} (${datatype}). It should look like ${shape.example}.`;
-  return undefined;
-}
+export { validateLiteral } from './literals';
 
 /** The datatype a value is written with: its own if it has one, or else the range of its property. */
 export const datatypeOf = (model: Model, v: DataValue): string | undefined => v.dt ?? model.terms.find((t) => t.id === v.prop)?.range;
@@ -298,6 +304,9 @@ export function addValue(model: Model, id: string, draft: { prop: string; value:
   if (bad) return refuse(bad);
   if (lang && !isLang(lang)) return refuse(`${q(lang)} is not a language code. Use one like en, nl or zh.`);
   if (lang && prop.range && prop.range !== 'rdf:langString' && prop.range !== 'xsd:string') return refuse(`A language only goes with text. ${q(prop.name)} holds ${DATATYPES.find((d) => d.id === prop.range)?.label ?? prop.range} values.`);
+  // Where the property's values are an enumerated datatype, the value has to be one it lists.
+  const outside = outsideEnumeration(model, prop.range, { value, lang });
+  if (outside) return refuse(outside);
   const next: DataValue = { prop: prop.id, value, ...(lang ? { lang } : {}) };
   const have = ind.values ?? [];
   if (have.some((v) => sameValue(v, next))) return refuse(`${q(ind.name)} already has that value for ${q(prop.name)}.`);
@@ -329,3 +338,92 @@ export function addFact(model: Model, id: string, key: string, other: string): E
   const self = id === other && prop.chars.includes('irreflexive') ? `${q(prop.name)} is irreflexive, so nothing can be related to itself by it. Validation will list this.` : undefined;
   return { model: { ...model, relations: [...model.relations, newRelation({ from: id, to: other, label: prop.name })] }, note: self };
 }
+
+// ---------------------------------------------------------------- enumeration classes
+
+/**
+ * An enumeration is a class defined by listing its members: TrafficLightColor is exactly
+ * { Red, Yellow, Green } (owl:equivalentClass with owl:oneOf). It is a class like any other,
+ * with this one more thing said about it. The members are individuals of the model, by reference:
+ * one individual can be a member of several enumerations.
+ */
+export const isEnumeration = (t: Pick<Term, 'type' | 'oneOf'>): boolean => t.type === 'concept' && t.oneOf !== undefined;
+
+/** Makes a class an enumeration (with no members yet), or an ordinary class again. Nothing else about it changes. */
+export function setEnumeration(model: Model, classId: string, on: boolean): Edit {
+  const c = model.terms.find((t) => t.id === classId);
+  if (!c || c.type !== 'concept') return { error: 'Only a class can be defined as an enumeration.' };
+  if (c.external !== undefined) return { error: 'This class belongs to another ontology, so how it is defined is not this model’s to say.' };
+  if (on === (c.oneOf !== undefined)) return { model };
+  const { oneOf: members, allDifferent: _, ...rest } = c;
+  return {
+    model: { ...model, terms: model.terms.map((t) => (t.id === classId ? (on ? { ...c, oneOf: [] } : rest) : t)) },
+    ...(!on && members?.length ? { note: `“${c.name}” is an ordinary class again. Its ${members.length} former member${members.length === 1 ? ' is' : 's are'} still in the model, as individuals.` } : {}),
+  };
+}
+
+/** Lists an individual as a member of an enumeration. Refused, with the reason, if it is not an individual or is listed already. */
+export function addEnumMember(model: Model, classId: string, memberId: string): Edit {
+  const c = model.terms.find((t) => t.id === classId);
+  const member = model.terms.find((t) => t.id === memberId);
+  if (!c || !member) return { error: 'That class or individual no longer exists.' };
+  if (!isEnumeration(c)) return { error: `“${c.name}” is not defined as an enumeration.` };
+  if (member.type !== 'instance') return { error: `“${member.name || 'Unnamed'}” is a ${member.type === 'concept' ? 'class' : 'data property'}. An enumeration lists individuals.` };
+  if (c.oneOf!.includes(memberId)) return { error: `“${member.name || 'Unnamed'}” is already a member of “${c.name}”.` };
+  // Two members with one IRI would be one individual listed twice.
+  const twin = member.iri && c.oneOf!.map((id) => model.terms.find((t) => t.id === id)).find((t) => t?.iri === member.iri);
+  if (twin) return { error: `“${twin.name}” is already a member and has the same IRI <${member.iri}>.` };
+  const same = c.allDifferent ? linkedTerms(model, memberId, 'sameAs').find((x) => c.oneOf!.includes(x.id)) : undefined;
+  if (same) return { error: `“${member.name || 'Unnamed'}” is stated to be the same as “${model.terms.find((t) => t.id === same.id)?.name}”, a member already, and the members of “${c.name}” are declared all different.` };
+  return { model: { ...model, terms: model.terms.map((t) => (t.id === classId ? { ...c, oneOf: [...c.oneOf!, memberId] } : t)) } };
+}
+
+/** Takes an individual off the list of an enumeration. The individual itself stays in the model. */
+export function removeEnumMember(model: Model, classId: string, memberId: string): Model {
+  return { ...model, terms: model.terms.map((t) => (t.id === classId && t.oneOf?.includes(memberId) ? { ...t, oneOf: t.oneOf.filter((id) => id !== memberId) } : t)) };
+}
+
+/** Makes a new individual and lists it as a member, in one step. It is placed beside the class on the canvas. */
+export function createEnumMember(model: Model, classId: string, name: string): Edit & { id?: string } {
+  const c = model.terms.find((t) => t.id === classId);
+  const clean = name.trim();
+  if (!c || !isEnumeration(c)) return { error: 'That class is not defined as an enumeration.' };
+  if (!clean) return { error: 'The new individual needs a name.' };
+  const same = model.terms.find((t) => t.type === 'instance' && t.name.trim().toLowerCase() === clean.toLowerCase());
+  if (same) return c.oneOf!.includes(same.id) ? { error: `“${same.name}” is already a member of “${c.name}”.` } : { ...addEnumMember(model, classId, same.id), id: same.id };
+  const n = c.oneOf!.length;
+  const member = newTerm({ name: clean, type: 'instance', x: c.x + (n % 4) * 150 - 225, y: c.y + 110 + Math.floor(n / 4) * 70 });
+  return { model: { ...model, terms: [...model.terms.map((t) => (t.id === classId ? { ...c, oneOf: [...c.oneOf!, member.id] } : t)), member] }, id: member.id };
+}
+
+/** States, or stops stating, that the members of an enumeration are all different individuals (owl:AllDifferent). */
+export function setAllDifferent(model: Model, classId: string, on: boolean): Model {
+  return {
+    ...model,
+    terms: model.terms.map((t) => {
+      if (t.id !== classId || !isEnumeration(t) || !!t.allDifferent === on) return t;
+      const { allDifferent: _, ...rest } = t;
+      return on ? { ...t, allDifferent: true } : rest;
+    }),
+  };
+}
+
+/** The same from the editor: refused, with the reason, while two of the members are stated to be one and the same individual. */
+export function declareAllDifferent(model: Model, classId: string, on: boolean): Edit {
+  const c = model.terms.find((t) => t.id === classId);
+  for (const id of on ? (c?.oneOf ?? []) : []) {
+    const same = linkedTerms(model, id, 'sameAs').find((x) => c!.oneOf!.includes(x.id));
+    const name = (x: string) => `“${model.terms.find((t) => t.id === x)?.name || 'Unnamed'}”`;
+    if (same) return { error: `${name(id)} and ${name(same.id)} are stated to be the same individual, so the members of “${c!.name}” cannot all be different. Remove that statement first.` };
+  }
+  return { model: setAllDifferent(model, classId, on) };
+}
+
+/** The members of an enumeration that are in the model, in the order listed. */
+export const enumMembers = (model: Model, c: Pick<Term, 'oneOf'>): Term[] => (c.oneOf ?? []).map((id) => model.terms.find((t) => t.id === id)).filter((t): t is Term => !!t);
+
+/** The class expression an enumeration stands for, in Manchester syntax: { Red, Yellow, Green }. */
+export const enumerationExpression = (model: Model, c: Pick<Term, 'oneOf'>): string => {
+  const names = enumMembers(model, c).map((t) => t.name || 'Unnamed');
+  return names.length ? `{ ${names.join(', ')} }` : '{ }';
+};

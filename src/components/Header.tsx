@@ -5,20 +5,11 @@ import { sampleModel, skosSample } from '../model/sample';
 import { universitySample } from '../model/sampleUniversity';
 import { stressModel } from '../model/stress';
 import { stable } from '../model/stable';
-import { confirmDiscard, isDirty, newModel, useStore, type View } from '../model/store';
+import { configOf, supports, VIEW_LABEL, viewFor } from '../model/modelTypes';
+import { confirmDiscard, isDirty, useStore } from '../model/store';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { CommitInput } from './fields';
-
-const VIEWS: { value: View; label: string }[] = [
-  { value: 'graph', label: 'Graph' },
-  { value: 'table', label: 'Entities' },
-  { value: 'hierarchy', label: 'Hierarchy' },
-  { value: 'checks', label: 'Validation' },
-  { value: 'align', label: 'Align' },
-  { value: 'rdf', label: 'RDF' },
-  { value: 'sparql', label: 'SPARQL' },
-  { value: 'vocab', label: 'Vocabulary' },
-];
+import { Icon } from './Icon';
 
 export async function openFile(file: File) {
   const st = useStore.getState();
@@ -34,7 +25,8 @@ export async function openFile(file: File) {
 
 export function Header() {
   const model = useStore((s) => s.model);
-  const view = useStore((s) => s.view);
+  // The view in force: the one asked for, where the type of model has it.
+  const view = viewFor(model, useStore((s) => s.view));
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const theme = useStore((s) => s.theme);
@@ -49,6 +41,8 @@ export function Header() {
   // The count comes a moment after an edit, so that checking a large model never holds up the edit itself.
   const [problems, setProblems] = useState(0);
   useEffect(() => {
+    // Nothing is checked for a type of model that has no validation.
+    if (!supports(meaning, 'validation')) return setProblems(0);
     const id = setTimeout(() => setProblems([...owlFindings(meaning).findings, ...qualityFindings(meaning).findings].filter((f) => f.severity !== 'info').length), meaning.terms.length > 300 ? 400 : 0);
     return () => clearTimeout(id);
   }, [meaning]);
@@ -59,7 +53,7 @@ export function Header() {
   };
 
   const fileMenu: MenuItem[] = [
-    { label: 'New model', onClick: () => confirmDiscard() && newModel() },
+    { label: 'New model…', onClick: () => confirmDiscard() && st().setDialog('new'), hint: 'choose its type' },
     { label: 'Open a file…', onClick: () => confirmDiscard() && fileRef.current?.click(), hint: 'JSON, Turtle' },
     { label: 'My Models…', onClick: () => st().setDialog('library'), hint: 'saved in this browser' },
     { label: 'Ontology settings…', onClick: () => st().setDialog('settings'), hint: 'IRI, prefixes' },
@@ -73,6 +67,7 @@ export function Header() {
     { heading: 'Files' },
     { label: 'Download as JSON', onClick: () => exportModel('json') },
     { heading: 'Export' },
+    { label: 'Interactive page (HTML)', onClick: () => exportModel('html'), hint: 'opens anywhere' },
     { label: 'SKOS (Turtle)', onClick: () => exportModel('skos'), hint: model.mode === 'skos' ? '' : 'converted' },
     { label: 'OWL (Turtle)', onClick: () => exportModel('owl'), hint: model.mode === 'ontology' ? '' : 'converted' },
     { label: 'JSON-LD', onClick: () => exportModel('jsonld') },
@@ -88,63 +83,67 @@ export function Header() {
 
   return (
     <header className="header">
-      <div className="brand" aria-hidden="true">
-        <svg viewBox="0 0 32 32" width="22" height="22">
-          <rect width="32" height="32" rx="7" fill="var(--accent)" />
-          <circle cx="10" cy="11" r="4" fill="var(--on-accent)" />
-          <circle cx="22" cy="21" r="4" fill="var(--on-accent)" />
-          <path d="M13 13.5l6 5" stroke="var(--on-accent)" strokeWidth="2" />
-        </svg>
+      <div className="header-doc">
+        <div className="brand" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="22" height="22">
+            <rect width="32" height="32" rx="7" fill="var(--accent)" />
+            <circle cx="10" cy="11" r="4" fill="var(--on-accent)" />
+            <circle cx="22" cy="21" r="4" fill="var(--on-accent)" />
+            <path d="M13 13.5l6 5" stroke="var(--on-accent)" strokeWidth="2" />
+          </svg>
+        </div>
+        <CommitInput
+          className="model-name"
+          aria-label="Model name"
+          value={model.name}
+          onCommit={(name) => st().apply((m) => ({ ...m, name: name.trim() || 'Untitled model' }))}
+        />
+        <span className={'save-state ' + (docId ? (dirty ? 'dirty' : 'saved') : 'none')} role="status" title={docId ? (dirty ? 'This model has changes that are not saved to My Models yet' : 'Everything is saved to My Models in this browser') : 'This model is not saved to My Models. It is kept as a working copy in this browser until you replace it.'}>
+          {docId ? (dirty ? 'Unsaved changes' : 'Saved') : 'Not in My Models'}
+        </span>
+        <button className="btn" title="Save to My Models in this browser (Ctrl+S)" disabled={!!docId && !dirty} onClick={() => void st().saveToLibrary()}>
+          Save
+        </button>
+        <button className="btn" onClick={() => st().setDialog('library')}>
+          My Models
+        </button>
+        <button className="btn" aria-haspopup="menu" onClick={(e) => dropdown(e, fileMenu)}>
+          File <Icon name="chevronDown" size={14} />
+        </button>
       </div>
-      <CommitInput
-        className="model-name"
-        aria-label="Model name"
-        value={model.name}
-        onCommit={(name) => st().apply((m) => ({ ...m, name: name.trim() || 'Untitled model' }))}
-      />
-      <span className={'save-state ' + (docId ? (dirty ? 'dirty' : 'saved') : 'none')} role="status" title={docId ? (dirty ? 'This model has changes that are not saved to My Models yet' : 'Everything is saved to My Models in this browser') : 'This model is not saved to My Models. It is kept as a working copy in this browser until you replace it.'}>
-        {docId ? (dirty ? 'Unsaved changes' : 'Saved') : 'Not in My Models'}
-      </span>
-      <button className="btn" title="Save to My Models in this browser (Ctrl+S)" disabled={!!docId && !dirty} onClick={() => void st().saveToLibrary()}>
-        Save
-      </button>
-      <button className="btn" onClick={() => st().setDialog('library')}>
-        My Models
-      </button>
-      <button className="btn" aria-haspopup="menu" onClick={(e) => dropdown(e, fileMenu)}>
-        File ▾
-      </button>
 
       <nav className="tabs" role="tablist" aria-label="View">
-        {VIEWS.map((v) => (
-          <button key={v.value} role="tab" aria-selected={view === v.value} className={view === v.value ? 'on' : ''} onClick={() => st().setView(v.value)}>
-            {v.label}
-            {v.value === 'checks' && problems > 0 && <span className="badge">{problems}</span>}
+        {/* The functions the type of model has, and no others. */}
+        {configOf(model).views.map((v) => (
+          <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} onClick={() => st().setView(v)}>
+            {VIEW_LABEL[v]}
+            {v === 'checks' && problems > 0 && <span className="badge">{problems}</span>}
           </button>
         ))}
       </nav>
 
-      <span className="spacer" />
-      <button className="btn" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={() => st().undo()}>
-        Undo
-      </button>
-      <button className="btn" title="Redo (Ctrl+Y)" disabled={!canRedo} onClick={() => st().redo()}>
-        Redo
-      </button>
-      <button className="btn" aria-haspopup="menu" onClick={(e) => dropdown(e, arrangeMenu)}>
-        Arrange ▾
-      </button>
-      <button className="btn" onClick={() => st().setDialog('bulk')}>
-        Bulk add
-      </button>
-      <button
-        className="btn icon"
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        aria-label="Toggle theme"
-        onClick={() => st().setTheme(theme === 'dark' ? 'light' : 'dark')}
-      >
-        {theme === 'dark' ? '☀' : '☾'}
-      </button>
+      <div className="header-tools">
+        <button className="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!canUndo} onClick={() => st().undo()}>
+          <Icon name="undo" />
+        </button>
+        <button className="btn icon" title="Redo (Ctrl+Y)" aria-label="Redo" disabled={!canRedo} onClick={() => st().redo()}>
+          <Icon name="redo" />
+        </button>
+        <button className="btn" aria-haspopup="menu" onClick={(e) => dropdown(e, arrangeMenu)}>
+          Arrange <Icon name="chevronDown" size={14} />
+        </button>
+        <button className="btn" onClick={() => st().setDialog('bulk')}>
+          Bulk add
+        </button>
+        <button
+          className="btn icon"
+          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          aria-label="Toggle theme"
+          onClick={() => st().setTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+        </button>
+      </div>
 
       <input
         ref={fileRef}

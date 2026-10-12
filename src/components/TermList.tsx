@@ -1,27 +1,177 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import { compactIri } from '../model/prefixes';
 import { stable } from '../model/stable';
-import { useStore } from '../model/store';
+import { SIDEBAR_WIDTH, useStore } from '../model/store';
 import { ancestorsOf, classTree, defaultOpen, matchingClasses, ROOT, treeRows } from '../model/tree';
 import type { Term, TermType } from '../model/types';
+import { Disclosure, Icon } from './Icon';
+import { configOf } from '../model/modelTypes';
 
 /** Which classes are expanded. Kept outside the component so that it survives switching views. */
 let remembered: { seq: number; open: Set<string> } | undefined;
+/** Which of its lists the sidebar shows. Kept here for the same reason: folded away and opened again, it is where it was. */
+let rememberedType: TermType = 'concept';
 
 /**
- * The left sidebar: the class hierarchy as a collapsible tree under owl:Thing, with search, and
- * plain lists of the data properties and individuals behind the other two tabs.
+ * The left sidebar, or the strip that is left of it when it is folded away to make room for the
+ * canvas or a table. Folded away it does no work at all: the hierarchy is not built until it is opened.
  */
 export function TermList() {
+  const hidden = useStore((s) => s.sidebarHidden);
+  const aside = useRef<HTMLElement>(null);
+  if (hidden) return <SidebarRail />;
+  return (
+    <>
+      <TermListOpen asideRef={aside} />
+      <SidebarResizer asideRef={aside} />
+    </>
+  );
+}
+
+/**
+ * Makes a change that moves the left edge of the canvas, and keeps the graph where it is on the
+ * screen meanwhile: room the sidebar gives up or takes is room at that edge, not a push sideways.
+ */
+function holdingGraph(change: () => void) {
+  const stage = document.querySelector('.stage');
+  const before = stage?.getBoundingClientRect().left;
+  change();
+  const after = stage?.getBoundingClientRect().left;
+  if (before === undefined || after === undefined || before === after) return;
+  const { vp, setVp } = useStore.getState();
+  setVp({ ...vp, x: vp.x + before - after });
+}
+
+/** Folds the sidebar away, or opens it. */
+const showSidebar = (shown: boolean) => holdingGraph(() => flushSync(() => useStore.getState().setSidebarHidden(!shown)));
+
+/** The widest the sidebar can be in this window: it never takes more than half of it. */
+const widest = () => Math.max(SIDEBAR_WIDTH.min, Math.min(SIDEBAR_WIDTH.max, Math.round(window.innerWidth / 2)));
+
+/**
+ * The edge between the sidebar and the rest. Dragged, it makes the sidebar wider or narrower;
+ * double-clicked, as wide as its longest name. With the keyboard: the arrow keys, Home and End, and Enter to fit.
+ */
+function SidebarResizer({ asideRef }: { asideRef: RefObject<HTMLElement | null> }) {
+  const width = useStore((s) => s.sidebarWidth);
+  const [dragging, setDragging] = useState(false);
+  const from = useRef<{ x: number; width: number } | null>(null);
+  // While the edge is dragged the width is put on the element itself. The store is told when it is
+  // let go, so the lists are drawn again once and not at every step.
+  const show = (to: number): number => {
+    const w = Math.round(Math.min(widest(), Math.max(SIDEBAR_WIDTH.min, to)));
+    const el = asideRef.current;
+    if (el) holdingGraph(() => (el.style.width = `${w}px`));
+    return w;
+  };
+  const set = (to: number) => useStore.getState().setSidebarWidth(show(to));
+  const now = () => asideRef.current?.getBoundingClientRect().width ?? width;
+  const fit = () => {
+    const el = asideRef.current;
+    if (!el) return;
+    const left = el.getBoundingClientRect().left;
+    let need = 0;
+    // A name that is cut short still knows how long it is.
+    for (const name of el.querySelectorAll<HTMLElement>('li .name')) {
+      const tags = [...(name.parentElement?.querySelectorAll<HTMLElement>('.tag') ?? [])].reduce((sum, t) => sum + t.offsetWidth + 8, 0);
+      need = Math.max(need, name.getBoundingClientRect().left - left + name.scrollWidth + tags);
+    }
+    // The top of the tree fills its line, so it is its words that are measured.
+    for (const root of el.querySelectorAll<HTMLElement>('li .label.root')) {
+      const words = document.createRange();
+      words.selectNodeContents(root);
+      need = Math.max(need, words.getBoundingClientRect().right - left);
+    }
+    const list = el.querySelector('ul');
+    if (need) set(Math.ceil(need) + 18 + (list ? list.offsetWidth - list.clientWidth : 0));
+  };
+  return (
+    <div
+      className={'sidebar-resizer' + (dragging ? ' dragging' : '')}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Width of the sidebar"
+      aria-valuenow={width}
+      aria-valuemin={SIDEBAR_WIDTH.min}
+      aria-valuemax={SIDEBAR_WIDTH.max}
+      tabIndex={0}
+      title="Drag to make the sidebar wider or narrower. Double-click to fit it to the names."
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        from.current = { x: e.clientX, width: now() };
+        setDragging(true);
+      }}
+      onPointerMove={(e) => {
+        if (from.current) show(from.current.width + e.clientX - from.current.x);
+      }}
+      onPointerUp={(e) => {
+        if (!from.current) return;
+        set(from.current.width + e.clientX - from.current.x);
+        from.current = null;
+        setDragging(false);
+      }}
+      onPointerCancel={() => {
+        if (!from.current) return;
+        set(now());
+        from.current = null;
+        setDragging(false);
+      }}
+      onDoubleClick={fit}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 64 : 16;
+        if (e.key === 'ArrowLeft') set(now() - step);
+        else if (e.key === 'ArrowRight') set(now() + step);
+        else if (e.key === 'Home') set(SIDEBAR_WIDTH.min);
+        else if (e.key === 'End') set(SIDEBAR_WIDTH.max);
+        else if (e.key === 'Enter') fit();
+        else return;
+        e.preventDefault();
+      }}
+    />
+  );
+}
+
+function SidebarRail() {
+  const skos = useStore((s) => s.model.mode === 'skos');
+  // A search goes on dimming the canvas while the box it was typed in is out of sight; the strip says so.
+  const filter = useStore((s) => s.filter.trim());
+  const title = `Show the sidebar: the hierarchy and the lists of ${skos ? 'concepts' : 'entities'}` + (filter ? `. A search is on: “${filter}”` : '');
+  return (
+    <aside className="panel term-list rail">
+      <button className="rail-open" title={title} aria-label="Show the sidebar" aria-expanded={false} onClick={() => showSidebar(true)}>
+        <Icon name="sidebarOpen" />
+        <span aria-hidden="true">{skos ? 'Concepts' : 'Entities'}</span>
+        {filter && <span className="rail-mark" role="img" aria-label="A search is on" />}
+      </button>
+    </aside>
+  );
+}
+
+/**
+ * The sidebar itself: the class hierarchy as a collapsible tree under owl:Thing, with search, and
+ * plain lists of the data properties and individuals behind the other two tabs.
+ */
+function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> }) {
+  const width = useStore((s) => s.sidebarWidth);
   // Names, colours and the hierarchy do not change while terms are dragged about, so neither does this.
   const model = stable(useStore((s) => s.model));
   const selected = useStore((s) => s.sel.terms);
   const filter = useStore((s) => s.filter);
   const setFilter = useStore((s) => s.setFilter);
   const docSeq = useStore((s) => s.docSeq);
-  const [type, setType] = useState<TermType>('concept');
+  const config = configOf(model);
+  const [wanted, setWanted] = useState<TermType>(rememberedType);
+  const setType = (t: TermType) => {
+    rememberedType = t;
+    setWanted(t);
+  };
+  // The kinds of term the type of model has; where it has one kind, every term is of it.
+  const type = config.termTypes.includes(wanted) ? wanted : config.termTypes[0];
   const skos = model.mode === 'skos';
-  const count = (t: TermType) => model.terms.filter((x) => x.type === t).length;
+  const count = (t: TermType) => model.terms.filter((x) => config.termTypes.length < 2 || x.type === t).length;
 
   const tree = useMemo(() => classTree(model), [model]);
   // Expansion belongs to the model in the editor: another model starts from the default, an edit keeps what is open.
@@ -65,16 +215,15 @@ export function TermList() {
     if (!next.delete(id)) next.add(id);
     setOpen(next);
   };
-  const tabs: [TermType, string][] = [
-    ['concept', skos ? 'Concepts' : 'Classes'],
-    ['property', 'Properties'],
-    ['instance', 'Individuals'],
-  ];
+  const tabs: [TermType, string][] = config.termTypes.map((t) => [t, config.termType[t].plural]);
 
   return (
-    <aside className="panel term-list">
+    <aside ref={asideRef} className="panel term-list" style={{ width }}>
       <div className="search">
         <input type="search" value={filter} placeholder={type === 'concept' ? 'Search by name or IRI' : 'Search'} aria-label="Search terms" onChange={(e) => setFilter(e.target.value)} />
+        <button className="btn icon ghost" title="Hide the sidebar, to make room. A strip stays at the edge to bring it back." aria-label="Hide the sidebar" aria-expanded={true} onClick={() => showSidebar(false)}>
+          <Icon name="sidebarClose" />
+        </button>
       </div>
       <div className="chips" role="tablist" aria-label="Kind of term">
         {tabs.map(([t, label]) => (
@@ -90,10 +239,10 @@ export function TermList() {
             <span>{searching ? `${matches.size} of ${tree.size} match` : `${tree.size} ${skos ? 'concepts' : 'classes'}`}</span>
             <span className="spacer" />
             <button className="mini" title="Expand all" aria-label="Expand all" disabled={searching} onClick={() => setOpen(new Set([ROOT, ...tree.children.keys()]))}>
-              ⊞
+              <Icon name="expandAll" size={14} />
             </button>
             <button className="mini" title="Collapse all" aria-label="Collapse all" disabled={searching} onClick={() => setOpen(new Set([ROOT]))}>
-              ⊟
+              <Icon name="collapseAll" size={14} />
             </button>
           </div>
           <ul className="class-tree" role="tree" aria-label={skos ? 'Concept hierarchy' : 'Class hierarchy'}>
@@ -176,7 +325,7 @@ const TreeRowView = memo(
       <li role="treeitem" aria-expanded={hasChildren ? open : undefined} aria-selected={selected} aria-level={depth + 1} className={'tree-line' + (selected ? ' on' : '') + (match ? ' match' : '')} style={{ paddingLeft: 4 + depth * 12 }}>
         {hasChildren ? (
           <button className="chev" aria-label={`${open ? 'Collapse' : 'Expand'} ${name}`} disabled={frozen} onClick={() => onToggle(id)}>
-            {open ? '▾' : '▸'}
+            <Disclosure open={open} />
           </button>
         ) : (
           <span className="chev" />

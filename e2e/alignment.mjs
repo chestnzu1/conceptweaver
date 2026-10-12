@@ -150,7 +150,7 @@ ok(flat(await mine.locator('li', { hasText: 'Actor' }).first().innerText()).incl
 await sub(/^Mappings/);
 let rows = await mappingRows();
 ok(rows.join(' | ') === ':Studio rdfs:subClassOf ppl:Organisation | :Person owl:equivalentClass ppl:Person | ppl:Performer rdfs:subClassOf :Actor | :Actor skos:closeMatch ppl:Performer', 'all mappings are listed in the direction stated, the reuse as superclass included: ' + rows.join(' | '));
-ok(flat(await v.locator('.check-result').innerText()).startsWith('Consistent: the reasoner finds no contradiction.') && flat(await v.locator('.check-result').innerText()).includes('together with the 1 it imports'), 'the reasoner checks them together with the imported ontology: consistent');
+ok(flat(await v.locator('.check-result').innerText()).startsWith('No contradiction found by the fast reasoner.') && flat(await v.locator('.check-result').innerText()).includes('together with the 1 it imports'), 'the reasoner checks them together with the imported ontology: consistent');
 // governance
 const row = await rowOf('owl:equivalentClass');
 await row.getByLabel(/^Status of/).selectOption('approved');
@@ -192,7 +192,7 @@ await supers.getByRole('combobox').fill('Person');
 await supers.locator('.subgraph-found button', { hasText: ':Person' }).first().dispatchEvent('pointerdown');
 await tab('Align');
 const res = flat(await v.locator('.check-result').innerText());
-ok(res.startsWith('Consistent, but 1 class can never have a member.') && res.includes('“Studio” can never have instances') && res.includes('“Organisation” is disjoint with “Person”'), 'a contradiction that only arises through the mappings and the imported ontology is found, with the reasoner’s justification');
+ok(res.startsWith('No contradiction found, but 1 class can never have a member.') && res.includes('“Studio” can never have instances') && res.includes('“Organisation” is disjoint with “Person”'), 'a contradiction that only arises through the mappings and the imported ontology is found, with the reasoner’s justification');
 await tab(/^Validation/);
 await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
 await page.locator('.validation').getByRole('button', { name: 'OWL', exact: true }).click();
@@ -200,7 +200,7 @@ await page.waitForFunction(() => /Unsatisfiable classes: 1/.test(document.queryS
 ok(true, 'the Validation tab reasons over the imports too and reports the same unsatisfiable class');
 await page.getByRole('button', { name: 'Undo' }).click();
 await tab('Align');
-ok(flat(await v.locator('.check-result').innerText()).startsWith('Consistent: the reasoner finds no contradiction.'), 'undoing that statement makes it consistent again');
+ok(flat(await v.locator('.check-result').innerText()).startsWith('No contradiction found by the fast reasoner.'), 'undoing that statement makes it consistent again');
 
 await sub('Suggestions');
 ok((await v.locator('.suggestions table').count()) === 0, 'suggestions are only looked for when asked');

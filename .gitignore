@@ -1,3 +1,7 @@
 node_modules
 dist
 e2e/shots
+
+# The OWL 2 DL reasoning service: fetched libraries and compiled classes
+reasoner/lib/
+reasoner/build/

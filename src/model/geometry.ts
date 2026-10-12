@@ -33,38 +33,122 @@ export function textWidth(s: string, font = NODE_FONT): number {
   return w;
 }
 
-/** Text drawn on a node: the name, and for a data property its datatype ("Release date : date"). */
-export function nodeLabel(t: Pick<Term, 'name' | 'type' | 'range'>): string {
-  const datatype = t.type === 'property' && t.range ? ` : ${t.range.split(':')[1]}` : '';
-  return (t.name || '') + datatype;
+/**
+ * What the graph style says about a node that changes its geometry: its shape, a size set by
+ * hand, the size and weight of its label, and words other than its name.
+ */
+export interface NodeLook {
+  shape?: 'rounded' | 'rectangle' | 'ellipse' | 'circle' | 'diamond' | 'hexagon';
+  width?: number;
+  height?: number;
+  fontSize?: number;
+  fontWeight?: number;
+  /** The words to draw in place of the name, such as the IRI. */
+  text?: string;
+  /** For a data property whose values are an enumerated datatype: what that datatype is called. */
+  datatype?: string;
 }
 
-export function nodeSize(t: Pick<Term, 'name' | 'type' | 'range'>): { w: number; h: number } {
-  const w = Math.min(NODE_MAX_W, Math.max(NODE_MIN_W, Math.ceil(textWidth(nodeLabel(t) || 'New term')) + 32));
-  return { w, h: NODE_H };
+type Sized = Pick<Term, 'name' | 'type' | 'range'>;
+let lookOf: (t: Sized) => NodeLook | undefined = () => undefined;
+
+/**
+ * Tells the geometry how the nodes of the graph on screen are drawn. There is one graph on
+ * screen, and everything that measures a node (edges, layout, fitting, the picture export) has to
+ * agree with what is drawn, so the canvas sets this once and they all read it. Without it a
+ * node is the standard box.
+ */
+export function setNodeLook(fn: ((t: Sized) => NodeLook | undefined) | null): void {
+  lookOf = fn ?? (() => undefined);
+}
+
+const fontOf = (look: NodeLook | undefined) => (look?.fontSize || look?.fontWeight ? `${look.fontWeight ?? 500} ${look.fontSize ?? 14}px system-ui, sans-serif` : NODE_FONT);
+
+/** Text drawn on a node: the name, and for a data property its datatype ("Release date : date"). */
+export function nodeLabel(t: Sized): string {
+  const look = lookOf(t);
+  // "date" for xsd:date; an enumerated datatype by its name, which only the model knows.
+  const range = t.type === 'property' && t.range ? (look?.datatype ?? (t.range.startsWith('enum:') ? 'enumeration' : t.range.split(':')[1])) : '';
+  return (look?.text ?? (t.name || '')) + (range ? ` : ${range}` : '');
+}
+
+export function nodeSize(t: Sized): { w: number; h: number } {
+  const look = lookOf(t);
+  const text = Math.ceil(textWidth(nodeLabel(t) || 'New term', fontOf(look)));
+  const line = Math.max(NODE_H, Math.round((look?.fontSize ?? 14) * 2.6));
+  // Room for the words inside each shape: a diamond or an ellipse is much narrower away from its middle.
+  let w = Math.min(NODE_MAX_W, Math.max(NODE_MIN_W, text + 32));
+  let h = line;
+  if (look?.shape === 'ellipse') [w, h] = [Math.round(w * 1.18) + 8, Math.round(line * 1.25)];
+  else if (look?.shape === 'circle') w = h = Math.min(150, Math.max(58, text + 26));
+  else if (look?.shape === 'diamond') [w, h] = [Math.min(NODE_MAX_W + 80, Math.round(text * 1.45) + 56), Math.round(line * 1.6)];
+  else if (look?.shape === 'hexagon') w = Math.min(NODE_MAX_W + 40, Math.max(NODE_MIN_W + 16, text + 58));
+  // A size set by hand wins; a circle stays round.
+  if (look?.width) w = look.width;
+  if (look?.height) h = look.height;
+  if (look?.shape === 'circle' && (look.width || look.height)) w = h = look.width ?? look.height!;
+  return { w, h };
+}
+
+/** How far in from its sides a hexagon's top and bottom edges start. */
+export const hexInset = (w: number, h: number) => Math.min(h * 0.32, w * 0.25);
+
+/** The width there is for words inside a node of this size and shape. */
+function innerWidth(look: NodeLook | undefined, w: number, h: number): number {
+  switch (look?.shape) {
+    case 'ellipse':
+      return w * 0.8;
+    case 'circle':
+      return w - 14;
+    case 'diamond':
+      return w * 0.62;
+    case 'hexagon':
+      return w - 2 * hexInset(w, h) - 6;
+    default:
+      return w - 28;
+  }
 }
 
 /** Name as drawn on the node: truncated with an ellipsis when it would overflow. */
-export function displayName(name: string): string {
-  const max = NODE_MAX_W - 28;
-  if (textWidth(name) <= max) return name;
+export function displayName(name: string, t?: Sized): string {
+  const look = t && lookOf(t);
+  const size = t && nodeSize(t);
+  const max = size ? Math.max(24, innerWidth(look, size.w, size.h)) : NODE_MAX_W - 28;
+  const font = fontOf(look);
+  if (textWidth(name, font) <= max) return name;
   let lo = 0;
   let hi = name.length;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (textWidth(name.slice(0, mid) + '…') <= max) lo = mid;
+    if (textWidth(name.slice(0, mid) + '…', font) <= max) lo = mid;
     else hi = mid - 1;
   }
   return name.slice(0, lo).trimEnd() + '…';
 }
 
-/** Point where the ray from the node's centre towards (tx, ty) leaves its box. */
+/** Point where the ray from the node's centre towards (tx, ty) leaves its outline, whatever its shape. */
 function boxExit(t: Term, tx: number, ty: number, gap = 3): Pt {
   const { w, h } = nodeSize(t);
   const dx = tx - t.x;
   const dy = ty - t.y;
   if (dx === 0 && dy === 0) return { x: t.x, y: t.y };
-  const s = Math.min(dx === 0 ? Infinity : (w / 2 + gap) / Math.abs(dx), dy === 0 ? Infinity : (h / 2 + gap) / Math.abs(dy));
+  const [a, b] = [w / 2 + gap, h / 2 + gap];
+  const [ax, ay] = [Math.abs(dx), Math.abs(dy)];
+  const box = Math.min(dx === 0 ? Infinity : a / ax, dy === 0 ? Infinity : b / ay);
+  let s = box;
+  switch (lookOf(t)?.shape) {
+    case 'ellipse':
+    case 'circle':
+      s = 1 / Math.hypot(dx / a, dy / b);
+      break;
+    case 'diamond':
+      s = 1 / (ax / a + ay / b);
+      break;
+    case 'hexagon':
+      // Flat on top and below, pointed at the sides: the nearer of the flat edge and the slanted one.
+      s = Math.min(box, a / (ax + (hexInset(w, h) / (h / 2)) * ay));
+      break;
+  }
   return { x: t.x + dx * s, y: t.y + dy * s };
 }
 
@@ -80,6 +164,8 @@ export interface EdgeGeom {
   label: Pt;
   fromCard: Pt;
   toCard: Pt;
+  /** The curve a straight or bent edge follows: its start, its control point and its end. A loop has none. */
+  curve?: [Pt, Pt, Pt];
 }
 
 const norm = (x: number, y: number): Pt => {
@@ -88,26 +174,33 @@ const norm = (x: number, y: number): Pt => {
 };
 const f = (n: number) => Math.round(n * 10) / 10;
 
-function arrowHead(tip: Pt, d: Pt, kind: RelKind): { points: string; inset: number } {
-  const len = kind === 'generalization' ? 13 : 9;
-  const half = kind === 'generalization' ? 6.5 : 4;
+/** How an edge ends: a filled head, a hollow one (as "is a" has by default), two open strokes, or nothing. */
+export type ArrowHead = 'filled' | 'hollow' | 'open' | 'none';
+
+function arrowHead(tip: Pt, d: Pt, head: ArrowHead): { points: string; inset: number } {
+  const big = head === 'hollow' || head === 'open';
+  const len = big ? 13 : 9;
+  const half = big ? 6.5 : 4;
   const bx = tip.x - d.x * len;
   const by = tip.y - d.y * len;
   const points = `${f(tip.x)},${f(tip.y)} ${f(bx - d.y * half)},${f(by + d.x * half)} ${f(bx + d.y * half)},${f(by - d.x * half)}`;
-  return { points, inset: kind === 'generalization' ? len : len - 3 };
+  // The line stops at the back of a hollow head, and runs to the tip where there is nothing to run into.
+  return { points, inset: head === 'hollow' ? len : head === 'filled' ? len - 3 : 0 };
 }
 
 /**
  * Geometry of a relation drawn from `a` to `b`. `offset` bends the edge sideways so that
- * several relations between the same two terms don't overlap.
+ * several relations between the same two terms don't overlap. The arrowhead follows the kind of
+ * relation ("is a" has a hollow one) unless one is asked for.
  */
-export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind): EdgeGeom {
+export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?: ArrowHead): EdgeGeom {
+  const how: ArrowHead = arrow ?? (kind === 'generalization' ? 'hollow' : 'filled');
   if (a.id === b.id) {
     const { w, h } = nodeSize(a);
     const size = 34 + Math.abs(offset) * 0.45;
     const p0 = { x: a.x + w / 2 - 26, y: a.y - h / 2 - 3 };
     const p1 = { x: a.x + w / 2 + 3, y: a.y - h / 2 + 12 };
-    const head = arrowHead(p1, { x: -1, y: 0 }, kind);
+    const head = arrowHead(p1, { x: -1, y: 0 }, how);
     const end = { x: p1.x + head.inset, y: p1.y };
     return {
       path: `M${f(p0.x)},${f(p0.y)} C${f(p0.x)},${f(p0.y - size)} ${f(end.x + size)},${f(end.y)} ${f(end.x)},${f(end.y)}`,
@@ -126,7 +219,7 @@ export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind): EdgeG
   const p1 = boxExit(b, c.x, c.y);
   const dEnd = norm(p1.x - c.x, p1.y - c.y);
   const dStart = norm(c.x - p0.x, c.y - p0.y);
-  const head = arrowHead(p1, dEnd, kind);
+  const head = arrowHead(p1, dEnd, how);
   const end = { x: p1.x - dEnd.x * head.inset, y: p1.y - dEnd.y * head.inset };
   const side = { x: -dEnd.y, y: dEnd.x };
   return {
@@ -135,11 +228,105 @@ export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind): EdgeG
     label: { x: 0.25 * p0.x + 0.5 * c.x + 0.25 * p1.x, y: 0.25 * p0.y + 0.5 * c.y + 0.25 * p1.y },
     fromCard: { x: p0.x + dStart.x * 16 - dStart.y * 11, y: p0.y + dStart.y * 16 + dStart.x * 11 },
     toCard: { x: p1.x - dEnd.x * 24 + side.x * 11, y: p1.y - dEnd.y * 24 + side.y * 11 },
+    curve: [p0, c, p1],
   };
 }
 
+export const LABEL_H = 18;
+/** How far along its edge a label is tried: the middle first, then a little to either side, then further. */
+const ALONG = [0.5, 0.36, 0.64, 0.25, 0.75];
+/** Above this many labels they all stay in the middle: on a model that size nobody reads them at once. */
+const MAX_PLACED = 1500;
+
+export interface LabelSpec {
+  id: string;
+  geom: EdgeGeom;
+  /** Width of the label's box. */
+  w: number;
+  /** The two terms the edge joins: the label keeps off their boxes. */
+  ends: Term[];
+}
+
+/**
+ * Where each edge label goes. A label sits at the middle of its edge unless that puts it on top
+ * of another label, as happens where several edges run into one term. Then it moves along its own
+ * edge to where there is room, or failing that to where it covers least. `taken` is what else is
+ * written beside the edges and does not move: the cardinalities at their ends. The same layout
+ * always gives the same places.
+ */
+export function placeLabels(specs: LabelSpec[], taken: { x: number; y: number; w: number; h: number }[] = []): Map<string, Pt> {
+  const at = specs.map((l) => l.geom.label);
+  const out = () => new Map(specs.map((l, i) => [l.id, at[i]]));
+  if (specs.length + taken.length < 2 || specs.length > MAX_PLACED) return out();
+
+  const CELL = 96;
+  const PAD = 2;
+  const grid = new Map<string, Set<number>>();
+  const cells = (p: Pt, w: number) => {
+    const keys: string[] = [];
+    for (let cx = Math.floor((p.x - w / 2 - PAD) / CELL); cx <= Math.floor((p.x + w / 2 + PAD) / CELL); cx++) {
+      for (let cy = Math.floor((p.y - LABEL_H / 2 - PAD) / CELL); cy <= Math.floor((p.y + LABEL_H / 2 + PAD) / CELL); cy++) keys.push(cx + ',' + cy);
+    }
+    return keys;
+  };
+  const put = (i: number) => cells(at[i], specs[i].w).forEach((k) => (grid.get(k) ?? grid.set(k, new Set()).get(k)!).add(i));
+  const take = (i: number) => cells(at[i], specs[i].w).forEach((k) => grid.get(k)?.delete(i));
+  const covered = (ax: number, ay: number, aw: number, ah: number, bx: number, by: number, bw: number, bh: number) =>
+    Math.max(0, Math.min(ax + aw / 2, bx + bw / 2) - Math.max(ax - aw / 2, bx - bw / 2)) * Math.max(0, Math.min(ay + ah / 2, by + bh / 2) - Math.max(ay - ah / 2, by - bh / 2));
+  /** How much of label i, put at p, would lie on other labels and on the terms at its ends. */
+  const cost = (i: number, p: Pt): number => {
+    const w = specs[i].w + PAD * 2;
+    const h = LABEL_H + PAD * 2;
+    let sum = 0;
+    const seen = new Set<number>();
+    for (const k of cells(p, specs[i].w)) {
+      for (const j of grid.get(k) ?? []) {
+        if (j === i || seen.has(j)) continue;
+        seen.add(j);
+        sum += covered(p.x, p.y, w, h, at[j].x, at[j].y, specs[j].w, LABEL_H);
+      }
+    }
+    for (const b of taken) sum += covered(p.x, p.y, w, h, b.x, b.y, b.w, b.h);
+    // A label on a term hides the term's name, which is worse than two labels touching.
+    for (const t of specs[i].ends) {
+      const size = nodeSize(t);
+      sum += 3 * covered(p.x, p.y, w, h, t.x, t.y, size.w, size.h);
+    }
+    return sum;
+  };
+
+  specs.forEach((_, i) => put(i));
+  for (let round = 0; round < 3; round++) {
+    let moved = false;
+    for (let i = 0; i < specs.length; i++) {
+      const curve = specs[i].geom.curve;
+      if (!curve || cost(i, at[i]) === 0) continue;
+      let best = at[i];
+      let least = Infinity;
+      for (const t of ALONG) {
+        const u = 1 - t;
+        const p = { x: u * u * curve[0].x + 2 * u * t * curve[1].x + t * t * curve[2].x, y: u * u * curve[0].y + 2 * u * t * curve[1].y + t * t * curve[2].y };
+        const c = cost(i, p);
+        // The first place that is as good as any wins, so a label leaves the middle only for something better.
+        if (c < least - 0.5) {
+          least = c;
+          best = p;
+        }
+      }
+      if (best.x !== at[i].x || best.y !== at[i].y) {
+        take(i);
+        at[i] = best;
+        put(i);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return out();
+}
+
 /** Sideways offset per relation, fanning out relations that share the same pair of terms. */
-export function edgeOffsets(relations: Relation[]): Map<string, number> {
+export function edgeOffsets(relations: Pick<Relation, 'id' | 'from' | 'to'>[]): Map<string, number> {
   const groups = new Map<string, string[]>();
   for (const r of relations) {
     const key = r.from < r.to ? `${r.from}|${r.to}` : `${r.to}|${r.from}`;

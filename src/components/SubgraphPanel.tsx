@@ -10,6 +10,7 @@ import { edgeTypes, MAX_DEPTH, searchTerms, type Direction } from '../model/subg
 export function SubgraphPanel() {
   const model = stable(useStore((s) => s.model));
   const sub = useStore((s) => s.subgraph);
+  const stylePanel = useStore((s) => s.stylePanel);
   const selected = useStore((s) => s.sel.terms);
   const st = useStore.getState;
   const [open, setOpen] = useState(false);
@@ -55,6 +56,9 @@ export function SubgraphPanel() {
         )}
         <button className="btn small" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? 'Hide settings' : 'Settings'}
+        </button>
+        <button className="btn small" aria-pressed={stylePanel} title="How terms and relationships are drawn: shapes, colours, lines, themes" onClick={() => st().setStylePanel(!stylePanel)}>
+          Style
         </button>
         {shown && (
           <span className="subgraph-count" role="status">

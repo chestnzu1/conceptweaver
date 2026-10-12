@@ -18,15 +18,19 @@ import {
   type ClassProperty,
   type LinkKind,
 } from '../model/axioms';
-import { baseIriOf } from '../model/iri';
+import { baseIriOf, iriCut, setIriSuffix, type IriOwner } from '../model/iri';
 import { compactIri } from '../model/prefixes';
 import { findProp, objectProperties, propLinks, type PropView } from '../model/props';
 import { reason } from '../model/reasoner';
 import { stable } from '../model/stable';
-import { isDirty, useStore } from '../model/store';
+import { creditOf, entailmentsOf } from '../model/reasoning';
+import { currentDl, isDirty, useStore } from '../model/store';
 import { DATATYPES, type PropLink, type Term, type TermType } from '../model/types';
 import { EntityPicker, type Choice } from './EntityPicker';
 import { IriCell } from './Iri';
+import { CommitInput } from './fields';
+import { Disclosure, Icon } from './Icon';
+import { enumOf, rangeLabel } from '../model/datatypes';
 
 /**
  * The parts of the entity editor that state OWL axioms about the selected entity. What each part
@@ -59,7 +63,7 @@ export function EditorHead({ kind }: { kind: string }) {
         </button>
       )}
       <button className="btn icon ghost" aria-pressed={wide} title={wide ? 'Narrow the editor' : 'Widen the editor'} aria-label={wide ? 'Narrow the editor' : 'Widen the editor'} onClick={() => st().setEditorWide(!wide)}>
-        {wide ? '⇥' : '⇤'}
+        <Icon name={wide ? 'narrow' : 'widen'} />
       </button>
     </div>
   );
@@ -78,7 +82,7 @@ export function Section({ id, title, count, children, inferred = false }: { id: 
     <section className={'editor-section' + (inferred ? ' inferred' : '')} data-section={id}>
       <h3>
         <button className="section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <span aria-hidden="true">{open ? '▾' : '▸'}</span> {title}
+          <Disclosure open={open} /> {title}
           {count !== undefined && ` (${count})`}
         </button>
         {inferred && <span className="tag auto" title="Worked out by the reasoner from what is asserted. Never stored in the model or exported.">read-only</span>}
@@ -89,16 +93,35 @@ export function Section({ id, title, count, children, inferred = false }: { id: 
 }
 
 /** An entity's identifier, in full, with how it is abbreviated and which namespace it is in. */
-export function IriDetails({ iri, name }: { iri?: string; name: string }) {
+export function IriDetails({ iri, name, owner, external = false }: { iri?: string; name: string; owner: IriOwner; external?: boolean }) {
   const model = useStore((s) => s.model);
-  const cut = iri ? Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1 : 0;
+  const [error, setError] = useState<string>();
+  const cut = iri ? iriCut(iri) : 0;
   const ns = iri?.slice(0, cut);
   const curie = iri ? compactIri(model, iri) : undefined;
   const prefix = model.prefixes.find((p) => p.iri === ns);
   return (
     <div className="field">
-      <span title="The identifier of this entity. It was made once and does not change when the name does.">IRI</span>
+      <span title="The identifier of this entity. It starts out made from the name, and is its own thing from then on: renaming the entity changes its label, not its IRI.">IRI</span>
       <IriCell iri={iri} of={name} full />
+      {!external && (
+        <label className="iri-suffix">
+          <span title="The last part of the IRI, after the namespace. Changing it changes the identifier and leaves the name (rdfs:label) as it is.">IRI suffix</span>
+          <CommitInput
+            aria-label={`IRI suffix of ${name || 'this entity'}`}
+            aria-invalid={!!error}
+            spellCheck={false}
+            value={iri ? iri.slice(cut) : ''}
+            placeholder="made from the name"
+            onCommit={(v) => setError(useStore.getState().edit((m) => setIriSuffix(m, owner, v)))}
+          />
+          {error && (
+            <small className="bad" role="alert">
+              {error}
+            </small>
+          )}
+        </label>
+      )}
       {iri && (
         <dl className="iri-parts">
           <dt>Prefixed name</dt>
@@ -222,26 +245,75 @@ export function ClassProperties({ term }: { term: Term }) {
 /** What the reasoner entails the entity to be a kind (or an instance) of, beyond what is stated. Read-only. */
 export function InferredSupers({ term }: { term: Term }) {
   const model = stable(useStore((s) => s.model));
+  // What the OWL 2 DL reasoner entails, when it was asked about the model as it is now. It is shown
+  // beside what the app's own reasoner works out, each credited to the reasoner it is from.
+  const dl = useStore(currentDl);
   const st = useStore.getState;
   const isClass = term.type === 'concept';
   const result = useMemo(() => {
     const reasoning = reason(model);
-    if (!reasoning.consistent) return { consistent: false as const, links: [], inherited: [] };
-    const stated = new Set(isClass ? linkedTerms(model, term.id, 'equivalentClass').map((x) => x.id) : []);
     const byId = new Map(model.terms.map((t) => [t.id, t]));
-    const links = (isClass ? reasoning.superclasses(term.id) : reasoning.types(term.id))
-      .filter((l) => !l.asserted && !stated.has(l.id))
-      .map((l) => ({ ...l, name: byId.get(l.id)?.name || 'Unnamed', iri: byId.get(l.id)?.iri }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return { consistent: true as const, links, inherited: isClass ? inheritedPropertiesOfClass(model, term.id) : [] };
-  }, [model, term.id, isClass]);
+    const named = (id: string) => ({ id, name: byId.get(id)?.name || 'Unnamed', iri: byId.get(id)?.iri });
+    if (!reasoning.consistent || dl?.consistency === 'inconsistent') return { consistent: false as const, by: reasoning.consistent ? 'The OWL 2 DL reasoner' : 'The reasoner', links: [], inherited: [], unsatisfiable: false, below: [], instances: [], same: [] };
+    const stated = new Set(isClass ? linkedTerms(model, term.id, 'equivalentClass').map((x) => x.id) : []);
+    const own = (isClass ? reasoning.superclasses(term.id) : reasoning.types(term.id)).filter((l) => !l.asserted && !stated.has(l.id));
+    const found = new Set(own.map((l) => l.id));
+    const of = dl ? entailmentsOf(dl, term.id) : undefined;
+    // What only the OWL 2 DL reasoner sees: a superclass through a definition, a type that needs two cases.
+    const further = (of ? (isClass ? of.superclasses.map((x) => ({ id: x.superclass, asserted: x.asserted })) : of.types.map((x) => ({ id: x.class, asserted: x.asserted }))) : [])
+      .filter((x) => !x.asserted && !stated.has(x.id) && !found.has(x.id))
+      .map((x) => ({ id: x.id, asserted: false, equivalent: !!of?.equivalents.includes(x.id), because: creditOf(dl!), rels: [] as string[] }));
+    const links = [...own, ...further].map((l) => ({ ...l, ...named(l.id) })).sort((a, b) => a.name.localeCompare(b.name));
+    const sort = (ids: string[]) => ids.map(named).sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      consistent: true as const,
+      by: '',
+      links,
+      inherited: isClass ? inheritedPropertiesOfClass(model, term.id) : [],
+      unsatisfiable: !!of?.unsatisfiable,
+      // The other way round, which only a complete reasoner can say: what is entailed to be below this class, or in it.
+      below: sort(of && isClass ? of.subclasses.filter((x) => !x.asserted).map((x) => x.subclass) : []),
+      instances: sort(of && isClass ? of.instances.filter((x) => !x.asserted).map((x) => x.individual) : []),
+      same: sort(of && !isClass ? of.same : []),
+    };
+  }, [model, term.id, isClass, dl]);
   const what = isClass ? 'superclasses' : 'types';
+  const credit = dl ? creditOf(dl) : '';
+  const others = (id: string, title: string, list: { id: string; name: string; iri?: string }[]) =>
+    list.length > 0 && (
+      <Section id={id} title={title} count={list.length} inferred>
+        <ul className="inferred-list" aria-label={title}>
+          {list.map((l) => (
+            <li key={l.id}>
+              <button className="link" title={`${l.iri ?? ''}\nOpen it`} onClick={() => st().select([l.id])}>
+                {l.name}
+              </button>
+              <span className="sources">{credit}</span>
+            </li>
+          ))}
+        </ul>
+      </Section>
+    );
   return (
     <>
       <Section id={'inferred-' + what} title={`Inferred ${what}`} count={result.consistent ? result.links.length : '—'} inferred>
         {!result.consistent && (
           <p className="bad" role="status">
-            The reasoner finds the ontology inconsistent, so nothing reliable can be inferred. See the Validation tab.
+            {result.by} finds the ontology inconsistent, so nothing reliable can be inferred. See the Validation tab.
+          </p>
+        )}
+        {result.unsatisfiable && (
+          <p className="bad" role="status">
+            The OWL 2 DL reasoner finds that this class can never have an instance: it is a subclass of owl:Nothing.{' '}
+            <button
+              className="link"
+              onClick={() => {
+                st().setView('checks');
+                st().setValidation({ tab: 'results', focus: `owl:dl:unsat:${term.id}` });
+              }}
+            >
+              View explanation
+            </button>
           </p>
         )}
         {result.consistent && !result.links.length && <p className="muted">None beyond what is asserted.</p>}
@@ -257,6 +329,9 @@ export function InferredSupers({ term }: { term: Term }) {
           ))}
         </ul>
       </Section>
+      {others('inferred-subclasses', 'Inferred subclasses', result.below)}
+      {others('inferred-instances', 'Inferred instances', result.instances)}
+      {others('inferred-same', 'Inferred to be the same individual', result.same)}
       {isClass && result.inherited.length > 0 && (
         <Section id="inferred-domain" title="Properties from superclass domains" count={result.inherited.length} inferred>
           <ul className="inferred-list" aria-label="Properties from superclass domains">
@@ -292,7 +367,9 @@ export function IndividualAssertions({ term }: { term: Term }) {
   const [fact, setFact] = useState<{ prop?: string; to?: string; error?: string }>({});
   const [draft, setDraft] = useState<{ prop?: string; value: string; lang: string; error?: string }>({ value: '', lang: '' });
   const dataProp = draft.prop ? byId.get(draft.prop) : undefined;
-  const textual = !dataProp?.range || dataProp.range === 'xsd:string' || dataProp.range === 'rdf:langString';
+  // Where the property's values are an enumerated datatype, they are the ones it lists, offered as they are typed.
+  const listed = enumOf(model, dataProp?.range);
+  const textual = !dataProp?.range || dataProp.range === 'xsd:string' || dataProp.range === 'rdf:langString' || !!listed?.values.some((v) => v.lang);
   const ofType = (type: TermType) => () => model.terms.filter((t) => t.type === type).map(choice);
   const stateFact = () => {
     const error = st().edit((m) => addFact(m, term.id, fact.prop ?? '', fact.to ?? ''));
@@ -346,7 +423,7 @@ export function IndividualAssertions({ term }: { term: Term }) {
                 </button>
                 <span className="literal">
                   {v.value}
-                  {v.lang ? <span className="lang">@{v.lang}</span> : dt && dt !== 'xsd:string' ? <span className="lang">{dt}</span> : null}
+                  {v.lang ? <span className="lang">@{v.lang}</span> : dt && dt !== 'xsd:string' ? <span className="lang">{rangeLabel(model, dt, true)}</span> : null}
                 </span>
                 <button className="btn icon ghost" title="Remove this value" aria-label={`Remove ${byId.get(v.prop)?.name} ${v.value}`} onClick={() => st().apply((m) => removeValue(m, term.id, i))}>
                   ×
@@ -360,7 +437,8 @@ export function IndividualAssertions({ term }: { term: Term }) {
           <input
             aria-label="Value"
             aria-invalid={!!draft.error}
-            placeholder={dataProp?.range ? `${DATATYPES.find((d) => d.id === dataProp.range)?.label ?? 'value'} (${dataProp.range})` : 'Value'}
+            placeholder={listed ? `one of the values of ${listed.name}` : dataProp?.range ? `${DATATYPES.find((d) => d.id === dataProp.range)?.label ?? 'value'} (${dataProp.range})` : 'Value'}
+            list={listed ? 'enum-values' : undefined}
             value={draft.value}
             onChange={(e) => setDraft({ ...draft, value: e.target.value, error: undefined })}
             onKeyDown={(e) => {
@@ -368,6 +446,13 @@ export function IndividualAssertions({ term }: { term: Term }) {
               if (e.key === 'Enter' && draft.prop && draft.value.trim()) stateValue();
             }}
           />
+          {listed && (
+            <datalist id="enum-values">
+              {listed.values.map((v, i) => (
+                <option key={i} value={v.value} />
+              ))}
+            </datalist>
+          )}
           {textual && <input className="meta-lang" aria-label="Language of the value" placeholder="lang" title="Language of the value, e.g. nl. Leave empty if it has none." value={draft.lang} onChange={(e) => setDraft({ ...draft, lang: e.target.value, error: undefined })} onKeyDown={(e) => e.stopPropagation()} />}
           <button className="btn small primary" disabled={!draft.prop || !draft.value.trim()} onClick={stateValue}>
             Add value

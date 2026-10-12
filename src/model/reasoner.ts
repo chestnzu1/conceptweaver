@@ -1,16 +1,21 @@
 import type { DataValue, Model, Relation } from './types';
+import { denotes, enumOf, literalText } from './datatypes';
 import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, propKey } from './props';
 import { resolveModel } from './vocab';
 
 /**
  * A small forward-chaining reasoner for the RDFS / OWL 2 RL rules that apply to what a model
  * can express: class and property hierarchies, equivalence, disjointness and complements,
- * individuals with types, sameAs / differentFrom, and domains and ranges.
+ * individuals with types, sameAs / differentFrom, domains and ranges, and enumerations.
  *
  * Statements are (subject, predicate, object) over term ids. A relationship of your own between
  * two individuals is a statement whose predicate is "p:" + its label.
+ *
+ * An enumeration (a class that is exactly the individuals it lists) is one statement about the
+ * class, "enum", and "alldiff" is the statement that those individuals are all different. A data
+ * property whose values come from an enumerated datatype has a "drange" to "dt:" + its id.
  */
-type Pred = 'sub' | 'type' | 'eqc' | 'disj' | 'compl' | 'subp' | 'eqp' | 'dom' | 'rng' | 'same' | 'diff' | 'is' | 'inv' | 'pdisj' | `p:${string}`;
+type Pred = 'sub' | 'type' | 'eqc' | 'disj' | 'compl' | 'subp' | 'eqp' | 'dom' | 'rng' | 'same' | 'diff' | 'is' | 'inv' | 'pdisj' | 'enum' | 'alldiff' | 'drange' | `p:${string}`;
 
 interface Fact {
   s: string;
@@ -89,7 +94,7 @@ const STD_TO_PRED: Record<string, Pred> = {
 
 const MAX_FACTS = 150_000;
 
-let last: { relations: Relation[]; props: Model['props']; sig: string; result: Reasoning } | undefined;
+let last: { relations: Relation[]; props: Model['props']; datatypes: Model['datatypes']; sig: string; result: Reasoning } | undefined;
 
 /** `fresh` skips the cached result and reasons from scratch. */
 export function reason(model: Model, fresh = false): Reasoning {
@@ -98,10 +103,12 @@ export function reason(model: Model, fresh = false): Reasoning {
   const sig =
     (m.vocab.enabled ? '1' : '0') +
     m.mode +
-    m.terms.map((t) => `${t.id}:${t.type}:${t.name}${t.functional ? ':f' : ''}${t.domain ? ':' + t.domain.join(',') : ''}${t.values ? ':' + JSON.stringify(t.values) : ''}`).join('|');
-  if (!fresh && last && last.relations === m.relations && last.props === m.props && last.sig === sig) return last.result;
+    m.terms
+      .map((t) => `${t.id}:${t.type}:${t.name}${t.functional ? ':f' : ''}${t.domain ? ':' + t.domain.join(',') : ''}${t.values ? ':' + JSON.stringify(t.values) : ''}${t.oneOf ? ':o' + t.oneOf.join(',') : ''}${t.allDifferent ? ':ad' : ''}${t.range ? ':r' + t.range : ''}`)
+      .join('|');
+  if (!fresh && last && last.relations === m.relations && last.props === m.props && last.datatypes === m.datatypes && last.sig === sig) return last.result;
   const result = run(m);
-  last = { relations: m.relations, props: m.props, sig, result };
+  last = { relations: m.relations, props: m.props, datatypes: m.datatypes, sig, result };
   return result;
 }
 
@@ -174,7 +181,42 @@ function run(m: Model): Reasoning {
     const d = dataDomain(m, t);
     const ids = d.ids.filter((id) => byId.get(id)?.type === 'concept');
     if (ids.length === 1) add(t.id, 'dom', ids[0], undefined, d.auto ? m.relations.find((r) => r.kind === 'property' && r.to === t.id && r.from === ids[0])?.id : undefined);
+    // A range that lists its values. One with no values yet says nothing, as nothing is written for it.
+    const listed = enumOf(m, t.range);
+    if (listed?.values.length) {
+      propLabel.set(`dt:${listed.id}`, listed.name || 'Unnamed');
+      add(t.id, 'drange', `dt:${listed.id}`);
+    }
   }
+  // Enumerations: a class that is exactly the individuals it lists. One without members yet says
+  // nothing, as nothing is written for it. One that lists something other than an individual is
+  // left alone altogether: "exactly these" cannot be reasoned with while one of them is unclear.
+  const members = new Map<string, string[]>();
+  const listedIn = new Map<string, string[]>();
+  if (m.mode !== 'skos') {
+    for (const t of m.terms) {
+      if (t.type !== 'concept' || t.external !== undefined || !t.oneOf?.length) continue;
+      const ids = [...new Set(t.oneOf)].filter((id) => byId.has(id));
+      if (!ids.length || ids.some((id) => byId.get(id)!.type !== 'instance')) continue;
+      members.set(t.id, ids);
+      for (const id of ids) listedIn.set(id, [...(listedIn.get(id) ?? []), t.id]);
+      add(t.id, 'enum', t.id);
+      if (t.allDifferent && ids.length > 1) add(t.id, 'alldiff', t.id);
+    }
+  }
+  const enumFact = (c: string) => facts.get(`${c}|enum|${c}`)!;
+  /**
+   * An instance of an enumeration is one of its members. Which one is concluded only when it is
+   * known to differ from all the others: no cases are tried out.
+   */
+  const narrow = (x: string, c: string) => {
+    const ids = members.get(c)!;
+    const typed = facts.get(`${x}|type|${c}`);
+    if (!typed || ids.includes(x) || byId.get(x)?.type !== 'instance') return;
+    const open = ids.filter((id) => !has(x, 'diff', id));
+    if (open.length !== 1) return;
+    add(x, 'same', open[0], [typed, enumFact(c), ...ids.filter((id) => id !== open[0]).map((id) => facts.get(`${x}|diff|${id}`)!)]);
+  };
   for (const r of m.relations) {
     const a = byId.get(r.from);
     const b = byId.get(r.to);
@@ -216,6 +258,19 @@ function run(m: Model): Reasoning {
     } else if (p === 'type') {
       for (const g of sp('sub', o)) add(s, 'type', g.o, [f, g]);
       for (const g of sp('same', s)) add(g.o, 'type', o, [f, g]);
+      if (members.has(o)) narrow(s, o);
+      // When every member of an enumeration is of a class, the enumeration is a kind of that class.
+      for (const c of listedIn.get(s) ?? []) {
+        if (c === o || byId.get(o)?.type !== 'concept') continue;
+        const typed = members.get(c)!.map((id) => facts.get(`${id}|type|${o}`));
+        if (typed.every(Boolean)) add(c, 'sub', o, [enumFact(c), ...(typed as Fact[])]);
+      }
+    } else if (p === 'enum') {
+      // What a class lists are instances of it.
+      for (const id of members.get(s)!) add(id, 'type', s, [f]);
+    } else if (p === 'alldiff') {
+      const ids = members.get(s)!;
+      for (const a of ids) for (const b of ids) if (a !== b) add(a, 'diff', b, [f]);
     } else if (p === 'eqc' || p === 'eqp') {
       if (s === o) continue;
       symmetric(f);
@@ -223,6 +278,8 @@ function run(m: Model): Reasoning {
       add(o, p === 'eqc' ? 'sub' : 'subp', s, [f]);
     } else if (p === 'disj' || p === 'diff' || p === 'pdisj') {
       symmetric(f);
+      // Ruling out a member of an enumeration may leave one thing only that an instance of it can be.
+      if (p === 'diff') for (const c of listedIn.get(o) ?? []) narrow(s, c);
     } else if (p === 'compl') {
       symmetric(f);
       add(s, 'disj', o, [f]);
@@ -240,7 +297,7 @@ function run(m: Model): Reasoning {
       for (const g of sp('rng', o)) add(s, 'rng', g.o, [f, g]);
       // Whatever is related by the sub-property is related by the property above it too.
       for (const g of byP.get(s) ?? []) add(g.s, o as Pred, g.o, [g, f]);
-    } else if (p === 'is' || p === 'inv') {
+    } else if (p === 'is' || p === 'inv' || p === 'drange') {
       // Statements about a property; the rules below look them up.
     } else if (p === 'dom' || p === 'rng') {
       for (const g of sp('sub', o)) add(s, p, g.o, [f, g]);
@@ -267,9 +324,16 @@ function run(m: Model): Reasoning {
 
   // ---- wording
   const name = (id: string) => byId.get(id)?.name || propLabel.get(id) || (id.startsWith('p:') ? id.slice(2) : '(unnamed)');
+  const list = (ids: string[]) => ids.map((id) => `“${name(id)}”`).join(', ');
   const say = (f: Fact): string => {
     const [a, b] = [`“${name(f.s)}”`, `“${name(f.o)}”`];
     switch (f.p) {
+      case 'enum':
+        return `${a} is defined as the enumeration of ${list(members.get(f.s)!)}`;
+      case 'alldiff':
+        return `the members of ${a} are declared to be all different`;
+      case 'drange':
+        return `${a} takes its values from ${b}`;
       case 'sub':
         return `${a} is a kind of ${b}`;
       case 'type':
@@ -338,6 +402,14 @@ function run(m: Model): Reasoning {
         }
       }
       if (has(t.id, 'diff', t.id)) conflict('error', 'Inconsistent', `“${t.name}” is said to be different from itself.`, [t.id], [facts.get(`${t.id}|diff|${t.id}`)!]);
+      // An instance of an enumeration has to be one of its members.
+      for (const ta of sp('type', t.id)) {
+        const ids = members.get(ta.o);
+        if (!ids || ids.includes(t.id)) continue;
+        const ruledOut = ids.map((id) => facts.get(`${t.id}|diff|${id}`));
+        if (!ruledOut.every(Boolean)) continue;
+        conflict('error', 'Inconsistent', `“${t.name}” is an instance of “${name(ta.o)}”, which has no members other than ${list(ids)}, but it is said to be different from ${ids.length === 1 ? 'that one' : 'each of them'}.`, [t.id, ta.o, ...ids], [ta, enumFact(ta.o), ...(ruledOut as Fact[])]);
+      }
       for (const sa of sp('same', t.id)) {
         const df = facts.get(`${t.id}|diff|${sa.o}`);
         if (df && leads(t.id, sa.o)) {
@@ -379,6 +451,16 @@ function run(m: Model): Reasoning {
     for (const g of byP.get(d.s) ?? []) {
       const other = facts.get(`${g.s}|${d.o}|${g.o}`);
       if (other) conflict('error', 'Inconsistent', `“${name(d.s)}” and “${name(d.o)}” are disjoint properties, but both hold for “${name(g.s)}”${g.o.startsWith('lit:') ? ` with the value ${propLabel.get(g.o)}` : ` and “${name(g.o)}”`}.`, [g.s, ...(byId.has(g.o) ? [g.o] : [])], [g, other, d]);
+    }
+  }
+  // A value of a property whose range lists its values has to be one of those.
+  for (const r of byP.get('drange') ?? []) {
+    const d = m.datatypes.find((x) => `dt:${x.id}` === r.o)!;
+    for (const g of byP.get(r.s) ?? []) {
+      if (!g.o.startsWith('lit:')) continue;
+      const [value, lang] = JSON.parse(g.o.slice(4)) as [string, string];
+      if (d.values.some((x) => denotes(x, value, lang))) continue;
+      conflict('error', 'Inconsistent', `“${name(g.s)}” has the value ${propLabel.get(g.o)} for “${name(r.s)}”, but the values of that property are those of “${d.name || 'Unnamed'}”: ${d.values.map(literalText).join(', ')}.`, [g.s, r.s], [g, r]);
     }
   }
   // A functional data property has at most one value for each individual.

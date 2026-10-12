@@ -178,6 +178,22 @@ await page.waitForFunction(() => document.querySelector('.editor-head .save-stat
 ok(true, 'saving through the editor uses My Models and the editor then says Saved');
 await sideTab(/Classes/);
 await pick('Award');
+// ---------------------------------------------------------------- the IRI suffix, apart from the label
+const suffix = panel.locator('.iri-suffix input');
+ok((await suffix.inputValue()) === 'Award', 'the last part of the IRI has a field of its own: ' + (await suffix.inputValue()));
+await suffix.fill('C0001');
+await suffix.press('Enter');
+ok((await rdf(':C0001')).startsWith(':C0001 a owl:Class ;\n    rdfs:label "Award"'), 'changing it changes the IRI and leaves the label: ' + flat(await rdf(':C0001')).slice(0, 44));
+ok((await panel.locator('input').first().inputValue()) === 'Award' && flat(await panel.locator('.iri-parts').innerText()).includes(':C0001'), 'the name is still Award, the prefixed name is :C0001');
+ok((await rdf(':Film')).includes(':wins :C0001'), 'what refers to the entity follows the new IRI');
+await suffix.fill('Film');
+await suffix.press('Enter');
+ok(flat(await panel.locator('.iri-suffix .bad').innerText()).includes('already has the IRI'), 'a suffix that is taken is refused, with the reason: ' + flat(await panel.locator('.iri-suffix .bad').innerText()));
+await suffix.fill('Award');
+await suffix.press('Enter');
+ok((await panel.locator('.iri-suffix .bad').count()) === 0 && (await rdf(':Award')).startsWith(':Award a owl:Class'), 'and it can be put back');
+await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+await page.waitForFunction(() => document.querySelector('.editor-head .save-state')?.textContent === 'Saved');
 await add('Disjoint classes', 'Person');
 ok(flat(await panel.locator('.editor-head .save-state').innerText()) === 'Unsaved changes', 'an edit shows Unsaved changes in the editor');
 await page.getByRole('button', { name: 'Undo' }).click();
@@ -194,6 +210,22 @@ await page.waitForSelector('.node');
 await side.getByRole('button', { name: 'Expand all' }).click();
 await pick('Film');
 ok((await chips('Disjoint classes')).join() === 'Genre', 'after a reload the class axioms are still there');
+
+// ---------------------------------------------------------------- the model details can be folded away
+await page.locator('#graph-svg').click({ position: { x: 30, y: 600 } });
+ok(flat(await panel.locator('h2').first().innerText()).toLowerCase() === 'model' && (await panel.boundingBox()).width > 250, 'with nothing selected the side panel shows the model details');
+const stageWidth = (await page.locator('.stage').boundingBox()).width;
+await panel.getByRole('button', { name: 'Hide the model details' }).click();
+ok((await panel.boundingBox()).width < 60 && (await panel.locator('.field').count()) === 0 && (await page.locator('.stage').boundingBox()).width > stageWidth + 200, 'they can be hidden, which leaves a strip at the edge and gives the room to the canvas');
+await pick('Film');
+ok(flat(await panel.locator('h2').first().innerText()).toLowerCase() === 'class' && (await field('Name').locator('input').inputValue()) === 'Film', 'selecting a term still opens its editor');
+await page.locator('#graph-svg').click({ position: { x: 30, y: 600 } });
+ok((await panel.boundingBox()).width < 60, 'and with nothing selected the details are hidden again');
+await page.reload();
+await page.waitForSelector('.node');
+ok((await panel.boundingBox()).width < 60, 'the choice is remembered over a reload');
+await panel.getByRole('button', { name: 'Show the model details' }).click();
+ok((await field('Name').locator('input').count()) === 1 && (await panel.boundingBox()).width > 250, 'the strip brings them back');
 
 console.log('console errors:', errors.length ? errors.slice(0, 3) : 'none');
 await browser.close();

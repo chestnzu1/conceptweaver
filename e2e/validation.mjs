@@ -44,7 +44,7 @@ await tab(/^Validation/);
 await settled();
 ok(/^Validated \d.* · revision [0-9a-f]{8} · \d+ entities$/.test(flat(await v.locator('.run-state').innerText())), 'opening the tab runs the checks once and says when, which revision, and how much: ' + flat(await v.locator('.run-state').innerText()));
 ok((await v.locator('.card h3').allInnerTexts()).map(flat).join(' | ').toUpperCase() === 'OWL CONSISTENCY | SHACL VALIDATION | ONTOLOGY QUALITY', 'three categories, each with a card of its own');
-ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: Consistent' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0'), 'OWL: consistent, 0 unsatisfiable classes');
+ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: No contradiction found' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0'), 'OWL: consistent, 0 unsatisfiable classes');
 ok(flat(await card('SHACL validation').innerText()).includes('No shapes yet'), 'SHACL: nothing to validate against until there are shapes');
 ok(/Warnings: \d+/.test(flat(await card('Ontology quality').innerText())) && flat(await card('Ontology quality').innerText()).includes('not errors'), 'Quality: counts, and a reminder that these are not errors');
 const first = await rowTexts();
@@ -68,7 +68,7 @@ await v.getByLabel('Severity').selectOption('');
 // ---------------------------------------------------------------- quality rules are configurable
 const before = (await rowTexts()).filter((r) => r.includes('Missing definition')).length;
 await sub('Quality rules');
-ok((await v.locator('.rules fieldset legend').allInnerTexts()).map(flat).join(' | ') === 'Documentation | Structure | IRIs and namespaces | Modelling practice | SKOS integrity', 'rules are grouped');
+ok((await v.locator('.rules fieldset legend').allInnerTexts()).map(flat).join(' | ') === 'Documentation | Structure | IRIs and namespaces | Modelling practice | Enumerations | Governance | SKOS integrity', 'rules are grouped');
 ok(!(await v.locator('.rule', { hasText: 'Multiple inheritance' }).locator('input').isChecked()), 'multiple inheritance is not reported unless asked for');
 const rev0 = await revision();
 await v.locator('.rule', { hasText: 'Missing definition' }).locator('input').uncheck();
@@ -133,7 +133,7 @@ await add('Disjoint classes', 'Person');
 await pick('Documentary');
 await add('Asserted superclasses', 'Person');
 await run('Run all checks');
-ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: Consistent' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 1'), 'a class under two disjoint classes: the ontology is still consistent, with 1 unsatisfiable class');
+ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: No contradiction found' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 1'), 'a class under two disjoint classes: the ontology is still consistent, with 1 unsatisfiable class');
 await v.getByLabel('Category').selectOption('owl');
 ok((await rowTexts()).join(' / ').startsWith('Error OWL Documentary class Unsatisfiable class'), 'it is reported as an unsatisfiable class: ' + (await rowTexts()).join(' / '));
 await tab('Entities');
@@ -151,7 +151,7 @@ ok(why.includes('Justification The reasoner derives this from:') && why.includes
 await page.screenshot({ path: shots + 'validation-owl.png' });
 for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Undo' }).click();
 await run('Run all checks');
-ok(flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0') && flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: Consistent', 'undoing the three edits and rerunning: consistent again');
+ok(flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0') && flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: No contradiction found', 'undoing the three edits and rerunning: consistent again');
 await v.getByLabel('Category').selectOption('');
 
 // ---------------------------------------------------------------- a quick fix shows the change first
@@ -220,11 +220,11 @@ await page.getByRole('button', { name: 'Save', exact: true }).first().click();
 await page.locator('.dialog.saveas input').fill('Validation test');
 await page.locator('.dialog.saveas').getByRole('button', { name: /^Save/ }).click();
 await page.waitForFunction(() => document.querySelector('.header .save-state')?.textContent === 'Saved');
-await page.getByRole('button', { name: 'File ▾' }).click();
+await page.getByRole('button', { name: 'File', exact: true }).click();
 await page.getByRole('menuitem', { name: 'Load the SKOS example' }).click();
-await tab(/^Validation/);
-await settled();
-ok(flat(await card('OWL consistency').innerText()).includes('no OWL axioms to contradict') && flat(await v.locator('.tabs.sub').innerText()).includes('SHACL shapes (0)'), 'another model has its own validation: a concept scheme has no OWL consistency, and no shapes');
+await page.waitForSelector('.node');
+// A vocabulary is not validated: the function is not there for it, and the view that was open is left.
+ok((await page.locator('.header').getByRole('tab', { name: /^Validation/ }).count()) === 0 && (await page.locator('.header [role=tab].on').innerText()) === 'Graph', 'another model, a vocabulary, has no Validation to open');
 await page.getByRole('button', { name: 'My Models' }).click();
 await page.locator('.dialog.library').getByRole('button', { name: /^Open/ }).first().click();
 await page.waitForSelector('.node');

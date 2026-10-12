@@ -9,6 +9,10 @@ export const STANDARD: Prefix[] = [
   { prefix: 'xsd', iri: 'http://www.w3.org/2001/XMLSchema#' },
   { prefix: 'skos', iri: 'http://www.w3.org/2004/02/skos/core#' },
   { prefix: 'dcterms', iri: 'http://purl.org/dc/terms/' },
+  { prefix: 'dcat', iri: 'http://www.w3.org/ns/dcat#' },
+  { prefix: 'prov', iri: 'http://www.w3.org/ns/prov#' },
+  { prefix: 'dqv', iri: 'http://www.w3.org/ns/dqv#' },
+  { prefix: 'adms', iri: 'http://www.w3.org/ns/adms#' },
 ];
 
 const PREFIX_NAME = /^[A-Za-z][A-Za-z0-9_-]*$/;

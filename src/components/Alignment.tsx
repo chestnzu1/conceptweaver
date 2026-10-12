@@ -684,11 +684,11 @@ function Mappings({ model, loaded, mappings }: Common) {
             : owl.status === 'inconsistent'
               ? `Inconsistent: with these mappings the ontology contradicts itself (${owl.contradictions} contradiction${owl.contradictions === 1 ? '' : 's'}).`
               : owl.unsatisfiable.length
-                ? `Consistent, but ${owl.unsatisfiable.length} class${owl.unsatisfiable.length === 1 ? '' : 'es'} can never have a member.`
-                : 'Consistent: the reasoner finds no contradiction.'}
+                ? `No contradiction found, but ${owl.unsatisfiable.length} class${owl.unsatisfiable.length === 1 ? '' : 'es'} can never have a member.`
+                : 'No contradiction found by the fast reasoner.'}
         </strong>{' '}
         <span className="muted">
-          Reasoned over your ontology{model.externals.some((e) => e.imports) ? ` together with the ${model.externals.filter((e) => e.imports).length} it imports` : '; ontologies in the library that are not dependencies are not part of it'}.
+          This is the app’s own rule reasoner, which does not prove consistency; the OWL 2 DL reasoner under Validation does. Reasoned over your ontology{model.externals.some((e) => e.imports) ? ` together with the ${model.externals.filter((e) => e.imports).length} it imports` : '; ontologies in the library that are not dependencies are not part of it'}.
           {check.missing.length > 0 && ` Not included, because the content is not in this browser: ${check.missing.map((e) => e.name).join(', ')}.`}
         </span>
         <ul>

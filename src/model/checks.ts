@@ -1,5 +1,5 @@
 import type { Model } from './types';
-import { dataDomain, fitsIn, objectProperties, plainRelationships } from './props';
+import { dataDomain, fitsIn, hasCardinality, objectProperties, plainRelationships } from './props';
 import { resolveModel, stdProp } from './vocab';
 
 export type Severity = 'error' | 'warning' | 'info';
@@ -296,6 +296,7 @@ export function runChecks(model: Model): Issue[] {
 
   // 14. Malformed cardinalities
   for (const r of m.relations) {
+    if (!hasCardinality(m, r)) continue;
     for (const c of [r.fromCard, r.toCard]) {
       if (c.trim() && !CARD.test(c.trim())) {
         add('Invalid cardinality', 'warning', `"${c}" on "${name(r.from)}" → "${name(r.to)}" is not a cardinality (use 1, 0..1, 1..*, *).`, [], [r.id]);

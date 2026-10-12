@@ -8,19 +8,24 @@ import { convertModel } from './convert';
 import { declaredProp, findProp, propKey, type RelChoice } from './props';
 import { labelKey, resolveModel, suggestFor } from './vocab';
 import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from './subgraph';
+import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaOwner, type MetaValue } from './governance';
+import { normalizeByKind, PALETTE, patchNodes, resetOwn, type GraphStyle, type SavedStyle } from './graphStyle';
+import { allowsKind, allowsView, configOf, supports, termTypeFor, viewFor, type View } from './modelTypes';
 import { baseIriOf, moveNamespace, withIris } from './iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
 import type { SettingsDraft } from './prefixes';
-import type { Edit } from './axioms';
+import { makeInstanceOf, type Edit } from './axioms';
 import { addExternal, importsClosure, readExternal, removeExternal, type Collision, type ExternalSummary } from './external';
 import { collisions } from './external';
 import { listMappings } from './alignment';
 import { cachedOntology, cachedOntologyByIri, cacheOntology, uncacheOntology } from './library';
 import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } from './validation';
-import { assertedSuperclasses, wouldCycle } from './props';
-import { emptyModel, PROP_LINKS, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
+import { askReasoner, DEFAULT_REASONER_URL, dlRequest, type EngineId, type ReasoningResult } from './reasoning';
+import { stable } from './stable';
+import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
+import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
 
-export type View = 'graph' | 'table' | 'hierarchy' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
+export type { View } from './modelTypes';
 export type Theme = 'light' | 'dark';
 
 export interface Editing {
@@ -112,13 +117,26 @@ interface Selection {
 
 const MODEL_KEY = 'conceptweaver:model:v1';
 const THEME_KEY = 'conceptweaver:theme';
-const MODE_KEY = 'conceptweaver:mode';
 /** Which saved model the working copy belongs to, and whether it has changes not yet saved there. */
 const DOC_KEY = 'conceptweaver:doc';
 const AUTOSAVE_KEY = 'conceptweaver:autosave';
 
 /** A stored setting, also looked for under the app's former name so that nothing saved before the rename is lost. */
 const stored = (key: string) => localStorage.getItem(key) ?? localStorage.getItem(key.replace('conceptweaver:', 'termloom:'));
+const STYLES_KEY = 'conceptweaver:graph-styles';
+
+/** The graph styles saved under a name in this browser, to use in any model. */
+function loadSavedStyles(): SavedStyle[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(STYLES_KEY) ?? '[]') as unknown;
+    return (Array.isArray(list) ? (list as Record<string, unknown>[]) : []).filter((x) => x && typeof x === 'object' && typeof x.name === 'string' && x.name.trim()).map((x) => ({ name: (x.name as string).trim(), ...normalizeByKind(x) }));
+  } catch {
+    return [];
+  }
+}
+
+/** The last change to the graph style: a drag on a slider or in a colour picker is one step to undo, not fifty. */
+let lastStyleEdit = { key: '', at: 0 };
 const HISTORY = 100;
 
 function loadModel(): Model {
@@ -186,13 +204,47 @@ interface State {
   highlight: string[];
   /** What the spotlight shows, for the banner on the canvas. */
   highlightLabel: string;
+  /** Whether the canvas also draws the class memberships the reasoner works out. A way of looking; never part of the model. */
+  showInferred: boolean;
+  setShowInferred: (on: boolean) => void;
+  /** Whether the canvas draws a line from each enumeration class to the individuals it lists. */
+  showEnumerations: boolean;
+  setShowEnumerations: (on: boolean) => void;
+  /** Whether the graph style panel is open on the canvas. */
+  stylePanel: boolean;
+  setStylePanel: (open: boolean) => void;
+  /**
+   * Changes how the graph is drawn. Nothing about the ontology changes. Changes that share a
+   * `gesture` and follow each other closely are undone together.
+   */
+  setStyle: (fn: (s: GraphStyle) => GraphStyle, gesture?: string) => void;
+  /**
+   * Gives single terms a fill of their own, or takes it away. One of the canvas colours is kept
+   * as the term's colour, exactly as the canvas menu sets it; any other is kept in the style.
+   */
+  setOwnFill: (ids: string[], fill: string | undefined) => void;
+  /** Takes away the look single terms and relationships were given: their own style, and a term's canvas colour. */
+  resetOwnStyle: (terms: string[] | 'all', rels: string[] | 'all') => void;
+  savedStyles: SavedStyle[];
+  /** Keeps the styles by kind under a name in this browser. Returns the reason if it could not. */
+  saveStyleAs: (name: string) => string | undefined;
+  deleteSavedStyle: (name: string) => void;
   filter: string;
   theme: Theme;
   /** The entity editor takes more room, for entities with a lot to say about them. */
   editorWide: boolean;
+  /** Whether the model details, which the side panel shows while nothing is selected, are folded away. */
+  modelPanelHidden: boolean;
+  setModelPanelHidden: (hidden: boolean) => void;
+  /** Whether the sidebar on the left, with the hierarchy and the lists of terms, is folded away to a strip. */
+  sidebarHidden: boolean;
+  setSidebarHidden: (hidden: boolean) => void;
+  /** How wide that sidebar is when it is open, in pixels. Its edge can be dragged. */
+  sidebarWidth: number;
+  setSidebarWidth: (width: number) => void;
   setEditorWide: (wide: boolean) => void;
   subgraph: SubgraphState;
-  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | null;
+  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | null;
   toast: string | null;
   /**
    * The validation workbench. Results are a record of one run over one model: they live here,
@@ -208,6 +260,12 @@ interface State {
     tab: 'results' | 'shapes' | 'rules' | 'inferences';
     /** The shape open in the shape editor. */
     shapeId: string | null;
+    /** Which reasoner answers the OWL questions: the app's own rules, or the OWL 2 DL reasoning service. */
+    engine: EngineId;
+    /** Where the reasoning service is. */
+    reasonerUrl: string;
+    /** A finding to open in the results, asked for from elsewhere on the page. */
+    focus: string | null;
   };
   graphScope: GraphScope;
   setGraphScope: (scope: GraphScope) => void;
@@ -233,7 +291,7 @@ interface State {
   removeExternalRef: (id: string) => string | undefined;
   /** Runs the checks in `scope`. A run already under way is left to finish. */
   runValidation: (scope?: Scope) => Promise<void>;
-  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'shapeId'>>) => void;
+  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'shapeId' | 'engine' | 'reasonerUrl' | 'focus'>>) => void;
   /** Changes the model's SHACL shapes; an edit like any other, so it can be undone and is saved with the model. */
   setShapes: (fn: (s: Shapes) => Shapes) => void;
 
@@ -280,8 +338,12 @@ interface State {
   addProp: () => string;
   /** Makes a relationship label an object property: every relationship carrying it becomes a use. */
   declareProp: (name: string) => void;
-  /** Changes what one relationship is: a use of an object property, a plain relationship, "is a" or "has property". */
-  setRelChoice: (id: string, choice: RelChoice) => void;
+  /**
+   * Changes what one relationship is: a use of an object property, a plain relationship, "is a",
+   * "is instance of" or "has property". Says whether it did: a kind the two terms cannot have is
+   * refused, with a notice saying why.
+   */
+  setRelChoice: (id: string, choice: RelChoice, history?: boolean) => boolean;
   /** Changes what is declared about an object property, declaring it first if it only existed through use. */
   updateProp: (key: string, patch: Partial<ObjProp>) => void;
   /** Renames an object property everywhere: its declaration, the relationships that use it, and references to it. */
@@ -299,6 +361,10 @@ interface State {
    * knowing about an accepted one is shown as a notice.
    */
   edit: (fn: (m: Model) => Edit) => string | undefined;
+  /** Sets what an entity has for one metadata field. Returns the reason if the values were refused. */
+  setMeta: (owner: MetaOwner, fieldId: string, values: MetaValue[]) => string | undefined;
+  /** Gives a term a metadata profile (business or technical data asset), or takes it away again. */
+  setProfile: (termId: string, kind: EntityKind) => void;
   /** States that one term is a kind of another. Says so if it was already stated, is the term itself, or closes a cycle. */
   addSuperclass: (id: string, superId: string) => void;
   /** Withdraws that statement, and only that one. */
@@ -356,6 +422,19 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const initialModel = loadModel();
 
+/** The widths the sidebar on the left can be given: narrow enough to be out of the way, wide enough for long names. */
+export const SIDEBAR_WIDTH = { min: 180, max: 720, initial: 232 } as const;
+const sidebarWidthOf = (width: number) => (Number.isFinite(width) ? Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width))) : SIDEBAR_WIDTH.initial);
+
+/**
+ * The OWL 2 DL reasoner's result for the model as it is now. There is none once the model has
+ * changed since it was asked, or when it gave no answer: an old result is never shown as current.
+ */
+export const currentDl = (s: Pick<State, 'model' | 'validation'>): ReasoningResult | undefined => {
+  const run = s.validation.run;
+  return run?.dl && run.model === stable(s.model) && run.dl.result.status !== 'failed' ? run.dl.result : undefined;
+};
+
 export const useStore = create<State>((set, get) => ({
   model: initialModel,
   doc: loadDoc(initialModel),
@@ -378,6 +457,58 @@ export const useStore = create<State>((set, get) => ({
   editing: null,
   highlight: [],
   highlightLabel: '',
+  showInferred: false,
+  setShowInferred: (showInferred) => set({ showInferred: showInferred && supports(get().model, 'reasoning') }),
+  showEnumerations: true,
+  setShowEnumerations: (showEnumerations) => set({ showEnumerations }),
+  stylePanel: false,
+  setStylePanel: (stylePanel) => set({ stylePanel }),
+  setStyle: (fn, gesture = '') => {
+    const now = Date.now();
+    const same = !!gesture && gesture === lastStyleEdit.key && now - lastStyleEdit.at < 1200;
+    lastStyleEdit = { key: gesture, at: now };
+    get().apply((m) => {
+      const style = fn(m.style);
+      return style === m.style ? m : { ...m, style };
+    }, !same);
+  },
+  setOwnFill: (ids, fill) => {
+    const swatch = (PALETTE as readonly string[]).includes(fill ?? '') ? fill! : '';
+    const set_ = new Set(ids);
+    get().apply((m) => ({ ...m, terms: m.terms.map((t) => (set_.has(t.id) && t.color !== swatch ? { ...t, color: swatch } : t)), style: patchNodes(m.style, ids, { fill: swatch ? undefined : fill }) }));
+  },
+  resetOwnStyle: (terms, rels) =>
+    get().apply((m) => {
+      const termIds = terms === 'all' ? m.terms.map((t) => t.id) : terms;
+      const relIds = rels === 'all' ? m.relations.map((r) => r.id) : rels;
+      const set_ = new Set(termIds);
+      return { ...m, terms: m.terms.map((t) => (set_.has(t.id) && t.color ? { ...t, color: '' } : t)), style: resetOwn(m.style, termIds, relIds) };
+    }),
+  savedStyles: loadSavedStyles(),
+  saveStyleAs: (name) => {
+    const clean = name.trim();
+    if (!clean) return 'Give the style a name.';
+    const { nodeTypes, edgeTypes } = get().model.style;
+    const savedStyles = [...get().savedStyles.filter((x) => x.name.toLowerCase() !== clean.toLowerCase()), { name: clean, nodeTypes, edgeTypes }].sort((a, b) => a.name.localeCompare(b.name));
+    try {
+      localStorage.setItem(STYLES_KEY, JSON.stringify(savedStyles));
+    } catch {
+      return 'The browser would not store it.';
+    }
+    set({ savedStyles });
+    get().setStyle((s) => ({ ...s, theme: clean, customized: undefined }));
+    get().notify(`Graph style “${clean}” saved in this browser.`);
+    return undefined;
+  },
+  deleteSavedStyle: (name) => {
+    const savedStyles = get().savedStyles.filter((x) => x.name !== name);
+    try {
+      localStorage.setItem(STYLES_KEY, JSON.stringify(savedStyles));
+    } catch {
+      // Not stored either way.
+    }
+    set({ savedStyles });
+  },
   filter: '',
   theme: loadTheme(),
   editorWide: (() => {
@@ -387,6 +518,52 @@ export const useStore = create<State>((set, get) => ({
       return false;
     }
   })(),
+  modelPanelHidden: (() => {
+    try {
+      return localStorage.getItem('conceptweaver:model-panel') === 'hidden';
+    } catch {
+      return false;
+    }
+  })(),
+  setModelPanelHidden: (modelPanelHidden) => {
+    try {
+      localStorage.setItem('conceptweaver:model-panel', modelPanelHidden ? 'hidden' : 'shown');
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ modelPanelHidden });
+  },
+  sidebarHidden: (() => {
+    try {
+      return localStorage.getItem('conceptweaver:sidebar') === 'hidden';
+    } catch {
+      return false;
+    }
+  })(),
+  setSidebarHidden: (sidebarHidden) => {
+    try {
+      localStorage.setItem('conceptweaver:sidebar', sidebarHidden ? 'hidden' : 'shown');
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ sidebarHidden });
+  },
+  sidebarWidth: (() => {
+    try {
+      return sidebarWidthOf(Number(localStorage.getItem('conceptweaver:sidebar-width')) || SIDEBAR_WIDTH.initial);
+    } catch {
+      return SIDEBAR_WIDTH.initial;
+    }
+  })(),
+  setSidebarWidth: (width) => {
+    const sidebarWidth = sidebarWidthOf(width);
+    try {
+      localStorage.setItem('conceptweaver:sidebar-width', String(sidebarWidth));
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ sidebarWidth });
+  },
   setEditorWide: (editorWide) => {
     try {
       localStorage.setItem('conceptweaver:editor-wide', editorWide ? 'on' : 'off');
@@ -451,15 +628,44 @@ export const useStore = create<State>((set, get) => ({
     void uncacheOntology(id).catch(() => undefined);
     return undefined;
   },
-  validation: { run: null, running: false, phase: '', data: MODEL_DATA, tab: 'results', shapeId: null },
+  validation: {
+    run: null,
+    running: false,
+    phase: '',
+    data: MODEL_DATA,
+    tab: 'results',
+    shapeId: null,
+    focus: null,
+    ...(() => {
+      try {
+        return { engine: (localStorage.getItem('conceptweaver:reasoning-engine') === 'dl' ? 'dl' : 'fast') as EngineId, reasonerUrl: localStorage.getItem('conceptweaver:reasoner-url') || DEFAULT_REASONER_URL };
+      } catch {
+        return { engine: 'fast' as EngineId, reasonerUrl: DEFAULT_REASONER_URL };
+      }
+    })(),
+  },
   runValidation: async (scope = 'all') => {
-    if (get().validation.running) return;
+    if (get().validation.running || !supports(get().model, 'validation')) return;
     const { model } = get();
-    const { run, data } = get().validation;
+    const { run, data, engine, reasonerUrl } = get().validation;
     set((s) => ({ validation: { ...s.validation, running: true, phase: 'Starting…' } }));
     try {
       // Between parts the page gets a moment to redraw, so a long validation shows its progress.
       const closure = model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined;
+      // The OWL 2 DL reasoner is given the ontology as it is exported, and what it imports as it was read:
+      // the Turtle kept in this browser. An import that is not there is named in the answer.
+      const askDl =
+        engine === 'dl' && supports(model, 'reasoning')
+          ? async () => {
+              const imports: { iri: string; text: string }[] = [];
+              for (const ref of model.externals) {
+                if (!ref.imports || !ref.iri) continue;
+                const hit = await cachedOntology(ref.id).catch(() => undefined);
+                if (hit) imports.push({ iri: ref.iri, text: hit.text });
+              }
+              return askReasoner(reasonerUrl, dlRequest(model, imports));
+            }
+          : undefined;
       const next = await validate(
         model,
         data,
@@ -470,6 +676,7 @@ export const useStore = create<State>((set, get) => ({
           await new Promise((r) => setTimeout(r, 16));
         },
         closure,
+        askDl,
       );
       set((s) => ({ validation: { ...s.validation, run: next, running: false, phase: '' } }));
     } catch (e) {
@@ -477,7 +684,15 @@ export const useStore = create<State>((set, get) => ({
       get().notify(`Validation stopped: ${e instanceof Error ? e.message : 'unknown error'}`);
     }
   },
-  setValidation: (patch) => set((s) => ({ validation: { ...s.validation, ...patch } })),
+  setValidation: (patch) => {
+    try {
+      if (patch.engine) localStorage.setItem('conceptweaver:reasoning-engine', patch.engine);
+      if (patch.reasonerUrl !== undefined) localStorage.setItem('conceptweaver:reasoner-url', patch.reasonerUrl);
+    } catch {
+      // Remembered for this visit only.
+    }
+    set((s) => ({ validation: { ...s.validation, ...patch } }));
+  },
   setShapes: (fn) => get().apply((m) => ({ ...m, shapes: fn(m.shapes) })),
 
   apply: (fn, history = true) =>
@@ -510,7 +725,8 @@ export const useStore = create<State>((set, get) => ({
   replaceModel: (m, docId = null) => {
     const model = withIris(m);
     // A different document: its history starts afresh, and it counts as unchanged until edited.
-    set({ model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
+    // Another model may be of another type: the view stays only if that type has it.
+    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
     void get().loadExternals();
     get().fit();
   },
@@ -570,15 +786,22 @@ export const useStore = create<State>((set, get) => ({
   },
 
   addTerm: (p = {}) => {
-    const t = newTerm(p);
+    // A term is of a kind the type of model has: in a vocabulary everything new is a concept.
+    const t = newTerm({ ...p, type: termTypeFor(get().model, p.type) });
     // Created while looking at a subgraph: it has to be part of that subgraph to be seen.
     if (get().subgraph.active) set((s) => ({ subgraph: { ...s.subgraph, roots: [...s.subgraph.roots, t.id], pos: { ...s.subgraph.pos, [t.id]: { x: t.x, y: t.y } } } }));
     get().apply((m) => ({ ...m, terms: [...m.terms, t] }));
     return t.id;
   },
-  updateTerm: (id, patch, history = true) =>
-    get().apply((m) => (m.terms.some((t) => t.id === id) ? { ...m, terms: m.terms.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : m), history),
-  updateTerms: (ids, patch) => {
+  updateTerm: (id, patch, history = true) => {
+    // A kind of term the type of model does not have cannot be given to one.
+    const { type, ...rest } = patch;
+    const allowed = type === undefined || configOf(get().model).termTypes.includes(type) ? patch : rest;
+    get().apply((m) => (m.terms.some((t) => t.id === id) ? { ...m, terms: m.terms.map((t) => (t.id === id ? { ...t, ...allowed } : t)) } : m), history);
+  },
+  updateTerms: (ids, given) => {
+    const { type, ...rest } = given;
+    const patch = type === undefined || configOf(get().model).termTypes.includes(type) ? given : rest;
     const set_ = new Set(ids);
     get().apply((m) => ({ ...m, terms: m.terms.map((t) => (set_.has(t.id) ? { ...t, ...patch } : t)) }));
   },
@@ -599,13 +822,31 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => ({ ...m, relations: [...m.relations, r] }));
     return r.id;
   },
-  updateRelation: (id, patch, history = true) =>
-    get().apply((m) => (m.relations.some((r) => r.id === id) ? { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) } : m), history),
-  reverseRelation: (id) =>
+  updateRelation: (id, given, history = true) => {
+    const m = get().model;
+    if (!m.relations.some((r) => r.id === id)) return;
+    // What the type of model does not have is not set, whoever asks: no restrictions, no data properties.
+    const patch = { ...given };
+    if (!supports(m, 'restrictions')) for (const k of ['restriction', 'restrictionN', 'more'] as const) delete patch[k];
+    if (patch.kind === 'property' && !allowsKind(m, 'property')) delete patch.kind;
+    const next = { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) };
+    // Moving an end or changing the kind must not state a class membership a second time.
+    const now = next.relations.find((r) => r.id === id)!;
+    const moved = 'from' in patch || 'to' in patch || 'kind' in patch || 'predicate' in patch;
+    if (moved && isInstanceOf(next, now) && next.relations.some((r) => r.id !== id && r.from === now.from && r.to === now.to && isInstanceOf(next, r))) {
+      const name = (x: string) => m.terms.find((t) => t.id === x)?.name || 'Unnamed';
+      return get().notify(`“${name(now.from)}” is already stated to be an instance of “${name(now.to)}”.`);
+    }
+    get().apply(() => next, history);
+  },
+  reverseRelation: (id) => {
+    const rel = get().model.relations.find((r) => r.id === id);
+    if (rel && isInstanceOf(get().model, rel)) return get().notify(`“${INSTANCE_OF}” always points from the individual to the class.`);
     get().apply((m) => ({
       ...m,
       relations: m.relations.map((r) => (r.id === id ? { ...r, from: r.to, to: r.from, fromCard: r.toCard, toCard: r.fromCard } : r)),
-    })),
+    }));
+  },
   remove: (terms, rels) => {
     if (!terms.length && !rels.length) return;
     const t = new Set(terms);
@@ -616,7 +857,9 @@ export const useStore = create<State>((set, get) => ({
         .filter((x) => !t.has(x.id))
         .map((x) => (x.domain && x.domain.some((id) => t.has(id)) ? { ...x, domain: x.domain.filter((id) => !t.has(id)) } : x))
         // A value goes with the data property it is a value of.
-        .map((x) => (x.values?.some((v) => t.has(v.prop)) ? { ...x, values: x.values.filter((v) => !t.has(v.prop)) } : x)),
+        .map((x) => (x.values?.some((v) => t.has(v.prop)) ? { ...x, values: x.values.filter((v) => !t.has(v.prop)) } : x))
+        // An individual that is gone is no longer listed by the enumerations it was a member of.
+        .map((x) => (x.oneOf?.some((id) => t.has(id)) ? { ...x, oneOf: x.oneOf.filter((id) => !t.has(id)) } : x)),
       relations: m.relations.filter((x) => !r.has(x.id) && !t.has(x.from) && !t.has(x.to)),
       props: !t.size
         ? m.props
@@ -778,9 +1021,12 @@ export const useStore = create<State>((set, get) => ({
     const before = get().model;
     if (before.mode === mode) return;
     get().apply((m) => convertModel(m, mode));
+    // The other type may not have the view this was done from.
+    set({ view: viewFor(get().model, get().view), showInferred: get().showInferred && supports(get().model, 'reasoning') });
   },
   selectProp: (selProp) => set({ selProp, sel: { terms: [], rels: [] } }),
   addProp: () => {
+    if (!supports(get().model, 'objectProperties')) return '';
     const taken = new Set(get().model.props.map((p) => propKey(p.name)));
     let name = 'new property';
     for (let i = 2; taken.has(propKey(name)) || findProp(get().model, propKey(name)); i++) name = `new property ${i}`;
@@ -803,15 +1049,36 @@ export const useStore = create<State>((set, get) => ({
       }),
     }));
   },
-  setRelChoice: (id, choice) =>
+  setRelChoice: (id, choice, history = true) => {
+    if (!allowsKind(get().model, choice)) {
+      get().notify(`A ${configOf(get().model).label} has no relationships of that kind.`);
+      return false;
+    }
+    if (choice === 'instanceOf') {
+      const result = makeInstanceOf(get().model, id);
+      if (result.error !== undefined) {
+        get().notify(result.error);
+        return false;
+      }
+      get().apply(() => result.model, history);
+      if (result.note) get().notify(result.note);
+      return true;
+    }
     get().apply((m) => {
       const rel = m.relations.find((r) => r.id === id);
       if (!rel) return m;
-      const { plain: _plain, predicate: _predicate, ...base } = rel;
-      if (choice === 'property') return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...base, kind: choice } : r)) };
+      const { plain: _plain, predicate: _predicate, ...kept } = rel;
+      // Only a plain relationship has cardinalities at its ends.
+      const base = choice === 'plain' ? kept : { ...kept, fromCard: '', toCard: '' };
+      if (choice === 'property') {
+        // "Has data property" points from the class to the property, whichever way the line was drawn.
+        const type = (x: string) => m.terms.find((t) => t.id === x)?.type;
+        const ends = type(rel.from) === 'property' && type(rel.to) === 'concept' ? { from: rel.to, to: rel.from } : {};
+        return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...base, ...ends, kind: choice } : r)) };
+      }
       if (choice === 'generalization') {
         // "Is a" restricts nothing, so a quantifier left over from before goes.
-        const { restriction: _restriction, restrictionN: _n, ...bare } = base;
+        const { restriction: _restriction, restrictionN: _n, more: _more, ...bare } = base;
         return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...bare, kind: choice } : r)) };
       }
       const key = propKey(rel.label);
@@ -833,7 +1100,9 @@ export const useStore = create<State>((set, get) => ({
               : r,
         ),
       };
-    }),
+    }, history);
+    return true;
+  },
   updateProp: (key, patch) =>
     get().apply((m) => {
       const next = { ...declaredProp(m, key), ...patch };
@@ -891,6 +1160,30 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => {
       const next = { ...m, ontologyIri: d.ontologyIri, baseIri: d.baseIri, prefixes: d.prefixes };
       return moveFrom.reduce((acc, from) => moveNamespace(acc, from, baseIriOf(next)), next);
+    }),
+  setMeta: (owner, fieldId, values) => {
+    const { model } = get();
+    const f = registry(model).find((x) => x.id === fieldId);
+    const e = metaEntity(model, owner);
+    if (!f || !e) return 'That field or entity no longer exists.';
+    if (e.external) return 'This entity belongs to another ontology; what is said about it is said there.';
+    const refused = checkValues(f, values);
+    if (refused) return refused;
+    const first = values[0]?.value.trim() ?? '';
+    if ('term' in owner) {
+      const patch: Partial<Term> =
+        f.bind === 'name' ? { name: first } : f.bind === 'description' ? { description: first } : f.bind === 'synonyms' ? { synonyms: values.map((v) => v.value.trim()).filter(Boolean).join(', ') } : f.bind === 'range' ? { range: first || undefined } : { fields: writeValues(e.fields, f, values) };
+      get().updateTerm(owner.term, patch);
+    } else if (f.bind === 'name') {
+      if (!get().renameProp(owner.prop, first)) return 'That name could not be given to the property.';
+    } else if (f.bind === 'description') get().updateProp(owner.prop, { description: first });
+    else if (!f.bind) get().updateProp(owner.prop, { fields: writeValues(e.fields, f, values) });
+    return undefined;
+  },
+  setProfile: (termId, kind) =>
+    get().apply((m) => {
+      const t = m.terms.find((x) => x.id === termId);
+      return t ? { ...m, terms: m.terms.map((x) => (x === t ? { ...x, fields: withProfile(m, x, kind) } : x)) } : m;
     }),
   edit: (fn) => {
     const result = fn(get().model);
@@ -1010,8 +1303,10 @@ export const useStore = create<State>((set, get) => ({
       return;
     }
     const pad = 70;
-    const k = Math.min(1.25, Math.max(0.1, Math.min(w / (b.x1 - b.x0 + pad * 2), h / (b.y1 - b.y0 + pad * 2))));
-    set({ vp: { k, x: w / 2 - ((b.x0 + b.x1) / 2) * k, y: h / 2 - ((b.y0 + b.y1) / 2) * k } });
+    // The style panel floats over the right of the canvas: with it open, the graph is fitted into the room beside it.
+    const room = get().stylePanel && w > 760 ? w - 340 : w;
+    const k = Math.min(1.25, Math.max(0.1, Math.min(room / (b.x1 - b.x0 + pad * 2), h / (b.y1 - b.y0 + pad * 2))));
+    set({ vp: { k, x: room / 2 - ((b.x0 + b.x1) / 2) * k, y: h / 2 - ((b.y0 + b.y1) / 2) * k } });
   },
   arrange: (kind) => {
     if (get().subgraph.active) {
@@ -1026,7 +1321,8 @@ export const useStore = create<State>((set, get) => ({
     get().fit();
   },
 
-  setView: (view) => set({ view }),
+  // A function the type of model does not have is not opened, however it was asked for.
+  setView: (view) => allowsView(get().model, view) && set({ view }),
   setEditing: (editing) => set({ editing }),
   setHighlight: (highlight, highlightLabel = '') => set({ highlight, highlightLabel }),
   setFilter: (filter) => set({ filter }),
@@ -1136,14 +1432,6 @@ useStore.subscribe((s, prev) => {
   if (s.model === prev.model) return;
   // An edit can add or remove what the subgraph shows.
   if (s.subgraph.active) s.refreshSubgraph();
-  if (s.model.mode !== prev.model.mode) {
-    // Remembered so that the next new model is of the type being worked on.
-    try {
-      localStorage.setItem(MODE_KEY, s.model.mode);
-    } catch {
-      // ignore
-    }
-  }
   // The working copy: whatever is in the editor is kept in this browser as it is edited, saved
   // to the library or not, so that a reload or a crash loses nothing.
   clearTimeout(saveTimer);
@@ -1176,15 +1464,11 @@ export function confirmDiscard(): boolean {
   return window.confirm(`“${s.model.name}” has changes that are not saved to My Models.\n\nReplace it anyway? The unsaved changes will be lost.`);
 }
 
-/** A blank model of the type last worked on, so SKOS work starts in SKOS. */
-export const newModel = () => {
-  const m = emptyModel();
-  try {
-    if (stored(MODE_KEY) === 'skos') m.mode = 'skos';
-  } catch {
-    // ignore
-  }
-  useStore.getState().replaceModel(m);
+/** A blank model of the type that was chosen for it, in the namespace that was given, if one was. */
+export const createModel = (spec: { name: string; mode: ModelMode; baseIri?: string; ontologyIri?: string }) => {
+  useStore.getState().replaceModel({ ...emptyModel(spec.name), mode: spec.mode, baseIri: spec.baseIri ?? '', ontologyIri: spec.ontologyIri ?? '' });
+  // An empty model is begun on the canvas.
+  useStore.getState().setView('graph');
 };
 
 void useStore.getState().loadExternals();

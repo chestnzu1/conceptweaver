@@ -1,9 +1,11 @@
-import { useStore } from '../model/store';
+import { currentDl, useStore } from '../model/store';
+import { creditOf, entailmentsOf } from '../model/reasoning';
 import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
-import { DATATYPES, QUANTIFIERS, type Quantifier, isLang, kindLabel, REL_KINDS, relLabel, TYPE_CHOICES, typeChoice, type Relation, type ModelMode, type RelKind, type Term } from '../model/types';
+import { QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type Relation, type Term } from '../model/types';
+import { allowsView, configOf, MODEL_TYPE_LIST, supports, type EditorSection } from '../model/modelTypes';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
-import { REL_CHOICES, relChoice, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, quantifierOf, restrictionsOf, type PropView } from '../model/props';
+import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { CommitInput, CommitTextarea } from './fields';
@@ -11,6 +13,9 @@ import { SuperclassEditor } from './Iri';
 import { AnonymousExpressions, CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
+import { RangeEnumeration, RangeSelect } from './Datatypes';
+import { ClassDefinition } from './Enumeration';
+import { Disclosure, Icon } from './Icon';
 
 export function Inspector() {
   const model = useStore((s) => s.model);
@@ -20,13 +25,25 @@ export function Inspector() {
   const selProp = useStore((s) => s.selProp);
   const prop = selProp && model.mode !== 'skos' ? findProp(model, selProp) : undefined;
   const wide = useStore((s) => s.editorWide);
+  const modelHidden = useStore((s) => s.modelPanelHidden);
 
   let body;
   if (prop && !terms.length && !rels.length) body = <ObjectPropertyPanel key={prop.key} prop={prop} />;
   else if (terms.length === 1 && !rels.length) body = <TermPanel key={terms[0].id} term={terms[0]} />;
   else if (rels.length === 1 && !terms.length) body = <RelationPanel key={rels[0].id} rel={rels[0]} />;
   else if (terms.length + rels.length > 1) body = <MultiPanel terms={terms} rels={rels} />;
-  else body = <ModelPanel />;
+  // Nothing is selected: the model's own details, unless they were folded away. Then only a strip
+  // is left to bring them back, and the room goes to the canvas or the table.
+  else if (modelHidden) {
+    return (
+      <aside className="panel inspector rail">
+        <button className="rail-open" title="Show the model details" aria-label="Show the model details" aria-expanded={false} onClick={() => useStore.getState().setModelPanelHidden(false)}>
+          <Icon name="panelOpen" />
+          <span aria-hidden="true">Model</span>
+        </button>
+      </aside>
+    );
+  } else body = <ModelPanel />;
   return <aside className={'panel inspector' + (wide ? ' wide' : '')}>{body}</aside>;
 }
 
@@ -57,10 +74,16 @@ function ExternalNote({ id }: { id: string }) {
 
 function ModelPanel() {
   const model = useStore((s) => s.model);
+  const config = configOf(model);
   const apply = useStore((s) => s.apply);
   return (
     <>
-      <h2>Model</h2>
+      <div className="editor-head">
+        <h2>Model</h2>
+        <button className="btn icon ghost" title="Hide the model details. Selecting a term or a relationship still opens its editor." aria-label="Hide the model details" aria-expanded={true} onClick={() => useStore.getState().setModelPanelHidden(true)}>
+          <Icon name="panelClose" />
+        </button>
+      </div>
       <label className="field">
         <span>Name</span>
         <CommitInput value={model.name} onCommit={(name) => apply((m) => ({ ...m, name: name.trim() || 'Untitled model' }))} />
@@ -79,13 +102,11 @@ function ModelPanel() {
         </button>
       </div>
       <div className="field two">
-        <label>
+        <div className="model-type-shown">
           <span>Model type</span>
-          <select value={model.mode} onChange={(e) => useStore.getState().convertTo(e.target.value as ModelMode)}>
-            <option value="skos">Concept scheme (SKOS)</option>
-            <option value="ontology">Ontology (OWL)</option>
-          </select>
-        </label>
+          {/* Shown, not chosen: the type is settled when the model is made, and changes only by converting it. */}
+          <strong>{config.label}</strong>
+        </div>
         <label style={{ flex: '0 0 84px' }}>
           <span>Language</span>
           <CommitInput
@@ -100,15 +121,29 @@ function ModelPanel() {
           />
         </label>
       </div>
-      {model.mode === 'ontology' && (
+      {supports(model, 'standardProperties') && (
         <label className="check">
           <input type="checkbox" checked={model.vocab.enabled} onChange={(e) => useStore.getState().setVocabEnabled(e.target.checked)} />
           <span>Use RDFS &amp; OWL properties</span>
         </label>
       )}
-      <button className="btn small" onClick={() => useStore.getState().setView('vocab')}>
-        {model.mode === 'skos' ? 'SKOS relations and conversion…' : 'Map relationships and convert…'}
-      </button>
+      {allowsView(model, 'vocab') && (
+        <button className="btn small" onClick={() => useStore.getState().setView('vocab')}>
+          Map relationships and convert…
+        </button>
+      )}
+      {/* Where there is no Vocabulary view to convert from, the conversion is offered here. It is asked for and confirmed, never done in passing. */}
+      {!allowsView(model, 'vocab') &&
+        MODEL_TYPE_LIST.filter((t) => t.id !== model.mode).map((t) => (
+          <button
+            key={t.id}
+            className="btn small"
+            title={`Makes this model a ${t.label}: its concepts and relationships are restated in that type's terms. Undo brings it back.`}
+            onClick={() => window.confirm(`Convert “${model.name}” to a ${t.label}?\n\nIts concepts and relationships are restated in that type's terms, and the app then offers that type's functions. Undo brings it back.`) && useStore.getState().convertTo(t.id)}
+          >
+            Convert to {t.label}…
+          </button>
+        ))}
       <p className="stat">
         {model.terms.length} terms · {model.relations.length} relations
       </p>
@@ -138,10 +173,13 @@ function TermPanel({ term }: { term: Term }) {
   const update = useStore((s) => s.updateTerm);
   const st = useStore.getState;
   const skos = model.mode === 'skos';
+  // Which parts of the editor there are is a matter of the type of model: a vocabulary's concept has its name, IRI and type here and nothing else.
+  const config = configOf(model);
+  const has = (section: EditorSection) => config.editorSections.includes(section);
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
   const related = resolveModel(model).relations.filter((r) => r.from === term.id || r.to === term.id);
 
-  const kind = skos ? 'Concept' : term.type === 'concept' ? 'Class' : term.type === 'property' ? 'Data property' : 'Individual';
+  const kind = config.termType[term.type].label;
   const other = (term.axioms ?? []).filter((x) => !x.startsWith('rdfs:subClassOf ') && !x.startsWith('owl:equivalentClass '));
   const annotations = (
     <Section id="annotations" title="Annotations" count={term.fields.length + (term.description ? 1 : 0) + term.synonyms.split(',').filter((x) => x.trim()).length}>
@@ -168,34 +206,35 @@ function TermPanel({ term }: { term: Term }) {
       {term.external !== undefined && <ExternalNote id={term.external} />}
       <label className="field">
         <span>
-          {skos ? 'Preferred label' : 'Name'} <code className="pred">{skos ? 'skos:prefLabel' : 'rdfs:label'}</code>
+          Name <code className="pred">{config.rdf.label}</code>
         </span>
         <CommitInput value={term.name} onCommit={(v) => update(term.id, { name: v.trim() })} />
       </label>
-      <IriDetails iri={term.iri} name={term.name} />
-      {/* A concept scheme only has concepts; the choice shows up just to fix a term that isn't one. */}
-      {(!skos || term.type !== 'concept') && (
+      <IriDetails key={term.id} iri={term.iri} name={term.name} owner={{ term: term.id }} external={term.external !== undefined} />
+      {config.termTypes.length > 1 ? (
         <label className="field">
           <span>Type</span>
           <select value={typeChoice(term)} onChange={(e) => update(term.id, TYPE_CHOICES.find((c) => c.value === e.target.value)!.patch)}>
-            {TYPE_CHOICES.map((t) => (
+            {TYPE_CHOICES.filter((t) => config.termTypes.includes(t.value)).map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
               </option>
             ))}
           </select>
         </label>
-      )}
-
-      {skos && term.type === 'concept' && (
+      ) : (
+        // One kind of term: there is nothing to choose, only to say.
         <div className="field">
-          <span>Broader concepts</span>
-          <SuperclassEditor term={term} />
+          <span>Type</span>
+          <span className="type-fixed">
+            {kind} <code className="pred">{config.termType[term.type].rdf}</code>
+          </span>
         </div>
       )}
 
-      {!skos && term.type === 'concept' && (
+      {has('axioms') && term.type === 'concept' && (
         <>
+          <ClassDefinition term={term} />
           <Section id="class-axioms" title="Class axioms">
             <div className="field">
               <span title="Explicitly stated superclasses. Ones that only follow from these are listed under Inferred superclasses.">
@@ -208,14 +247,14 @@ function TermPanel({ term }: { term: Term }) {
             <AnonymousExpressions term={term} predicate="owl:equivalentClass" />
             <LinkEditor term={term} kind="disjointWith" noun="disjoint class" label="Disjoint classes" hint="nothing can belong to both" />
           </Section>
-          <ClassRestrictions term={term} />
+          {has('restrictions') && <ClassRestrictions term={term} />}
           <ClassProperties term={term} />
-          <InferredSupers term={term} />
-          <InferredRestrictionsPanel term={term} />
+          {has('inferred') && <InferredSupers term={term} />}
+          {has('inferred') && <InferredRestrictionsPanel term={term} />}
         </>
       )}
 
-      {!skos && term.type === 'property' && (
+      {has('axioms') && term.type === 'property' && (
         <Section id="property-axioms" title="Property axioms">
           <PropertyFields term={term} />
           <fieldset className="field checks">
@@ -236,7 +275,7 @@ function TermPanel({ term }: { term: Term }) {
         </Section>
       )}
 
-      {!skos && term.type === 'instance' && (
+      {has('axioms') && term.type === 'instance' && (
         <>
           <Section id="individual-axioms" title="Individual axioms">
             <div className="field">
@@ -253,7 +292,7 @@ function TermPanel({ term }: { term: Term }) {
         </>
       )}
 
-      {other.length ? (
+      {has('axioms') && other.length ? (
         <>
           <h3>Other asserted expressions ({other.length})</h3>
           <p className="muted">Kept exactly as written and exported with the entity.</p>
@@ -267,14 +306,16 @@ function TermPanel({ term }: { term: Term }) {
         </>
       ) : null}
 
-      {annotations}
-      <div className="field">
-        <span>Colour on the canvas</span>
-        <Swatches value={term.color} onPick={(color) => update(term.id, { color })} />
-      </div>
+      {has('annotations') && annotations}
+      {has('colour') && (
+        <div className="field">
+          <span>Colour on the canvas</span>
+          <Swatches value={term.color} onPick={(color) => update(term.id, { color })} />
+        </div>
+      )}
 
-      <h3>Relations ({related.length})</h3>
-      {related.length > 0 && (
+      {has('relations') && <h3>Relations ({related.length})</h3>}
+      {has('relations') && related.length > 0 && (
         <div className="row wrap">
           <span className="muted">Highlight</span>
           <button className="btn small" title="Terms with a relation pointing to this one" onClick={() => st().showNeighbours([term.id], 'in')}>
@@ -288,26 +329,35 @@ function TermPanel({ term }: { term: Term }) {
           </button>
         </div>
       )}
-      {related.length === 0 && <p className="muted">None yet. Drag the ⊕ handle on the term to another term.</p>}
+      {has('relations') && related.length === 0 && <p className="muted">None yet. Drag the ⊕ handle on the term to another term.</p>}
       <ul className="rel-list">
-        {related.map((r) => (
+        {(has('relations') ? related : []).map((r) => (
           <li key={r.id}>
             <button onClick={() => st().select([], [r.id])} title="Open this relation">
               {r.from === term.id ? (
                 <>
-                  <em>{relLabel(r, skos) || (skos ? 'related' : '→')}</em> {name.get(r.to)}
+                  <em>{relLabel(r, skos, isInstanceOf(model, r)) || (skos ? 'related' : '→')}</em> {name.get(r.to)}
                 </>
               ) : (
                 <>
-                  {name.get(r.from)} <em>{relLabel(r, skos) || (skos ? 'related' : '→')}</em> this
+                  {name.get(r.from)} <em>{relLabel(r, skos, isInstanceOf(model, r)) || (skos ? 'related' : '→')}</em> this
                 </>
               )}
             </button>
           </li>
         ))}
       </ul>
+      {!has('annotations') && (
+        <p className="muted">
+          Its labels, definition, notes and ownership are under{' '}
+          <button className="link" onClick={() => st().setView('table')}>
+            Entities, Governance &amp; Metadata
+          </button>
+          .
+        </p>
+      )}
       <button className="btn danger" onClick={() => st().remove([term.id], [])}>
-        Delete term
+        Delete {kind.toLowerCase()}
       </button>
     </>
   );
@@ -367,24 +417,21 @@ function PropertyFields({ term }: { term: Term }) {
         <span>
           Range: the type of its values <code className="pred">rdfs:range</code>
         </span>
-        <select aria-label="Datatype" value={term.range ?? ''} onChange={(e) => st().updateTerm(term.id, { range: e.target.value || undefined })}>
-          <option value="">Not set</option>
-          {DATATYPES.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.id} ({d.label})
-            </option>
-          ))}
-        </select>
+        <RangeSelect term={term} />
       </label>
+      {/* A range that is a list of values is edited here, where it is chosen. */}
+      <RangeEnumeration term={term} />
     </>
   );
 }
 
-/** Quantifier of a restriction, with its number where one is needed. */
-function QuantifierSelect({ rel }: { rel: Relation }) {
+/** Quantifier of one of a relationship's restrictions, with its number where one is needed. */
+function QuantifierSelect({ rel, index = 0 }: { rel: Relation; index?: number }) {
   const update = useStore((s) => s.updateRelation);
-  const q = quantifierOf(rel);
+  const specs = restrictionSpecs(rel);
+  const q = specs[index]?.restriction ?? 'some';
   const counted = q === 'min' || q === 'max' || q === 'exactly';
+  const set = (spec: (typeof specs)[number]) => update(rel.id, specsPatch(specs.map((s, i) => (i === index ? spec : s))));
   return (
     <span className="quant">
       <select
@@ -393,7 +440,7 @@ function QuantifierSelect({ rel }: { rel: Relation }) {
         onChange={(e) => {
           const next = e.target.value as Quantifier;
           const n = next === 'min' || next === 'max' || next === 'exactly';
-          update(rel.id, { restriction: next === 'some' ? undefined : next, restrictionN: n ? (rel.restrictionN ?? 1) : undefined });
+          set({ restriction: next, restrictionN: n ? (specs[index]?.restrictionN ?? 1) : undefined });
         }}
       >
         {QUANTIFIERS.map((x) => (
@@ -407,8 +454,8 @@ function QuantifierSelect({ rel }: { rel: Relation }) {
           type="number"
           min={0}
           aria-label="Number"
-          value={rel.restrictionN ?? 1}
-          onChange={(e) => update(rel.id, { restrictionN: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+          value={specs[index]?.restrictionN ?? 1}
+          onChange={(e) => set({ restriction: q, restrictionN: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
         />
       )}
     </span>
@@ -427,10 +474,22 @@ function ClassRestrictions({ term }: { term: Term }) {
   const [target, setTarget] = useState('');
   const isData = prop.startsWith('d:');
   const add = () => {
-    if (isData) st().addRelation({ from: term.id, to: prop.slice(2), kind: 'property' });
+    // A further restriction by a property the class already has towards the same target joins that relationship.
+    const drawn = restrictions.find((r) => (isData ? r.data && r.rel.to === prop.slice(2) : !r.data && r.rel.to === target && propKey(r.rel.label) === prop.slice(2)))?.rel;
+    const further = drawn && nextSpec(drawn);
+    if (drawn) {
+      if (further) st().updateRelation(drawn.id, specsPatch([...restrictionSpecs(drawn), further]));
+      else st().notify('That relationship already states a restriction of every kind.');
+    } else if (isData) st().addRelation({ from: term.id, to: prop.slice(2), kind: 'property' });
     else st().addRelation({ from: term.id, to: target, label: objProps.find((p) => p.key === prop.slice(2))!.name });
     setProp('');
     setTarget('');
+  };
+  // Takes one restriction away; the relationship goes with its last one.
+  const removeOne = (rel: Relation, index: number) => {
+    const specs = restrictionSpecs(rel);
+    if (specs.length > 1) st().updateRelation(rel.id, specsPatch(specs.filter((_, i) => i !== index)));
+    else st().remove([], [rel.id]);
   };
   return (
     <>
@@ -438,13 +497,13 @@ function ClassRestrictions({ term }: { term: Term }) {
       {restrictions.length === 0 && <p className="muted">None stated on this class. A restriction says what every member of the class has: “directs some Film”, “release date some date”.</p>}
       <ul className="restrictions">
         {restrictions.map((r) => (
-          <li key={r.rel.id}>
+          <li key={`${r.rel.id}:${r.index}`}>
             <button className="link" title="Show on the canvas" onClick={() => st().focusRelation(r.rel.id)}>
               {r.property}
             </button>
-            <QuantifierSelect rel={r.rel} />
+            <QuantifierSelect rel={r.rel} index={r.index} />
             <span className={r.data ? 'datatype' : ''}>{r.filler}</span>
-            <button className="btn icon ghost" title="Remove this restriction" aria-label={`Remove ${r.text}`} onClick={() => st().remove([], [r.rel.id])}>
+            <button className="btn icon ghost" title="Remove this restriction" aria-label={`Remove ${r.text}`} onClick={() => removeOne(r.rel, r.index)}>
               ×
             </button>
           </li>
@@ -461,9 +520,7 @@ function ClassRestrictions({ term }: { term: Term }) {
             ))}
           </optgroup>
           <optgroup label="Data properties">
-            {dataProps
-              .filter((p) => !restrictions.some((r) => r.rel.to === p.id))
-              .map((p) => (
+            {dataProps.map((p) => (
                 <option key={p.id} value={'d:' + p.id}>
                   {p.name}
                 </option>
@@ -515,14 +572,20 @@ export function Sources({ sources }: { sources: RestrictionSource[] }) {
  */
 function InferredRestrictionsPanel({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
-  const inferred = useMemo(() => inferredRestrictions(model, term.id), [model, term.id]);
+  const dl = useStore(currentDl);
+  const inferred = useMemo(() => {
+    if (!dl || dl.consistency !== 'consistent') return inferredRestrictions(model, term.id);
+    // Superclasses that only the OWL 2 DL reasoner finds are inherited from in the same way.
+    const of = entailmentsOf(dl, term.id);
+    return inferredRestrictions(model, term.id, { unsatisfiable: of.unsatisfiable, supers: of.superclasses.map((x) => ({ id: x.superclass, asserted: x.asserted, equivalent: of.equivalents.includes(x.superclass), because: creditOf(dl), rels: [] })) });
+  }, [model, term.id, dl]);
   const count = inferred.restrictions.length + inferred.expressions.length;
   const [open, setOpen] = useState(true);
   return (
     <>
       <h3>
         <button className="section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <span aria-hidden="true">{open ? '▾' : '▸'}</span> Inferred restrictions ({inferred.status === 'inconsistent' ? '—' : count})
+          <Disclosure open={open} /> Inferred restrictions ({inferred.status === 'inconsistent' ? '—' : count})
         </button>
       </h3>
       {open && (
@@ -610,7 +673,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
         <CommitInput value={prop.name} onCommit={(v) => st().renameProp(prop.key, v)} />
         <small>Renaming it renames every relationship that uses it.</small>
       </label>
-      <IriDetails iri={prop.iri} name={prop.name} />
+      <IriDetails key={prop.key} iri={prop.iri} name={prop.name} owner={{ prop: prop.key }} external={prop.external !== undefined} />
       <Section id="property-axioms" title="Property axioms">
         {side('domain')}
         {side('range')}
@@ -653,7 +716,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
             <li key={r.id}>
               <button onClick={() => st().focusRelation(r.id)} title="Show on the canvas">
                 {judged && <span className={badFrom || badTo ? 'bad' : 'good'}>{badFrom || badTo ? '✗ ' : '✓ '}</span>}
-                {name.get(r.from)} <em>{classLevel ? quantifierOf(r) : '→'}</em> {name.get(r.to)}
+                {name.get(r.from)} <em>{classLevel ? restrictionSpecs(r).map((s) => s.restriction + (s.restrictionN !== undefined ? ' ' + s.restrictionN : '')).join(', ') : '→'}</em> {name.get(r.to)}
                 {badFrom && <small className="bad"> {name.get(r.from)} is not a kind of {prop.domain.map((id) => name.get(id)).join(' or ')}</small>}
                 {badTo && <small className="bad"> {name.get(r.to)} is not a kind of {prop.range.map((id) => name.get(id)).join(' or ')}</small>}
               </button>
@@ -692,7 +755,12 @@ function RelationPanel({ rel }: { rel: Relation }) {
   const usesProp = !skos && rel.kind === 'association' && !own && !model.vocab.map[rel.label.trim().toLowerCase()];
   const objProps = usesProp ? objectProperties(model) : [];
   const prop = usesProp ? objProps.find((p) => p.key === propKey(rel.label)) : undefined;
-  const restriction = !skos ? restrictionsOf(model, rel.from).find((r) => r.rel.id === rel.id) : undefined;
+  // Every restriction this relationship puts on its class: one or several.
+  const stated = !skos ? restrictionsOf(model, rel.from).filter((r) => r.rel.id === rel.id) : [];
+  const restriction = stated[0];
+  const further = nextSpec(rel);
+  // A class membership: it points from an individual to a class and cannot be turned around.
+  const instanceOf = isInstanceOf(model, rel);
 
   const names = (ids: string[]) => ids.map((id) => model.terms.find((t) => t.id === id)?.name).join(', ') || 'anything';
   const endpoint = (side: 'from' | 'to') => (
@@ -709,14 +777,14 @@ function RelationPanel({ rel }: { rel: Relation }) {
   );
   return (
     <>
-      <h2>{restriction ? 'Restriction' : usesProp ? 'Relationship' : 'Relation'}</h2>
+      <h2>{restriction ? 'Restriction' : instanceOf ? 'Class membership' : usesProp ? 'Relationship' : 'Relation'}</h2>
       {endpoint('from')}
       <label className="field">
         <span>{prop ? 'Object property' : usesProp ? 'Label, or an object property' : 'Label'}</span>
         <CommitInput
           list={usesProp ? 'panel-object-props' : undefined}
           value={rel.label}
-          placeholder={rel.kind === 'association' ? (skos ? 'empty means related' : 'pick one or type a new name') : relLabel({ ...rel, label: '' }, skos)}
+          placeholder={rel.kind === 'association' ? (skos ? 'empty means related' : 'pick one or type a new name') : relLabel({ ...rel, label: '' }, skos, instanceOf)}
           onCommit={(v) => update(rel.id, { label: v.trim() })}
         />
         {usesProp && (
@@ -744,30 +812,26 @@ function RelationPanel({ rel }: { rel: Relation }) {
         )}
       </label>
       {endpoint('to')}
-      <button className="btn small" onClick={() => st().reverseRelation(rel.id)}>
+      <button className="btn small" disabled={instanceOf} title={instanceOf ? 'A class membership always points from the individual to the class' : undefined} onClick={() => st().reverseRelation(rel.id)}>
         Reverse direction
       </button>
       <label className="field">
         <span>Kind</span>
-        {skos ? (
-          <select value={rel.kind} onChange={(e) => update(rel.id, { kind: e.target.value as RelKind })}>
-            {REL_KINDS.map((k) => (
-              <option key={k.value} value={k.value}>
-                {kindLabel(k.value, skos)}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <select value={relChoice(model, rel)} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
-            {REL_CHOICES.map((k) => (
-              <option key={k.value} value={k.value}>
-                {k.label}
-              </option>
-            ))}
-          </select>
+        {/* The kinds the type of model has, of those the ones that fit what the line connects. */}
+        <select value={relChoice(model, rel)} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
+          {offeredChoices(model, rel).map((k) => (
+            <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
+              {k.label}
+            </option>
+          ))}
+        </select>
+        {instanceOf && (
+          <small>
+            {names([rel.from])} is a member of the class {names([rel.to])}. Exports as <code className="pred">rdf:type</code>.
+          </small>
         )}
       </label>
-      {props.length > 0 && (
+      {supports(model, 'standardProperties') && props.length > 0 && (
         <label className="field">
           <span>Standard property</span>
           <select value={own} onChange={(e) => update(rel.id, { predicate: e.target.value || undefined })}>
@@ -787,26 +851,54 @@ function RelationPanel({ rel }: { rel: Relation }) {
       )}
       {restriction && (
         <div className="field">
-          <span>Restriction on {names([rel.from])}</span>
-          <div className="row">
-            <QuantifierSelect rel={rel} />
-          </div>
+          {/* A restriction is on a property: the data property, or the object property, the class has. */}
+          <span>
+            {stated.length > 1 ? 'Restrictions' : 'Restriction'} on {restriction.property}
+          </span>
+          <ul className="restrictions">
+            {stated.map((r) => (
+              <li key={r.index}>
+                <QuantifierSelect rel={rel} index={r.index} />
+                <span className={r.data ? 'datatype' : ''}>{r.filler}</span>
+                {stated.length > 1 && (
+                  <button className="btn icon ghost" title="Remove this restriction" aria-label={`Remove ${r.text}`} onClick={() => update(rel.id, specsPatch(restrictionSpecs(rel).filter((_, i) => i !== r.index)))}>
+                    ×
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {further && (
+            <button className="btn small" title="State a further restriction with the same property and target" onClick={() => update(rel.id, specsPatch([...restrictionSpecs(rel), further]))}>
+              Add another restriction
+            </button>
+          )}
           <small>
-            Every {names([rel.from])}: <strong>{restriction.text}</strong>.
+            Every {names([rel.from])}:{' '}
+            {stated.map((r, i) => (
+              <span key={r.index}>
+                {i > 0 && ', and '}
+                <strong>{r.text}</strong>
+              </span>
+            ))}
+            .
           </small>
         </div>
       )}
 
-      <div className="field two">
-        <label>
-          <span>From cardinality</span>
-          <CommitInput value={rel.fromCard} placeholder="1..*" onCommit={(v) => update(rel.id, { fromCard: v.trim() })} />
-        </label>
-        <label>
-          <span>To cardinality</span>
-          <CommitInput value={rel.toCard} placeholder="0..1" onCommit={(v) => update(rel.id, { toCard: v.trim() })} />
-        </label>
-      </div>
+      {/* Cardinalities are a plain relationship's; the other kinds say "how many" with restrictions, or not at all. */}
+      {hasCardinality(model, rel) && (
+        <div className="field two">
+          <label>
+            <span>From cardinality</span>
+            <CommitInput value={rel.fromCard} placeholder="1..*" onCommit={(v) => update(rel.id, { fromCard: v.trim() })} />
+          </label>
+          <label>
+            <span>To cardinality</span>
+            <CommitInput value={rel.toCard} placeholder="0..1" onCommit={(v) => update(rel.id, { toCard: v.trim() })} />
+          </label>
+        </div>
+      )}
       <label className="field">
         <span>Description</span>
         <CommitTextarea rows={4} value={rel.description} onCommit={(description) => update(rel.id, { description })} />

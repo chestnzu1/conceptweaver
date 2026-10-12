@@ -1,0 +1,453 @@
+/* The stylesheet of an exported model page. It goes into the file as it is: nothing here may
+   depend on anything outside the page. The colours come from the app, as custom properties. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- top */
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.top h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.chip {
+  padding: 2px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.search {
+  flex: 1 1 220px;
+  max-width: 380px;
+  margin-left: auto;
+}
+
+.search input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+
+/* ---- the three columns */
+
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 330px;
+  min-height: 0;
+}
+
+#nav,
+#detail {
+  overflow-y: auto;
+  background: var(--panel);
+}
+
+#nav {
+  padding: 8px 6px 16px;
+  border-right: 1px solid var(--line);
+}
+
+#detail {
+  padding: 14px 16px 24px;
+  border-left: 1px solid var(--line);
+}
+
+#graph {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--canvas);
+}
+
+#graph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+#graph svg.dragging {
+  cursor: grabbing;
+}
+
+#graph .empty {
+  margin: 0;
+  padding: 24px;
+  color: var(--ink-2);
+}
+
+/* ---- the picture answers to what is chosen */
+
+/* A term can be picked up and put somewhere else; a relationship's line can be pulled into a bow. */
+[data-term] {
+  cursor: move;
+}
+
+[data-rel] {
+  cursor: pointer;
+}
+
+/* The picture was drawn with its colours written on each shape, so what is said here has to insist. */
+#graph svg.focused [data-term]:not(.near):not(.sel),
+#graph svg.focused [data-rel]:not(.near):not(.sel) {
+  opacity: 0.2 !important;
+}
+
+[data-term].sel > :first-child {
+  stroke: var(--accent) !important;
+  stroke-width: 3.5px !important;
+  stroke-dasharray: none !important;
+}
+
+[data-rel].sel .line,
+[data-rel].sel .head {
+  stroke: var(--accent) !important;
+}
+
+[data-rel].sel .line {
+  stroke-width: 3px !important;
+}
+
+.hit {
+  fill: none !important;
+  stroke: transparent !important;
+  stroke-width: 16px !important;
+}
+
+.zoom {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+}
+
+.zoom button {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.zoom button:hover {
+  background: var(--panel-2);
+}
+
+/* ---- the list */
+
+#nav h2 {
+  margin: 12px 8px 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#nav ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#nav ul ul {
+  margin-left: 14px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+}
+
+.twisty,
+.item {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.twisty {
+  flex: none;
+  width: 24px;
+  height: 26px;
+  padding: 0;
+  color: var(--ink-2);
+}
+
+.twisty.none {
+  visibility: hidden;
+}
+
+.item {
+  flex: 1;
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 7px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item:hover,
+.twisty:hover {
+  background: var(--panel-2);
+}
+
+.item.on {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.item small {
+  margin-left: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.none-found {
+  margin: 10px 8px;
+  color: var(--ink-2);
+}
+
+/* ---- the details */
+
+#detail h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+#detail h3 {
+  margin: 18px 0 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#detail p {
+  margin: 8px 0;
+}
+
+.muted {
+  color: var(--ink-2);
+}
+
+.iri {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.iri code {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-2);
+  font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.copy {
+  flex: none;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.copy:hover {
+  background: var(--panel-2);
+}
+
+.links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.links li {
+  padding: 2px 0;
+}
+
+.links em {
+  color: var(--ink-2);
+}
+
+.link {
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: minmax(90px, 38%) 1fr;
+  gap: 5px 10px;
+  margin: 0;
+}
+
+dt {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.lang {
+  margin-left: 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.foot {
+  margin-top: 22px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+/* ---- a narrow window: the picture on top, the list and the details under it */
+
+@media (max-width: 900px) {
+  body {
+    height: auto;
+  }
+
+  .layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #graph {
+    order: -1;
+    height: 56vh;
+    border-bottom: 1px solid var(--line);
+  }
+
+  #nav,
+  #detail {
+    border: 0;
+    overflow: visible;
+  }
+
+  #detail {
+    order: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  #nav {
+    order: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .item,
+  .twisty,
+  .zoom button,
+  .copy {
+    transition: background-color 120ms ease-out;
+  }
+}
+
+@media print {
+  #nav,
+  .zoom,
+  .search {
+    display: none;
+  }
+
+  .layout {
+    display: block;
+  }
+
+  #graph {
+    height: 60vh;
+  }
+}

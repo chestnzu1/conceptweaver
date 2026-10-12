@@ -1,6 +1,6 @@
 import { propKey, restrictionsOf, type Restriction } from './props';
 import { reason, type SuperLink } from './reasoner';
-import type { Model } from './types';
+import type { Model, Relation } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -53,7 +53,11 @@ const expressionOf = (axiom: string) => axiom.replace(/^(rdfs:subClassOf|owl:equ
 
 const EMPTY = { restrictions: [], expressions: [] };
 
-export function inferredRestrictions(model: Model, classId: string): InferredRestrictions {
+/**
+ * `more` is what another reasoner (the OWL 2 DL one) entails beyond the app's own: further
+ * superclasses to inherit from in the same way, and whether the class is unsatisfiable.
+ */
+export function inferredRestrictions(model: Model, classId: string, more?: { supers: SuperLink[]; unsatisfiable: boolean }): InferredRestrictions {
   const m = resolveModel(model);
   const byId = new Map(m.terms.map((t) => [t.id, t]));
   const self = byId.get(classId);
@@ -67,7 +71,9 @@ export function inferredRestrictions(model: Model, classId: string): InferredRes
   const restrictions = new Map<string, InferredRestriction>();
   const expressions = new Map<string, InferredExpression>();
   // Directly stated superclasses first, so that the nearest source is named first.
-  const supers = [...reasoning.superclasses(classId)].sort((a, b) => Number(b.asserted) - Number(a.asserted));
+  const own_ = reasoning.superclasses(classId);
+  const known = new Set(own_.map((l) => l.id));
+  const supers = [...own_, ...(more?.supers ?? []).filter((l) => l.id !== classId && !known.has(l.id) && byId.get(l.id)?.type === 'concept')].sort((a, b) => Number(b.asserted) - Number(a.asserted));
   for (const link of supers) {
     const source: RestrictionSource = { ...link, name: byId.get(link.id)?.name || 'Unnamed' };
     for (const r of restrictionsOf(model, link.id)) {
@@ -86,7 +92,7 @@ export function inferredRestrictions(model: Model, classId: string): InferredRes
     }
   }
   return {
-    status: reasoning.unsatisfiable.has(classId) ? 'unsatisfiable' : reasoning.truncated ? 'partial' : 'ok',
+    status: reasoning.unsatisfiable.has(classId) || more?.unsatisfiable ? 'unsatisfiable' : reasoning.truncated ? 'partial' : 'ok',
     restrictions: [...restrictions.values()],
     expressions: [...expressions.values()],
   };
@@ -98,4 +104,32 @@ export const NOT_INFERRED = [
   'Restrictions through the property hierarchy: one on a sub-property or an inverse property is not turned into one on the related property.',
   'Class membership that follows from a restriction, such as a property’s domain making a restricted class a kind of that domain.',
   'Anything that needs the inside of a kept class expression (unions, intersections, nested restrictions): those are inherited as text, not interpreted.',
+  'What follows from an enumeration by trying each member in turn: a restriction that every member of { A, B } meets is not concluded for the class.',
 ];
+
+/** A class membership that is entailed but not stated, shaped like the relation that would state it. */
+export interface InferredMembership extends Pick<Relation, 'id' | 'from' | 'to'> {
+  /** What it follows from, in words. */
+  because: string;
+}
+
+/**
+ * The class memberships the reasoner works out beyond the asserted ones: an instance of a class
+ * is an instance of its superclasses, a property's domain and range say what its subject and
+ * value are, and so on. Nothing here is in the model. An inconsistent ontology entails anything,
+ * so it gives none.
+ */
+export function inferredMemberships(model: Model): { consistent: boolean; truncated: boolean; memberships: InferredMembership[] } {
+  const m = resolveModel(model);
+  if (m.mode === 'skos') return { consistent: true, truncated: false, memberships: [] };
+  const reasoning = reason(model);
+  if (!reasoning.consistent) return { consistent: false, truncated: reasoning.truncated, memberships: [] };
+  const memberships: InferredMembership[] = [];
+  for (const t of m.terms) {
+    if (t.type !== 'instance') continue;
+    for (const link of reasoning.types(t.id)) {
+      if (!link.asserted) memberships.push({ id: `inferred:${t.id}|${link.id}`, from: t.id, to: link.id, because: link.because });
+    }
+  }
+  return { consistent: true, truncated: reasoning.truncated, memberships };
+}

@@ -1,4 +1,5 @@
-import { PROP_LINKS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type Term } from './types';
+import { allowsKind, configOf, type RelKindId } from './modelTypes';
+import { ENUM_RANGE, PROP_LINKS, QUANTIFIERS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
 import { labelKey, resolveModel } from './vocab';
 
 /** The characteristics an object property can have, as in OWL. */
@@ -49,9 +50,11 @@ interface Analysis {
   /** Whether a term is, or is a kind / an instance of, one of the allowed terms. */
   fits: (id: string, allowed: string[]) => boolean;
   restrictions: Map<string, Restriction[]>;
-  byRelation: Map<string, Restriction>;
+  byRelation: Map<string, Restriction[]>;
   /** For each term: the terms it is directly stated to be a kind (or an instance) of, each once. */
   supers: Map<string, string[]>;
+  /** The relations that state a class membership: an individual is an instance of a class (rdf:type). */
+  memberships: Set<string>;
 }
 
 const cache = new WeakMap<Model, Analysis>();
@@ -84,8 +87,11 @@ function analyse(model: Model): Analysis {
   }
   const plain = new Map<string, { key: string; name: string; rels: Relation[] }>();
   const parents = new Map<string, string[]>();
+  const memberships = new Set<string>();
   for (const r of m.relations) {
     if (!types.has(r.from) || !types.has(r.to)) continue;
+    // "Is a" from an individual to a class is its membership of the class, unless a standard property says otherwise.
+    if (m.mode !== 'skos' && r.kind === 'generalization' && (!r.predicate || r.predicate === 'rdf:type') && types.get(r.from) === 'instance' && types.get(r.to) === 'concept') memberships.add(r.id);
     if (r.kind === 'generalization' && r.from !== r.to && !parents.get(r.from)?.includes(r.to)) parents.set(r.from, [...(parents.get(r.from) ?? []), r.to]);
     // "is a", "has property" and relations given a standard RDFS/OWL/SKOS meaning are neither.
     if (r.kind !== 'association' || r.predicate) continue;
@@ -118,8 +124,9 @@ function analyse(model: Model): Analysis {
     plain: [...plain.values()].sort((a, b) => a.name.localeCompare(b.name)),
     fits,
     supers: parents,
+    memberships,
     restrictions,
-    byRelation: new Map([...restrictions.values()].flat().map((r) => [r.rel.id, r])),
+    byRelation: [...restrictions.values()].flat().reduce((map, r) => map.set(r.rel.id, [...(map.get(r.rel.id) ?? []), r]), new Map<string, Restriction[]>()),
   };
   cache.set(model, out);
   return out;
@@ -160,19 +167,49 @@ export function dataDomain(model: Model, t: Term): { ids: string[]; auto: boolea
   return { ids: [...new Set(model.relations.filter((r) => r.kind === 'property' && r.to === t.id && known.has(r.from)).map((r) => r.from))], auto: true };
 }
 
-/** What a relationship is, as offered where its kind is chosen. */
-export type RelChoice = 'object' | 'plain' | 'generalization' | 'property';
-export const REL_CHOICES: { value: RelChoice; label: string }[] = [
-  { value: 'plain', label: 'Relationship (plain)' },
-  { value: 'object', label: 'Object property' },
-  { value: 'generalization', label: 'Is a (generalization)' },
-  { value: 'property', label: 'Has data property' },
-];
+/** What a relationship is, as offered where its kind is chosen. Which kinds there are depends on the type of model. */
+export type RelChoice = RelKindId;
+
+/**
+ * Whether a relation states a class membership: it points from an individual to a class and
+ * means rdf:type. It is an "is a" relation like a superclass is, told apart by what it connects.
+ */
+export const isInstanceOf = (model: Model, r: Pick<Relation, 'id'>): boolean => analyse(model).memberships.has(r.id);
 
 export function relChoice(model: Model, r: Relation): RelChoice {
+  if (isInstanceOf(model, r)) return 'instanceOf';
   if (r.kind !== 'association') return r.kind;
-  return !r.predicate && !r.plain && model.props.some((p) => propKey(p.name) === propKey(r.label)) ? 'object' : 'plain';
+  // Where the type of model has no object properties, a label is only ever a label.
+  return allowsKind(model, 'object') && !r.predicate && !r.plain && model.props.some((p) => propKey(p.name) === propKey(r.label)) ? 'object' : 'plain';
 }
+
+/** What each pair of term types can be related by. Pairs not listed can be anything but "Is Instance Of". */
+const KINDS_BETWEEN: Record<string, { kinds: RelChoice[]; between: string }> = {
+  'concept|instance': { kinds: ['plain', 'instanceOf'], between: 'an individual and a class' },
+  'concept|concept': { kinds: ['plain', 'object', 'generalization'], between: 'two classes' },
+  'concept|property': { kinds: ['plain', 'property'], between: 'a class and a data property' },
+};
+
+/**
+ * The kinds a relationship can be given, each with the reason it is not on offer, if it is not.
+ * What it joins decides: an individual and a class can be "Is Instance Of" or plain; two classes
+ * an object property, "is a" or plain; a class and a data property "has data property" or plain.
+ */
+export function relChoices(model: Model, r: Pick<Relation, 'from' | 'to'>): { value: RelChoice; label: string; disabled?: string }[] {
+  const config = configOf(model);
+  const kinds = config.relationKinds.map((k) => ({ value: k.id, label: k.label }));
+  // With one kind of term there is nothing for the two ends to differ in.
+  if (config.termTypes.length < 2) return kinds;
+  const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
+  const rule = KINDS_BETWEEN[[type(r.from), type(r.to)].sort().join('|')];
+  return kinds.map((c) => {
+    if (rule) return rule.kinds.includes(c.value) ? c : { ...c, disabled: `Not between ${rule.between}` };
+    return c.value === 'instanceOf' ? { ...c, disabled: 'Only between an individual and a class' } : c;
+  });
+}
+
+/** The kinds to list for a relationship: the ones it can be given, and the one it is, should that no longer be allowed. */
+export const offeredChoices = (model: Model, r: Relation) => relChoices(model, r).filter((c) => !c.disabled || c.value === relChoice(model, r));
 
 /**
  * The superclasses a class is explicitly stated to have: one per "is a" relation, each once,
@@ -186,9 +223,44 @@ export const wouldCycle = (model: Model, id: string, superId: string): boolean =
 
 export const quantifierOf = (r: Relation): Quantifier => r.restriction ?? 'some';
 
+const counted = (q: Quantifier) => q === 'min' || q === 'max' || q === 'exactly';
+const sameSpec = (a: RestrictionSpec, b: RestrictionSpec) => a.restriction === b.restriction && a.restrictionN === b.restrictionN;
+
+/**
+ * Every restriction a relationship states, in order: the first ("some" unless set otherwise)
+ * and any further ones. A quantifier that counts always has its number.
+ */
+export function restrictionSpecs(r: Pick<Relation, 'restriction' | 'restrictionN' | 'more'>): RestrictionSpec[] {
+  const all = [{ restriction: r.restriction ?? 'some', restrictionN: r.restrictionN }, ...(r.more ?? [])];
+  return all.map((s) => (counted(s.restriction) ? { restriction: s.restriction, restrictionN: s.restrictionN ?? 1 } : { restriction: s.restriction }));
+}
+
+/** The change to a relationship that makes it state exactly these restrictions, each once. At least one is kept. */
+export function specsPatch(specs: RestrictionSpec[]): Pick<Relation, 'restriction' | 'restrictionN' | 'more'> {
+  const list = restrictionSpecs({ restriction: specs[0]?.restriction, restrictionN: specs[0]?.restrictionN, more: specs.slice(1) });
+  const [first, ...rest] = list.filter((s, i) => list.findIndex((x) => sameSpec(x, s)) === i);
+  return { restriction: first.restriction === 'some' ? undefined : first.restriction, restrictionN: first.restrictionN, more: rest.length ? rest : undefined };
+}
+
+/** A restriction the relationship does not state yet, to start a further one from; undefined when it has one of every kind. */
+export function nextSpec(r: Pick<Relation, 'restriction' | 'restrictionN' | 'more'>): RestrictionSpec | undefined {
+  const used = new Set(restrictionSpecs(r).map((s) => s.restriction));
+  const q = QUANTIFIERS.find((x) => !used.has(x.id))?.id;
+  return q ? (counted(q) ? { restriction: q, restrictionN: 1 } : { restriction: q }) : undefined;
+}
+
+/**
+ * Whether a relationship carries cardinalities at its ends. They are a diagram's way of saying
+ * "how many" and belong to a plain relationship; an object or data property says it with
+ * restrictions, and "is a" and "is instance of" do not say it at all.
+ */
+export const hasCardinality = (model: Model, r: Relation): boolean => (model.mode === 'skos' ? r.kind === 'association' : !r.predicate && relChoice(model, r) === 'plain');
+
 /** One line of a class description: "directs some Film", "release date some xsd:date". */
 export interface Restriction {
   rel: Relation;
+  /** Which of the relationship's restrictions this is (see restrictionSpecs). */
+  index: number;
   /** On a data property (the value is a literal) rather than an object property. */
   data: boolean;
   property: string;
@@ -206,7 +278,7 @@ export interface Restriction {
 export const restrictionsOf = (model: Model, classId: string): Restriction[] => analyse(model).restrictions.get(classId) ?? [];
 
 /** Every restriction in the model, by the relationship that states it. */
-export const restrictionByRelation = (model: Model): Map<string, Restriction> => analyse(model).byRelation;
+export const restrictionByRelation = (model: Model): Map<string, Restriction[]> => analyse(model).byRelation;
 
 function allRestrictions(m: Model, declared: Map<string, string>): Map<string, Restriction[]> {
   const out = new Map<string, Restriction[]>();
@@ -218,15 +290,19 @@ function allRestrictions(m: Model, declared: Map<string, string>): Map<string, R
     if (from?.type !== 'concept' || !to || r.predicate) continue;
     let line: Pick<Restriction, 'data' | 'property' | 'filler'> | undefined;
     if (r.kind === 'property' && to.type === 'property') {
-      line = { data: true, property: to.name || 'Unnamed', filler: to.range ?? 'rdfs:Literal' };
+      // The values it has to have: a standard datatype by its name, an enumerated one by the name it was given.
+      const listed = to.range?.startsWith(ENUM_RANGE) ? m.datatypes.find((d) => d.id === to.range!.slice(ENUM_RANGE.length))?.name : undefined;
+      line = { data: true, property: to.name || 'Unnamed', filler: listed ?? (to.range?.startsWith(ENUM_RANGE) ? undefined : to.range) ?? 'rdfs:Literal' };
     } else if (r.kind === 'association' && !r.plain && to.type === 'concept' && declared.has(propKey(r.label))) {
       line = { data: false, property: declared.get(propKey(r.label))!, filler: to.name || 'Unnamed' };
     }
     if (!line) continue;
-    const quantifier = quantifierOf(r);
-    const n = quantifier === 'min' || quantifier === 'max' || quantifier === 'exactly' ? (r.restrictionN ?? 1) : undefined;
-    const item: Restriction = { rel: r, ...line, quantifier, ...(n !== undefined ? { n } : {}), text: `${line.property} ${quantifier}${n !== undefined ? ' ' + n : ''} ${line.filler}` };
-    (out.get(r.from) ?? out.set(r.from, []).get(r.from)!).push(item);
+    for (const [index, spec] of restrictionSpecs(r).entries()) {
+      const quantifier = spec.restriction;
+      const n = spec.restrictionN;
+      const item: Restriction = { rel: r, index, ...line, quantifier, ...(n !== undefined ? { n } : {}), text: `${line.property} ${quantifier}${n !== undefined ? ' ' + n : ''} ${line.filler}` };
+      (out.get(r.from) ?? out.set(r.from, []).get(r.from)!).push(item);
+    }
   }
   return out;
 }

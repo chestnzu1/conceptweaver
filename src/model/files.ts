@@ -1,7 +1,13 @@
 import { flushSync } from 'react-dom';
 import { convertModel } from './convert';
+import { beyondEnumerations, enumerationEdges } from './edgeKinds';
 import { bounds } from './geometry';
+import { htmlPage, LIGHT_TOKENS, viewerData, type Tokens } from './htmlExport';
+import { inferredMemberships } from './inferred';
+import { supports } from './modelTypes';
+import { hasCardinality } from './props';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
+import { stable } from './stable';
 import { useStore, viewOf } from './store';
 import { normalizeModel, type Model } from './types';
 
@@ -27,7 +33,7 @@ export function relationsCsv(m: Model): string {
   const name = new Map(m.terms.map((t) => [t.id, t.name]));
   return csv([
     ['From', 'Label', 'To', 'Kind', 'From cardinality', 'To cardinality', 'Description'],
-    ...m.relations.map((r) => [name.get(r.from) ?? '', r.label, name.get(r.to) ?? '', r.kind, r.fromCard, r.toCard, r.description]),
+    ...m.relations.map((r) => [name.get(r.from) ?? '', r.label, name.get(r.to) ?? '', r.kind, ...(hasCardinality(m, r) ? [r.fromCard, r.toCard] : ['', '']), r.description]),
   ]);
 }
 
@@ -132,7 +138,26 @@ async function exportPng(name: string) {
   if (blob) download(name, blob);
 }
 
-export type ExportFormat = 'json' | 'jsonld' | 'turtle' | 'owl' | 'skos' | 'csv-terms' | 'csv-relations' | 'svg' | 'png';
+/**
+ * The model as a page that opens on its own: the graph as the canvas shows it now, in the
+ * colours the app is in now, with a list, a search and the details of whatever is clicked.
+ */
+function interactivePage(): string {
+  const graph = graphSvg();
+  const store = useStore.getState();
+  const style = getComputedStyle(document.documentElement);
+  const tokens = Object.fromEntries((Object.keys(LIGHT_TOKENS) as (keyof Tokens)[]).map((k) => [k, style.getPropertyValue('--' + k).trim() || LIGHT_TOKENS[k]])) as Tokens;
+  // The picture is of what the canvas shows, which in a subgraph is part of the model. The page says so, and lists all of it.
+  const shown = new Set(viewOf(store).terms.map((t) => t.id));
+  // Class memberships the reasoner works out are in the picture when they were asked for on the canvas.
+  const entailed = store.showInferred && supports(store.model, 'reasoning') ? inferredMemberships(stable(store.model)).memberships : [];
+  // Where the line of an enumeration is in the picture, the canvas leaves out the inferred membership it would repeat.
+  const drawn = new Set(Array.from((graph?.svg ?? '').matchAll(/data-rel="([^"]+)"/g), (x) => x[1]));
+  const inferred = beyondEnumerations(entailed, enumerationEdges(store.model).filter((e) => drawn.has(e.id)));
+  return htmlPage(viewerData(store.model, new Date(), { shown, inferred, enumerations: store.showEnumerations }), graph?.svg ?? '', tokens, store.theme === 'dark');
+}
+
+export type ExportFormat = 'json' | 'jsonld' | 'turtle' | 'owl' | 'skos' | 'csv-terms' | 'csv-relations' | 'svg' | 'png' | 'html';
 
 export async function exportModel(format: ExportFormat) {
   const store = useStore.getState();
@@ -148,6 +173,7 @@ export async function exportModel(format: ExportFormat) {
     else if (format === 'csv-terms') download(`${base}-terms.csv`, '﻿' + termsCsv(m), 'text/csv');
     else if (format === 'csv-relations') download(`${base}-relations.csv`, '﻿' + relationsCsv(m), 'text/csv');
     else if (!viewOf(store).terms.length) store.notify('Nothing to export yet.');
+    else if (format === 'html') download(`${base}.html`, interactivePage(), 'text/html');
     else if (format === 'svg') download(`${base}.svg`, graphSvg()!.svg, 'image/svg+xml');
     else await exportPng(`${base}.png`);
   } catch (e) {
