@@ -164,6 +164,10 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await datatype.getByLabel('New value', { exact: true }).fill('short');
     await datatype.getByRole('button', { name: 'Add value' }).click();
     report('Enumerated datatype', await page.evaluate(measure));
+    // The sidebar folded away to its strip, with and without a search on.
+    await page.locator('.term-list').getByLabel('Search terms').fill('film');
+    await page.locator('.term-list').getByRole('button', { name: 'Hide the sidebar' }).click();
+    report('Sidebar folded', await page.evaluate(measure));
     await page.close();
   }
 }

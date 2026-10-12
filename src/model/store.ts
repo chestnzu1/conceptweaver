@@ -234,6 +234,12 @@ interface State {
   /** Whether the model details, which the side panel shows while nothing is selected, are folded away. */
   modelPanelHidden: boolean;
   setModelPanelHidden: (hidden: boolean) => void;
+  /** Whether the sidebar on the left, with the hierarchy and the lists of terms, is folded away to a strip. */
+  sidebarHidden: boolean;
+  setSidebarHidden: (hidden: boolean) => void;
+  /** How wide that sidebar is when it is open, in pixels. Its edge can be dragged. */
+  sidebarWidth: number;
+  setSidebarWidth: (width: number) => void;
   setEditorWide: (wide: boolean) => void;
   subgraph: SubgraphState;
   dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | null;
@@ -408,6 +414,10 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const initialModel = loadModel();
 
+/** The widths the sidebar on the left can be given: narrow enough to be out of the way, wide enough for long names. */
+export const SIDEBAR_WIDTH = { min: 180, max: 720, initial: 232 } as const;
+const sidebarWidthOf = (width: number) => (Number.isFinite(width) ? Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width))) : SIDEBAR_WIDTH.initial);
+
 export const useStore = create<State>((set, get) => ({
   model: initialModel,
   doc: loadDoc(initialModel),
@@ -505,6 +515,37 @@ export const useStore = create<State>((set, get) => ({
       // Remembered for this visit only.
     }
     set({ modelPanelHidden });
+  },
+  sidebarHidden: (() => {
+    try {
+      return localStorage.getItem('conceptweaver:sidebar') === 'hidden';
+    } catch {
+      return false;
+    }
+  })(),
+  setSidebarHidden: (sidebarHidden) => {
+    try {
+      localStorage.setItem('conceptweaver:sidebar', sidebarHidden ? 'hidden' : 'shown');
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ sidebarHidden });
+  },
+  sidebarWidth: (() => {
+    try {
+      return sidebarWidthOf(Number(localStorage.getItem('conceptweaver:sidebar-width')) || SIDEBAR_WIDTH.initial);
+    } catch {
+      return SIDEBAR_WIDTH.initial;
+    }
+  })(),
+  setSidebarWidth: (width) => {
+    const sidebarWidth = sidebarWidthOf(width);
+    try {
+      localStorage.setItem('conceptweaver:sidebar-width', String(sidebarWidth));
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ sidebarWidth });
   },
   setEditorWide: (editorWide) => {
     try {

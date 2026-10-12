@@ -116,6 +116,10 @@ node e2e/ui-audit.mjs       # measures every view in both themes: text contrast,
 - **Class hierarchy sidebar** – the left sidebar is a collapsible tree of classes under
   `owl:Thing`, built from the stated superclasses (a class with two appears under both), with
   search by name or IRI and expand/collapse all. Data properties and individuals have their own tabs.
+  The sidebar is as wide as you make it: drag its edge (or, with the edge focused, use the
+  arrow keys), and double-click the edge to fit it to the longest name. The button beside the
+  search folds the whole sidebar away to a strip, and the strip opens it again as it was. Either
+  way the graph stays where it is on the screen, and both are remembered in the browser.
 - **Entity editor** – the side panel edits whatever is selected, with the fields that its kind
   of entity has in OWL and no others:
   - *Class*: asserted superclasses (any number), equivalent and disjoint classes, restrictions,
