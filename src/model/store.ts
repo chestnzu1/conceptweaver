@@ -5,7 +5,8 @@ import { bounds } from './geometry';
 import { forceLayout, hierarchyLayout } from './layout';
 import { sampleModel } from './sample';
 import { convertModel } from './convert';
-import { declaredProp, findProp, propKey, type RelChoice } from './props';
+import { declaredProp, findProp, propKey, relChoices, type RelChoice } from './props';
+import { cannotRelate, settleRelation, typed } from './relating';
 import { labelKey, resolveModel, suggestFor } from './vocab';
 import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from './subgraph';
 import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaOwner, type MetaValue } from './governance';
@@ -23,7 +24,7 @@ import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } 
 import { askReasoner, DEFAULT_REASONER_URL, dlRequest, type EngineId, type ReasoningResult } from './reasoning';
 import { stable } from './stable';
 import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
-import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term } from './types';
+import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term, type TermType } from './types';
 
 export type { View } from './modelTypes';
 export type Theme = 'light' | 'dark';
@@ -318,7 +319,12 @@ interface State {
   updateTerm: (id: string, patch: Partial<Term>, history?: boolean) => void;
   updateTerms: (ids: string[], patch: Partial<Term>) => void;
   moveTerms: (ids: string[], dx: number, dy: number) => void;
-  addRelation: (p: Partial<Relation> & { from: string; to: string }) => string;
+  /**
+   * Adds a relationship and gives its id. In an ontology what it is follows from what it joins
+   * and what it is called (see relating.ts); two terms that cannot be related are not, the reason
+   * is shown, and the id is empty.
+   */
+  addRelation: (p: Partial<Relation> & { from: string; to: string }, history?: boolean) => string;
   updateRelation: (id: string, patch: Partial<Relation>, history?: boolean) => void;
   reverseRelation: (id: string) => void;
   remove: (terms: string[], rels: string[]) => void;
@@ -817,9 +823,16 @@ export const useStore = create<State>((set, get) => ({
     const set_ = new Set(ids);
     get().apply((m) => ({ ...m, terms: m.terms.map((t) => (set_.has(t.id) ? { ...t, x: t.x + dx, y: t.y + dy } : t)) }), false);
   },
-  addRelation: (p) => {
+  addRelation: (p, history = true) => {
     const r = newRelation(p);
-    get().apply((m) => ({ ...m, relations: [...m.relations, r] }));
+    const m = get().model;
+    const settled = settleRelation({ ...m, relations: [...m.relations, r] }, r.id);
+    if (settled.error !== undefined) {
+      get().notify(settled.error);
+      return '';
+    }
+    get().apply(() => settled.model!, history);
+    if (settled.note) get().notify(settled.note);
     return r.id;
   },
   updateRelation: (id, given, history = true) => {
@@ -829,7 +842,16 @@ export const useStore = create<State>((set, get) => ({
     const patch = { ...given };
     if (!supports(m, 'restrictions')) for (const k of ['restriction', 'restrictionN', 'more'] as const) delete patch[k];
     if (patch.kind === 'property' && !allowsKind(m, 'property')) delete patch.kind;
-    const next = { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) };
+    let next = { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) };
+    // In an ontology a new name or a new end can make it something else: "is a" between two classes
+    // is a superclass, another name an object property. Ends that cannot be related are refused.
+    let note: string | undefined;
+    if (typed(m) && ('label' in patch || 'from' in patch || 'to' in patch || 'kind' in patch) && !patch.predicate) {
+      const settled = settleRelation(next, id, m);
+      if (settled.error !== undefined) return get().notify(settled.error);
+      next = settled.model!;
+      note = settled.note;
+    }
     // Moving an end or changing the kind must not state a class membership a second time.
     const now = next.relations.find((r) => r.id === id)!;
     const moved = 'from' in patch || 'to' in patch || 'kind' in patch || 'predicate' in patch;
@@ -838,10 +860,12 @@ export const useStore = create<State>((set, get) => ({
       return get().notify(`“${name(now.from)}” is already stated to be an instance of “${name(now.to)}”.`);
     }
     get().apply(() => next, history);
+    if (note) get().notify(note);
   },
   reverseRelation: (id) => {
     const rel = get().model.relations.find((r) => r.id === id);
     if (rel && isInstanceOf(get().model, rel)) return get().notify(`“${INSTANCE_OF}” always points from the individual to the class.`);
+    if (rel && typed(get().model) && rel.kind === 'property' && !rel.predicate) return get().notify('“Has data property” always points from the class to the data property.');
     get().apply((m) => ({
       ...m,
       relations: m.relations.map((r) => (r.id === id ? { ...r, from: r.to, to: r.from, fromCard: r.toCard, toCard: r.fromCard } : r)),
@@ -926,10 +950,10 @@ export const useStore = create<State>((set, get) => ({
     const rels: Relation[] = [];
     const existing = new Set(model.relations.map((r) => `${r.from}|${r.to}|${r.kind}|${r.label.trim().toLowerCase()}`));
     let skipped = 0;
-    const resolve = (name: string) => {
+    const resolve = (name: string, type?: TermType) => {
       let t = byName.get(name.toLowerCase());
       if (!t && createMissing) {
-        t = newTerm({ name, x: origin.x + (created.length % 5) * 190, y: origin.y + Math.floor(created.length / 5) * 70 });
+        t = newTerm({ name, ...(type ? { type } : {}), x: origin.x + (created.length % 5) * 190, y: origin.y + Math.floor(created.length / 5) * 70 });
         byName.set(name.toLowerCase(), t);
         created.push(t);
       }
@@ -942,7 +966,8 @@ export const useStore = create<State>((set, get) => ({
         continue;
       }
       const from = resolve(r.from)!;
-      const to = resolve(r.to)!;
+      // What a class "has property" is a data property, so a new term at that end is made one.
+      const to = resolve(r.to, r.kind === 'property' && typed(model) ? 'property' : undefined)!;
       const key = `${from.id}|${to.id}|${r.kind}|${r.label.trim().toLowerCase()}`;
       if (existing.has(key)) {
         skipped++;
@@ -956,7 +981,31 @@ export const useStore = create<State>((set, get) => ({
       else rels.push(newRelation({ from: from.id, to: to.id, label: r.label, kind: r.kind }));
     }
     if (!rels.length) return { added: 0, created: 0, skipped };
-    get().apply((m) => ({ ...m, terms: [...m.terms, ...created], relations: [...m.relations, ...rels] }));
+    // In an ontology each line becomes what its ends and its name make it: "is a", a use of an object
+    // property (declared if it is new), "has data property". A line between two terms that cannot
+    // be related is left out and counted as skipped.
+    let work: Model = { ...model, terms: [...model.terms, ...created] };
+    const kept: Relation[] = [];
+    for (const r of rels) {
+      const settled = settleRelation({ ...work, relations: [...work.relations, r] }, r.id);
+      if (settled.error !== undefined) {
+        skipped++;
+        continue;
+      }
+      work = settled.model!;
+      kept.push(r);
+    }
+    rels.length = 0;
+    rels.push(...kept);
+    if (!rels.length) return { added: 0, created: 0, skipped };
+    // A term made for a line that was then left out is not kept either.
+    const ends = new Set(work.relations.flatMap((r) => [r.from, r.to]));
+    const orphans = new Set(created.filter((t) => !ends.has(t.id)).map((t) => t.id));
+    if (orphans.size) {
+      work = { ...work, terms: work.terms.filter((t) => !orphans.has(t.id)) };
+      created.splice(0, created.length, ...created.filter((t) => !orphans.has(t.id)));
+    }
+    get().apply(() => work);
     if (wasEmpty) {
       const pos = hierarchyLayout(get().model);
       get().apply((m) => ({ ...m, terms: m.terms.map((t) => ({ ...t, ...pos.get(t.id) })) }), false);
@@ -1051,7 +1100,15 @@ export const useStore = create<State>((set, get) => ({
   },
   setRelChoice: (id, choice, history = true) => {
     if (!allowsKind(get().model, choice)) {
-      get().notify(`A ${configOf(get().model).label} has no relationships of that kind.`);
+      const label = configOf(get().model).label;
+      get().notify(`${/^[aeiou]/i.test(label) ? 'An' : 'A'} ${label} has no relationships of that kind.`);
+      return false;
+    }
+    // In an ontology the two ends decide what a relationship can be.
+    const wanted = get().model.relations.find((r) => r.id === id);
+    const offer = wanted && typed(get().model) ? relChoices(get().model, wanted).find((c) => c.value === choice) : undefined;
+    if (wanted && offer?.disabled) {
+      get().notify(cannotRelate(get().model, wanted.from, wanted.to) ?? `${offer.label}: ${offer.disabled.toLowerCase()}.`);
       return false;
     }
     if (choice === 'instanceOf') {
@@ -1079,7 +1136,8 @@ export const useStore = create<State>((set, get) => ({
       if (choice === 'generalization') {
         // "Is a" restricts nothing, so a quantifier left over from before goes.
         const { restriction: _restriction, restrictionN: _n, more: _more, ...bare } = base;
-        return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...bare, kind: choice } : r)) };
+        // Where the name decides the kind, a superclass has none: any other name would make it an object property again.
+        return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...bare, kind: choice, ...(typed(m) ? { label: '' } : {}) } : r)) };
       }
       const key = propKey(rel.label);
       const declared = m.props.some((p) => propKey(p.name) === key);

@@ -185,7 +185,7 @@ await suffix.fill('C0001');
 await suffix.press('Enter');
 ok((await rdf(':C0001')).startsWith(':C0001 a owl:Class ;\n    rdfs:label "Award"'), 'changing it changes the IRI and leaves the label: ' + flat(await rdf(':C0001')).slice(0, 44));
 ok((await panel.locator('input').first().inputValue()) === 'Award' && flat(await panel.locator('.iri-parts').innerText()).includes(':C0001'), 'the name is still Award, the prefixed name is :C0001');
-ok((await rdf(':Film')).includes(':wins :C0001'), 'what refers to the entity follows the new IRI');
+ok((await rdf(':Film')).includes('owl:onProperty :wins ; owl:someValuesFrom :C0001'), 'what refers to the entity follows the new IRI');
 await suffix.fill('Film');
 await suffix.press('Enter');
 ok(flat(await panel.locator('.iri-suffix .bad').innerText()).includes('already has the IRI'), 'a suffix that is taken is refused, with the reason: ' + flat(await panel.locator('.iri-suffix .bad').innerText()));

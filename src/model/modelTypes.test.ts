@@ -31,7 +31,9 @@ describe('types of model', () => {
     expect(skos.hierarchy.predicate).toBe('skos:broader');
     expect(owl.hierarchy.predicate).toBe('rdfs:subClassOf');
     expect(skos.features).toEqual([]);
-    expect(owl.relationKinds.map((k) => k.id)).toEqual(['plain', 'object', 'generalization', 'instanceOf', 'property']);
+    // An ontology has no plain relationships: what a line is follows from what it joins and its name.
+    expect(owl.relationKinds.map((k) => k.id)).toEqual(['object', 'generalization', 'instanceOf', 'property']);
+    expect(owl.features).toContain('typedRelationships');
   });
 
   it('answers for a model by its type, and takes a model without one for an ontology', () => {

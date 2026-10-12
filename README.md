@@ -13,7 +13,7 @@ pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
 pnpm reasoner   # the OWL 2 DL reasoning service (HermiT) on http://localhost:5190; needs a JDK, 11 or later
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs, e2e/relationship-kinds.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
@@ -111,10 +111,11 @@ More on what the advanced reasoner does and does not cover is under
   an imported ontology that the app cannot draw are kept word for word and exported again.
 - **Entities view** – classes, object properties, data properties and individuals each in their
   own tab, with the side panel as the editor, in the manner of Protégé.
-- **Object properties** – only the ones you declare (domain, range, characteristics, inverse,
-  parent). A relationship whose label names one is a use of it: between two classes it is a
+- **Object properties** – declared with domain, range, characteristics, inverse and parent. A
+  relationship whose name is that of one is a use of it: between two classes it is a
   restriction on the class (`some`, `only`, `min`/`max`/`exactly` N), between individuals a fact.
-  Any other labelled relationship stays a plain relationship until you make it a property.
+  In an ontology, naming a line between two classes or two individuals is enough: the property
+  of that name is used, and declared on the spot if it is new.
 - **Inferred restrictions** – a class also shows, read-only, the restrictions it inherits from
   the superclasses and equivalent classes the reasoner entails for it, each with its source.
 - **Class restrictions** – a class lists what its object and data properties require of it,
@@ -124,13 +125,36 @@ More on what the advanced reasoner does and does not cover is under
 - **Terms** – class, data property (with a domain and a datatype) or individual; description, synonyms, colour, and metadata fields
   (Protégé-style annotation properties such as `rdfs:comment`, or your own) that are confirmed
   before they are saved and read-only afterwards.
-- **Relations** – association, "is a" (generalization), "Is Instance Of" or "has property"; label,
-  description; several relations between the same two terms fan out. Cardinalities at the two
-  ends are for plain relationships only: an object or data property says "how many" with
-  restrictions, and "is a" and "Is Instance Of" do not say it at all.
-- **Kinds follow what a line connects** – an individual and a class: *Is Instance Of* or plain;
-  two classes: object property, *is a* or plain; a class and a data property: *has data property*
-  or plain. Other kinds are not listed.
+- **Relations** – several relations between the same two terms fan out; each has a
+  description. Cardinalities at the two ends are for plain relationships only: an object or
+  data property says "how many" with restrictions, and "is a" and "Is Instance Of" do not say
+  it at all.
+- **In an ontology, what a line is follows from what it joins and what it is called** – nobody
+  has to choose a kind, and there are no plain relationships: every line says something OWL has
+  a meaning for.
+  - *Two classes*: called `is a` (in any capitals; `is an` too), the first is a subclass of the
+    second (`rdfs:subClassOf`). Called anything else, it is a use of the object property of
+    that name, which restricts the first class (`owl:Restriction`); a name that is new makes a
+    new object property. Rename the line and it becomes the other thing; a property that
+    existed for that one line alone, with nothing said about it, goes with its old name.
+  - *A class and a data property*: the class has the data property, whichever way the line was
+    drawn. It is written as the restriction and the domain it always was, never as a predicate
+    of the app's own.
+  - *An individual and a class*: the individual is an instance of the class (`rdf:type`).
+  - *Two individuals*: a fact that uses the object property of that name.
+  - *Two data properties*: the first is a sub-property of the second.
+  - *An individual and a data property*: no line. What an individual has for a data property
+    is a value, given under *Data property assertions* in its editor; drawing the line is
+    refused, with that explanation.
+
+  The same holds wherever a relationship is made or changed: on the canvas, in the editor, in
+  the relationships table, in *Bulk add*, and in the model itself (`src/model/relating.ts`).
+  A relationship that stands for a standard property (`owl:disjointWith` and the like) is left
+  as it is. A plain relationship that a model has from before (an older file, a Turtle file
+  with a predicate nobody declared, a vocabulary turned into an ontology) is kept and shown as
+  what it is, with the ontology's kinds to choose from; it is not turned into something else
+  behind your back.
+- **In a SKOS-like vocabulary** a relationship is plain or "is a (broader)", as before.
 - **Governance & Metadata** – a tab under *Entities* lists every entity with its kind, lifecycle
   status, owner and whether its required metadata is complete; selecting one shows its metadata
   in collapsible groups (general, governance, technical, operational, data quality). The values

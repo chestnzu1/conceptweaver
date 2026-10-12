@@ -1,4 +1,5 @@
 import { currentDl, useStore } from '../model/store';
+import { typed } from '../model/relating';
 import { creditOf, entailmentsOf } from '../model/reasoning';
 import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
@@ -761,6 +762,12 @@ function RelationPanel({ rel }: { rel: Relation }) {
   const further = nextSpec(rel);
   // A class membership: it points from an individual to a class and cannot be turned around.
   const instanceOf = isInstanceOf(model, rel);
+  // In an ontology what the line joins, and its name, decide what it is. Where they leave one kind only, there is nothing to choose.
+  const kinds = offeredChoices(model, rel);
+  const auto = typed(model);
+  const settled = auto && kinds.filter((k) => !k.disabled).length <= 1 && !kinds.some((k) => k.disabled);
+  const fixedWay = instanceOf || (auto && rel.kind === 'property' && !own);
+  const byName = auto && !own && kinds.some((k) => k.value === 'object' && !k.disabled) && kinds.some((k) => k.value === 'generalization' && !k.disabled);
 
   const names = (ids: string[]) => ids.map((id) => model.terms.find((t) => t.id === id)?.name).join(', ') || 'anything';
   const endpoint = (side: 'from' | 'to') => (
@@ -784,7 +791,7 @@ function RelationPanel({ rel }: { rel: Relation }) {
         <CommitInput
           list={usesProp ? 'panel-object-props' : undefined}
           value={rel.label}
-          placeholder={rel.kind === 'association' ? (skos ? 'empty means related' : 'pick one or type a new name') : relLabel({ ...rel, label: '' }, skos, instanceOf)}
+          placeholder={byName ? '“is a”, or the name of an object property' : rel.kind === 'association' ? (skos ? 'empty means related' : 'pick one or type a new name') : relLabel({ ...rel, label: '' }, skos, instanceOf)}
           onCommit={(v) => update(rel.id, { label: v.trim() })}
         />
         {usesProp && (
@@ -812,19 +819,21 @@ function RelationPanel({ rel }: { rel: Relation }) {
         )}
       </label>
       {endpoint('to')}
-      <button className="btn small" disabled={instanceOf} title={instanceOf ? 'A class membership always points from the individual to the class' : undefined} onClick={() => st().reverseRelation(rel.id)}>
+      <button className="btn small" disabled={fixedWay} title={instanceOf ? 'A class membership always points from the individual to the class' : fixedWay ? '“Has data property” always points from the class to the data property' : undefined} onClick={() => st().reverseRelation(rel.id)}>
         Reverse direction
       </button>
       <label className="field">
         <span>Kind</span>
         {/* The kinds the type of model has, of those the ones that fit what the line connects. */}
-        <select value={relChoice(model, rel)} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
-          {offeredChoices(model, rel).map((k) => (
+        <select value={relChoice(model, rel)} disabled={settled} onChange={(e) => st().setRelChoice(rel.id, e.target.value as RelChoice)}>
+          {kinds.map((k) => (
             <option key={k.value} value={k.value} disabled={!!k.disabled} title={k.disabled}>
               {k.label}
             </option>
           ))}
         </select>
+        {settled && !instanceOf && <small>Follows from what the line joins: there is nothing else it could be.</small>}
+        {byName && <small>Follows from the name: “is a” makes the first class a kind of the second; any other name is that object property.</small>}
         {instanceOf && (
           <small>
             {names([rel.from])} is a member of the class {names([rel.to])}. Exports as <code className="pred">rdf:type</code>.

@@ -27,10 +27,24 @@ await page.evaluate(() => { localStorage.clear(); });
 await page.reload();
 await page.waitForSelector('.node');
 
+// A relationship from before: plain, with cardinalities at its ends. An ontology no longer makes
+// one, but a model that has one keeps it, so the sample is opened again with "wins" as it once was.
+await page.getByRole('button', { name: 'File', exact: true }).click();
+const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: /^Download as JSON/ }).click()]);
+await download.saveAs(shots + 'legacy-plain.json');
+const legacy = JSON.parse(fs.readFileSync(shots + 'legacy-plain.json', 'utf8'));
+legacy.props = legacy.props.filter((p) => p.name !== 'wins');
+for (const r of legacy.relations) if (r.label === 'wins') Object.assign(r, { fromCard: '*', toCard: '0..*' });
+fs.writeFileSync(shots + 'legacy-plain.json', JSON.stringify(legacy));
+await page.locator('.header input[type=file]').setInputFiles(shots + 'legacy-plain.json');
+await page.waitForFunction(() => document.querySelectorAll('.edge-card').length === 2);
+
 // ---------------------------------------------------------------- cardinalities: plain relationships only
 ok((await page.locator('.edge-card').count()) === 2 && (await edge(/^wins$/).locator('.edge-card').count()) === 2, 'on the canvas only the plain relationship (wins) shows cardinalities');
 await open(/^wins$/);
 ok((await fields()).includes('From cardinality') && (await fields()).includes('To cardinality'), 'a plain relationship has the cardinality fields');
+const kinds = panel.locator('.field', { has: page.locator(':scope > span:has-text("Kind")') }).locator('select option');
+ok((await kinds.evaluateAll((os) => os.map((o) => `${o.textContent}${o.disabled ? ' (not on offer)' : ''}`))).join(' | ') === 'Relationship (plain) (not on offer) | Object property | Is a (generalization)', 'it is shown as what it is, and the kinds on offer are the ontology’s: a plain relationship is not among them');
 for (const [label, what] of [[/^directs some$/, 'an object property'], [/^is a$/, '“is a”'], [/^Is Instance Of$/, '“is instance of”'], [/^has some$/, 'a data property']]) {
   await open(label);
   const f = await fields();

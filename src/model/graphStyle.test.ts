@@ -55,7 +55,10 @@ describe('graph style', () => {
     expect(of('Parasite', 'Film')).toBe('type');
     expect(of('Director', 'Film')).toBe('restriction');
     expect(of('Film', 'Release date')).toBe('dataProperty');
-    expect(of('Film', 'Award')).toBe('plain');
+    expect(of('Film', 'Award')).toBe('restriction');
+    // A relationship from before, that nobody made an object property, is still drawn as a plain one.
+    const old = { ...m, props: m.props.filter((p) => p.name !== 'wins') };
+    expect(edgeTypesOf(stable(old)).get(old.relations.find((r) => r.label === 'wins')!.id)).toBe('plain');
   });
 
   it('names colours that follow the theme, and takes any other as it is', () => {

@@ -66,7 +66,7 @@ ok(requests.filter((u) => !u.startsWith('file://')).length === 0, 'and asks the 
 ok((await page.locator('#graph [data-term]').count()) === 11 && (await page.locator('#graph [data-rel]').count()) === 11, 'the graph is there as it was drawn: 11 terms, 11 relationships');
 ok(flat(await detail.innerText()).includes('</script><img src=x') && (await page.title()) !== 'pwned' && (await page.locator('#detail img').count()) === 0, 'a description that looks like markup is shown as the text it is');
 const heads = (await nav.locator('h2').allInnerTexts()).map((s) => flat(s).toLowerCase()).join(', ');
-ok(heads === 'classes (8), data properties (2), individuals (1), object properties (4)', 'the list has the classes as a hierarchy, and the other kinds: ' + heads);
+ok(heads === 'classes (8), data properties (2), individuals (1), object properties (5)', 'the list has the classes as a hierarchy, and the other kinds: ' + heads);
 ok((await nav.locator('ul ul .item', { hasText: /^Actor$/ }).count()) === 1, 'Actor sits under Person');
 
 // clicking a term in the picture

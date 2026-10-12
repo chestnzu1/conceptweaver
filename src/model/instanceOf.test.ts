@@ -72,21 +72,22 @@ describe('is instance of', () => {
     const { m, john, mary, person, employee, age } = people();
     const offered = (from: string, to: string) => relChoices(m, { from, to }).filter((c) => !c.disabled).map((c) => c.value);
     // An individual and a class, either way round.
-    expect(offered(john.id, person.id)).toEqual(['plain', 'instanceOf']);
-    expect(offered(person.id, john.id)).toEqual(['plain', 'instanceOf']);
+    expect(offered(john.id, person.id)).toEqual(['instanceOf']);
+    expect(offered(person.id, john.id)).toEqual(['instanceOf']);
     // Two classes.
-    expect(offered(person.id, employee.id)).toEqual(['plain', 'object', 'generalization']);
+    expect(offered(person.id, employee.id)).toEqual(['object', 'generalization']);
     // A class and a data property, either way round.
-    expect(offered(person.id, age.id)).toEqual(['plain', 'property']);
-    expect(offered(age.id, person.id)).toEqual(['plain', 'property']);
-    // Anything else: never "Is Instance Of".
-    expect(offered(john.id, mary.id)).not.toContain('instanceOf');
-    expect(offered(john.id, age.id)).not.toContain('instanceOf');
+    expect(offered(person.id, age.id)).toEqual(['property']);
+    expect(offered(age.id, person.id)).toEqual(['property']);
+    // Two individuals: a fact that uses an object property. An individual and a data property: nothing.
+    expect(offered(john.id, mary.id)).toEqual(['object']);
+    expect(offered(john.id, age.id)).toEqual([]);
+    expect(offered(age.id, john.id)).toEqual([]);
     // A relationship of a kind its ends no longer allow still shows what it is.
     const odd = newRelation({ from: john.id, to: person.id, label: 'knows' });
     const model = { ...m, props: [{ name: 'knows', description: '', chars: [] }], relations: [...m.relations, odd] };
     expect(relChoice(model, odd)).toBe('object');
-    expect(offeredChoices(model, odd).map((c) => `${c.value}${c.disabled ? ' (not allowed)' : ''}`)).toEqual(['plain', 'object (not allowed)', 'instanceOf']);
+    expect(offeredChoices(model, odd).map((c) => `${c.value}${c.disabled ? ' (not allowed)' : ''}`)).toEqual(['object (not allowed)', 'instanceOf']);
   });
 
   it('does not state the same membership twice', () => {

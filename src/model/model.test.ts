@@ -511,14 +511,15 @@ describe('data and object properties', () => {
     // A class that has a data property is restricted by it, as well as being in its domain.
     expect(block(':Film')).toContain('[ a owl:Restriction ; owl:onProperty :releaseDate ; owl:someValuesFrom xsd:date ]');
     expect(block(':Film')).toContain('[ a owl:Restriction ; owl:onProperty :belongsTo ; owl:someValuesFrom :Genre ]');
-    // "wins" has not been made an object property, so it is only a relationship.
-    expect(block(':Film')).toContain(':wins :Award');
-    expect(block(':wins')).toContain('a rdf:Property');
+    // Every relationship between two classes of the sample uses an object property, and restricts the class.
+    expect(block(':Film')).toContain('[ a owl:Restriction ; owl:onProperty :wins ; owl:someValuesFrom :Award ]');
+    expect(block(':wins')).toContain('a owl:ObjectProperty');
+    expect(ttl).not.toContain('rdf:Property');
     const back = fromTurtle(ttl);
     expect(back.terms.find((t) => t.name === 'Release date')).toMatchObject({ type: 'property', range: 'xsd:date' });
     expect(back.terms.find((t) => t.name === 'Release date')!.domain).toBeUndefined();
     expect(triples(back)).toEqual(triples(sampleModel()));
-    expect(back.props.map((p) => p.name).sort()).toEqual(['acts in', 'belongs to', 'directs', 'produces']);
+    expect(back.props.map((p) => p.name).sort()).toEqual(['acts in', 'belongs to', 'directs', 'produces', 'wins']);
     expect(toTurtle(back)).toBe(ttl);
   });
 
@@ -769,7 +770,7 @@ describe('a relationship kept plain', () => {
     const plain = { ...m, relations: m.relations.map((r) => (r.id === rel.id ? { ...r, plain: true } : r)) };
     expect(relChoice(plain, plain.relations.find((r) => r.id === rel.id)!)).toBe('plain');
     expect(objectProperties(plain).find((p) => p.name === 'belongs to')!.rels).toEqual([]);
-    expect(plainRelationships(plain).map((p) => p.name)).toEqual(['belongs to', 'wins']);
+    expect(plainRelationships(plain).map((p) => p.name)).toEqual(['belongs to']);
     const ttl = toTurtle(plain);
     const film = ttl.split('\n\n').find((b) => b.startsWith(':Film '))!;
     expect(film).not.toContain('owl:onProperty :belongsTo');

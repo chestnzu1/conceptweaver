@@ -183,17 +183,30 @@ export function relChoice(model: Model, r: Relation): RelChoice {
   return allowsKind(model, 'object') && !r.predicate && !r.plain && model.props.some((p) => propKey(p.name) === propKey(r.label)) ? 'object' : 'plain';
 }
 
-/** What each pair of term types can be related by. Pairs not listed can be anything but "Is Instance Of". */
+/**
+ * What each pair of kinds of term can be related by, besides a plain relationship where the type
+ * of model has those. Two classes: an object property (a restriction on the first class) or
+ * "is a". An individual and a class: a class membership and nothing else. A class and a data
+ * property: the class has the property. Two individuals: a fact that uses an object property.
+ * Two data properties: one is a sub-property of the other. An individual and a data property:
+ * nothing at all, since what an individual has for a data property is a value, not a line.
+ */
 const KINDS_BETWEEN: Record<string, { kinds: RelChoice[]; between: string }> = {
-  'concept|instance': { kinds: ['plain', 'instanceOf'], between: 'an individual and a class' },
-  'concept|concept': { kinds: ['plain', 'object', 'generalization'], between: 'two classes' },
-  'concept|property': { kinds: ['plain', 'property'], between: 'a class and a data property' },
+  'concept|concept': { kinds: ['object', 'generalization'], between: 'two classes' },
+  'concept|instance': { kinds: ['instanceOf'], between: 'an individual and a class' },
+  'concept|property': { kinds: ['property'], between: 'a class and a data property' },
+  'instance|instance': { kinds: ['object'], between: 'two individuals' },
+  'property|property': { kinds: ['generalization'], between: 'two data properties' },
+  'instance|property': { kinds: [], between: 'an individual and a data property' },
 };
+
+/** What a relationship is called where the type of model no longer offers its kind. */
+const FORMER_KIND: Partial<Record<RelChoice, string>> = { plain: 'Relationship (plain)' };
 
 /**
  * The kinds a relationship can be given, each with the reason it is not on offer, if it is not.
- * What it joins decides: an individual and a class can be "Is Instance Of" or plain; two classes
- * an object property, "is a" or plain; a class and a data property "has data property" or plain.
+ * What it joins decides (see KINDS_BETWEEN); a plain relationship can join anything, in a type of
+ * model that has them.
  */
 export function relChoices(model: Model, r: Pick<Relation, 'from' | 'to'>): { value: RelChoice; label: string; disabled?: string }[] {
   const config = configOf(model);
@@ -202,14 +215,25 @@ export function relChoices(model: Model, r: Pick<Relation, 'from' | 'to'>): { va
   if (config.termTypes.length < 2) return kinds;
   const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
   const rule = KINDS_BETWEEN[[type(r.from), type(r.to)].sort().join('|')];
-  return kinds.map((c) => {
-    if (rule) return rule.kinds.includes(c.value) ? c : { ...c, disabled: `Not between ${rule.between}` };
-    return c.value === 'instanceOf' ? { ...c, disabled: 'Only between an individual and a class' } : c;
-  });
+  return kinds.map((c) => (!rule || c.value === 'plain' || rule.kinds.includes(c.value) ? c : { ...c, disabled: `Not between ${rule.between}` }));
 }
 
-/** The kinds to list for a relationship: the ones it can be given, and the one it is, should that no longer be allowed. */
-export const offeredChoices = (model: Model, r: Relation) => relChoices(model, r).filter((c) => !c.disabled || c.value === relChoice(model, r));
+/** The kinds a relationship between these two can be given: none, where the two cannot be related at all. */
+export const kindsBetween = (model: Model, r: Pick<Relation, 'from' | 'to'>): RelChoice[] => relChoices(model, r).filter((c) => !c.disabled).map((c) => c.value);
+
+/**
+ * The kinds to list for a relationship: the ones it can be given, and the one it is, should that
+ * not be among them. A relationship from before the type of model stopped offering its kind (a
+ * plain one in an ontology) keeps it until it is given another; one that stands for a standard
+ * property has no kind of its own.
+ */
+export function offeredChoices(model: Model, r: Relation): { value: RelChoice; label: string; disabled?: string }[] {
+  const now = relChoice(model, r);
+  const list = relChoices(model, r).filter((c) => !c.disabled || c.value === now);
+  if (list.some((c) => c.value === now)) return list;
+  const standard = resolveModel(model).relations.find((x) => x.id === r.id)?.predicate;
+  return [{ value: now, label: standard ? `Standard property (${standard})` : (FORMER_KIND[now] ?? now), disabled: standard ? 'What it means is set by the standard property' : `${configOf(model).label === 'OWL ontology' ? 'An OWL ontology' : 'This type of model'} has no relationships of this kind. Choose what this one is.` }, ...list];
+}
 
 /**
  * The superclasses a class is explicitly stated to have: one per "is a" relation, each once,

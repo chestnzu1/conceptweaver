@@ -4,10 +4,11 @@ import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
 import { currentDl, useStore, viewOf, type SubgraphState } from '../model/store';
+import { typed } from '../model/relating';
 import { creditOf } from '../model/reasoning';
 import { allowsKind, configOf, supports } from '../model/modelTypes';
-import { INSTANCE_OF, newRelation, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
-import { isInstanceOf, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices } from '../model/props';
+import { INSTANCE_OF, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
+import { isInstanceOf, kindsBetween, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices } from '../model/props';
 import { inferredMemberships, type InferredMembership } from '../model/inferred';
 import { activeProps, resolveModel, suggestFor } from '../model/vocab';
 import { StylePanel } from './StylePanel';
@@ -170,14 +171,19 @@ export function Canvas() {
           // Drawing a term onto a data property attaches it: the term becomes (part of) its domain.
           let kind: RelKind = 'association';
           if (allowsKind(st().model, 'property') && target.type === 'property' && t.type !== 'property') kind = 'property';
+          // In an ontology the two ends decide what the line is, or that there can be none: then nothing is added.
           const id = st().addRelation({ from: t.id, to: target.id, kind });
+          if (!id) return;
           st().select([], [id]);
-          st().setEditing({ kind: 'rel', id, isNew: true });
+          // A name is asked for where the line has one: a relationship of a vocabulary, the object
+          // property between two classes or two individuals. A membership or "has data property" has none.
+          const made = st().model.relations.find((r) => r.id === id);
+          if (!typed(st().model) || (made && relChoice(st().model, made) === 'object')) st().setEditing({ kind: 'rel', id, isNew: true });
         } else if (!target && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 40) {
           // Dropped on empty canvas: create the other term right there.
           // The relation joins the term's history entry so one undo removes both.
           const id = st().addTerm({ x: Math.round(p.x), y: Math.round(p.y) });
-          st().apply((m) => ({ ...m, relations: [...m.relations, newRelation({ from: t.id, to: id })] }), false);
+          st().addRelation({ from: t.id, to: id }, false);
           st().select([id]);
           st().setEditing({ kind: 'term', id, isNew: true });
         }
@@ -848,12 +854,15 @@ function InlineEditor({ byId }: { byId: Map<string, Term> }) {
 
   const own = model.mode === 'skos' ? [] : objectProperties(model);
   const canBeInstanceOf = !!rel && model.mode !== 'skos' && !relChoices(model, rel).find((c) => c.value === 'instanceOf')!.disabled;
-  const suggest = !term && props.length + own.length + Number(canBeInstanceOf) > 0;
+  // Between two classes of an ontology "is a" is the other thing the line can say.
+  const canBeIsA = !!rel && typed(model) && kindsBetween(model, rel).includes('object') && kindsBetween(model, rel).includes('generalization');
+  const suggest = !term && props.length + own.length + Number(canBeInstanceOf) + Number(canBeIsA) > 0;
   return (
     <>
       {suggest && (
         <datalist id="std-props">
           {canBeInstanceOf && <option value={INSTANCE_OF} />}
+          {canBeIsA && <option value="is a" />}
           {/* The object properties already in the model come first: reusing one is the common case. */}
           {own.map((p) => (
             <option key={p.key} value={p.name} />

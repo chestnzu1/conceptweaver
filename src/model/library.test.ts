@@ -21,7 +21,7 @@ describe('local model library', () => {
   it('saves a model and lists it with its details', async () => {
     const m = withIris({ ...sampleModel(), name: 'Films', ontologyIri: 'http://example.org/films' });
     const info = await saveModel(m);
-    expect(info).toMatchObject({ name: 'Films', ontologyIri: 'http://example.org/films', entities: 15, relations: 11, schema: 1 });
+    expect(info).toMatchObject({ name: 'Films', ontologyIri: 'http://example.org/films', entities: 16, relations: 11, schema: 1 });
     expect(info.id).toBeTruthy();
     expect(info.created).toBe(info.modified);
     expect(await listModels()).toEqual([info]);

@@ -38,7 +38,7 @@ export function sampleModel(): Model {
   rel('Director', 'directs', 'Film');
   rel('Studio', 'produces', 'Film');
   rel('Film', 'belongs to', 'Genre');
-  rel('Film', 'wins', 'Award', 'association', '*', '0..*');
+  rel('Film', 'wins', 'Award');
   rel('Film', '', 'Release date', 'property');
   rel('Film', '', 'Running time', 'property');
 
@@ -47,8 +47,8 @@ export function sampleModel(): Model {
     { name: 'directs', description: 'Is the director of a film.', chars: [] },
     { name: 'produces', description: '', chars: [] },
     { name: 'belongs to', description: '', chars: [] },
+    { name: 'wins', description: '', chars: [] },
   ];
-  // "wins" is left undeclared on purpose: a plain relationship, not yet an object property.
 
   const pos = hierarchyLayout(m);
   for (const t of m.terms) Object.assign(t, pos.get(t.id));

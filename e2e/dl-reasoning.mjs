@@ -63,7 +63,8 @@ const run = async () => { await card.getByRole('button', { name: 'Run reasoning'
 const choose = (label) => card.getByRole('radio', { name: label }).check();
 
 await page.goto(base);
-await page.evaluate(() => localStorage.clear());
+// The app starts out asking an address where nothing listens, whatever service may be running on this machine.
+await page.evaluate(() => { localStorage.clear(); localStorage.setItem('conceptweaver:reasoner-url', 'http://127.0.0.1:5189'); });
 await page.reload();
 await page.waitForSelector('.node');
 await page.locator('.header input[type=file]').setInputFiles(tmp + '/party.ttl');

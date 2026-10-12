@@ -38,7 +38,10 @@ describe('the model as an interactive page', () => {
     expect(rel('Director', 'Film')).toMatchObject({ label: 'directs some', kind: 'restriction' });
     expect(rel('Actor', 'Person')).toMatchObject({ label: 'is a', kind: 'is a (rdfs:subClassOf)', hier: 'isa' });
     expect(rel('Parasite', 'Film')).toMatchObject({ label: 'Is Instance Of', hier: 'type' });
-    expect(rel('Film', 'Award')).toMatchObject({ label: 'wins', kind: 'relationship', cards: '* to 0..*' });
+    expect(rel('Film', 'Award')).toMatchObject({ label: 'wins some', kind: 'restriction' });
+    // A plain relationship, which a model from before can still hold, reads as one, with its cardinalities.
+    const old = { ...m, props: m.props.filter((p) => p.name !== 'wins'), relations: m.relations.map((r) => (r.label === 'wins' ? { ...r, fromCard: '*', toCard: '0..*' } : r)) };
+    expect(viewerData(old).rels.find((r) => r.label === 'wins')).toMatchObject({ kind: 'relationship', cards: '* to 0..*' });
     // What the page needs to draw a line again when a term is moved: the size and outline of each
     // term, and for each line how far it bows and how it ends.
     expect(f).toMatchObject({ w: 84, h: 40, shape: 'rect' });
@@ -48,7 +51,7 @@ describe('the model as an interactive page', () => {
     const name = (id: string) => d.terms.find((t) => t.id === id)!.name;
     expect(d.tree.roots.map(name)).toEqual(['Award', 'Film', 'Genre', 'Person', 'Studio']);
     expect(d.tree.children[m.terms.find((t) => t.name === 'Person')!.id].map(name)).toEqual(['Actor', 'Director']);
-    expect(d.props.map((p) => p.name).sort()).toEqual(['acts in', 'belongs to', 'directs', 'produces']);
+    expect(d.props.map((p) => p.name).sort()).toEqual(['acts in', 'belongs to', 'directs', 'produces', 'wins']);
     expect(d.props.find((p) => p.name === 'directs')).toMatchObject({ domain: ['Director'], range: ['Film'] });
     expect(d.props.find((p) => p.name === 'directs')!.uses).toHaveLength(1);
   });

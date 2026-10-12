@@ -36,7 +36,14 @@ export type Feature =
   /** Relationships that stand for a property of a standard vocabulary (owl:equivalentClass and the like). */
   | 'standardProperties'
   /** Other ontologies: imports, reuse, mappings. */
-  | 'alignment';
+  | 'alignment'
+  /**
+   * What a relationship is follows from what it joins and what it is called: two classes joined
+   * by "is a" are a class and its superclass, by any other name a use of that object property;
+   * a class and a data property, "has data property"; an individual and a class, a membership.
+   * There are no relationships that are "just a line", and none that OWL has no meaning for.
+   */
+  | 'typedRelationships';
 
 export interface ModelTypeConfig {
   id: ModelMode;
@@ -76,8 +83,8 @@ const OWL: ModelTypeConfig = {
     instance: { label: 'Individual', plural: 'Individuals', rdf: 'owl:NamedIndividual' },
   },
   editorSections: ['hierarchy', 'axioms', 'restrictions', 'inferred', 'annotations', 'relations', 'colour'],
+  // No plain relationship: in OWL every line between two entities says something OWL has a meaning for.
   relationKinds: [
-    { id: 'plain', label: 'Relationship (plain)' },
     { id: 'object', label: 'Object property' },
     { id: 'generalization', label: 'Is a (generalization)' },
     { id: 'instanceOf', label: INSTANCE_OF },
@@ -85,7 +92,7 @@ const OWL: ModelTypeConfig = {
   ],
   hierarchy: { predicate: 'rdfs:subClassOf', relation: 'is a', parent: 'superclass', child: 'subclass', root: 'owl:Thing', top: 'top-level term' },
   rdf: { label: 'rdfs:label', definition: 'skos:definition' },
-  features: ['reasoning', 'restrictions', 'objectProperties', 'validation', 'standardProperties', 'alignment'],
+  features: ['reasoning', 'restrictions', 'objectProperties', 'validation', 'standardProperties', 'alignment', 'typedRelationships'],
 };
 
 const concept = { label: 'Concept', plural: 'Concepts', rdf: 'skos:Concept' };

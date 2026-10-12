@@ -331,6 +331,17 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
       if (twin) add('property-kind', `${q(p.name)} is the name of an object property and of a data property. They are two properties with two IRIs; it is easy to use the wrong one.`, { terms: [twin.id], prop: p.key });
     }
     for (const r of resolveModel(model).relations) {
+      const ends = [byId.get(r.from)?.type, byId.get(r.to)?.type].sort().join('|');
+      if (ends === 'instance|property' && !r.predicate) {
+        const [individual, property] = byId.get(r.from)?.type === 'instance' ? [r.from, r.to] : [r.to, r.from];
+        add('property-kind', `${q(name(individual))} is joined to the data property ${q(name(property))} by a line. In OWL an individual has a value for a data property; a line between the two says nothing.`, {
+          terms: [individual, property],
+          rels: [r.id],
+          suggestion: `Give ${q(name(individual))} its value under Data property assertions in its editor, and remove the line.`,
+          fix: { label: 'Remove the line', preview: `Removes the line between ${q(name(individual))} and ${q(name(property))}. Both stay in the model, and so do the values ${q(name(individual))} has.`, apply: (m) => ({ ...m, relations: m.relations.filter((x) => x.id !== r.id) }) },
+        });
+        continue;
+      }
       if (r.kind === 'association' && !r.predicate && byId.get(r.to)?.type === 'property' && byId.get(r.from)?.type === 'concept') {
         add('property-kind', `${q(name(r.from))} is linked to the data property ${q(name(r.to))} by an ordinary relationship${r.label.trim() ? ` ${q(r.label.trim())}` : ''}. To say the class has the property, the relationship should be of the kind “Has data property”.`, { rels: [r.id] });
       }

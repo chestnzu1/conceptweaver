@@ -32,15 +32,15 @@ await side.getByRole('button', { name: 'Expand all' }).click();
 
 // ---- a subclass shows what its superclass asserts
 await pick('Documentary');
-ok((await panel.locator('h3', { hasText: 'Asserted restrictions (0)' }).count()) === 1 && (await panel.locator('h3', { hasText: 'Inferred restrictions (3)' }).count()) === 1, 'Documentary: no asserted restrictions, three inferred');
+ok((await panel.locator('h3', { hasText: 'Asserted restrictions (0)' }).count()) === 1 && (await panel.locator('h3', { hasText: 'Inferred restrictions (4)' }).count()) === 1, 'Documentary: no asserted restrictions, four inferred');
 let got = await inferred();
-ok(got.join(' | ') === 'belongs to some Genre Inherited from Film | Release date some xsd:date Inherited from Film | Running time some xsd:integer Inherited from Film', 'inherited from Film, object and data properties: ' + got.join(' | '));
+ok(got.join(' | ') === 'belongs to some Genre Inherited from Film | wins some Award Inherited from Film | Release date some xsd:date Inherited from Film | Running time some xsd:integer Inherited from Film', 'inherited from Film, object and data properties: ' + got.join(' | '));
 ok((await panel.locator('.restrictions.inferred').locator('select, input, .btn').count()) === 0, 'inferred restrictions have no controls: they are read-only');
 await page.screenshot({ path: shots + 'inferred.png' });
 // the source is a link to that class
 await panel.locator('.restrictions.inferred .sources .link').first().click();
 ok((await page.locator('.inspector input').first().inputValue()) === 'Film', 'the source class is a link that opens it');
-ok((await asserted()).join(' | ') === 'belongs to some Genre | Release date some xsd:date | Running time some xsd:integer' && (await inferred()).length === 0, 'on Film itself the same three are asserted (and editable), none inferred');
+ok((await asserted()).join(' | ') === 'belongs to some Genre | wins some Award | Release date some xsd:date | Running time some xsd:integer' && (await inferred()).length === 0, 'on Film itself the same four are asserted (and editable), none inferred');
 
 // ---- it follows edits: a new restriction on Person reaches Actor and Director
 await pick('Person');

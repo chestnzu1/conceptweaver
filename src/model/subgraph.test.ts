@@ -64,7 +64,7 @@ describe('subgraph extraction', () => {
   });
 
   it('names the relationship types of an ontology and filters by them', () => {
-    expect(edgeTypes(film).map((t) => `${t.key}:${t.count}`)).toEqual(['rdfs:subClassOf:3', 'rdf:type:1', 'restriction:4', 'data:2', 'plain:1']);
+    expect(edgeTypes(film).map((t) => `${t.key}:${t.count}`)).toEqual(['rdfs:subClassOf:3', 'rdf:type:1', 'restriction:5', 'data:2']);
     const hierarchy = extractSubgraph(film, opts(film, ['Film'], { off: ['restriction', 'data', 'plain'] }));
     expect(names(film, hierarchy.terms)).toEqual(['Documentary', 'Film', 'Parasite']);
     const noData = extractSubgraph(film, opts(film, ['Film'], { off: ['data'] }));
