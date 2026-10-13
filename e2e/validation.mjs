@@ -139,7 +139,7 @@ ok((await rowTexts()).join(' / ').startsWith('Error OWL Documentary class Unsati
 await tab('Entities');
 await page.locator('.view').getByRole('tab', { name: /Individuals/ }).click();
 await page.locator('.view tbody tr', { has: page.locator('input[value="Parasite"]') }).locator('.chip-add').click();
-await page.locator('.view').getByRole('combobox').fill('Documentary');
+await page.locator('.view .table-wrap').getByRole('combobox').fill('Documentary');
 await page.locator('.view .subgraph-found button').first().dispatchEvent('pointerdown');
 await tab(/^Validation/);
 ok((await v.locator('.stale').count()) === 1, 'coming back after an edit elsewhere, the results are marked stale');
@@ -239,7 +239,7 @@ ok(flat(await v.locator('.issues .note').first().innerText()).startsWith('What t
 await tab('Entities');
 await page.locator('.view').getByRole('tab', { name: /Individuals/ }).click();
 await page.locator('.view tbody tr', { has: page.locator('input[value="Parasite"]') }).locator('.chip-add').click();
-await page.locator('.view').getByRole('combobox').fill('Documentary');
+await page.locator('.view .table-wrap').getByRole('combobox').fill('Documentary');
 await page.locator('.view .subgraph-found button').first().dispatchEvent('pointerdown');
 await page.locator('.view tbody tr', { has: page.locator('input[value="Parasite"]') }).getByRole('button', { name: 'Remove type Film' }).click();
 await tab(/^Validation/);

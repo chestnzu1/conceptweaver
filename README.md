@@ -111,6 +111,42 @@ More on what the advanced reasoner does and does not cover is under
   an imported ontology that the app cannot draw are kept word for word and exported again.
 - **Entities view** – classes, object properties, data properties and individuals each in their
   own tab, with the side panel as the editor, in the manner of Protégé.
+  Under the tabs each of the five lists (classes, object properties, data properties,
+  individuals, relationships) has a bar of its own:
+  - **Search** – as it is typed, by name, other labels (synonyms, and annotations that are names:
+    `rdfs:label`, `skos:prefLabel`, `skos:altLabel`, `skos:hiddenLabel`, `skos:notation`,
+    `dcterms:title`), the IRI with a prefix or in full, and the definition; a relationship by its
+    name, its two ends and its kind. Part of a word is enough, case does not matter, and every word
+    has to be found, each wherever it is. A word is looked for in the full IRI only when it is
+    written like part of one (with `:`, `/`, `#` or `.`), so that "org" finds Organisation and not
+    everything under example.org. What was found is marked in the row; where the row has no place
+    for it (a label in another language, the full IRI) it is shown under the name. The bar says
+    how many match of how many; × or Esc clears. Each tab keeps its own search.
+  - **Sort** – by clicking a column heading (once, again for the other way, a third time for the
+    model's own order) or with the selector, which also has what there is no column for: name,
+    IRI, number of asserted superclasses, subclasses and restrictions, number of relationships,
+    datatype, asserted classes of an individual, either end and kind of a relationship. The sort
+    is stable, and the selected row stays selected and in sight.
+  - **Filters** – a panel that folds away, with what fits the list. Classes: root, leaf, multiple
+    inheritance, asserted restrictions, inferred restrictions, unsatisfiable. Object properties:
+    domain or range set or not, each characteristic, having an inverse. Data properties: domain
+    or range set or not, functional, datatype. Individuals: asserted class, and inferred class
+    (every individual a reasoner entails to be an instance). Relationships: kind, where it starts,
+    where it ends. Filters combine with each other and with the search and the order; the ones
+    that are on are listed under the bar, each with its own ×, beside *Clear all filters*. What
+    rests on a reasoner says which one, takes in the OWL 2 DL result when there is a current one,
+    and is not applied while the ontology is inconsistent, which it also says.
+
+  Search, order and filters are each put back on their own, are kept per tab while the app is
+  open, and start afresh with another model. None of it is part of the model or changes it. An
+  entity added while a list is narrowed is listed all the same, marked as just added; so is one
+  opened from the Structure Explorer. The sidebar's search box narrows the sidebar and the
+  Governance tab, no longer these five tables.
+  *Add relationship* in its table of relationships starts one between the terms that are
+  selected, or else from the first term by name to the first it can be related to and is not
+  related to yet; its ends and its name are then set in its row, which is selected and brought
+  into view. In an ontology not every two terms can be related (an individual has a value for a
+  data property, not a line to it), so the first two by name will not always do.
 - **Object properties** – declared with domain, range, characteristics, inverse and parent. A
   relationship whose name is that of one is a use of it: between two classes it is a
   restriction on the class (`some`, `only`, `min`/`max`/`exactly` N), between individuals a fact.
@@ -438,7 +474,7 @@ More on what the advanced reasoner does and does not cover is under
 Tested with generated ontologies (File → Generate a stress-test model; `src/model/stress.ts`).
 Up to about 2,000 terms and 5,000 relationships everything stays responsive. At about 4,000
 terms the tables, checks, reasoner, RDF and SPARQL still work but the canvas becomes slow.
-Long tables and result lists are shown a page at a time; the search box narrows them.
+Long tables and result lists are shown a page at a time; the search above a table narrows it.
 `BENCH_OUT=/tmp/bench.txt pnpm exec vitest run src/model/bench.test.ts` times the model layer.
 
 The Structure Explorer is built for more than that, because it does not need the ontology to be
@@ -461,6 +497,15 @@ ontology open, *Expand all* (7,325 lines, 40 of them drawn) takes 0.2 s, what is
 0.1 s, *Analyze* 0.2 s; opening such a model still takes several seconds, most of it the canvas
 and the checks behind the Validation count.
 
+The lists of the Entities page are searched, sorted and filtered by a service of their own,
+over records made once for each revision of the model (0.1 s for the 650 classes of the stress
+model, 0.01 s for its 2,553 relationships). On this machine a question then takes about a
+millisecond for that model, and 13 ms for a search, a filter and a sort together over 50,000
+entities with two labels each. What takes time in the browser is drawing the rows, which is why
+a table shows 150 at a time and typing is waited out for 160 ms before it asks: there a search
+over the 2,553 relationships is on screen 0.2 s after the last key, and one over the 650 classes,
+whose rows hold more, after 0.5 s.
+
 Arranging the graph is not what limits it. The layouts the app has of its own take, for 5,000
 terms and 7,500 lines (20,000 and 30,000 in brackets): hierarchical 0.03 s (0.13 s), orthogonal
 0.03 s (0.11 s), radial 0.03 s (0.11 s), circular 0.02 s (0.07 s), and the network layout 0.4 s
@@ -475,6 +520,15 @@ that *Layered* says so and uses the built-in hierarchical layout.
 - `src/model` – everything that isn't UI: types, the zustand store (state, history, autosave),
   layout algorithms, checks, RDF import/export, file handling.
 - `src/components` – the SVG canvas, side panels, views and menus.
+- `src/entities` – the search, the sorting and the filters of the Entities page, apart from the
+  page. `contracts.ts` is all the page knows: three questions (`EntityQueryService`: which sorts
+  and filters a list has, a page of a list for a search, an order and some filters, and the
+  entities there are to choose from for a filter), asked of a named revision, answered with plain
+  data. `service.ts` answers them over records (what each entity is searched by, sorted by, and
+  has for each filter) without knowing where the records are from; `local.ts`, the only file
+  that reads the app's model, makes the records; `http.ts` is the same service asked over HTTP.
+  The page (`Entities.tsx`, `EntityToolbar.tsx`, `entityQuery.ts`) asks whole questions and is
+  given keys in an order, which it resolves to the rows it edits. `boundaries.test.ts` keeps it so.
 - `src/layout` – the graph layouts, apart from the model and from how the graph is drawn.
   `types.ts` is what is kept of a layout (`GraphLayout`) and what a layout is given and answers
   (`LayoutGraph` in, places out). One file for each algorithm (`hierarchy.ts`, `tree.ts`,
@@ -595,6 +649,36 @@ need the app to find its own term for an IRI; a class without an IRI yet is know
 **Limits a server may set.** A page is 200 classes unless asked otherwise and never more than
 1,000; `branches` takes up to 500 classes; a search gives 12 matches and the total. None of these
 is known to the views, which ask for the next page or the next batch.
+
+## Moving the Entities lists to a backend
+
+The same holds for the Entities page as for the Structure Explorer: `entityQuery.ts` has the one
+line that says which `EntityQueryService` answers, today `createLocalEntityService`. With a
+backend it is `createHttpEntityService(url)` from `src/entities/http.ts`, and the searching,
+sorting and filtering are then done where the ontology is; nothing is narrowed or put in order
+afterwards in the browser. A test puts every question through that client and through JSON and
+compares the answers with the local ones.
+
+**The wire.** `POST {base}/entities/describe`, `/query` and `/options`, the query as the JSON
+body, the answer as JSON. A query is `{ ontologyId, revisionId, kind, search?, sort?: { by,
+dir }, filters?: { [filterId]: string[] }, offset?, limit? }`; its answer has `rows` (each a
+`key`, an `iri`, a `label`, and with a search the `matches`: the texts the words were found in
+and where in each), `total`, `matched`, the `words` that were looked for and `notes`. Refusals
+are `409` (`stale-revision`), `400` (`invalid`: a sort or filter the list does not have) and
+`499` (given up), each with a `code` and a `message`.
+
+**What a backend has to do the same way.** A search is words, each to be found somewhere, a
+plain word not in the full IRI. A sort is stable over the ontology's own order, and what has
+nothing to be sorted by comes last either way. A filter of type `all` wants every option chosen,
+`any` and `one` any of them; a filter that cannot be answered (`unavailable`) is left unapplied
+and said so in `notes`, rather than answered with nothing. A page is 150 rows unless asked
+otherwise and never more than 1,000; the page asks for more a page after a page.
+
+**What stays in the browser.** A row is edited against the model in the editor: the service
+gives keys (locally, term ids, object property keys and relationship ids), and the page resolves
+them. With the ontology in a backend the keys would be IRIs and the rows would come with what
+they show, which is the one part of the page that would change. What is typed, chosen and open
+(`entityViews` in the store) is the page's own and no part of the model.
 
 ## OWL 2 DL reasoning (HermiT)
 

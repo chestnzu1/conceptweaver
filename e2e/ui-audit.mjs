@@ -56,6 +56,8 @@ const measure = () => {
     if (!n.nodeValue.trim() || !el || el.closest('svg') || !visible(el)) continue;
     const s = getComputedStyle(el);
     if (el.closest('[disabled], [aria-disabled="true"]') || s.opacity < 1) continue;
+    // Text that is not drawn has no contrast to measure: the marks behind a text box repeat its text unseen, to lie under the same letters.
+    if (parse(s.color)[3] === 0 && el.closest('[aria-hidden="true"]')) continue;
     const size = parseFloat(s.fontSize);
     const fg = parse(s.color);
     const bg = backdrop(el);
@@ -136,6 +138,30 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     report('Governance', await page.evaluate(measure));
     await page.locator('.view').getByRole('tab', { name: /^Relationships/ }).click();
     report('Relationships', await page.evaluate(measure));
+    // The search, the order and the filters of the Entities tables: what was found marked, the filters open with some on, and nothing found.
+    const entities = page.locator('.view');
+    const answered = () => page.waitForFunction(() => { const c = document.querySelector('.view .et-count'); return c && !c.classList.contains('pending') && document.querySelector('.view .table-wrap')?.getAttribute('aria-busy') !== 'true'; });
+    await entities.getByRole('tab', { name: /^Classes/ }).click();
+    await entities.getByRole('searchbox').fill('film');
+    await entities.getByRole('button', { name: /^Filters/ }).click();
+    await entities.locator('.et-filters').getByRole('button', { name: /^Leaf/ }).click();
+    await entities.locator('thead').getByRole('button', { name: 'Name', exact: true }).click();
+    await page.waitForTimeout(250);
+    await answered();
+    report('Entities · search, sort, filters', await page.evaluate(measure));
+    await entities.getByRole('searchbox').fill('zzz');
+    await page.waitForTimeout(250);
+    await answered();
+    report('Entities · nothing found', await page.evaluate(measure));
+    await entities.getByRole('searchbox').fill('');
+    await entities.locator('.et-active').getByRole('button', { name: 'Clear all filters' }).click();
+    await entities.getByRole('tab', { name: /^Individuals/ }).click();
+    await answered();
+    await entities.locator('.et-filters').getByRole('button', { name: 'Choose an entity for the filter asserted class' }).click();
+    await entities.locator('.et-filters .subgraph-found button').first().waitFor();
+    report('Entities · choosing a class to filter by', await page.evaluate(measure));
+    await page.keyboard.press('Escape');
+    await entities.getByRole('button', { name: /^Filters/ }).click();
     // The Structure Explorer: its hierarchy with a class in focus and one searched for, and its other two modes.
     await tab('Structure');
     const structure = page.locator('.view.structure');

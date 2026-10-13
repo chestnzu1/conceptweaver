@@ -5896,3 +5896,362 @@ button.st-bar-row:hover {
 .layout-root {
   color: var(--ink);
 }
+
+/* ------------------------------------------- entities: search, sort, filter */
+
+/* What a search found, marked in the text it was found in. */
+mark {
+  border-radius: 2px;
+  background: var(--nc-amber-fill);
+  box-shadow: 0 0 0 1px var(--nc-amber-fill);
+  color: inherit;
+}
+
+/* The bar under the tabs: one line where there is room, and its parts in the same order where there is not. */
+.entity-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.et-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.et-search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 160px;
+  max-width: 380px;
+}
+
+.et-search input {
+  width: 100%;
+  height: 30px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+
+.et-search input:focus {
+  border-color: var(--accent);
+}
+
+.et-search .et-clear {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  color: var(--ink-2);
+}
+
+.et-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.et-sort select {
+  height: 30px;
+  max-width: 220px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.et-filter.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.et-count {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The count is of the question before while the next is on its way. */
+.et-count.pending {
+  opacity: 0.6;
+}
+
+.et-end {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+/* The filters there are, each a group of its own; they fold onto as many lines as they need. */
+.et-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 18px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.ef {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+}
+
+.ef-label {
+  margin-right: 2px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.ef-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ef-opt:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.ef-opt.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.ef-opt:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.ef-n {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.ef-why {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.ef-entities {
+  min-width: 0;
+}
+
+.ef-entities .supers-add {
+  min-width: 240px;
+}
+
+.ef-entities .chip-x {
+  background: var(--panel);
+}
+
+/* What is on, in a row of its own that is there only while something is. */
+.et-active {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 13px;
+}
+
+.et-active-label {
+  color: var(--ink-2);
+}
+
+/* As easy to hit as the chips beside it. */
+.et-active > .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.et-chip {
+  overflow: hidden;
+  max-width: 320px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.et-active .chip-x.locked {
+  border-style: dashed;
+  color: var(--ink-2);
+}
+
+.et-note {
+  flex: 1 1 100%;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+/* The line that says what a tab is for: under the bar it has no button beside it, and takes less room. */
+.view-sub.hint-only {
+  padding: 6px 16px;
+}
+
+.view-sub.hint-only > p {
+  font-size: 12.5px;
+}
+
+/* A column heading that sorts: the whole heading is the button. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 24px;
+  margin: -4px -6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.th-sort.on {
+  color: var(--ink);
+}
+
+/* Which way it is sorted is drawn, not written: the heading reads as its words, and says the order to whoever cannot see it (aria-sort). */
+.th-sort::after {
+  content: '↕';
+  /* With an empty alternative text, where that is understood, so that the heading is read out as its words alone. */
+  content: '↕' / '';
+  flex: none;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.th-sort.asc::after {
+  content: '▲';
+  content: '▲' / '';
+  color: var(--accent);
+}
+
+.th-sort.desc::after {
+  content: '▼';
+  content: '▼' / '';
+  color: var(--accent);
+}
+
+th.num .th-sort {
+  flex-direction: row-reverse;
+}
+
+/* A text box with what was found marked behind its text (see MarkedField). */
+.hl-field {
+  position: relative;
+  display: block;
+}
+
+.hl-back {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  /* The box has 6px of padding inside a border of 1px. */
+  padding: 0 7px;
+  color: transparent;
+  white-space: pre;
+  pointer-events: none;
+}
+
+.hl-back mark {
+  color: transparent;
+}
+
+.hl-field > input {
+  position: relative;
+}
+
+/* While it is typed in, the text moves and the marks would not follow. */
+.hl-field:focus-within .hl-back {
+  visibility: hidden;
+}
+
+/* A cell whose text cannot be marked in part, such as a dropdown: all of it says that the words are in it. */
+td.hit select {
+  background: var(--nc-amber-fill);
+}
+
+/* Where else the words were found, when the row has no place that shows it. */
+.hl-note {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 7px 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.hl-where {
+  color: var(--ink-3);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* A row that is listed only because it was just added. */
+tbody tr.pinned td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* A row brought into view stops clear of the headings, which stay where they are. */
+.view tbody tr {
+  scroll-margin-top: 40px;
+}
+
+.empty-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px 16px;
+}
+
+.empty-result .row {
+  margin-top: 4px;
+}
+
+.table-wrap[aria-busy='true'] tbody {
+  opacity: 0.75;
+}

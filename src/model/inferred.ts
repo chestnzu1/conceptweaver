@@ -50,7 +50,7 @@ export function restrictionKey(r: Restriction): string {
 }
 
 /** The class expression of a kept axiom, whether it was stated as a superclass or as an equivalent class. */
-const expressionOf = (axiom: string) => axiom.replace(/^(rdfs:subClassOf|owl:equivalentClass)\s+/, '');
+export const expressionOf = (axiom: string) => axiom.replace(/^(rdfs:subClassOf|owl:equivalentClass)\s+/, '');
 
 const EMPTY = { restrictions: [], expressions: [] };
 

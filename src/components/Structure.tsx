@@ -108,7 +108,7 @@ export function StructureView() {
       openInEntities: (iri) => {
         const t = term(iri);
         if (!t) return;
-        openEntityTab('concept');
+        openEntityTab('concept', t.id);
         st().select([t.id]);
         st().setView('table');
       },

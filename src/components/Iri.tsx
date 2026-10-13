@@ -4,13 +4,14 @@ import { useStore } from '../model/store';
 import { addIsA } from '../model/axioms';
 import { EntityPicker, type Choice } from './EntityPicker';
 import type { Term } from '../model/types';
+import { Marked, type Ranges } from './Highlight';
 import { Icon } from './Icon';
 
 /**
  * An entity's full IRI, read-only. The namespace gives way when space is short so that the
  * distinguishing last part stays visible; the whole IRI is in the tooltip and one click copies it.
  */
-export function IriCell({ iri, of, full = false }: { iri?: string; of: string; full?: boolean }) {
+export function IriCell({ iri, of, full = false, marks }: { iri?: string; of: string; full?: boolean; /** Where a search found its words in what is shown: the prefixed IRI, or the full one. */ marks?: (shown: string) => Ranges | undefined }) {
   const notify = useStore((s) => s.notify);
   // Written with a prefix where the ontology has one for it (ex:Actor); the full IRI is always the tooltip and what Copy gives.
   const curie = useStore((s) => (iri && !full ? compactIri(s.model, iri) : undefined));
@@ -30,19 +31,18 @@ export function IriCell({ iri, of, full = false }: { iri?: string; of: string; f
       notify(`Could not copy. The IRI is ${iri}`);
     }
   };
+  // The two parts are drawn apart, and a word that was found may lie across them.
+  const shown = curie ?? iri;
+  const at = curie ? curie.indexOf(':') + 1 : cut;
+  const ranges = marks?.(shown);
   return (
     <span className="iri-cell" title={iri}>
-      {curie ? (
-        <>
-          <span className="iri-prefix">{curie.slice(0, curie.indexOf(':') + 1)}</span>
-          <span className="iri-local">{curie.slice(curie.indexOf(':') + 1)}</span>
-        </>
-      ) : (
-        <>
-          <span className="iri-ns">{iri.slice(0, cut)}</span>
-          <span className="iri-local">{iri.slice(cut)}</span>
-        </>
-      )}
+      <span className={curie ? 'iri-prefix' : 'iri-ns'}>
+        <Marked text={shown} ranges={ranges} to={at} />
+      </span>
+      <span className="iri-local">
+        <Marked text={shown} ranges={ranges} from={at} />
+      </span>
       <button className="btn icon ghost iri-copy" title="Copy the full IRI" aria-label={`Copy the IRI of ${of}`} onClick={copy}>
         <Icon name="copy" size={13} />
       </button>

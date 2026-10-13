@@ -132,6 +132,67 @@ await page.getByRole('button', { name: 'Add relationships' }).click();
 ttl = await turtle();
 ok(block(ttl, ':Genre').includes('rdfs:subClassOf :Award') && block(ttl, ':Genre').includes('owl:onProperty :rates ; owl:someValuesFrom :Film') && !ttl.includes('rdf:Property'), 'lines added in bulk become what their ends and names make them');
 
+// ---------------------------------------------------------------- a relationship added from the table of relationships
+// The button used to join the first two terms by name whatever they were. Here those are an
+// individual and a data property, which cannot be joined, so every press was refused.
+const view = page.locator('.view');
+const section = (name) => view.getByRole('tab', { name: new RegExp('^' + name) }).click();
+const rowOf = (name) => view.locator('tbody tr', { has: page.locator(`input[value="${name}"]`) });
+// The row is found by its name, which the typing changes: the box is held on to.
+const rename = async (from, to) => { const box = await rowOf(from).getByLabel('Name').elementHandle(); await box.fill(to); await box.press('Enter'); };
+await tab('Entities');
+await section('Individuals');
+await view.getByRole('button', { name: 'Add individual' }).click();
+await rename('New individual', 'Aa Active');
+await section('Data properties');
+await view.getByRole('button', { name: 'Add data property' }).click();
+await rename('New data property', 'Aa age');
+await section('Relationships');
+const rows = view.locator('tbody tr');
+const picked = (r, label) => r.getByLabel(label, { exact: true }).locator('option:checked').innerText().then(flat);
+const line = async (r) => `${await picked(r, 'From')} → ${await picked(r, 'To')} (${await picked(r, 'Kind')})`;
+const addRel = view.getByRole('button', { name: 'Add relationship' });
+const inView = (r) => r.evaluate((el) => { const a = el.getBoundingClientRect(); const b = el.closest('.table-wrap').getBoundingClientRect(); return a.top >= b.top - 1 && a.bottom <= b.bottom + 1; });
+// Nothing but a relationship is selected, as when one comes to the table and presses the button.
+await rows.first().locator('td').last().click({ position: { x: 2, y: 2 } });
+await page.locator('.toast').waitFor({ state: 'detached', timeout: 6000 }).catch(() => {});
+let listedRels = await rows.count();
+await addRel.click();
+const newRow = view.locator('tbody tr.sel');
+ok((await rows.count()) === listedRels + 1 && (await toast()) === '', 'Add relationship adds one, and nothing is refused: ' + ((await toast()) || 'no notice'));
+ok((await newRow.count()) === 1 && (await line(newRow)) === 'Aa Active → Actor (Is Instance Of)', 'it starts from the first term by name, to the first that term can be related to: ' + (await line(newRow)));
+ok((await inView(newRow)) && (await newRow.getByLabel('From', { exact: true }).evaluate((el) => el === document.activeElement)), 'its row is selected, in view, and ready to be given its ends');
+await addRel.click();
+ok((await rows.count()) === listedRels + 2 && (await toast()) === '' && (await line(view.locator('tbody tr.sel'))) === 'Aa Active → Award (Is Instance Of)', 'pressed again it passes over what is stated already: ' + (await line(view.locator('tbody tr.sel'))));
+ttl = await turtle();
+ok(/:AaActive a owl:NamedIndividual , :Actor , :Award/.test(block(ttl, ':AaActive')), 'and both are in the ontology: ' + block(ttl, ':AaActive'));
+// With a term selected, the relationship starts from it.
+await tab('Entities');
+await section('Classes');
+await rowOf('Studio').locator('td').nth(1).click();
+await section('Relationships');
+await addRel.click();
+ok((await line(view.locator('tbody tr.sel'))) === 'Aa Active → Studio (Is Instance Of)' && (await toast()) === '', 'with a term selected the relationship is one of that term, the way such a line runs: ' + (await line(view.locator('tbody tr.sel'))));
+// The ends are then changed in the row. Two that cannot be related are still refused there, where the reason applies.
+const to = view.locator('tbody tr.sel').getByLabel('To', { exact: true });
+await to.focus();
+await to.selectOption({ label: 'Aa age' });
+ok((await toast()).includes('“Aa Active” is an individual and “Aa age” is a data property: the two are not joined by a line') && (await line(view.locator('tbody tr.sel'))) === 'Aa Active → Studio (Is Instance Of)', 'choosing a data property as the other end of an individual is refused, with the reason, and the row stays as it was');
+await to.selectOption({ label: 'Film' });
+ok((await line(view.locator('tbody tr.sel'))) === 'Aa Active → Film (Is Instance Of)', 'and an end that can be related is taken: ' + (await line(view.locator('tbody tr.sel'))));
+await page.locator('.toast').waitFor({ state: 'detached', timeout: 6000 }).catch(() => {});
+// Narrowed by the tab's own search to something the new relationship is not, it is listed all the same, marked as just added.
+const search = view.getByRole('searchbox');
+await search.fill('Parasite');
+// The search waits for the typing to pause; the count is dimmed until its answer is there.
+await page.waitForFunction(() => / of \d+ relationships$/.test(document.querySelector('.et-count:not(.pending)')?.textContent ?? ''));
+listedRels = await rows.count();
+await addRel.click();
+await page.waitForTimeout(300);
+ok((await rows.count()) === listedRels + 1 && (await view.locator('tbody tr.sel.pinned').count()) === 1 && (await toast()) === '' && (await search.inputValue()) === 'Parasite', 'added while the list is narrowed to something else, it is listed all the same, marked as just added: ' + (await line(view.locator('tbody tr.sel'))));
+await search.fill('');
+await tab('Graph');
+
 // ---------------------------------------------------------------- it is all still there after a reload
 await page.waitForTimeout(900);
 const saved = await turtle();

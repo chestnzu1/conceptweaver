@@ -2,7 +2,7 @@ import { makeInstanceOf, type Edit } from './axioms';
 import { baseIriOf, localName } from './iri';
 import { supports } from './modelTypes';
 import { DEFAULT_PROP, kindsBetween, propKey, relChoice } from './props';
-import { INSTANCE_OF, PROP_LINKS, type Model, type ObjProp, type Relation, type Term } from './types';
+import { INSTANCE_OF, newRelation, PROP_LINKS, type Model, type ObjProp, type Relation, type Term, type TermType } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -134,4 +134,83 @@ export function settleRelation(model: Model, id: string, before?: Model): Edit {
     if (entry && !uses(out.model, old) && pristine(out.model, entry)) out = { ...out, model: { ...out.model, props: out.model.props.filter((p) => p !== entry) } };
   }
   return out;
+}
+
+/** How many terms of one kind are tried as the other end before that kind is given up on. */
+const GIVE_UP = 4;
+/** How many terms are tried as the first end. */
+const MAX_STARTS = 25;
+
+/**
+ * The two terms a relationship starts between when it is added without saying which, as from
+ * the table of relationships, where it is given its ends afterwards. The first two terms by name
+ * will not always do: in an ontology an individual and a data property are not joined at all,
+ * and an individual is not stated to be an instance of the same class twice. So: the two terms
+ * that are selected, where a relationship can be added between them; else from a selected term,
+ * or the first by name, to the first by name it can be related to, one it is not related to yet
+ * before one it is. The ends are given the way
+ * the relationship will run, which for a membership or a "has data property" is not always the
+ * way they were found. `error` is why nothing can be added, in the rare model where that is so.
+ */
+export function endsForNew(model: Model, selected: string[] = []): { from: string; to: string; error?: undefined } | { error: string } {
+  const byName = [...model.terms].sort((a, b) => a.name.localeCompare(b.name));
+  if (!byName.length) return { error: 'There are no terms to relate yet.' };
+  const byId = new Map(model.terms.map((t) => [t.id, t]));
+  const chosen = [...new Set(selected)].map((id) => byId.get(id)).filter((t): t is Term => !!t);
+  let why: string | undefined;
+  // Whether two kinds of term can be joined at all is the same for every pair of those kinds.
+  const kinds = new Map<string, boolean>();
+  const joinable = (a: Term, b: Term): boolean => {
+    const key = a.type + '|' + b.type;
+    let can = kinds.get(key);
+    if (can === undefined) {
+      const refused = cannotRelate(model, a.id, b.id);
+      why ??= refused;
+      kinds.set(key, (can = refused === undefined));
+    }
+    return can;
+  };
+  /** The ends a relationship between the two would have once added, or nothing where it is refused. */
+  const between = (a: Term, b: Term): { from: string; to: string } | undefined => {
+    const probe = newRelation({ from: a.id, to: b.id });
+    const settled = settleRelation({ ...model, relations: [...model.relations, probe] }, probe.id);
+    if (settled.error !== undefined) {
+      why ??= settled.error;
+      return undefined;
+    }
+    const made = settled.model?.relations.find((r) => r.id === probe.id) ?? probe;
+    return { from: made.from, to: made.to };
+  };
+
+  if (chosen.length > 1 && joinable(chosen[0], chosen[1])) {
+    const ends = between(chosen[0], chosen[1]);
+    if (ends) return ends;
+  }
+  // Two terms that are related already are taken last: the same statement twice says nothing more,
+  // and pressed again and again this gives one relationship after another, not the same one.
+  const pair = (x: string, y: string) => (x < y ? x + '|' + y : y + '|' + x);
+  const related = new Set(model.relations.map((r) => pair(r.from, r.to)));
+  for (const a of [...new Set([...chosen, ...byName])].slice(0, MAX_STARTS)) {
+    // What is refused is mostly refused for a whole kind of term (every class the individual is an
+    // instance of already), so a kind that keeps being refused is passed over: a large model costs no more.
+    const failed: Partial<Record<TermType, number>> = {};
+    for (const fresh of [true, false]) {
+      for (const b of byName) {
+        if (b === a || (failed[b.type] ?? 0) >= GIVE_UP || related.has(pair(a.id, b.id)) === fresh) continue;
+        if (!joinable(a, b)) {
+          failed[b.type] = GIVE_UP;
+          continue;
+        }
+        const ends = between(a, b);
+        if (ends) return ends;
+        failed[b.type] = (failed[b.type] ?? 0) + 1;
+      }
+    }
+  }
+  // A single term can only be related to itself.
+  if (byName.length === 1) {
+    const ends = between(byName[0], byName[0]);
+    if (ends) return ends;
+  }
+  return { error: why ?? 'No two terms of this model can be related.' };
 }

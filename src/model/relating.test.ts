@@ -6,7 +6,7 @@ import { allowsKind, MODEL_TYPES } from './modelTypes';
 import { isInstanceOf, kindsBetween, objectProperties, offeredChoices, plainRelationships, relChoice } from './props';
 import { qualityDiagnostics } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
-import { cannotRelate, IS_A, settleRelation } from './relating';
+import { cannotRelate, endsForNew, IS_A, settleRelation } from './relating';
 import { skosSample } from './sample';
 import { useStore } from './store';
 import { emptyModel, newRelation, newTerm, type Model, type Relation } from './types';
@@ -330,5 +330,103 @@ describe('relationships added in bulk', () => {
     expect(relChoice(m, by('Film', 'running time'))).toBe('property');
     expect(props()).toEqual(['directed by', 'wins']);
     expect(plainRelationships(m)).toEqual([]);
+  });
+});
+
+describe('a relationship added without saying between what', () => {
+  /** The model that showed the fault: by name its first two terms are an individual and a data property. */
+  const customers = (): Model => {
+    const m = emptyModel('Customers');
+    m.baseIri = 'http://example.org/c#';
+    m.terms = [
+      newTerm({ id: 'customer', name: 'Customer' }),
+      newTerm({ id: 'person', name: 'Person' }),
+      newTerm({ id: 'age', name: 'age', type: 'property', range: 'xsd:integer' }),
+      newTerm({ id: 'active', name: 'Active', type: 'instance' }),
+      newTerm({ id: 'blocked', name: 'Blocked', type: 'instance' }),
+    ];
+    return withIris(m);
+  };
+  const add = (selected: string[] = []) => {
+    const ends = endsForNew(st().model, selected);
+    return ends.error === undefined ? st().addRelation(ends) : '';
+  };
+
+  it('starts between two terms that can be joined, not simply the first two by name', () => {
+    st().replaceModel(customers());
+    // What the table of relationships used to ask for, and was refused every time.
+    expect(cannotRelate(st().model, 'active', 'age')).toMatch(/not joined by a line/);
+    useStore.setState({ toast: null });
+    const id = add();
+    expect(id).not.toBe('');
+    expect(st().toast).toBeNull();
+    // From the first term by name, to the first it can be joined to.
+    expect([rel(id).from, rel(id).to, kind(id)]).toEqual(['active', 'blocked', 'object']);
+    // Pressed again it is another relationship, not the same one twice; only when nothing else is left is a pair taken again.
+    const next = add();
+    expect([rel(next).from, rel(next).to, kind(next)]).toEqual(['active', 'customer', 'instanceOf']);
+    expect(add()).not.toBe('');
+    const again = add();
+    expect([rel(again).from, rel(again).to, kind(again)]).toEqual(['active', 'blocked', 'object']);
+    expect(st().toast).toBeNull();
+  });
+
+  it('passes over what is already stated, so that it can be pressed again and again', () => {
+    st().replaceModel({ ...customers(), terms: customers().terms.filter((t) => t.id !== 'blocked') });
+    const first = add();
+    expect([rel(first).from, rel(first).to, kind(first)]).toEqual(['active', 'customer', 'instanceOf']);
+    // “Active” is an instance of “Customer” now, and is not stated to be one twice.
+    const second = add();
+    expect([rel(second).from, rel(second).to, kind(second)]).toEqual(['active', 'person', 'instanceOf']);
+    // Nothing is left for “Active”: the next one starts from the next term.
+    useStore.setState({ toast: null });
+    const third = add();
+    expect([rel(third).from, rel(third).to, kind(third)]).toEqual(['customer', 'age', 'property']);
+    expect(st().toast).toBeNull();
+    expect(st().model.relations).toHaveLength(3);
+  });
+
+  it('starts from what is selected, where that can be joined to something', () => {
+    st().replaceModel(customers());
+    expect(endsForNew(st().model, ['person', 'customer'])).toEqual({ from: 'person', to: 'customer' });
+    // The ends are given the way the line will run: a membership points from the individual to the class.
+    expect(endsForNew(st().model, ['person'])).toEqual({ from: 'active', to: 'person' });
+    useStore.setState({ toast: null });
+    expect(add(['person'])).not.toBe('');
+    expect(st().toast).toBeNull();
+    st().undo();
+    // Two that cannot be joined: from the first of them to something else, and "has data property" points from the class.
+    expect(endsForNew(st().model, ['age', 'active'])).toEqual({ from: 'customer', to: 'age' });
+    expect(endsForNew(st().model, ['active', 'age'])).toEqual({ from: 'active', to: 'blocked' });
+    // A term that is gone is no selection at all.
+    expect(endsForNew(st().model, ['gone'])).toEqual({ from: 'active', to: 'blocked' });
+  });
+
+  it('says why, where no two terms of the model can be joined', () => {
+    const two = { ...customers(), terms: customers().terms.filter((t) => t.id === 'active' || t.id === 'age') };
+    expect(endsForNew(two)).toEqual({ error: cannotRelate(two, 'active', 'age') });
+    expect(endsForNew(emptyModel('Nothing'))).toEqual({ error: 'There are no terms to relate yet.' });
+    // One term alone can only be related to itself, as before.
+    const one = { ...customers(), terms: customers().terms.filter((t) => t.id === 'person') };
+    expect(endsForNew(one)).toEqual({ from: 'person', to: 'person' });
+  });
+
+  it('is the first two terms by name in a model whose relationships are what they are called', () => {
+    st().replaceModel(skosSample());
+    const byName = [...st().model.terms].sort((a, b) => a.name.localeCompare(b.name));
+    expect(endsForNew(st().model)).toEqual({ from: byName[0].id, to: byName[1].id });
+  });
+
+  it('does not take long on a large model in which most pairs are refused', () => {
+    const m = emptyModel('Large');
+    m.baseIri = 'http://example.org/l#';
+    // One individual, already an instance of every class, and a great many data properties after it by name.
+    m.terms = [newTerm({ id: 'i', name: 'A', type: 'instance' }), ...Array.from({ length: 400 }, (_, k) => newTerm({ id: 'c' + k, name: 'B' + String(k).padStart(4, '0') })), ...Array.from({ length: 3000 }, (_, k) => newTerm({ id: 'p' + k, name: 'C' + String(k).padStart(4, '0'), type: 'property' }))];
+    m.relations = Array.from({ length: 400 }, (_, k) => newRelation({ id: 'r' + k, from: 'i', to: 'c' + k, kind: 'generalization' }));
+    const large = withIris(m);
+    const t = performance.now();
+    const ends = endsForNew(large);
+    expect(performance.now() - t).toBeLessThan(1500);
+    expect(ends).toEqual({ from: 'c0', to: 'c1' });
   });
 });

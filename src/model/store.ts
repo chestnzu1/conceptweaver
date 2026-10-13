@@ -30,6 +30,7 @@ import { stable } from './stable';
 import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
 import { classIriOf } from '../structure/local';
 import type { HierarchyMode, Iri } from '../structure/contracts';
+import { LIST_KINDS, type EntitySort, type FilterValues, type ListKind } from '../entities/contracts';
 import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term, type TermType } from './types';
 
 export type { View } from './modelTypes';
@@ -163,6 +164,21 @@ export interface StructureState {
   compare: { a: Iri | null; b: Iri | null };
 }
 
+/**
+ * How one list of the Entities page is narrowed and put in order. Each list has its own: what is
+ * searched for among the classes is not searched for among the individuals. None of it is part
+ * of the model, and none of it changes the model.
+ */
+export interface EntityViewState {
+  search: string;
+  /** Nothing: the order the model has them in. */
+  sort: EntitySort | null;
+  filters: FilterValues;
+}
+
+const NO_ENTITY_VIEW: EntityViewState = { search: '', sort: null, filters: {} };
+const noEntityViews = () => Object.fromEntries(LIST_KINDS.map((k) => [k, NO_ENTITY_VIEW])) as Record<ListKind, EntityViewState>;
+
 const MODEL_KEY = 'conceptweaver:model:v1';
 const THEME_KEY = 'conceptweaver:theme';
 /** Which saved model the working copy belongs to, and whether it has changes not yet saved there. */
@@ -292,6 +308,12 @@ interface State {
   setSidebarWidth: (width: number) => void;
   setEditorWide: (wide: boolean) => void;
   subgraph: SubgraphState;
+  /** The search, the order and the filters of each list of the Entities page. */
+  entityViews: Record<ListKind, EntityViewState>;
+  setEntityView: (kind: ListKind, patch: Partial<EntityViewState>) => void;
+  /** Whether the panel of filters is open. It is the page's, not a list's: open, it stays open from tab to tab. */
+  entityFiltersOpen: boolean;
+  setEntityFiltersOpen: (open: boolean) => void;
   dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | null;
   toast: string | null;
   /**
@@ -669,6 +691,10 @@ export const useStore = create<State>((set, get) => ({
   },
   dialog: null,
   subgraph: NO_SUBGRAPH,
+  entityViews: noEntityViews(),
+  setEntityView: (kind, patch) => set((s) => ({ entityViews: { ...s.entityViews, [kind]: { ...s.entityViews[kind], ...patch } } })),
+  entityFiltersOpen: false,
+  setEntityFiltersOpen: (entityFiltersOpen) => set({ entityFiltersOpen }),
   toast: null,
   graphScope: 'all',
   setGraphScope: (graphScope) => {
@@ -825,7 +851,7 @@ export const useStore = create<State>((set, get) => ({
     stopGlide();
     // A different document: its history starts afresh, and it counts as unchanged until edited.
     // Another model may be of another type: the view stays only if that type has it.
-    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
+    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
     void get().loadExternals();
     get().fit();
   },
