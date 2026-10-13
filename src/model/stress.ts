@@ -1,4 +1,4 @@
-import { hierarchyLayout } from './layout';
+import { arrangeAsHierarchy } from './layout';
 import { emptyModel, newRelation, newTerm, DATATYPES, type Model, type ObjProp, type Quantifier } from './types';
 
 /**
@@ -76,7 +76,6 @@ export function stressModel(classes = 650): Model {
   const free = m.props.filter((p) => !p.domain && !p.chars.some((c) => c === 'functional' || c === 'inverseFunctional' || c === 'asymmetric' || c === 'irreflexive'));
   for (let i = 0; i < classes * 0.8; i++) rel(pick(individuals), pick(individuals), { label: pick(free).name });
 
-  const pos = hierarchyLayout(m);
-  for (const t of m.terms) Object.assign(t, pos.get(t.id));
+  arrangeAsHierarchy(m);
   return m;
 }

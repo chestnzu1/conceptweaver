@@ -348,6 +348,71 @@
     return { tip, a: { x: bx - d.y * half, y: by + d.x * half }, b: { x: bx + d.y * half, y: by - d.x * half }, inset: head === 'hollow' ? len : head === 'filled' ? len - 3 : 0 };
   }
 
+  /** The point on one side of a term's outline, `shift` along that side from its middle, whatever its shape. */
+  function sideExit(t, side, shift) {
+    const upright = side === 'top' || side === 'bottom';
+    const half = upright ? t.w / 2 : t.h / 2;
+    const out = upright ? t.h / 2 : t.w / 2;
+    const s = Math.max(-half * 0.7, Math.min(half * 0.7, shift));
+    let reach = out;
+    if (t.shape === 'ellipse') reach = out * Math.sqrt(1 - (s / half) * (s / half));
+    else if (t.shape === 'diamond') reach = out * (1 - Math.abs(s) / half);
+    else if (t.shape === 'hexagon') {
+      const inset = hexInset(t.w, t.h);
+      reach = upright ? (Math.abs(s) <= half - inset ? out : (out * (half - Math.abs(s))) / inset) : out - (inset * Math.abs(s)) / half;
+    }
+    const sign = side === 'bottom' || side === 'right' ? 1 : -1;
+    return upright ? { x: t.x + s, y: t.y + sign * (reach + 3) } : { x: t.x + sign * (reach + 3), y: t.y + s };
+  }
+
+  /**
+   * A line that leaves its terms square to their sides, with right angles or as an S-shaped curve,
+   * as the canvas draws it under the layout the picture was made with. Nothing where the two terms
+   * are too close for it: then the line runs straight.
+   */
+  function routedLine(r, a, b) {
+    const ROOM = 18;
+    const roomV = Math.abs(b.y - a.y) - (a.h + b.h) / 2;
+    const roomH = Math.abs(b.x - a.x) - (a.w + b.w) / 2;
+    const dir = data.route.dir;
+    const layersDown = dir === 'TB' || dir === 'BT';
+    const upright = layersDown ? roomV >= ROOM || roomH < ROOM : !(roomH >= ROOM || roomV < ROOM);
+    if ((upright ? roomV : roomH) < ROOM) return null;
+    const at = (u, v) => (upright ? { x: v, y: u } : { x: u, y: v });
+    const uOf = (p) => (upright ? p.y : p.x);
+    const vOf = (p) => (upright ? p.x : p.y);
+    const su = Math.sign(uOf(b) - uOf(a)) || 1;
+    const shift = r.bend * (r.from > r.to ? -1 : 1) * 0.3;
+    const forward = dir === 'TB' || dir === 'LR' ? su > 0 : su < 0;
+    const port = r.port || 0;
+    const p0 = sideExit(a, upright ? (su > 0 ? 'bottom' : 'top') : su > 0 ? 'right' : 'left', shift + (forward ? 0 : port));
+    const p1 = sideExit(b, upright ? (su > 0 ? 'top' : 'bottom') : su > 0 ? 'left' : 'right', shift + (forward ? port : 0));
+    const u0 = uOf(p0);
+    const u1 = uOf(p1);
+    const v0 = vOf(p0);
+    const v1 = vOf(p1);
+    const sv = Math.sign(v1 - v0);
+    const mid = Math.max(Math.min(u0, u1) + 7, Math.min(Math.max(u0, u1) - 7, (u0 + u1) / 2 - shift * sv * su * 0.6));
+    const head = arrowHead(p1, at(su, 0), r.head);
+    const end = at(u1 - su * head.inset, v1);
+    const atEnd = forward !== !!r.labelUp;
+    const ua = atEnd ? mid : u0;
+    const ub = atEnd ? u1 : mid;
+    const vl = atEnd ? v1 : v0;
+    const beside = sv || 1;
+    const cards = { fromCard: at(u0 + su * 14, v0 - beside * 12), toCard: at(u1 - su * 22, v1 + beside * 12) };
+    if (data.route.how === 'curved') {
+      const d = 'M' + pt(p0) + ' C' + pt(at((u0 + u1) / 2, v0)) + ' ' + pt(at((u0 + u1) / 2, v1)) + ' ' + pt(end);
+      return Object.assign({ d, head, at: (t) => ({ x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t }) }, cards);
+    }
+    const q = Math.min(6, Math.abs(v1 - v0) / 2, Math.abs(mid - u0), Math.abs(u1 - mid));
+    const d =
+      q < 0.5
+        ? 'M' + pt(p0) + ' L' + pt(at(mid, v0)) + ' L' + pt(at(mid, v1)) + ' L' + pt(end)
+        : 'M' + pt(p0) + ' L' + pt(at(mid - su * q, v0)) + ' Q' + pt(at(mid, v0)) + ' ' + pt(at(mid, v0 + sv * q)) + ' L' + pt(at(mid, v1 - sv * q)) + ' Q' + pt(at(mid, v1)) + ' ' + pt(at(mid + su * q, v1)) + ' L' + pt(end);
+    return Object.assign({ d, head, at: (t) => at(ua + (ub - ua) * t, vl) }, cards);
+  }
+
   /** The line of a relationship as it runs now: its path, its head, and where its words go. */
   function route(r) {
     const a = terms.get(r.from);
@@ -362,6 +427,8 @@
       const label = { x: a.x + a.w / 2 + size * 0.35, y: a.y - a.h / 2 - size * 0.62 };
       return { d: 'M' + pt(p0) + ' C' + pt({ x: p0.x, y: p0.y - size }) + ' ' + pt({ x: end.x + size, y: end.y }) + ' ' + pt(end), head, at: () => label, fromCard: { x: p0.x - 10, y: p0.y - 10 }, toCard: { x: p1.x + 14, y: p1.y + 14 } };
     }
+    const routed = data.route && data.route.how !== 'direct' ? routedLine(r, a, b) : null;
+    if (routed) return routed;
     // Which way a line bows does not depend on which way the relationship points.
     const flip = r.from > r.to ? -1 : 1;
     const dir = unit(b.x - a.x, b.y - a.y);

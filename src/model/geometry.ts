@@ -1,3 +1,4 @@
+import type { Route } from '../layout/types';
 import type { Relation, RelKind, Term } from './types';
 
 export const NODE_H = 40;
@@ -191,9 +192,11 @@ function arrowHead(tip: Pt, d: Pt, head: ArrowHead): { points: string; inset: nu
 /**
  * Geometry of a relation drawn from `a` to `b`. `offset` bends the edge sideways so that
  * several relations between the same two terms don't overlap. The arrowhead follows the kind of
- * relation ("is a" has a hollow one) unless one is asked for.
+ * relation ("is a" has a hollow one) unless one is asked for. `route` is how the layout wants its
+ * lines drawn; without it, or where two terms are too close for anything else, a line runs
+ * straight from one to the other.
  */
-export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?: ArrowHead): EdgeGeom {
+export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?: ArrowHead, route?: Route, hint?: RouteHint): EdgeGeom {
   const how: ArrowHead = arrow ?? (kind === 'generalization' ? 'hollow' : 'filled');
   if (a.id === b.id) {
     const { w, h } = nodeSize(a);
@@ -209,6 +212,10 @@ export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?
       fromCard: { x: p0.x - 10, y: p0.y - 10 },
       toCard: { x: p1.x + 14, y: p1.y + 14 },
     };
+  }
+  if (route && route.how !== 'direct') {
+    const routed = routedGeom(a, b, offset, how, route, hint);
+    if (routed) return routed;
   }
   // The bend direction is defined in a frame that doesn't depend on which way the relation points.
   const flip = a.id > b.id ? -1 : 1;
@@ -230,6 +237,146 @@ export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?
     toCard: { x: p1.x - dEnd.x * 24 + side.x * 11, y: p1.y - dEnd.y * 24 + side.y * 11 },
     curve: [p0, c, p1],
   };
+}
+
+type Side = 'top' | 'bottom' | 'left' | 'right';
+
+/** What a routed line is told about the other lines at its two terms. */
+export interface RouteHint {
+  /** How far from the middle of the side it arrives at the term further down the layers, among the others that arrive there. */
+  port: number;
+  /** Its words go next to the term further up: more lines arrive at the lower one than leave the upper. */
+  labelUp: boolean;
+}
+const NO_HINT: RouteHint = { port: 0, labelUp: false };
+const hints = new Map<string, RouteHint>();
+const hintOf = (port: number, labelUp: boolean): RouteHint => {
+  const key = port + (labelUp ? 'u' : 'd');
+  if (hints.size > 5000) hints.clear();
+  return hints.get(key) ?? hints.set(key, { port, labelUp }).get(key)!;
+};
+
+/**
+ * For lines that are routed: where each arrives at its lower term, so that several arriving at
+ * one term do so side by side in the order they come from, and at which end its words go. The
+ * same answer is the same object, so a line is drawn again only when its own answer changed.
+ */
+export function routeHints(relations: Pick<Relation, 'id' | 'from' | 'to'>[], byId: Map<string, Pick<Term, 'id' | 'x' | 'y' | 'name' | 'type' | 'range'>>, route: Route): Map<string, RouteHint> {
+  const out = new Map<string, RouteHint>();
+  if (route.how === 'direct') return out;
+  const down = route.dir === 'TB' || route.dir === 'BT';
+  const sign = route.dir === 'TB' || route.dir === 'LR' ? 1 : -1;
+  const arriving = new Map<string, { id: string; upper: string; across: number }[]>();
+  const leaving = new Map<string, number>();
+  for (const r of relations) {
+    const a = byId.get(r.from);
+    const b = byId.get(r.to);
+    if (!a || !b || a === b) continue;
+    const along = ((down ? b.y - a.y : b.x - a.x) || 1) * sign;
+    const [upper, lower] = along > 0 ? [a, b] : [b, a];
+    const list = arriving.get(lower.id) ?? arriving.set(lower.id, []).get(lower.id)!;
+    list.push({ id: r.id, upper: upper.id, across: down ? upper.x : upper.y });
+    leaving.set(upper.id, (leaving.get(upper.id) ?? 0) + 1);
+  }
+  for (const [lower, list] of arriving) {
+    list.sort((p, q) => p.across - q.across || (p.id < q.id ? -1 : 1));
+    const t = byId.get(lower)!;
+    const size = nodeSize(t);
+    const step = list.length > 1 ? Math.min(16, ((down ? size.w : size.h) * 0.6) / (list.length - 1)) : 0;
+    list.forEach((e, i) => out.set(e.id, hintOf(Math.round((i - (list.length - 1) / 2) * step * 10) / 10, list.length > (leaving.get(e.upper) ?? 0))));
+  }
+  return out;
+}
+
+/** The point on one side of a node's outline, `shift` along that side from its middle, whatever its shape. */
+function sideExit(t: Term, side: Side, shift: number, gap = 3): Pt {
+  const { w, h } = nodeSize(t);
+  const upright = side === 'top' || side === 'bottom';
+  // Along the side, and out from the centre to it.
+  const [half, out] = upright ? [w / 2, h / 2] : [h / 2, w / 2];
+  const s = Math.max(-half * 0.7, Math.min(half * 0.7, shift));
+  let reach = out;
+  switch (lookOf(t)?.shape) {
+    case 'ellipse':
+    case 'circle':
+      reach = out * Math.sqrt(1 - (s / half) ** 2);
+      break;
+    case 'diamond':
+      reach = out * (1 - Math.abs(s) / half);
+      break;
+    case 'hexagon': {
+      // Flat on top and below, pointed at the sides.
+      const inset = hexInset(w, h);
+      reach = upright ? (Math.abs(s) <= half - inset ? out : (out * (half - Math.abs(s))) / inset) : out - (inset * Math.abs(s)) / half;
+      break;
+    }
+  }
+  const sign = side === 'bottom' || side === 'right' ? 1 : -1;
+  return upright ? { x: t.x + s, y: t.y + sign * (reach + gap) } : { x: t.x + sign * (reach + gap), y: t.y + s };
+}
+
+/** The least room between two terms for a line to leave one and turn before it reaches the other. */
+const TURN_ROOM = 18;
+
+/**
+ * A line that leaves its terms square to their sides: with right angles, or as an S-shaped
+ * curve. It runs along the layers of the layout where the two terms are apart that way, across
+ * them where they are side by side, and not at all (null) where they overlap or nearly touch.
+ */
+function routedGeom(a: Term, b: Term, offset: number, head: ArrowHead, route: Route, hint: RouteHint = NO_HINT): EdgeGeom | null {
+  const [sa, sb] = [nodeSize(a), nodeSize(b)];
+  const roomV = Math.abs(b.y - a.y) - (sa.h + sb.h) / 2;
+  const roomH = Math.abs(b.x - a.x) - (sa.w + sb.w) / 2;
+  const layersDown = route.dir === 'TB' || route.dir === 'BT';
+  const upright = layersDown ? roomV >= TURN_ROOM || roomH < TURN_ROOM : !(roomH >= TURN_ROOM || roomV < TURN_ROOM);
+  if ((upright ? roomV : roomH) < TURN_ROOM) return null;
+
+  // From here on `u` runs along the line's way (down the layers) and `v` across it.
+  const at = (u: number, v: number): Pt => (upright ? { x: v, y: u } : { x: u, y: v });
+  const uOf = (p: Pt) => (upright ? p.y : p.x);
+  const vOf = (p: Pt) => (upright ? p.x : p.y);
+  const su = Math.sign(uOf(b) - uOf(a)) || 1;
+  // Several lines between the same two terms run side by side; which is which does not depend on which way each points.
+  const shift = offset * (a.id > b.id ? -1 : 1) * 0.3;
+  // Which of the two is further down the layers: there the line has a place of its own among those that arrive.
+  const forward = route.dir === 'TB' || route.dir === 'LR' ? su > 0 : su < 0;
+  const p0 = sideExit(a, upright ? (su > 0 ? 'bottom' : 'top') : su > 0 ? 'right' : 'left', shift + (forward ? 0 : hint.port));
+  const p1 = sideExit(b, upright ? (su > 0 ? 'top' : 'bottom') : su > 0 ? 'left' : 'right', shift + (forward ? hint.port : 0));
+  const [u0, u1, v0, v1] = [uOf(p0), uOf(p1), vOf(p0), vOf(p1)];
+  const sv = Math.sign(v1 - v0);
+  // Where the line crosses over. Of two side by side the outer one turns first, so that they do not cross.
+  const lo = Math.min(u0, u1) + 7;
+  const hi = Math.max(u0, u1) - 7;
+  const mid = Math.max(lo, Math.min(hi, (u0 + u1) / 2 - shift * sv * su * 0.6));
+  const tip = arrowHead(p1, at(su, 0), head);
+  const end = at(u1 - su * tip.inset, v1);
+  // The words go on the stretch the line has most to itself: next to the term further down the
+  // layers, as of a term and the many under it, unless more lines arrive there than leave the other.
+  const atEnd = forward !== hint.labelUp;
+  const [ua, ub, vl] = atEnd ? [mid, u1, v1] : [u0, mid, v0];
+
+  let path: string;
+  let label: Pt;
+  let curve: [Pt, Pt, Pt];
+  if (route.how === 'curved') {
+    const c0 = at((u0 + u1) / 2, v0);
+    const c1 = at((u0 + u1) / 2, v1);
+    path = `M${f(p0.x)},${f(p0.y)} C${f(c0.x)},${f(c0.y)} ${f(c1.x)},${f(c1.y)} ${f(end.x)},${f(end.y)}`;
+    label = at((u0 + u1) / 2, (v0 + v1) / 2);
+    curve = [p0, label, p1];
+  } else {
+    const r = Math.min(6, Math.abs(v1 - v0) / 2, Math.abs(mid - u0), Math.abs(u1 - mid));
+    const seg = (p: Pt) => `${f(p.x)},${f(p.y)}`;
+    path =
+      r < 0.5
+        ? `M${seg(p0)} L${seg(at(mid, v0))} L${seg(at(mid, v1))} L${seg(end)}`
+        : `M${seg(p0)} L${seg(at(mid - su * r, v0))} Q${seg(at(mid, v0))} ${seg(at(mid, v0 + sv * r))} L${seg(at(mid, v1 - sv * r))} Q${seg(at(mid, v1))} ${seg(at(mid + su * r, v1))} L${seg(end)}`;
+    label = at((ua + ub) / 2, vl);
+    curve = [at(ua, vl), label, at(ub, vl)];
+  }
+  // The cardinalities sit beside the ends, on the side the line does not turn to.
+  const beside = sv || 1;
+  return { path, arrow: tip.points, label, fromCard: at(u0 + su * 14, v0 - beside * 12), toCard: at(u1 - su * 22, v1 + beside * 12), curve };
 }
 
 export const LABEL_H = 18;

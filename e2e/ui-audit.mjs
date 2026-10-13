@@ -117,6 +117,14 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
       report('Style · ' + name, await page.evaluate(measure));
     }
     await page.locator('.style-panel').getByRole('button', { name: 'Close the graph style panel' }).click();
+    // The layout options, for a layout with every kind of setting between them.
+    await page.locator('.subgraph').getByRole('button', { name: 'Layout options' }).click();
+    for (const kind of ['orthogonal', 'radial', 'force', 'manual']) {
+      await page.getByLabel('Graph layout').selectOption(kind);
+      await page.waitForTimeout(500);
+      report('Layout · ' + kind, await page.evaluate(measure));
+    }
+    await page.locator('.subgraph').getByRole('button', { name: 'Hide layout options' }).click();
     // The dialog a new model starts with.
     await page.getByRole('button', { name: 'File', exact: true }).click();
     await page.getByRole('menuitem', { name: /^New model/ }).click();

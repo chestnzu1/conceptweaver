@@ -2013,7 +2013,7 @@ td.cell-edit select[aria-label='+'] {
   left: 12px;
   z-index: 4;
   /* Room for its bar of buttons on one line, and never wider than the canvas. */
-  max-width: min(540px, calc(100% - 24px));
+  max-width: min(600px, calc(100% - 24px));
   max-height: calc(100% - 84px);
   display: flex;
   flex-direction: column;
@@ -5809,4 +5809,90 @@ button.st-bar-row:hover {
 .st-members > .st-more {
   margin: 0;
   padding: 4px 16px 12px;
+}
+
+
+/* ----------------------------------------------------------- graph layout */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* With the layout options open the bar folds onto more lines, so that it covers less of the graph being arranged. */
+.subgraph.narrow {
+  max-width: min(324px, calc(100% - 24px));
+}
+
+.subgraph .row > .layout-select {
+  max-width: 200px;
+}
+
+.layout-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+.layout-options {
+  width: 300px;
+  max-width: 100%;
+}
+
+.layout-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.layout-slider > span {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.layout-slider output {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.layout-slider input[type='range'] {
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.layout-options .row {
+  flex-wrap: wrap;
+}
+
+.layout-root {
+  color: var(--ink);
 }

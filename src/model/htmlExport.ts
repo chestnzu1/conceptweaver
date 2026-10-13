@@ -2,13 +2,14 @@ import viewerCss from '../export/viewer.css?raw';
 import viewerJs from '../export/viewer.js?raw';
 import { enumOf, literalText, rangeLabel } from './datatypes';
 import { edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL } from './edgeKinds';
-import { edgeOffsets, nodeSize } from './geometry';
+import { edgeOffsets, nodeSize, routeHints } from './geometry';
 import { fieldKey, fieldsFor, metaEntity, sameKey, valuesOf, type MetaEntity } from './governance';
 import { nodeTypeOf, resolveEdge, resolveNode, type EdgeType } from './graphStyle';
 import { baseIriOf } from './iri';
 import { configOf } from './modelTypes';
 import { compactIri, ontologyIriOf } from './prefixes';
 import { CHARACTERISTICS, objectProperties } from './props';
+import { routeOf, type Route } from '../layout/types';
 import type { Model, Term } from './types';
 import { resolveModel } from './vocab';
 
@@ -72,6 +73,9 @@ export interface ViewerRel {
   /** How its line is drawn: how far it bows sideways, and how it ends. The page redraws it from these when an end moves. */
   bend: number;
   head: 'filled' | 'hollow' | 'open' | 'none';
+  /** Where a routed line arrives at its lower term, and whether its words go by the upper one: as the picture has them. */
+  port?: number;
+  labelUp?: boolean;
 }
 
 export interface ViewerProp {
@@ -97,6 +101,8 @@ export interface ViewerData {
   props: ViewerProp[];
   /** The hierarchy of classes or concepts: what is at the top, and what is under what. */
   tree: { roots: string[]; children: Record<string, string[]> };
+  /** How the lines of the picture run: straight, curved or with right angles. The page draws a line the same way when its term is moved. */
+  route: Route;
 }
 
 const KIND_WORDS: Record<EdgeType, string> = {
@@ -126,6 +132,8 @@ export interface Picture {
   facts?: { id: string; from: string; to: string; name: string; because: string }[];
   /** False when the lines from enumeration classes to their members were switched off. */
   enumerations?: boolean;
+  /** How the lines of the picture are routed, when it is not by the model's own layout (a subgraph has a layout of its own). */
+  route?: Route;
 }
 
 /** What the page shows of a model. */
@@ -225,6 +233,11 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
   const oneOfStyle = resolveEdge(model.style, 'oneOf', '');
   for (const x of listed) rels.push({ id: x.id, from: x.from, to: x.to, label: ONE_OF_LABEL, kind: KIND_WORDS.oneOf, hier: 'oneOf', description: x.because, bend: (offsets.get(x.id) ?? 0) + (oneOfStyle.curve ?? 0), head: oneOfStyle.arrow ?? 'filled' });
 
+  // Lines that are routed keep the places the picture gave them among the others at their terms.
+  const route = picture.route ?? routeOf(model.layout);
+  const drawn = new Map(model.terms.filter((t) => !shown || shown.has(t.id)).map((t) => [t.id, t]));
+  for (const [id, hint] of routeHints(rels.filter((r) => picture.enumerations !== false || r.hier !== 'oneOf'), drawn, route)) Object.assign(rels.find((r) => r.id === id)!, { ...(hint.port ? { port: hint.port } : {}), ...(hint.labelUp ? { labelUp: true } : {}) });
+
   const props: ViewerProp[] =
     model.mode === 'skos'
       ? []
@@ -284,6 +297,7 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
     rels,
     props,
     tree: { roots, children },
+    route,
   };
 }
 

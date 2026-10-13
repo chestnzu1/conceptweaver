@@ -89,7 +89,9 @@ ok(asserted.includes('owl:inverseOf :hasMember') && asserted.includes(':isMember
 
 // ---------------------------------------------------------------- the fast reasoner
 ok((await solid()).join(' | ') === 'is member of' && (await page.locator('.edge.inferred-fact').count()) === 0, 'the graph draws what is stated; nothing inferred until asked for');
-ok(flat(await page.locator('.subgraph .row').first().innerText()) === 'Full graph Subgraph Settings Style Inferred facts' && (await toggle.getAttribute('aria-pressed')) === 'false', 'the bar at the top of the graph has a button for the inferred facts, off to begin with: ' + flat(await page.locator('.subgraph .row').first().innerText()));
+// The layout selector sits in the same bar; its options are not buttons.
+const barButtons = (await page.locator('.subgraph .row').first().getByRole('button').allInnerTexts()).map(flat).join(' ');
+ok(barButtons === 'Full graph Subgraph Settings Style Rearrange Layout options Inferred facts' && (await toggle.getAttribute('aria-pressed')) === 'false', 'the bar at the top of the graph has a button for the inferred facts, off to begin with: ' + barButtons);
 await toggle.click();
 ok((await toggle.getAttribute('aria-pressed')) === 'true', 'pressed, it stays on');
 ok((await dottedFacts()).join(' | ') === 'has member (inferred)' && flat(await toggle.innerText()) === 'Inferred facts (1)', 'asked for, the relationship that follows from the inverse property is drawn: ' + (await dottedFacts()).join(' | '));

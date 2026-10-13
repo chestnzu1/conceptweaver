@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nodeLabel, nodeSize, placeLabels, pointInNode, setNodeLook, textWidth, type EdgeGeom, type LabelSpec, type Pt } from '../model/geometry';
+import { displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nodeLabel, nodeSize, placeLabels, pointInNode, routeHints, setNodeLook, textWidth, type EdgeGeom, type LabelSpec, type Pt, type RouteHint } from '../model/geometry';
 import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL, type DerivedEdge } from '../model/edgeKinds';
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
-import { currentDl, useStore, viewOf, type SubgraphState } from '../model/store';
+import { currentDl, layoutOf, useStore, viewOf, type SubgraphState } from '../model/store';
+import { LAYOUT_KINDS, LAYOUTS, routeOf, type Route } from '../layout/types';
 import { typed } from '../model/relating';
 import { allowsKind, configOf, supports } from '../model/modelTypes';
 import { INSTANCE_OF, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
@@ -29,8 +30,17 @@ function track(onMove: (e: PointerEvent) => void, onUp: (e: PointerEvent) => voi
 
 export function Canvas() {
   // What is drawn: the whole model, or in subgraph mode the visible part of it with its own layout.
-  const model = useStore(viewOf);
+  const settled = useStore(viewOf);
+  const tween = useStore((s) => s.tween);
+  // After a layout the terms glide to their new places: until they arrive, each is drawn part of the way there.
+  const model = useMemo(() => {
+    if (!tween) return settled;
+    const { from, p } = tween;
+    return { ...settled, terms: settled.terms.map((t) => (from[t.id] ? { ...t, x: from[t.id].x + (t.x - from[t.id].x) * p, y: from[t.id].y + (t.y - from[t.id].y) * p } : t)) };
+  }, [settled, tween]);
   const full = useStore((s) => s.model);
+  const layout = useStore(layoutOf);
+  const route = routeOf(layout);
   const subgraph = useStore((s) => s.subgraph);
   const sel = useStore((s) => s.sel);
   const vp = useStore((s) => s.vp);
@@ -77,6 +87,7 @@ export function Canvas() {
       // Scrolling inside the subgraph settings scrolls them, not the canvas.
       if ((e.target as Element).closest?.('.subgraph')) return;
       e.preventDefault();
+      st().endTween();
       const r = el.getBoundingClientRect();
       st().zoomBy(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016)), e.clientX - r.left, e.clientY - r.top);
     };
@@ -92,6 +103,7 @@ export function Canvas() {
 
   const onBackgroundDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    st().endTween();
     const start = { x: e.clientX, y: e.clientY };
     const vp0 = st().vp;
     const boxMode = e.ctrlKey || e.metaKey;
@@ -128,6 +140,7 @@ export function Canvas() {
   const onNodeDown = (e: React.PointerEvent, t: Term) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    st().endTween();
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
       st().toggleTerm(t.id);
       return;
@@ -202,8 +215,10 @@ export function Canvas() {
       { label: 'Add term here', onClick: () => createTermAt(p), hint: 'Double-click' },
       { label: 'Bulk add…', onClick: () => st().setDialog('bulk') },
       'sep',
-      { label: 'Arrange as hierarchy', onClick: () => st().arrange('hierarchy') },
-      { label: 'Arrange as network', onClick: () => st().arrange('force') },
+      { heading: 'Layout' },
+      ...LAYOUT_KINDS.map((k) => ({ label: LAYOUTS[k].label, checked: layoutOf(st()).kind === k, onClick: () => st().arrange(k) })),
+      'sep' as const,
+      { label: 'Rearrange', onClick: () => st().rearrange(), disabled: layoutOf(st()).kind === 'manual' },
       { label: 'Fit to screen', onClick: () => st().fit(), hint: 'F' },
       'sep',
       { label: 'Select all', onClick: () => st().selectAll(), hint: 'Ctrl+A' },
@@ -235,6 +250,7 @@ export function Canvas() {
       { label: 'Both directions', onClick: () => st().showNeighbours(ids, 'both') },
       'sep',
       { label: 'Find path between the two', onClick: () => st().showPath(ids[0], ids[1]), disabled: ids.length !== 2 },
+      { label: 'Arrange as a radial tree around it', onClick: () => st().setLayout({ kind: 'radial', root: t.id }), disabled: many },
       ...subgraphItems(ids, t),
       { label: many ? `Delete ${ids.length} terms` : 'Delete', onClick: () => st().deleteSelection(), danger: true, hint: 'Del' },
     ]);
@@ -340,7 +356,7 @@ export function Canvas() {
         onContextMenu={backgroundMenu}
       >
         <g data-world transform={`translate(${vp.x},${vp.y}) scale(${vp.k})`}>
-          <Scene model={model} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} />
+          <Scene model={model} route={route} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} />
           {connectFrom && <line data-noexport className="connect-line" x1={connectFrom.x} y1={connectFrom.y} x2={connect.to.x} y2={connect.to.y} />}
 
           {box && (
@@ -444,6 +460,8 @@ interface SceneActions {
 
 interface SceneProps {
   model: Model;
+  /** How the layout wants lines drawn: straight, curved or with right angles. */
+  route: Route;
   sel: { terms: string[]; rels: string[] };
   highlight: string[];
   filter: string;
@@ -470,7 +488,7 @@ let labelSpots = new Map<string, Pt>();
  * responsive: the scene itself does not change while the view is panned or zoomed, and within it
  * a term or relation is redrawn only when something about it changed.
  */
-const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targetId, actions, sub, derived }: SceneProps) {
+const Scene = memo(function Scene({ model, route, sel, highlight, filter, editing, targetId, actions, sub, derived }: SceneProps) {
   const rootSet = useMemo(() => new Set(sub?.roots), [sub?.roots]);
   const expandedSet = useMemo(() => new Set(sub?.expanded), [sub?.expanded]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
@@ -500,9 +518,11 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
   // A derived line takes its place among the relations between the same two terms.
   const offsets = useMemo(() => edgeOffsets(derived.length ? [...relations, ...derived] : relations), [relations, derived]);
   // Geometry is kept per relation and reused while its two ends stay where they are.
-  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; geom: EdgeGeom }>());
+  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; geom: EdgeGeom }>());
+  // Routed lines are told of the others at their terms: where to arrive among them, and where their words fit.
+  const routeHint = useMemo(() => routeHints(derived.length ? [...relations, ...derived] : relations, byId, route), [relations, derived, byId, route]);
   const geoms = useMemo(() => {
-    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; geom: EdgeGeom }>();
+    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; geom: EdgeGeom }>();
     for (const r of relations) {
       const a = byId.get(r.from);
       const b = byId.get(r.to);
@@ -512,14 +532,15 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
       const offset = (offsets.get(r.id) ?? 0) + (es.curve ?? 0);
       const old = cache.current.get(r.id);
       // Only position and size matter, and size follows from the label. Any change of style is a new style object.
-      const same = old && old.es === es && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
-      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, es, geom: edgeGeom(a, b, offset, r.kind, es.arrow) });
+      const hint = routeHint.get(r.id);
+      const same = old && old.es === es && old.route === route && old.hint === hint && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
+      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, es, route, hint, geom: edgeGeom(a, b, offset, r.kind, es.arrow, route, hint) });
     }
     cache.current = next;
     return next;
     // The style object stands for everything about the nodes' sizes and shapes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relations, offsets, byId, edgeStyles, style]);
+  }, [relations, offsets, byId, edgeStyles, style, route, routeHint]);
   // What each edge says. A restriction reads "directs some Film", and several on one line "directs some, only".
   const labels = useMemo(() => edgeLabelsOf(meaning), [meaning]);
   const labelOf = useCallback((r: Relation) => labels.get(r.id) ?? '', [labels]);
@@ -530,11 +551,11 @@ const Scene = memo(function Scene({ model, sel, highlight, filter, editing, targ
       const b = byId.get(x.to);
       const es = x.kind === 'oneOf' ? oneOfStyle : inferredStyle;
       // An inferred membership ends like the asserted ones, hollow; an enumeration's line and a relationship between individuals have a plain head.
-      if (a && b) out.set(x.id, { a, b, es, geom: edgeGeom(a, b, (offsets.get(x.id) ?? 0) + (es.curve ?? 0), x.kind === 'inferred' ? 'generalization' : 'association', es.arrow) });
+      if (a && b) out.set(x.id, { a, b, es, geom: edgeGeom(a, b, (offsets.get(x.id) ?? 0) + (es.curve ?? 0), x.kind === 'inferred' ? 'generalization' : 'association', es.arrow, route, routeHint.get(x.id)) });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derived, byId, offsets, inferredStyle, oneOfStyle, style]);
+  }, [derived, byId, offsets, inferredStyle, oneOfStyle, style, route, routeHint]);
   // Where each label goes: in the middle of its edge, or along it where the middle is taken.
   const spots = useMemo(() => {
     const specs: LabelSpec[] = [];

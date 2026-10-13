@@ -2,7 +2,11 @@ import { create } from 'zustand';
 import type { BulkRelation, BulkTerm, Outline } from './bulk';
 import { findPath } from './checks';
 import { bounds } from './geometry';
-import { forceLayout, hierarchyLayout } from './layout';
+import { hierarchyLayout } from './layout';
+import { builtIn } from '../layout/compute';
+import { graphOf } from '../layout/graph';
+import { LayoutCancelled, runLayout } from '../layout/run';
+import { LAYOUTS, noLayout, type GraphLayout, type LayoutKind, type Places } from '../layout/types';
 import { sampleModel } from './sample';
 import { convertModel } from './convert';
 import { declaredProp, findProp, propKey, relChoices, type RelChoice } from './props';
@@ -63,9 +67,11 @@ export interface SubgraphState {
   pos: Record<string, { x: number; y: number }>;
   /** What is visible for the settings above; null until first worked out. */
   result: Subgraph | null;
+  /** How the subgraph is arranged: a layout of its own, chosen apart from the full graph's. */
+  layout: GraphLayout;
 }
 
-const NO_SUBGRAPH: SubgraphState = { active: false, roots: [], depth: 1, direction: 'both', off: [], expanded: [], hidden: [], maxNodes: DEFAULT_MAX_NODES, pos: {}, result: null };
+const NO_SUBGRAPH: SubgraphState = { active: false, roots: [], depth: 1, direction: 'both', off: [], expanded: [], hidden: [], maxNodes: DEFAULT_MAX_NODES, pos: {}, result: null, layout: noLayout('hierarchy') };
 
 /** Which part of the full graph the canvas draws: all of it, only this ontology's own entities, or only the mappings to other ontologies. */
 export type GraphScope = 'all' | 'local' | 'alignment';
@@ -112,6 +118,21 @@ export function viewOf(s: { model: Model; subgraph: SubgraphState; graphScope?: 
   viewCache = { model, sub, view };
   return view;
 }
+
+/** The layout of what the canvas shows: the model's own for the full graph, the subgraph's for a subgraph. */
+export const layoutOf = (s: { model: Model; subgraph: SubgraphState }): GraphLayout => (s.subgraph.active ? s.subgraph.layout : s.model.layout);
+
+/** Terms gliding from where they were to where a layout put them. `p` goes from 0 to 1. */
+export interface Tween {
+  from: Places;
+  p: number;
+}
+
+/** How far out the view goes: far enough to see all of a wide tree of a few hundred terms. */
+const MIN_ZOOM = 0.03;
+
+/** Above this many terms and relationships a new arrangement is shown at once: gliding them would stutter. */
+const GLIDE = { terms: 300, relations: 700, ms: 380 };
 
 interface Selection {
   terms: string[];
@@ -418,7 +439,24 @@ interface State {
   zoomBy: (factor: number, cx?: number, cy?: number) => void;
   setCanvasSize: (w: number, h: number) => void;
   fit: () => void;
-  arrange: (kind: 'hierarchy' | 'force') => void;
+  /** Arranges what the canvas shows by this layout, and makes it the chosen one. */
+  arrange: (kind: LayoutKind) => void;
+  /** Changes the layout or its settings. Whatever moves terms is worked out again; how lines are routed is not. */
+  setLayout: (patch: Partial<Omit<GraphLayout, 'saved'>>) => void;
+  /** Runs the chosen layout again, over whatever was moved by hand since. */
+  rearrange: () => void;
+  /** Stops a layout that is still being worked out. */
+  cancelLayout: () => void;
+  /** Takes the arrangement on screen as the one made by hand: nothing rearranges it from here on. */
+  keepAsManual: () => void;
+  /** Remembers where every term is now, and puts the terms back where they were last remembered. */
+  savePositions: () => void;
+  restorePositions: () => void;
+  /** The layout being worked out, while one is. */
+  layoutBusy: LayoutKind | null;
+  /** Terms on their way to a new arrangement. */
+  tween: Tween | null;
+  endTween: () => void;
 
   setView: (v: View) => void;
   setEditing: (e: Editing | null) => void;
@@ -783,6 +821,8 @@ export const useStore = create<State>((set, get) => ({
     }),
   replaceModel: (m, docId = null) => {
     const model = withIris(m);
+    get().cancelLayout();
+    stopGlide();
     // A different document: its history starts afresh, and it counts as unchanged until edited.
     // Another model may be of another type: the view stays only if that type has it.
     set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
@@ -1380,7 +1420,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => {
       const px = cx ?? s.canvasSize.w / 2;
       const py = cy ?? s.canvasSize.h / 2;
-      const k = Math.min(3, Math.max(0.1, s.vp.k * factor));
+      const k = Math.min(3, Math.max(MIN_ZOOM, s.vp.k * factor));
       const ratio = k / s.vp.k;
       return { vp: { k, x: px - (px - s.vp.x) * ratio, y: py - (py - s.vp.y) * ratio } };
     }),
@@ -1397,20 +1437,44 @@ export const useStore = create<State>((set, get) => ({
     const pad = 70;
     // The style panel floats over the right of the canvas: with it open, the graph is fitted into the room beside it.
     const room = get().stylePanel && w > 760 ? w - 340 : w;
-    const k = Math.min(1.25, Math.max(0.1, Math.min(room / (b.x1 - b.x0 + pad * 2), h / (b.y1 - b.y0 + pad * 2))));
-    set({ vp: { k, x: room / 2 - ((b.x0 + b.x1) / 2) * k, y: h / 2 - ((b.y0 + b.y1) / 2) * k } });
+    // The bar of buttons floats over the top left. The graph is fitted below it where it takes more than
+    // one line, and beside its settings while they are open and leave room for that.
+    const el = typeof document === 'undefined' ? null : document.querySelector('.subgraph');
+    const bar = el?.querySelector(':scope > .row')?.getBoundingClientRect().height ?? 0;
+    // The settings are part of the bar's box, which is as wide as its buttons need.
+    const open = el?.querySelector('.subgraph-body') ? el.getBoundingClientRect().width : 0;
+    const left = open && room - open > 300 ? open + 12 : 0;
+    const top = !left && bar > 48 && h > 420 ? bar - 34 : 0;
+    const k = Math.min(1.25, Math.max(MIN_ZOOM, Math.min((room - left) / (b.x1 - b.x0 + pad * 2), (h - top) / (b.y1 - b.y0 + pad * 2))));
+    set({ vp: { k, x: left + (room - left) / 2 - ((b.x0 + b.x1) / 2) * k, y: top + (h - top) / 2 - ((b.y0 + b.y1) / 2) * k } });
   },
-  arrange: (kind) => {
-    if (get().subgraph.active) {
-      // Only the subgraph's own layout is redone; the full graph keeps its arrangement.
-      const laid = (kind === 'force' ? forceLayout : hierarchyLayout)(viewOf(get()));
-      set((s) => ({ subgraph: { ...s.subgraph, pos: Object.fromEntries(laid) } }));
-      get().fit();
-      return;
-    }
-    const pos = (kind === 'force' ? forceLayout : hierarchyLayout)(get().model);
-    get().apply((m) => ({ ...m, terms: m.terms.map((t) => ({ ...t, ...pos.get(t.id) })) }));
-    get().fit();
+  layoutBusy: null,
+  tween: null,
+  endTween: () => stopGlide(),
+  arrange: (kind) => void applyLayout({ ...layoutOf(get()), kind }),
+  setLayout: (patch) => {
+    const now = layoutOf(get());
+    const next = { ...now, ...patch };
+    const info = LAYOUTS[next.kind];
+    // What moves terms under the layout that is chosen. A setting it does not have is kept for the layout that does.
+    const moves = next.kind !== now.kind || (['direction', 'nodeSpacing', 'layerSpacing', 'repulsion', 'root'] as const).some((k) => info[k] && next[k] !== now[k]);
+    if (moves) void applyLayout(next);
+    else writeLayout(next);
+  },
+  rearrange: () => void applyLayout(layoutOf(get())),
+  cancelLayout: () => {
+    layoutRun?.abort();
+    layoutRun = undefined;
+    set({ layoutBusy: null });
+  },
+  keepAsManual: () => writeLayout({ ...layoutOf(get()), kind: 'manual', saved: placesNow() }),
+  savePositions: () => {
+    writeLayout({ ...layoutOf(get()), saved: placesNow() });
+    get().notify('This arrangement is remembered. It comes back whenever Manual is chosen again.');
+  },
+  restorePositions: () => {
+    const saved = layoutOf(get()).saved;
+    if (saved) place(layoutOf(get()), saved);
   },
 
   // A function the type of model does not have is not opened, however it was asked for.
@@ -1437,7 +1501,10 @@ export const useStore = create<State>((set, get) => ({
       // A layout of the visible part alone, as if it were the whole model.
       const visible = new Set(result.terms);
       const rels = new Set(result.rels);
-      const laid = hierarchyLayout({ ...model, terms: model.terms.filter((t) => visible.has(t.id)), relations: model.relations.filter((r) => rels.has(r.id)) });
+      const part = { ...model, terms: model.terms.filter((t) => visible.has(t.id)), relations: model.relations.filter((r) => rels.has(r.id)) };
+      // By the subgraph's own layout. Dagre answers later (see visualizeSubgraph), and a manual arrangement has to start from something.
+      const kind = sub.layout.kind === 'layered' || sub.layout.kind === 'manual' ? 'hierarchy' : sub.layout.kind;
+      const laid = builtIn({ kind, graph: graphOf(part), options: { ...sub.layout, root: sub.layout.root || sub.roots[0] || '' } });
       for (const [id, p] of laid) pos[id] = p;
     } else {
       // Terms already on show stay where they are; a new one is put beside the term that brought it in.
@@ -1475,6 +1542,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({ subgraph: { ...s.subgraph, active: true, expanded: [], hidden: [] }, view: 'graph', highlight: [], highlightLabel: '' }));
     get().refreshSubgraph(true);
     get().fit();
+    if (get().subgraph.layout.kind === 'layered') get().rearrange();
     const { result, maxNodes } = get().subgraph;
     if (result?.truncated) get().notify(`The subgraph is cut off at ${maxNodes} terms. Lower the depth, switch off some relationship types, or raise the limit.`);
   },
@@ -1508,6 +1576,111 @@ export const useStore = create<State>((set, get) => ({
     toastTimer = setTimeout(() => set({ toast: null }), 4000);
   },
 }));
+
+// ---------------------------------------------------------------- arranging the graph
+
+let layoutRun: AbortController | undefined;
+let glide: { frame: number; to: Viewport } | undefined;
+
+/** Ends a glide where it is going: the terms are in the model already, only the picture was behind. */
+function stopGlide() {
+  if (!glide) return;
+  cancelAnimationFrame(glide.frame);
+  const to = glide.to;
+  glide = undefined;
+  useStore.setState({ tween: null, vp: to });
+}
+
+/** Where every term of what the canvas shows is now. */
+function placesNow(): Places {
+  const s = useStore.getState();
+  if (s.subgraph.active) return { ...s.subgraph.pos };
+  return Object.fromEntries(s.model.terms.map((t) => [t.id, { x: t.x, y: t.y }]));
+}
+
+/** Writes the layout that is chosen, moving nothing. In the full graph it is part of the model's file, though not of its history. */
+function writeLayout(layout: GraphLayout) {
+  const s = useStore.getState();
+  if (s.subgraph.active) useStore.setState({ subgraph: { ...s.subgraph, layout } });
+  else s.apply((m) => ({ ...m, layout }), false);
+}
+
+/**
+ * Puts terms where a layout says, and makes that layout the chosen one. In the full graph the
+ * two are one step to undo; a subgraph's arrangement is its own and no part of the history.
+ * The terms glide there, and the view follows to show all of them.
+ */
+function place(layout: GraphLayout, places: Places) {
+  stopGlide();
+  const s = useStore.getState();
+  const before = s.vp;
+  const shown = viewOf(s).terms;
+  const from: Places = Object.fromEntries(shown.map((t) => [t.id, { x: t.x, y: t.y }]));
+  if (s.subgraph.active) {
+    const pos = { ...s.subgraph.pos };
+    for (const id of Object.keys(pos)) if (places[id]) pos[id] = places[id];
+    useStore.setState({ subgraph: { ...s.subgraph, layout, pos } });
+  } else {
+    s.apply((m) => ({ ...m, layout, terms: m.terms.map((t) => (places[t.id] && (places[t.id].x !== t.x || places[t.id].y !== t.y) ? { ...t, x: places[t.id].x, y: places[t.id].y } : t)) }));
+  }
+  useStore.getState().fit();
+  const to = useStore.getState().vp;
+  const calm = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const view = viewOf(useStore.getState());
+  if (calm || typeof requestAnimationFrame === 'undefined' || view.terms.length > GLIDE.terms || view.relations.length > GLIDE.relations || !shown.length) return;
+  const start = performance.now();
+  const step = () => {
+    const t = Math.min(1, (performance.now() - start) / GLIDE.ms);
+    if (t >= 1 || !glide) return stopGlide();
+    // Quick away and slow to arrive.
+    const p = 1 - (1 - t) ** 3;
+    glide.frame = requestAnimationFrame(step);
+    useStore.setState({ tween: { from, p }, vp: { k: before.k + (to.k - before.k) * p, x: before.x + (to.x - before.x) * p, y: before.y + (to.y - before.y) * p } });
+  };
+  glide = { frame: requestAnimationFrame(step), to };
+  useStore.setState({ tween: { from, p: 0 }, vp: before });
+}
+
+/**
+ * Arranges what the canvas shows by a layout. The layout is given boxes and lines and nothing
+ * else, and what comes back is places: the terms move, and no statement of the model changes.
+ */
+async function applyLayout(next: GraphLayout): Promise<void> {
+  const s = useStore.getState();
+  const now = layoutOf(s);
+  layoutRun?.abort();
+  layoutRun = undefined;
+  if (next.kind === 'manual') {
+    useStore.setState({ layoutBusy: null });
+    // Back to the arrangement made by hand, where there is one; otherwise what is on screen becomes it.
+    if (now.kind !== 'manual' && next.saved) place(next, next.saved);
+    else writeLayout(next);
+    return;
+  }
+  // The arrangement made by hand is remembered when it is left, so that it can be come back to.
+  const kind = next.kind;
+  const layout = now.kind === 'manual' ? { ...next, saved: placesNow() } : next;
+  const view = viewOf(s);
+  if (!view.terms.length) return writeLayout(layout);
+  // A radial tree is drawn around the term chosen for it, or else the one that is selected.
+  const shown = new Set(view.terms.map((t) => t.id));
+  const root = shown.has(layout.root) ? layout.root : s.sel.terms.length === 1 && shown.has(s.sel.terms[0]) ? s.sel.terms[0] : (s.subgraph.active && s.subgraph.roots.find((id) => shown.has(id))) || '';
+  const run = (layoutRun = new AbortController());
+  useStore.setState({ layoutBusy: kind });
+  try {
+    const result = await runLayout({ kind, graph: graphOf(view), options: { direction: layout.direction, nodeSpacing: layout.nodeSpacing, layerSpacing: layout.layerSpacing, repulsion: layout.repulsion, root } }, run.signal);
+    if (layoutRun !== run) return;
+    layoutRun = undefined;
+    useStore.setState({ layoutBusy: null });
+    place(layout, result.places);
+    if (result.note) useStore.getState().notify(result.note);
+  } catch (e) {
+    if (layoutRun !== run) return;
+    layoutRun = undefined;
+    useStore.setState({ layoutBusy: null });
+    if (!(e instanceof LayoutCancelled)) useStore.getState().notify(`The layout could not be worked out: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
 
 // Autosave: the model lives in this browser's storage until it is saved to a file.
 let saveTimer: ReturnType<typeof setTimeout> | undefined;

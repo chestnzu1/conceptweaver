@@ -1,5 +1,5 @@
 import { parseOutline } from './bulk';
-import { hierarchyLayout } from './layout';
+import { arrangeAsHierarchy } from './layout';
 import { emptyModel, newRelation, newTerm, type Model, type RelKind, type TermType } from './types';
 
 /** A small film-industry knowledge graph used as the starting example. */
@@ -50,8 +50,7 @@ export function sampleModel(): Model {
     { name: 'wins', description: '', chars: [] },
   ];
 
-  const pos = hierarchyLayout(m);
-  for (const t of m.terms) Object.assign(t, pos.get(t.id));
+  arrangeAsHierarchy(m);
   return m;
 }
 
@@ -105,7 +104,6 @@ Musicians
     newRelation({ from: id['Violinist'], to: id['Violin'], predicate: 'skos:related' }),
     newRelation({ from: id['Guitarist'], to: id['Guitar'], predicate: 'skos:related' }),
   );
-  const pos = hierarchyLayout(m);
-  for (const t of m.terms) Object.assign(t, pos.get(t.id));
+  arrangeAsHierarchy(m);
   return m;
 }

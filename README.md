@@ -285,7 +285,26 @@ More on what the advanced reasoner does and does not cover is under
     `owl:Thing` is not marked as such.
 - **Model checks** – unnamed and duplicate terms, circular or redundant hierarchies, isolated
   terms, unlabelled or duplicate relations, malformed cardinalities, missing descriptions and more.
-- **Arrange** – layered hierarchy layout or force-directed network layout.
+- **Graph layouts** – a *Graph layout* selector in the bar above the graph (and the *Arrange*
+  menu) arranges what the canvas shows, the full graph or a subgraph, in one of seven ways:
+  *Hierarchical* (layers, the general above the specific), *Layered (Dagre)* (layers chosen to
+  keep lines short and straight), *Orthogonal* (a tree with each term over what is under it and
+  lines at right angles), *Radial tree* (rings around a root: the selected term, one chosen in the
+  options or by right-clicking a term, or else the middle of the graph), *Circular*,
+  *Force-directed network*, and *Manual* (nothing is rearranged). *Layout options* has what the
+  chosen layout can be told: direction (top to bottom, bottom to top, left to right, right to
+  left), node spacing, layer or ring spacing, repulsion, the root, and how lines run (straight,
+  curved or with right angles, whatever the layout). *Rearrange* runs the layout again; after
+  every layout the view is fitted to the graph, and up to a few hundred terms glide to their new
+  places. Terms can be dragged under any layout. The arrangement made by hand is remembered when
+  another layout is chosen and comes back with *Manual*; *Save positions* and *Restore saved
+  positions* do the same on request, and *Keep this as manual* takes over what a layout made.
+  A layout moves terms and nothing else: it is given boxes and lines and answers with places, so
+  no statement of the model can change, and the Turtle is the same before and after. The layout
+  and its settings are kept in the JSON file beside the graph style, never in RDF; a subgraph has
+  a layout of its own, which like the subgraph is not saved. An expensive layout (the network
+  layout above 400 terms, Dagre on all but small graphs) is worked out in a worker and can be
+  cancelled; the page stays usable meanwhile. See *Graph layouts: what the canvas can and cannot do*.
 - **Subgraph mode** – on the canvas, switch from Full graph to Subgraph to see only chosen terms
   and their neighbours: search or select the starting terms, set the depth and direction, pick
   which relationship types to follow, expand or fold single terms. It is a view with its own
@@ -442,11 +461,30 @@ ontology open, *Expand all* (7,325 lines, 40 of them drawn) takes 0.2 s, what is
 0.1 s, *Analyze* 0.2 s; opening such a model still takes several seconds, most of it the canvas
 and the checks behind the Validation count.
 
+Arranging the graph is not what limits it. The layouts the app has of its own take, for 5,000
+terms and 7,500 lines (20,000 and 30,000 in brackets): hierarchical 0.03 s (0.13 s), orthogonal
+0.03 s (0.11 s), radial 0.03 s (0.11 s), circular 0.02 s (0.07 s), and the network layout 0.4 s
+(1.9 s), which above 1,500 terms lets a term be pushed only by the ones near it. Dagre is the
+exception: its time grows far faster than the graph, and with the lines more than the terms
+(400 terms with 750 lines: 4 s; 600 with 1,400: 30 s; 960 with 2,550: 3 minutes). So it is
+given a graph only up to a weight of 2,400, counting a term as one and a line as two; beyond
+that *Layered* says so and uses the built-in hierarchical layout.
+
 ## Layout of the code
 
 - `src/model` – everything that isn't UI: types, the zustand store (state, history, autosave),
   layout algorithms, checks, RDF import/export, file handling.
 - `src/components` – the SVG canvas, side panels, views and menus.
+- `src/layout` – the graph layouts, apart from the model and from how the graph is drawn.
+  `types.ts` is what is kept of a layout (`GraphLayout`) and what a layout is given and answers
+  (`LayoutGraph` in, places out). One file for each algorithm (`hierarchy.ts`, `tree.ts`,
+  `radial.ts`, `circular.ts`, `force.ts`, and `layered.ts`, the only one that uses Dagre, which is
+  fetched when first asked for); `shared.ts` has what they share (breaking rings, layers, the
+  parts of a graph and setting them side by side). `compute.ts` runs one, on the page or in
+  `worker.ts`; `run.ts` decides which and can cancel. Only `graph.ts` reads the app's model. A
+  new layout is a function from a `LayoutGraph` to places, an entry in `LAYOUTS` and a case in
+  `compute.ts`. How lines run under a layout (`edgeGeom` in `src/model/geometry.ts`) is the
+  renderer's.
 - `src/structure` – what the Structure Explorer asks about an ontology and how it is answered,
   apart from both of the above. `contracts.ts` is the whole of what its views know: the questions
   (`StructureService`), asked by IRI, of a named revision, a page at a time, each answer with
@@ -665,8 +703,42 @@ together in `src/model/inferred.ts`.
 - Suggestions are lexical. The matcher is a list of functions (`src/model/matcher.ts`), so an
   embedding-based one can be added beside it.
 
+## Graph layouts: what the canvas can and cannot do
+
+The graph is drawn by the app's own SVG canvas (`src/components/Canvas.tsx`); there is no graph
+library under it, so there were no built-in layouts to reuse beyond the two the app already
+had. Those are kept as they were, place for place, and the others are written beside them.
+Dagre was added for the layered layout (15 kB gzipped, in a chunk of its own). ELK.js was looked
+at and left out: it is 1.5 MB, and what it does best, routing each line around the terms with
+bend points, the canvas cannot keep (see below).
+
+- **A line is drawn from where its two terms are, and from nothing else.** That is what lets a
+  term be dragged in any layout with its lines following, and what the picture exports and the
+  exported page rely on. It also means no layout can hand the canvas a route: Dagre's bend
+  points are not used, a line does not go round a term that lies in its way, and right-angle
+  lines are an elbow between two sides, not routed through free channels. In a tree they run
+  clear; a line to a second superclass, or any line across the tree, can cross terms.
+- **Lines know little of each other.** Several arriving at one term are set side by side, and
+  the words go to the end with fewer lines; beyond that, lines sharing a stretch lie on top of
+  each other, and labels are moved along their own line only.
+- **Wide trees stay wide.** The orthogonal tree and Dagre give every leaf a column, so a
+  hierarchy with a hundred leaves is some 15,000 pixels wide; *Fit* now zooms out to 3 % to show
+  it. Left to right, the radial tree or a subgraph are the ways to a smaller picture. Sibling
+  leaves are not stacked.
+- **Circular is one ring for each connected part**, however many terms: past a few hundred it
+  shows the density of the graph more than anything in it.
+- **The layout is not kept up to date by itself.** A term added later goes where it is put;
+  *Rearrange* runs the layout again. That is deliberate: an edit never moves what was arranged.
+- **Gliding is for up to 300 terms and 700 lines**; a larger graph is shown in its new places at
+  once, and nothing glides for someone who asked their system for less motion.
+- **The canvas still draws every term**, so what is said under *Size* about a few thousand terms
+  holds whatever the layout: arranging 5,000 terms takes a fraction of a second, drawing them
+  does not.
+- In the exported page a moved term redraws its lines the way the layout has them, with the
+  places among other lines they had when exported.
+
 ## Not there yet
 
 RDF/XML and JSON-LD import, Excel/PowerPoint/PDF export, AI assistance, multiple saved models.
-Colours, positions and cardinalities live only in the JSON format; the Turtle export carries the
+Colours, positions, the layout and cardinalities live only in the JSON format; the Turtle export carries the
 terms, descriptions, synonyms and relations.

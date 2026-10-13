@@ -1,5 +1,5 @@
 import { parseOutline } from './bulk';
-import { hierarchyLayout } from './layout';
+import { arrangeAsHierarchy } from './layout';
 import { emptyModel, newRelation, newTerm, type Model, type ObjProp, type Quantifier } from './types';
 
 const CLASSES = `Agent
@@ -308,7 +308,6 @@ export function universitySample(): Model {
   }
   for (const [subject, label, object] of rows(FACTS)) rel(subject, object, { label });
 
-  const pos = hierarchyLayout(m);
-  for (const t of m.terms) Object.assign(t, pos.get(t.id));
+  arrangeAsHierarchy(m);
   return m;
 }

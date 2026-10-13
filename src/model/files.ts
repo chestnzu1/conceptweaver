@@ -8,7 +8,8 @@ import { supports } from './modelTypes';
 import { hasCardinality } from './props';
 import { fromTurtle, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
 import { stable } from './stable';
-import { currentDl, useStore, viewOf } from './store';
+import { routeOf } from '../layout/types';
+import { currentDl, layoutOf, useStore, viewOf } from './store';
 import { normalizeModel, type Model } from './types';
 
 const fileBase = (m: Model) => m.name.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'model';
@@ -154,7 +155,7 @@ function interactivePage(): string {
   // Where the line of an enumeration is in the picture, the canvas leaves out the inferred membership it would repeat.
   const drawn = new Set(Array.from((graph?.svg ?? '').matchAll(/data-rel="([^"]+)"/g), (x) => x[1]));
   const inferred = beyondEnumerations(entailed?.memberships ?? [], enumerationEdges(store.model).filter((e) => drawn.has(e.id)));
-  return htmlPage(viewerData(store.model, new Date(), { shown, inferred, facts: entailed?.facts ?? [], enumerations: store.showEnumerations }), graph?.svg ?? '', tokens, store.theme === 'dark');
+  return htmlPage(viewerData(store.model, new Date(), { shown, inferred, facts: entailed?.facts ?? [], enumerations: store.showEnumerations, route: routeOf(layoutOf(store)) }), graph?.svg ?? '', tokens, store.theme === 'dark');
 }
 
 /**

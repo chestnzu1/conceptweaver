@@ -1,3 +1,4 @@
+import { noLayout, normalizeLayout, type GraphLayout } from '../layout/types';
 import { noStyle, normalizeGraphStyle, type GraphStyle } from './graphStyle';
 import { STANDARD } from './prefixes';
 
@@ -259,6 +260,8 @@ export interface Model {
   governance: GovernanceConfig;
   /** How the graph is drawn. Like the positions of the terms it is no part of the ontology and is never written to RDF. */
   style: GraphStyle;
+  /** How the graph is arranged: which layout and its settings. Like the style, no part of the ontology and never written to RDF. */
+  layout: GraphLayout;
   /** The enumerated datatypes of the model: datatypes defined by listing their values. */
   datatypes: EnumDatatype[];
 }
@@ -432,7 +435,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), datatypes: [] };
+  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -732,6 +735,7 @@ export function normalizeModel(raw: unknown): Model {
     rejected: Array.isArray(o.rejected) ? [...new Set(o.rejected.map((x) => str(x)).filter(Boolean))] : [],
     governance: normalizeGovernance(o.governance),
     style: normalizeGraphStyle(o.style, new Set(terms.map((t) => t.id)), new Set(relations.map((r) => r.id))),
+    layout: normalizeLayout(o.layout, new Set(terms.map((t) => t.id))),
     datatypes,
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],

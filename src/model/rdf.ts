@@ -1,7 +1,7 @@
 import { Parser } from 'n3';
 import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
 import { baseIriOf, localName } from './iri';
-import { hierarchyLayout } from './layout';
+import { arrangeAsHierarchy } from './layout';
 import { DATATYPES, ENUM_RANGE, emptyModel, newRelation, newTerm, PROP_LINKS, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
 import { enumOf, isEnumRange } from './datatypes';
@@ -954,8 +954,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     for (const [iri, p] of propEntries) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri) && !p.domain && !p.range) p.external = ownedBy(iri);
   }
 
-  const pos = hierarchyLayout(m);
-  for (const t of m.terms) Object.assign(t, pos.get(t.id));
+  arrangeAsHierarchy(m);
   return m;
 }
 

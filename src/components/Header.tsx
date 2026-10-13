@@ -6,7 +6,8 @@ import { universitySample } from '../model/sampleUniversity';
 import { stressModel } from '../model/stress';
 import { stable } from '../model/stable';
 import { configOf, supports, VIEW_LABEL, viewFor } from '../model/modelTypes';
-import { confirmDiscard, isDirty, useStore } from '../model/store';
+import { confirmDiscard, isDirty, layoutOf, useStore } from '../model/store';
+import { LAYOUT_KINDS, LAYOUTS } from '../layout/types';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { CommitInput } from './fields';
 import { Icon } from './Icon';
@@ -25,6 +26,7 @@ export async function openFile(file: File) {
 
 export function Header() {
   const model = useStore((s) => s.model);
+  const layout = useStore(layoutOf);
   // The view in force: the one asked for, where the type of model has it.
   const view = viewFor(model, useStore((s) => s.view));
   const canUndo = useStore((s) => s.past.length > 0);
@@ -78,9 +80,11 @@ export function Header() {
     { label: 'Image (SVG)', onClick: () => exportModel('svg') },
     { label: 'Image (PNG)', onClick: () => exportModel('png') },
   ];
+  // The same layouts as the selector above the graph has; the one in use is ticked.
   const arrangeMenu: MenuItem[] = [
-    { label: 'As hierarchy', onClick: () => st().arrange('hierarchy') },
-    { label: 'As network', onClick: () => st().arrange('force') },
+    ...LAYOUT_KINDS.map((k) => ({ label: LAYOUTS[k].label, checked: layout.kind === k, onClick: () => st().arrange(k) })),
+    'sep',
+    { label: 'Rearrange', onClick: () => st().rearrange(), disabled: layout.kind === 'manual' },
   ];
 
   return (
