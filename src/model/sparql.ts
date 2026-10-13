@@ -1,3 +1,4 @@
+import { loadOxigraph, type OxStore } from './oxigraph';
 import { compactIri } from './prefixes';
 import { prefixesOf, toTurtle } from './rdf';
 import type { Model } from './types';
@@ -22,22 +23,7 @@ interface OxTerm {
   value: string;
   language?: string;
 }
-interface OxStore {
-  load(input: string, options: { format: string; base_iri?: string }): void;
-  query(query: string, options?: { results_format?: string }): unknown;
-}
-
-// The engine is a 4 MB WebAssembly module, so it is only fetched when a query is first run.
-let engine: Promise<{ Store: new () => OxStore }> | undefined;
-function loadEngine() {
-  engine ??= import('oxigraph').then(async (mod) => {
-    const init = (mod as unknown as { default?: unknown }).default;
-    // The browser build has to be initialised; the Node build (used by the tests) does not.
-    if (typeof init === 'function') await init();
-    return mod as unknown as { Store: new () => OxStore };
-  });
-  return engine;
-}
+const loadEngine = loadOxigraph;
 
 let cached: { turtle: string; store: OxStore } | undefined;
 

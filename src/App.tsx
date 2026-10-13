@@ -16,6 +16,7 @@ import { BulkDialog } from './components/views';
 import { viewFor } from './model/modelTypes';
 import { confirmDiscard, isDirty, useStore } from './model/store';
 import { NewModelDialog } from './components/NewModel';
+import { MessageDialog, OpenUrlDialog } from './components/OpenOntology';
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
@@ -26,6 +27,7 @@ export function App() {
   const theme = useStore((s) => s.theme);
   const dialog = useStore((s) => s.dialog);
   const toast = useStore((s) => s.toast);
+  const message = useStore((s) => s.message);
   const [dropping, setDropping] = useState(false);
 
   useEffect(() => {
@@ -120,6 +122,8 @@ export function App() {
       {dialog === 'library' && <LibraryDialog />}
       {dialog === 'saveas' && <SaveAsDialog />}
       {dialog === 'new' && <NewModelDialog />}
+      {dialog === 'openurl' && <OpenUrlDialog />}
+      {message && <MessageDialog />}
       {dropping && <div className="drop-overlay">Drop a model (.json) or ontology (.ttl) to open it</div>}
       {toast && (
         <div className="toast" role="status">

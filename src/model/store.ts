@@ -314,7 +314,7 @@ interface State {
   /** Whether the panel of filters is open. It is the page's, not a list's: open, it stays open from tab to tab. */
   entityFiltersOpen: boolean;
   setEntityFiltersOpen: (open: boolean) => void;
-  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | null;
+  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | 'openurl' | null;
   toast: string | null;
   /**
    * The validation workbench. Results are a record of one run over one model: they live here,
@@ -499,6 +499,10 @@ interface State {
   /** Shows or stops showing the direct neighbours of one term. */
   toggleExpand: (id: string) => void;
   setDialog: (d: State['dialog']) => void;
+  /** Something to tell that takes longer to read than a notice is shown for, such as why a file could not be opened: it stays until it is dismissed. */
+  message: { title: string; text: string } | null;
+  showMessage: (title: string, text: string) => void;
+  dismissMessage: () => void;
   notify: (msg: string) => void;
 }
 
@@ -1596,6 +1600,9 @@ export const useStore = create<State>((set, get) => ({
     set({ theme });
   },
   setDialog: (dialog) => set({ dialog }),
+  message: null,
+  showMessage: (title, text) => set({ message: { title, text } }),
+  dismissMessage: () => set({ message: null }),
   notify: (toast) => {
     clearTimeout(toastTimer);
     set({ toast });

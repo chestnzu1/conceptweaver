@@ -2,6 +2,7 @@ import { bounds } from './geometry';
 import { compactIri } from './prefixes';
 import { objectProperties, propKey } from './props';
 import { fromTurtle } from './rdf';
+import { detectFormat, FORMAT_LABEL } from './rdfFormats';
 import { PROP_LINKS, newRelation, newTerm, uid, type ExternalRef, type Model, type ObjProp, type Relation, type Term } from './types';
 
 /**
@@ -25,11 +26,14 @@ export interface ExternalSummary {
 
 const namespaceOf = (iri: string) => iri.slice(0, Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1);
 
-/** Reads an ontology from Turtle and describes it, without touching the active model. */
+/**
+ * Reads an ontology from Turtle and describes it, without touching the active model. One in
+ * another syntax is made Turtle before it is given here (asTurtle in rdfFormats.ts), which is
+ * also how it is then kept; what arrives in another syntax all the same was not converted.
+ */
 export function readExternal(text: string, source: string, sourceKind: ExternalRef['sourceKind']): ExternalSummary {
-  const head = text.trimStart();
-  if (head.startsWith('<?xml') || head.startsWith('<rdf:RDF') || head.startsWith('<Ontology')) throw new Error('This is RDF/XML, which the app cannot read. Save the ontology as Turtle (.ttl) and add that.');
-  if (head.startsWith('{') || head.startsWith('[')) throw new Error('This looks like JSON-LD, which the app cannot read. Convert the ontology to Turtle (.ttl) and add that.');
+  const format = detectFormat(text, source);
+  if (format !== 'turtle') throw new Error(`This is ${FORMAT_LABEL[format]}, which has to be converted to Turtle before it is read here.`);
   const model = fromTurtle(text, source.replace(/\.[^.]+$/, ''));
   if (!model.terms.length && !model.props.length) throw new Error('No classes, properties or individuals were found in it.');
   const version = /owl:versionIRI\s+<([^>]+)>|<http:\/\/www\.w3\.org\/2002\/07\/owl#versionIRI>\s+<([^>]+)>/.exec(text);

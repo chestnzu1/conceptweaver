@@ -51,10 +51,15 @@ await tab('Align');
 
 // ---------------------------------------------------------------- phase 1: the library
 ok(flat(await v.innerText()).includes('No other ontologies yet'), 'the library starts empty');
-// a format the app cannot read is refused with a way forward
-fs.writeFileSync(tmp + '/x.owl', '<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>');
+// a file that cannot be read is refused, saying why: RDF/XML is read (see e2e/open-owl.mjs), but this one is cut short, and the next has nothing in it
+fs.writeFileSync(tmp + '/x.owl', '<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><owl:Class');
 await v.locator('.add-ontology input[type=file]').setInputFiles(tmp + '/x.owl');
-ok(flat(await v.locator('.add-ontology [role=alert]').innerText()).includes('RDF/XML, which the app cannot read. Save the ontology as Turtle'), 'RDF/XML is refused, saying what to do instead');
+await page.waitForFunction(() => /could not be read/.test(document.querySelector('.add-ontology [role=alert]')?.textContent ?? ''));
+ok(flat(await v.locator('.add-ontology [role=alert]').innerText()).startsWith('x.owl could not be read. It is not well-formed RDF/XML:'), 'a file that is not well-formed is refused, saying what is wrong with it');
+fs.writeFileSync(tmp + '/empty.owl', '<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>');
+await v.locator('.add-ontology input[type=file]').setInputFiles(tmp + '/empty.owl');
+await page.waitForFunction(() => /No classes/.test(document.querySelector('.add-ontology [role=alert]')?.textContent ?? ''));
+ok(flat(await v.locator('.add-ontology [role=alert]').innerText()).includes('No classes, properties or individuals were found in it'), 'and so is one with no ontology in it');
 // a URL that cannot be fetched
 await v.getByRole('button', { name: 'From a URL…' }).click();
 await v.getByLabel('Ontology URL').fill('http://localhost:1/none.ttl');

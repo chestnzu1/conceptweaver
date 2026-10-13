@@ -413,6 +413,35 @@ const humanize = (iri: string, lower: boolean): string => {
   return lower ? words.toLowerCase() : words;
 };
 
+/**
+ * What an ontology states that the model has no place for, counted: it is opened without these,
+ * and what is exported from the model does not have them. Whoever opens a file is told, so that
+ * a round trip through the app is not taken for a faithful copy when it is not one.
+ */
+export function leftOut(text: string): string[] {
+  const OWL_NS = 'http://www.w3.org/2002/07/owl#';
+  const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+  const typed: Record<string, string> = {
+    'http://www.w3.org/2003/11/swrl#Imp': 'SWRL rule',
+    [OWL_NS + 'Axiom']: 'annotation on an axiom',
+    [OWL_NS + 'Annotation']: 'annotation on an annotation',
+    [OWL_NS + 'NegativePropertyAssertion']: 'negative property assertion',
+  };
+  const stated: Record<string, string> = { [OWL_NS + 'propertyChainAxiom']: 'property chain', [OWL_NS + 'hasKey']: 'key' };
+  const counts = new Map<string, number>();
+  let quads: { predicate: N3Term; object: N3Term }[];
+  try {
+    quads = new Parser().parse(text) as unknown as typeof quads;
+  } catch {
+    return [];
+  }
+  for (const q of quads) {
+    const what = q.predicate.value === RDF_TYPE ? typed[q.object.value] : stated[q.predicate.value];
+    if (what) counts.set(what, (counts.get(what) ?? 0) + 1);
+  }
+  return [...counts].map(([what, n]) => `${n.toLocaleString('en')} ${n === 1 ? what : what.replace(/^(\S+)/, (w) => (w === 'key' ? 'keys' : w === 'annotation' ? 'annotations' : w)).replace(/(rule|assertion|chain)$/, '$1s')}`);
+}
+
 /** Builds a model from Turtle / N-Triples text, reading the common OWL, RDFS and SKOS patterns. */
 export function fromTurtle(text: string, fallbackName = 'Imported model'): Model {
   // The file's own prefix declarations are kept: they are how its author abbreviates its IRIs.
@@ -936,7 +965,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   // The file's default prefix is its default namespace; failing that, the namespace most terms are in.
   m.baseIri = declared.get('') ?? [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
   for (const [prefix, ns] of declared) {
-    const standard = STANDARD.some((p) => p.prefix === prefix || p.iri === ns);
+    // The namespace of XML itself, which the OWL API and Protégé declare in every file they write, abbreviates nothing in an ontology.
+    const standard = ns === 'http://www.w3.org/XML/1998/namespace' || STANDARD.some((p) => p.prefix === prefix || p.iri === ns);
     if (prefix && !standard && /^[A-Za-z][A-Za-z0-9_-]*$/.test(prefix) && !m.prefixes.some((p) => p.iri === ns)) m.prefixes.push({ prefix, iri: ns });
   }
   if (header && !header.startsWith('_:')) m.ontologyIri = header;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { owlFindings, qualityFindings } from '../model/validation';
-import { exportModel, parseModelFile } from '../model/files';
+import { exportModel, readModelFile } from '../model/files';
+import { fileText, FORMAT_LABEL, MODEL_FILES } from '../model/rdfFormats';
 import { sampleModel, skosSample } from '../model/sample';
 import { universitySample } from '../model/sampleUniversity';
 import { stressModel } from '../model/stress';
@@ -12,16 +13,34 @@ import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { CommitInput } from './fields';
 import { Icon } from './Icon';
 
-export async function openFile(file: File) {
+/**
+ * Puts a document in the editor as the model: the app's own JSON, or an ontology in any syntax
+ * that is read. `source` says where it is from when that is not a file.
+ */
+export async function openDocument(text: string, name: string, source: { contentType?: string; url?: string } = {}): Promise<string | undefined> {
   const st = useStore.getState();
   try {
-    const model = parseModelFile(await file.text(), file.name);
+    const { model, format, leftOut } = await readModelFile(text, name, { ...source, serviceUrl: st.validation.reasonerUrl });
     st.replaceModel(model);
     st.setView('graph');
-    st.notify(`Opened “${model.name}”: ${model.terms.length} terms, ${model.relations.length} relations.`);
+    const opened = `Opened “${model.name}”${format === 'model' ? '' : ` from ${FORMAT_LABEL[format]}`}: ${model.terms.length.toLocaleString('en')} terms, ${model.relations.length.toLocaleString('en')} relations.`;
+    st.notify(opened);
+    // What the model has no place for is not passed over in silence: it would be missing from whatever is exported, and nobody the wiser.
+    if (leftOut.length) {
+      st.showMessage('Opened, with some statements left out', `${opened} The file also has ${leftOut.join(', ').replace(/, ([^,]*)$/, ' and $1')}, which the model has no place for: ${leftOut.length === 1 && /^1 /.test(leftOut[0]) ? 'it is' : 'they are'} not shown, not reasoned with, and not in anything exported from here. The file itself is untouched.`);
+    }
+    return undefined;
   } catch (e) {
-    st.notify(e instanceof Error ? `Could not open ${file.name}: ${e.message}` : `Could not open ${file.name}.`);
+    return e instanceof Error ? e.message : String(e);
   }
+}
+
+export async function openFile(file: File) {
+  const st = useStore.getState();
+  // A large ontology in a syntax that needs the RDF engine takes a moment: say that it is being read.
+  if (file.size > 300_000) st.notify(`Reading ${file.name}…`);
+  const problem = await openDocument(await fileText(file), file.name);
+  if (problem !== undefined) st.showMessage('The file could not be opened', `“${file.name}” was not opened, and the model in the editor is as it was. ${problem}`);
 }
 
 export function Header() {
@@ -56,7 +75,8 @@ export function Header() {
 
   const fileMenu: MenuItem[] = [
     { label: 'New model…', onClick: () => confirmDiscard() && st().setDialog('new'), hint: 'choose its type' },
-    { label: 'Open a file…', onClick: () => confirmDiscard() && fileRef.current?.click(), hint: 'JSON, Turtle' },
+    { label: 'Open a file…', onClick: () => confirmDiscard() && fileRef.current?.click(), hint: 'OWL, RDF, JSON' },
+    { label: 'Open from a URL…', onClick: () => st().setDialog('openurl'), hint: 'an ontology on the web' },
     { label: 'My Models…', onClick: () => st().setDialog('library'), hint: 'saved in this browser' },
     { label: 'Ontology settings…', onClick: () => st().setDialog('settings'), hint: 'IRI, prefixes' },
     { label: 'Load the SKOS example', onClick: () => confirmDiscard() && st().replaceModel(skosSample()) },
@@ -155,7 +175,7 @@ export function Header() {
         ref={fileRef}
         type="file"
         hidden
-        accept=".json,.ttl,.nt,.n3,.turtle,application/json,text/turtle"
+        accept={MODEL_FILES}
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = '';

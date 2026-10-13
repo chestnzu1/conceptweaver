@@ -6,7 +6,8 @@ import { htmlPage, LIGHT_TOKENS, viewerData, type Tokens } from './htmlExport';
 import { entailed as entailedBy } from './inferred';
 import { supports } from './modelTypes';
 import { hasCardinality } from './props';
-import { fromTurtle, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
+import { fromTurtle, leftOut, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
+import { asTurtle, detectFormat, FORMAT_LABEL, type DocumentFormat, type DocumentSource } from './rdfFormats';
 import { stable } from './stable';
 import { routeOf } from '../layout/types';
 import { currentDl, layoutOf, useStore, viewOf } from './store';
@@ -38,21 +39,27 @@ export function relationsCsv(m: Model): string {
   ]);
 }
 
-/** Reads a dropped/opened file into a model. JSON is our own format; anything else is tried as Turtle. */
-export function parseModelFile(text: string, fileName: string): Model {
-  const head = text.trimStart();
-  const title = fileName.replace(/\.[^.]+$/, '');
-  if (head.startsWith('{')) {
-    const json = JSON.parse(text);
-    if (json['@context'] || json['@graph']) throw new Error('JSON-LD import is not supported yet. Convert the file to Turtle first.');
-    return normalizeModel(json);
+/**
+ * Reads an opened, dropped or fetched document into a model. JSON is the app's own format;
+ * anything else is an ontology in one of the syntaxes of RDF and OWL, which is made Turtle first
+ * (see rdfFormats.ts) and then read as Turtle is. Reading the syntaxes that are not Turtle is
+ * not done at once: the engine for them is fetched when first needed, or the local OWL service
+ * is asked.
+ */
+export async function readModelFile(text: string, fileName: string, source: Omit<DocumentSource, 'name'> = {}): Promise<{ model: Model; format: DocumentFormat; /** What the file states that the model has no place for, counted. */ leftOut: string[] }> {
+  const title = fileName.replace(/[?#].*$/, '').replace(/^.*\//, '').replace(/\.[^.]+$/, '') || 'Imported model';
+  const format = detectFormat(text, fileName, source.contentType);
+  if (format === 'model') return { model: normalizeModel(JSON.parse(text)), format, leftOut: [] };
+  const { turtle } = await asTurtle(text, { ...source, name: fileName });
+  let m: Model;
+  try {
+    m = fromTurtle(turtle, title);
+  } catch (e) {
+    // What the Turtle reader objects to in a file that was never Turtle would only mislead.
+    throw new Error(format === 'turtle' ? `It is not well-formed Turtle: ${e instanceof Error ? e.message : String(e)}` : `It was read as ${FORMAT_LABEL[format]}, but what it holds could not be made a model: ${e instanceof Error ? e.message : String(e)}`);
   }
-  if (head.startsWith('<?xml') || head.startsWith('<rdf:RDF') || head.startsWith('<Ontology')) {
-    throw new Error('RDF/XML is not supported. Save the ontology as Turtle (.ttl) and import that.');
-  }
-  const m = fromTurtle(text, title);
-  if (!m.terms.length) throw new Error('No classes, concepts or properties found in this file.');
-  return m;
+  if (!m.terms.length && !m.props.length) throw new Error(`No classes, concepts, properties or individuals were found in it (it was read as ${FORMAT_LABEL[format]}).`);
+  return { model: m, format, leftOut: leftOut(turtle) };
 }
 
 const STYLE_PROPS = [

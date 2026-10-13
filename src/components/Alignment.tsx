@@ -7,6 +7,7 @@ import { suggestMappings, type Suggestion } from '../model/matcher';
 import { compactIri } from '../model/prefixes';
 import { propKey } from '../model/props';
 import { toTurtle } from '../model/rdf';
+import { asTurtle, fetchDocument, fileText, ONTOLOGY_FILES } from '../model/rdfFormats';
 import { stable } from '../model/stable';
 import { useStore } from '../model/store';
 import { classTree, ROOT } from '../model/tree';
@@ -156,8 +157,18 @@ function AddOntology() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState<SavedInfo[]>([]);
-  const read = (text: string, source: string, kind: 'file' | 'url' | 'model') => {
-    const problem = st().previewExternal(text, source, kind);
+  const read = async (text: string, source: string, kind: 'file' | 'url' | 'model', contentType?: string) => {
+    let turtle = text;
+    // In whichever syntax it comes, it is kept here as Turtle: that is what is read again later, and what a reasoner is sent.
+    // A saved model is written as Turtle to begin with.
+    if (kind !== 'model') {
+      try {
+        turtle = (await asTurtle(text, { name: source, contentType, ...(kind === 'url' ? { url: source } : {}), serviceUrl: st().validation.reasonerUrl })).turtle;
+      } catch (e) {
+        return setError(`${source} could not be read. ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    const problem = st().previewExternal(turtle, source, kind);
     setError(problem ? `${source} could not be read: ${problem}` : undefined);
     if (!problem) setMode(null);
   };
@@ -165,13 +176,10 @@ function AddOntology() {
     setBusy(true);
     setError(undefined);
     try {
-      const res = await fetch(url.trim(), { headers: { Accept: 'text/turtle, application/n-triples;q=0.8' } });
-      if (!res.ok) throw new Error(`The server answered ${res.status} ${res.statusText}.`);
-      read(await res.text(), url.trim(), 'url');
+      const { text, contentType } = await fetchDocument(url.trim());
+      await read(text, url.trim(), 'url', contentType);
     } catch (e) {
-      // A browser does not say why a request failed; these are the usual reasons.
-      const blocked = e instanceof TypeError;
-      setError(blocked ? `${url.trim()} could not be fetched from the browser. The server may not allow requests from other sites (CORS), or it may be unreachable. Download the ontology and add it as a file instead.` : `${url.trim()} could not be fetched: ${e instanceof Error ? e.message : ''} Download the ontology and add it as a file instead.`);
+      setError(e instanceof Error ? e.message.replace('open it as a file', 'add it as a file') : `${url.trim()} could not be fetched.`);
     } finally {
       setBusy(false);
     }
@@ -199,7 +207,7 @@ function AddOntology() {
       </div>
       {mode === 'url' && (
         <div className="row">
-          <input type="url" aria-label="Ontology URL" placeholder="https://… (Turtle)" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && url.trim() && void fetchUrl())} />
+          <input type="url" aria-label="Ontology URL" placeholder="https://… (Turtle, RDF/XML, JSON-LD)" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && url.trim() && void fetchUrl())} />
           <button className="btn small primary" disabled={!url.trim() || busy} onClick={() => void fetchUrl()}>
             {busy ? 'Fetching…' : 'Fetch'}
           </button>
@@ -211,7 +219,7 @@ function AddOntology() {
             .filter((m) => m.id !== st().doc.id)
             .map((m) => (
               <li key={m.id}>
-                <button className="link" onClick={async () => { const found = await loadModel(m.id); if (found) read(toTurtle(found.model), m.name, 'model'); }}>
+                <button className="link" onClick={async () => { const found = await loadModel(m.id); if (found) void read(toTurtle(found.model), m.name, 'model'); }}>
                   {m.name}
                 </button>{' '}
                 <span className="muted">{m.entities} entities</span>
@@ -229,11 +237,11 @@ function AddOntology() {
         ref={fileRef}
         type="file"
         hidden
-        accept=".ttl,.nt,.n3,.turtle,.owl,.rdf,.jsonld,text/turtle"
+        accept={ONTOLOGY_FILES}
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
-          if (f) read(await f.text(), f.name, 'file');
+          if (f) void read(await fileText(f), f.name, 'file');
         }}
       />
     </div>

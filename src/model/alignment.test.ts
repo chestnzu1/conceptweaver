@@ -84,7 +84,8 @@ describe('phase 1: external ontologies', () => {
   });
 
   it('says plainly what it cannot read', () => {
-    expect(() => readExternal('<?xml version="1.0"?><rdf:RDF/>', 'x.owl', 'file')).toThrow(/RDF\/XML, which the app cannot read. Save the ontology as Turtle/);
+    // Another syntax is made Turtle before it gets here (see rdfFormats.ts); what arrives unconverted is refused, saying what it is.
+    expect(() => readExternal('<?xml version="1.0"?><rdf:RDF/>', 'x.owl', 'file')).toThrow('This is RDF/XML, which has to be converted to Turtle before it is read here.');
     expect(() => readExternal('{"@context": {}}', 'x.jsonld', 'file')).toThrow(/JSON-LD/);
     expect(() => readExternal('@prefix : <http://x/> .', 'x.ttl', 'file')).toThrow(/No classes, properties or individuals/);
   });

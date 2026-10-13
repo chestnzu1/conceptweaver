@@ -75,6 +75,28 @@ More on what the advanced reasoner does and does not cover is under
 
 ## What it does
 
+- **Opening an existing ontology** – *File → Open a file…*, a file dropped on the window, or
+  *File → Open from a URL…* puts an ontology in the editor, in whichever syntax it is written:
+
+  | Syntax | Usual files | Read by |
+  | --- | --- | --- |
+  | RDF/XML | `.owl`, `.rdf`, `.xml` (what Protégé saves by default) | the app, in the browser |
+  | Turtle, N-Triples, N-Quads, TriG | `.ttl`, `.nt`, `.nq`, `.trig`, `.n3` | the app, in the browser |
+  | JSON-LD | `.jsonld` | the app, in the browser |
+  | OWL/XML, functional syntax, Manchester syntax, OBO | `.owx`, `.ofn`, `.omn`, `.obo`, and `.owl` files saved in one of them | the local OWL service (`pnpm reasoner`), which has the OWL API |
+
+  The syntax is told from how the file starts, not from its name. Everything is read into the
+  same model the same way: classes, object and data properties, individuals, the hierarchy,
+  restrictions, memberships and values become what the editor shows; a class expression there
+  is no drawing for is kept word for word; labels in other languages and other annotations are
+  kept as annotations; the file's prefixes stay its prefixes; what it imports is recorded by its
+  IRI and not fetched. A file in an encoding other than UTF-8 is read in the one it declares.
+  What cannot be read is refused in a message that stays on screen and says why: a file that is
+  not well-formed, one that was cut short (it is not opened as a smaller ontology), a JSON-LD
+  file that takes its context from elsewhere, or a syntax that needs the OWL service when none
+  is running, with how to start it and what to save the ontology as instead. The same reader is
+  behind adding an ontology under *Align* and importing data for SHACL. See *Reading
+  ontologies: what is and is not covered*.
 - **Two types of model** – an **OWL ontology** or a **SKOS-like vocabulary** (taxonomy, controlled
   vocabulary, glossary). *File → New model…* asks which, with a name and a namespace; the type
   stays with the model through saving and reopening, and changes only by an explicit, confirmed
@@ -399,7 +421,7 @@ More on what the advanced reasoner does and does not cover is under
     (`rdf-validate-shacl`, loaded on first use). Shapes are made in a form (SHACL shapes tab),
     imported from Turtle or written as Turtle, and saved with the model but apart from the
     ontology. The data graph is the model's own RDF (individuals and ontology triples) or an
-    imported Turtle file. Results keep the standard report fields.
+    imported file, in any syntax an ontology can be opened in. Results keep the standard report fields.
   - *Quality*: 34 modelling rules (missing definitions, redundant superclasses, naming, IRIs
     and namespaces, enumerations without members or with something on the list that does not
     belong there, …), each of which can be switched off per model. They are suggestions,
@@ -700,6 +722,11 @@ pnpm reasoner          # http://localhost:5190; Ctrl+C stops it
   browser. The service loads them into memory, answers, and forgets them. It writes nothing to
   disk and fetches nothing from the network: an import whose content was not sent is reported
   as missing.
+- **What else it does**: it reads the OWL syntaxes a browser cannot. A file in OWL/XML,
+  functional syntax, Manchester syntax or OBO is sent to it (`POST /convert`) and comes back as
+  Turtle, with its prefixes, which the app then reads like any other. Only the file is read: no
+  import is fetched, and nothing is reasoned over or kept. A service started before this was
+  added has to be stopped and started again to have it.
 - **Who can ask it**: it listens on 127.0.0.1 only and answers pages served from this machine
   (`localhost`, `127.0.0.1`). An app served from elsewhere has to be named when the service is
   started: `pnpm reasoner --allow-origin=https://where.the.app.is`. `--port=` and `--host=`
@@ -775,9 +802,8 @@ together in `src/model/inferred.ts`.
 
 ## Reuse and alignment: limits
 
-- External ontologies are read from Turtle or N-Triples only. RDF/XML and JSON-LD are refused
-  with a message; convert them first. A URL works only if its server allows requests from
-  other sites (CORS) and serves Turtle.
+- External ontologies are read in every syntax an ontology can be opened in, and kept in the
+  browser as Turtle. A URL works only if its server allows requests from other sites (CORS).
 - An external ontology's content is cached in this browser, not in the model file. On another
   machine the references and mappings are all there, and the library says the content is
   missing until the ontology is added again.
@@ -821,8 +847,40 @@ bend points, the canvas cannot keep (see below).
 - In the exported page a moved term redraws its lines the way the layout has them, with the
   places among other lines they had when exported.
 
+## Reading ontologies: what is and is not covered
+
+- **How it is read.** Everything is made Turtle first and then read by the one reader the app
+  has always had (`src/model/rdfFormats.ts`, then `fromTurtle` in `rdf.ts`). RDF/XML and JSON-LD
+  are parsed by the RDF engine the app already had for SPARQL (oxigraph, 4 MB, fetched when
+  first needed); the syntaxes that are not RDF go through the OWL API in the local service.
+  Tried on the Pizza, Wine, Koala, PROV-O, SKOS and OWL-Time ontologies and FOAF as published:
+  each opens in under 50 ms (Wine: 238 terms, 1,257 relationships), and written out and read
+  again gives the same terms and relationships.
+- **What becomes what.** As for Turtle: a named class, property or individual is an entity of
+  the model; `rdfs:subClassOf`, `rdf:type`, restrictions by one property, domains, ranges and
+  property characteristics are drawn or listed; any other class expression (an intersection, a
+  union, a nested restriction) is kept on its class as text and written back as it was. It is
+  shown, exported and sent to the reasoner, but not edited piece by piece.
+- **Not read**: SWRL rules, property chains (`owl:propertyChainAxiom`), keys (`owl:hasKey`),
+  negative property assertions, annotations on axioms (as opposed to on entities) and statements
+  about anonymous individuals. The model has no place for them, so an ontology that has them
+  opens without them and what is exported from the app does not have them. All but the last are
+  counted when the file is opened and said in a message that stays ("2 property chains and 1
+  SWRL rule"), so that a round trip through the app is not taken for a faithful copy of such an
+  ontology. `owl:AllDisjointClasses` is read, as pairwise disjointness.
+- **Imports are not followed.** What an ontology imports is listed under *Align* by its IRI;
+  add it there (from a file or a URL) for its entities to be reused and its axioms reasoned
+  with.
+- **From a URL**, the browser has to be allowed to fetch it: many servers of ontologies do not
+  let other sites do that (CORS), and then the file has to be downloaded and opened. The app
+  asks for Turtle first, then RDF/XML, then JSON-LD.
+- **JSON-LD** is read when its context is in the file. A context that is a link is not fetched.
+- **Size.** The file is read in one go in the page. A few megabytes are fine; an ontology of
+  hundreds of thousands of classes will open slowly or not at all, and the canvas draws every
+  term (see *Size*).
+
 ## Not there yet
 
-RDF/XML and JSON-LD import, Excel/PowerPoint/PDF export, AI assistance, multiple saved models.
+Excel/PowerPoint/PDF export, AI assistance, multiple saved models.
 Colours, positions, the layout and cardinalities live only in the JSON format; the Turtle export carries the
 terms, descriptions, synonyms and relations.

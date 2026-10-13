@@ -6255,3 +6255,19 @@ tbody tr.pinned td:first-child {
 .table-wrap[aria-busy='true'] tbody {
   opacity: 0.75;
 }
+
+/* ------------------------------------------------------- opening an ontology */
+
+/* Why something could not be done, at a length that is read rather than glanced at. */
+.message-text {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.dialog .bad[role='alert'] {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

@@ -34,14 +34,21 @@ import org.semanticweb.owl.explanation.api.ExplanationManager;
 import org.semanticweb.owl.explanation.api.ExplanationProgressMonitor;
 import org.semanticweb.owl.explanation.impl.blackbox.checker.InconsistentOntologyExplanationGeneratorFactory;
 import org.semanticweb.owlapi.apibinding.OWLManager;
+import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat;
+import org.semanticweb.owlapi.formats.ManchesterSyntaxDocumentFormat;
+import org.semanticweb.owlapi.formats.OBODocumentFormat;
+import org.semanticweb.owlapi.formats.OWLXMLDocumentFormat;
+import org.semanticweb.owlapi.formats.RDFXMLDocumentFormat;
 import org.semanticweb.owlapi.formats.TurtleDocumentFormat;
 import org.semanticweb.owlapi.io.StringDocumentSource;
+import org.semanticweb.owlapi.io.StringDocumentTarget;
 import org.semanticweb.owlapi.manchestersyntax.renderer.ManchesterOWLSyntaxOWLObjectRendererImpl;
 import org.semanticweb.owlapi.model.IRI;
 import org.semanticweb.owlapi.model.MissingImportHandlingStrategy;
 import org.semanticweb.owlapi.model.OWLAxiom;
 import org.semanticweb.owlapi.model.OWLClass;
 import org.semanticweb.owlapi.model.OWLDataFactory;
+import org.semanticweb.owlapi.model.OWLDocumentFormat;
 import org.semanticweb.owlapi.model.OWLEntity;
 import org.semanticweb.owlapi.model.OWLImportsDeclaration;
 import org.semanticweb.owlapi.model.OWLNamedIndividual;
@@ -102,6 +109,7 @@ public class ReasonerService {
     HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 16);
     server.createContext("/health", x -> respond(x, 200, health()));
     server.createContext("/reason", ReasonerService::reason);
+    server.createContext("/convert", ReasonerService::convert);
     server.setExecutor(Executors.newCachedThreadPool());
     server.start();
     System.out.println("ConceptWeaver reasoning service: HermiT " + hermitVersion + " (OWL API " + owlapiVersion + ") on http://" + host + ":" + port);
@@ -126,6 +134,8 @@ public class ReasonerService {
     o.addProperty("engineVersion", hermitVersion);
     o.addProperty("owlapi", owlapiVersion);
     o.addProperty("profile", "OWL 2 DL");
+    // What else it does besides reasoning: turning an ontology in any OWL syntax into Turtle.
+    o.addProperty("converts", true);
     return o;
   }
 
@@ -189,20 +199,14 @@ public class ReasonerService {
         respond(x, 405, failure("POST an ontology to /reason."));
         return;
       }
-      ByteArrayOutputStream buf = new ByteArrayOutputStream();
-      try (InputStream in = x.getRequestBody()) {
-        byte[] chunk = new byte[65536];
-        for (int n; (n = in.read(chunk)) > 0; ) {
-          buf.write(chunk, 0, n);
-          if (buf.size() > MAX_BODY) {
-            respond(x, 413, failure("The ontology is larger than the service accepts (64 MB)."));
-            return;
-          }
-        }
+      byte[] sent = body(x);
+      if (sent == null) {
+        respond(x, 413, failure("The ontology is larger than the service accepts (64 MB)."));
+        return;
       }
       JsonObject request;
       try {
-        request = GSON.fromJson(new String(buf.toByteArray(), StandardCharsets.UTF_8), JsonObject.class);
+        request = GSON.fromJson(new String(sent, StandardCharsets.UTF_8), JsonObject.class);
       } catch (RuntimeException e) {
         request = null;
       }
@@ -219,6 +223,128 @@ public class ReasonerService {
         x.close();
       }
     }
+  }
+
+  /** What was sent, or nothing when it is more than the service takes. */
+  static byte[] body(HttpExchange x) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    try (InputStream in = x.getRequestBody()) {
+      byte[] chunk = new byte[65536];
+      for (int n; (n = in.read(chunk)) > 0; ) {
+        buf.write(chunk, 0, n);
+        if (buf.size() > MAX_BODY) return null;
+      }
+    }
+    return buf.toByteArray();
+  }
+
+  // ---------------------------------------------------------------- reading other syntaxes
+
+  static JsonObject unread(String message) {
+    JsonObject o = new JsonObject();
+    JsonArray errors = new JsonArray();
+    errors.add(message);
+    o.add("errors", errors);
+    return o;
+  }
+
+  /**
+   * An ontology in any syntax the OWL API reads (OWL/XML, functional and Manchester syntax, OBO,
+   * RDF/XML, Turtle), answered as Turtle with the prefixes it was written with. Only the document
+   * itself is read: an import is not fetched, and nothing is reasoned over or kept.
+   */
+  static void convert(HttpExchange x) throws IOException {
+    try {
+      if (x.getRequestMethod().equals("OPTIONS")) {
+        respond(x, 204, new JsonObject());
+        return;
+      }
+      if (!allowed(x.getRequestHeaders().getFirst("Origin"))) {
+        respond(x, 403, unread("This page is not allowed to use the OWL service. Start the service with --allow-origin=<the page's origin>."));
+        return;
+      }
+      if (!x.getRequestMethod().equals("POST")) {
+        respond(x, 405, unread("POST an ontology to /convert."));
+        return;
+      }
+      byte[] sent = body(x);
+      if (sent == null) {
+        respond(x, 413, unread("The ontology is larger than the service accepts (64 MB)."));
+        return;
+      }
+      JsonObject request;
+      try {
+        request = GSON.fromJson(new String(sent, StandardCharsets.UTF_8), JsonObject.class);
+      } catch (RuntimeException e) {
+        request = null;
+      }
+      if (request == null || !request.has("document") || !request.get("document").isJsonPrimitive()) {
+        respond(x, 400, unread("The request is not JSON with the \"document\" to read."));
+        return;
+      }
+      JsonObject answer = converted(request.get("document").getAsString());
+      respond(x, answer.has("turtle") ? 200 : 422, answer);
+    } catch (RuntimeException | Error e) {
+      try {
+        respond(x, 500, unread(e instanceof OutOfMemoryError ? "The OWL service ran out of memory reading this ontology." : "The OWL service failed: " + e));
+      } catch (IOException ignored) {
+        x.close();
+      }
+    }
+  }
+
+  static JsonObject converted(String document) {
+    OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+    // Nothing is fetched: what the document imports stays an import by its IRI, which the app records.
+    manager.getIRIMappers().add((OWLOntologyIRIMapper) iri -> IRI.create(NOT_PROVIDED + Integer.toHexString(iri.toString().hashCode())));
+    OWLOntologyLoaderConfiguration config = new OWLOntologyLoaderConfiguration().setMissingImportHandlingStrategy(MissingImportHandlingStrategy.SILENT);
+    // The syntax is told from how the document starts, so that one parser is tried and its complaint is the one reported.
+    OWLDocumentFormat written = syntaxOf(document);
+    OWLOntology ontology;
+    try {
+      StringDocumentSource source = written == null ? new StringDocumentSource(document) : new StringDocumentSource(document, IRI.create("urn:conceptweaver:document"), written, null);
+      ontology = manager.loadOntologyFromOntologyDocument(source, config);
+    } catch (Exception e) {
+      String said = e.getMessage() == null ? e.toString() : e.getMessage();
+      String as = written == null ? "an ontology in any syntax the OWL API knows" : written.getKey();
+      return unread("It could not be read as " + as + ": " + complaint(said));
+    }
+    try {
+      OWLDocumentFormat source = manager.getOntologyFormat(ontology);
+      TurtleDocumentFormat turtle = new TurtleDocumentFormat();
+      if (source != null && source.isPrefixOWLOntologyFormat()) turtle.copyPrefixesFrom(source.asPrefixOWLOntologyFormat());
+      StringDocumentTarget target = new StringDocumentTarget();
+      manager.saveOntology(ontology, turtle, target);
+      JsonObject out = new JsonObject();
+      out.add("errors", new JsonArray());
+      out.addProperty("turtle", target.toString());
+      out.addProperty("format", source == null ? "unknown" : source.getKey());
+      out.addProperty("axioms", ontology.getAxiomCount());
+      return out;
+    } catch (Exception e) {
+      return unread("It was read, but could not be written as Turtle: " + firstLines(String.valueOf(e.getMessage()), 3));
+    }
+  }
+
+  /** The syntax a document is written in, by how it starts; nothing where that does not say. */
+  static OWLDocumentFormat syntaxOf(String document) {
+    String start = document.replaceFirst("^\\uFEFF", "").replaceFirst("(?s)^(\\s*#[^\\n]*\\n)+", "").trim();
+    if (start.matches("(?s)^(Prefix|Ontology)\\s*\\(.*")) return new FunctionalSyntaxDocumentFormat();
+    if (start.matches("(?s)^(Prefix|Namespace|Ontology|Import):.*")) return new ManchesterSyntaxDocumentFormat();
+    if (start.matches("(?s)^format-version\\s*:.*")) return new OBODocumentFormat();
+    if (start.startsWith("<")) {
+      String head = start.substring(0, Math.min(start.length(), 20000));
+      if (head.matches("(?s).*<Ontology\\b[^>]*\\bxmlns\\s*=\\s*[\"']http://www\\.w3\\.org/2002/07/owl#[\"'].*")) return new OWLXMLDocumentFormat();
+      if (head.contains("<rdf:RDF") || head.contains(":RDF ")) return new RDFXMLDocumentFormat();
+    }
+    return null;
+  }
+
+  /** What a parser objected to, without the list of parsers that were tried and without the stack. */
+  static String complaint(String message) {
+    java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?s)Parser: [^\\n]*\\n\\s*(?:Stack trace:\\s*)?(.*?)(?:\\n\\s*\\n|\\z)").matcher(message);
+    String found = m.find() ? m.group(1) : message;
+    return firstLines(found.replaceAll("(?m)^\\s*at .*$", "").replaceAll("org\\.[A-Za-z.]+\\.([A-Za-z]+Exception):?", "").trim(), 3);
   }
 
   // ---------------------------------------------------------------- reasoning

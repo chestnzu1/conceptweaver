@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { download } from '../model/files';
 import { objectProperties } from '../model/props';
 import { QUALITY_RULES, ruleEnabled, setRule, type RuleGroup } from '../model/quality';
+import { asTurtle, fileText, FORMAT_LABEL, ONTOLOGY_FILES } from '../model/rdfFormats';
 import { reason } from '../model/reasoner';
 import { stable } from '../model/stable';
 import { useStore } from '../model/store';
@@ -43,14 +44,15 @@ export function ValidationView() {
   const inferences = useMemo(() => (tab === 'inferences' ? reason(meaning).inferences : []), [meaning, tab]);
 
   const importData = async (file: File) => {
-    const text = await file.text();
     try {
+      // Data comes in the same syntaxes an ontology does; here it is kept as Turtle, which is what the checks read.
+      const { turtle, format } = await asTurtle(await fileText(file), { name: file.name, serviceUrl: st().validation.reasonerUrl });
       const { Parser } = await import('n3');
-      const triples = new Parser().parse(text).length;
-      st().setValidation({ data: { source: 'imported', name: file.name, text, includeOntology: true } });
-      st().notify(`${file.name}: ${triples} triples, now the data SHACL validates. It is not added to the model.`);
+      const triples = new Parser().parse(turtle).length;
+      st().setValidation({ data: { source: 'imported', name: file.name, text: turtle, includeOntology: true } });
+      st().notify(`${file.name}: ${triples} triples${format === 'turtle' ? '' : `, read from ${FORMAT_LABEL[format]}`}, now the data SHACL validates. It is not added to the model.`);
     } catch (e) {
-      st().notify(`Could not read ${file.name} as Turtle: ${e instanceof Error ? e.message : ''}`);
+      st().notify(`Could not read ${file.name}: ${e instanceof Error ? e.message : ''}`);
     }
   };
 
@@ -235,7 +237,7 @@ export function ValidationView() {
         ref={dataRef}
         type="file"
         hidden
-        accept=".ttl,.nt,.n3,.turtle,text/turtle"
+        accept={ONTOLOGY_FILES}
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = '';

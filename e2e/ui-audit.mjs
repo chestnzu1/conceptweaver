@@ -132,6 +132,18 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await page.getByRole('menuitem', { name: /^New model/ }).click();
     report('New model', await page.evaluate(measure));
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+    // Opening an ontology: from a URL, with what went wrong said under the address, and the message that stays when a file cannot be read.
+    await page.getByRole('button', { name: 'File', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^Open from a URL/ }).click();
+    await page.getByRole('dialog').getByLabel('Ontology URL').fill('pizza.owl');
+    await page.getByRole('dialog').getByRole('button', { name: 'Open', exact: true }).click();
+    await page.getByRole('dialog').getByRole('alert').waitFor();
+    report('Open from a URL', await page.evaluate(measure));
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+    await page.locator('.header input[type=file]').setInputFiles({ name: 'cut-short.owl', mimeType: 'application/rdf+xml', buffer: Buffer.from('<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><x:y') });
+    await page.getByRole('alertdialog').waitFor();
+    report('A file that cannot be opened', await page.evaluate(measure));
+    await page.getByRole('alertdialog').getByRole('button', { name: 'OK' }).click();
     await tab('Entities');
     report('Entities', await page.evaluate(measure));
     await page.locator('.view').getByRole('tab', { name: 'Governance & Metadata' }).click();
