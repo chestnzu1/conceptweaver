@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { BulkRelation, BulkTerm, Outline } from './bulk';
 import { findPath } from './checks';
-import { bounds } from './geometry';
+import { bounds, type Anchor } from './geometry';
 import { hierarchyLayout } from './layout';
 import { builtIn } from '../layout/compute';
 import { graphOf } from '../layout/graph';
@@ -11,10 +11,11 @@ import { sampleModel } from './sample';
 import { convertModel } from './convert';
 import { declaredProp, findProp, propKey, relChoices, type RelChoice } from './props';
 import { cannotRelate, settleRelation, typed } from './relating';
+import { reconnect, type End } from './reconnect';
 import { labelKey, resolveModel, suggestFor } from './vocab';
 import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from './subgraph';
 import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaOwner, type MetaValue } from './governance';
-import { normalizeByKind, PALETTE, patchNodes, resetOwn, type GraphStyle, type SavedStyle } from './graphStyle';
+import { normalizeByKind, PALETTE, patchNodes, resetOwn, withAnchor, withoutAnchors, type GraphStyle, type SavedStyle } from './graphStyle';
 import { allowsKind, allowsView, configOf, supports, termTypeFor, viewFor, type View } from './modelTypes';
 import { baseIriOf, moveNamespace, withIris } from './iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb } from './library';
@@ -398,6 +399,19 @@ interface State {
   addRelation: (p: Partial<Relation> & { from: string; to: string }, history?: boolean) => string;
   updateRelation: (id: string, patch: Partial<Relation>, history?: boolean) => void;
   reverseRelation: (id: string) => void;
+  /**
+   * Moves one end of a relationship to another term, as one step that undo takes back. What the
+   * relationship is stays what it was (see reconnect.ts): where the two cannot be related in that
+   * way nothing changes, the reason is shown, and the answer is false.
+   */
+  reconnectRelation: (id: string, end: End, termId: string) => boolean;
+  /**
+   * Puts one end of a relationship at a place on the outline of its term, or lets it be placed
+   * automatically again. It is part of how the graph is drawn: the ontology says nothing else for it.
+   */
+  setAnchor: (id: string, end: End, anchor: Anchor | undefined, gesture?: string) => void;
+  /** Lets both ends of these relationships, or of every relationship, be placed automatically again. */
+  resetAnchors: (ids: string[] | 'all') => void;
   remove: (terms: string[], rels: string[]) => void;
   deleteSelection: () => void;
   /** Adds new terms and fills in metadata on ones that already exist (matched by name). */
@@ -994,6 +1008,21 @@ export const useStore = create<State>((set, get) => ({
       relations: m.relations.map((r) => (r.id === id ? { ...r, from: r.to, to: r.from, fromCard: r.toCard, toCard: r.fromCard } : r)),
     }));
   },
+  reconnectRelation: (id, end, termId) => {
+    const result = reconnect(get().model, id, end, termId);
+    if (result.error !== undefined) {
+      get().notify(result.error);
+      return false;
+    }
+    get().apply(() => result.model);
+    if (result.note) get().notify(result.note);
+    return true;
+  },
+  setAnchor: (id, end, anchor, gesture = '') => {
+    if (!get().model.relations.some((r) => r.id === id)) return;
+    get().setStyle((s) => withAnchor(s, id, end, anchor), gesture);
+  },
+  resetAnchors: (ids) => get().setStyle((s) => withoutAnchors(s, ids === 'all' ? Object.keys(s.anchors) : ids)),
   remove: (terms, rels) => {
     if (!terms.length && !rels.length) return;
     const t = new Set(terms);

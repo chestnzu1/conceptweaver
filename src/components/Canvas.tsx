@@ -1,11 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nodeLabel, nodeSize, placeLabels, pointInNode, routeHints, setNodeLook, textWidth, type EdgeGeom, type LabelSpec, type Pt, type RouteHint } from '../model/geometry';
+import { anchorAt, displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nearNode, nodeLabel, nodeSize, outlineToward, placeLabels, pointInNode, routeHints, setNodeLook, textWidth, type EdgeAnchors, type EdgeGeom, type LabelSpec, type Pt, type RouteHint } from '../model/geometry';
 import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL, type DerivedEdge } from '../model/edgeKinds';
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { stable } from '../model/stable';
 import { currentDl, layoutOf, useStore, viewOf, type SubgraphState } from '../model/store';
 import { LAYOUT_KINDS, LAYOUTS, routeOf, type Route } from '../layout/types';
 import { typed } from '../model/relating';
+import { reconnection, type End, type Reconnection } from '../model/reconnect';
 import { allowsKind, configOf, supports } from '../model/modelTypes';
 import { INSTANCE_OF, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
 import { isInstanceOf, kindsBetween, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices } from '../model/props';
@@ -54,6 +55,7 @@ export function Canvas() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [connect, setConnect] = useState<{ from: string; to: Pt } | null>(null);
   const [box, setBox] = useState<{ a: Pt; b: Pt } | null>(null);
+  const [endDrag, setEndDrag] = useState<EndDrag | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const st = useStore.getState;
@@ -203,6 +205,67 @@ export function Canvas() {
     );
   };
 
+  /**
+   * Taking hold of one end of the selected relationship. Kept on or beside the term it is on, the
+   * end slides along that term's outline: where the line meets the term, which is how the graph is
+   * drawn and nothing the ontology says. Taken away from the term it looks for another one, and
+   * let go on a term that can take it the relationship is reconnected: that is an edit, of one
+   * step. Until it is let go nothing has changed, and Esc or letting go anywhere else leaves it so.
+   */
+  const onEndDown = (e: React.PointerEvent, r: Relation, end: End) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    st().endTween();
+    // Which terms could take the end is worked out once, for the model as it is now.
+    const plan = reconnection(st().model, r.id, end);
+    if (!plan) return;
+    const start = { x: e.clientX, y: e.clientY };
+    const loop = r.from === r.to;
+    let moved = false;
+    let cancelled = false;
+    let last: EndDrag | null = null;
+    const cancel = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return;
+      // Esc gives the drag up, and nothing else: the selection stays.
+      ev.stopPropagation();
+      ev.preventDefault();
+      cancelled = true;
+      setEndDrag(null);
+    };
+    window.addEventListener('keydown', cancel, true);
+    track(
+      (ev) => {
+        if (cancelled || (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4)) return;
+        moved = true;
+        const p = toWorld(ev.clientX, ev.clientY);
+        const terms = viewOf(st()).terms;
+        const own = terms.find((t) => t.id === r[end]);
+        if (!own) return;
+        const hit = [...terms].reverse().find((t) => pointInNode(t, p));
+        // On its own term, or close beside it with no other term in the way, the end slides.
+        const sliding = !loop && (hit ? hit.id === own.id : nearNode(own, p, SLIDE_MARGIN / st().vp.k));
+        if (sliding) {
+          const anchor = anchorAt(own, p);
+          const was: EdgeAnchors | undefined = last?.anchors;
+          // The same place as a moment ago is the same object: nothing is drawn again for it.
+          const still = was?.[end]?.side === anchor.side && was[end]?.at === anchor.at;
+          last = { rel: r.id, end, plan, at: p, anchors: still ? was : { ...st().model.style.anchors[r.id], [end]: anchor } };
+        } else {
+          last = { rel: r.id, end, plan, at: p, over: hit?.id, why: plan.fixed ?? (hit ? plan.refusal(hit.id) : undefined) };
+        }
+        setEndDrag(last);
+      },
+      () => {
+        window.removeEventListener('keydown', cancel, true);
+        setEndDrag(null);
+        if (cancelled || !last) return;
+        if (last.anchors) st().setAnchor(r.id, end, last.anchors[end]);
+        // Let go on the term it was on, or on no term at all, it stays where it was.
+        else if (last.over && last.over !== r[end]) st().reconnectRelation(r.id, end, last.over);
+      },
+    );
+  };
+
   const openMenu = (e: React.MouseEvent, items: MenuItem[]) => {
     e.preventDefault();
     e.stopPropagation();
@@ -220,6 +283,8 @@ export function Canvas() {
       'sep' as const,
       { label: 'Rearrange', onClick: () => st().rearrange(), disabled: layoutOf(st()).kind === 'manual' },
       { label: 'Fit to screen', onClick: () => st().fit(), hint: 'F' },
+      // Only where an end was put somewhere by hand: there is nothing to put back otherwise.
+      ...(Object.keys(st().model.style.anchors).length ? [{ label: 'Reset all connection points', onClick: () => st().resetAnchors('all') }] : []),
       'sep',
       { label: 'Select all', onClick: () => st().selectAll(), hint: 'Ctrl+A' },
     ]);
@@ -292,6 +357,8 @@ export function Canvas() {
       { label: 'Edit label', onClick: () => st().setEditing({ kind: 'rel', id: r.id }), hint: 'F2' },
       // A class membership has one direction only: from the individual to the class.
       { label: 'Reverse direction', onClick: () => st().reverseRelation(r.id), disabled: isInstanceOf(st().model, r) },
+      // Where its ends meet their terms, if that was set by hand: how it is drawn, not what it says.
+      { label: 'Reset connection points', onClick: () => st().resetAnchors([r.id]), disabled: !st().model.style.anchors[r.id] },
       { heading: 'Kind' },
       // The kinds the type of model has, of those the ones that fit what the line connects.
       ...offeredChoices(st().model, r).map((k) => ({ label: k.label, checked: relChoice(st().model, r) === k.value, disabled: !!k.disabled, onClick: () => st().setRelChoice(r.id, k.value) })),
@@ -325,8 +392,8 @@ export function Canvas() {
   const targetId = connect ? [...model.terms].reverse().find((t) => t.id !== connect.from && pointInNode(t, connect.to))?.id : undefined;
   // The scene gets one set of callbacks that never changes, so that it is not redrawn for nothing;
   // they reach the current handlers through a ref.
-  const handlers = useRef({ onNodeDown, onHandleDown, termMenu, relMenu });
-  handlers.current = { onNodeDown, onHandleDown, termMenu, relMenu };
+  const handlers = useRef({ onNodeDown, onHandleDown, onEndDown, termMenu, relMenu });
+  handlers.current = { onNodeDown, onHandleDown, onEndDown, termMenu, relMenu };
   const actions = useMemo<SceneActions>(
     () => ({
       nodeDown: (e, t) => handlers.current.onNodeDown(e, t),
@@ -335,11 +402,21 @@ export function Canvas() {
         useStore.getState().toggleExpand(t.id);
       },
       handleDown: (e, t) => handlers.current.onHandleDown(e, t),
+      endDown: (e, r, end) => handlers.current.onEndDown(e, r, end),
       termMenu: (e, t) => handlers.current.termMenu(e, t),
       relMenu: (e, r) => handlers.current.relMenu(e, r),
     }),
     [],
   );
+  // What the scene is told of an end being dragged: not where the pointer is, which changes all the time.
+  const dragging = useMemo<SceneDrag | undefined>(
+    () => (endDrag ? { rel: endDrag.rel, end: endDrag.end, anchors: endDrag.anchors, refusal: endDrag.anchors ? undefined : endDrag.plan.refusal, over: endDrag.over } : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [endDrag?.rel, endDrag?.end, endDrag?.anchors, endDrag?.plan, endDrag?.over],
+  );
+  const reconnecting = endDrag && !endDrag.anchors ? endDrag : null;
+  const staying = reconnecting && byId.get(reconnecting.plan.staying);
+  const taker = reconnecting?.over && !reconnecting.why ? byId.get(reconnecting.over) : undefined;
 
   return (
     <div
@@ -350,14 +427,15 @@ export function Canvas() {
       <svg
         id="graph-svg"
         // Zoomed far out, relation labels are too small to read and only slow drawing down.
-        className={'graph' + (vp.k < 0.3 ? ' far' : '')}
+        className={'graph' + (vp.k < 0.3 ? ' far' : '') + (endDrag ? ' dragging-end' : '') + (reconnecting ? ' reconnecting' : '')}
         onPointerDown={onBackgroundDown}
         onDoubleClick={(e) => createTermAt(toWorld(e.clientX, e.clientY))}
         onContextMenu={backgroundMenu}
       >
         <g data-world transform={`translate(${vp.x},${vp.y}) scale(${vp.k})`}>
-          <Scene model={model} route={route} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} />
+          <Scene model={model} route={route} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} drag={dragging} />
           {connectFrom && <line data-noexport className="connect-line" x1={connectFrom.x} y1={connectFrom.y} x2={connect.to.x} y2={connect.to.y} />}
+          {reconnecting && staying && <ReconnectLine staying={staying} taker={taker} at={reconnecting.at} refused={!!reconnecting.why} k={vp.k} />}
 
           {box && (
             <rect
@@ -373,6 +451,17 @@ export function Canvas() {
       </svg>
 
       {editing && <InlineEditor key={editing.kind + editing.id} byId={byId} />}
+
+      {reconnecting && (
+        // Beside the pointer: why the term under it cannot take the end, or what letting go would do.
+        <div
+          className={'reconnect-why' + (reconnecting.why ? ' refused' : taker ? ' ok' : '')}
+          role="status"
+          style={{ left: Math.max(8, Math.min(reconnecting.at.x * vp.k + vp.x + 16, (wrapRef.current?.clientWidth ?? 600) - 296)), top: reconnecting.at.y * vp.k + vp.y + 20 }}
+        >
+          {reconnecting.why ?? (taker && taker.id !== reconnecting.plan.moving ? `Let go to move this end to “${taker.name || 'Unnamed'}”.` : 'Drop it on a term that is not faded. Esc puts it back.')}
+        </div>
+      )}
 
       {!full.terms.length && (
         <div className="empty-hint">
@@ -454,6 +543,7 @@ interface SceneActions {
   nodeDown: (e: React.PointerEvent, t: Term) => void;
   expand: (e: React.PointerEvent, t: Term) => void;
   handleDown: (e: React.PointerEvent, t: Term) => void;
+  endDown: (e: React.PointerEvent, r: Relation, end: End) => void;
   termMenu: (e: React.MouseEvent, t: Term) => void;
   relMenu: (e: React.MouseEvent, r: Relation) => void;
 }
@@ -472,6 +562,49 @@ interface SceneProps {
   sub?: SubgraphState;
   /** Lines that are worked out rather than stored: inferred class memberships when asked for, and what enumerations list. */
   derived: DerivedEdge[];
+  /** The end of a relationship that is being dragged, while one is. */
+  drag?: SceneDrag;
+}
+
+/** How near its own term, in pixels on the screen, a dragged end still slides along it. */
+const SLIDE_MARGIN = 26;
+
+/** An end of a relationship while it is dragged. Nothing of it is in the model until it is let go. */
+interface EndDrag {
+  rel: string;
+  end: End;
+  /** Which terms could take the end, worked out when it was taken hold of. */
+  plan: Reconnection;
+  /** Where the pointer is. */
+  at: Pt;
+  /** Sliding along the term it is on: where the two ends would be put. Not set while it looks for another term. */
+  anchors?: EdgeAnchors;
+  /** The term under the pointer, while it looks for another term. */
+  over?: string;
+  /** Why the end cannot be let go here. */
+  why?: string;
+}
+
+/** What the scene draws differently while an end is dragged. */
+interface SceneDrag {
+  rel: string;
+  end: End;
+  anchors?: EdgeAnchors;
+  /** Set while the end looks for another term: why a term cannot take it, nothing where it can. */
+  refusal?: (termId: string) => string | undefined;
+  over?: string;
+}
+
+/** The line from the end that stays to where the dragged end is, or to the term that would take it. */
+function ReconnectLine({ staying, taker, at, refused, k }: { staying: Term; taker: Term | undefined; at: Pt; refused: boolean; k: number }) {
+  const tip = taker && taker.id !== staying.id ? outlineToward(taker, staying) : at;
+  const base = pointInNode(staying, tip) ? staying : outlineToward(staying, tip);
+  return (
+    <g data-noexport className={'reconnect-line' + (refused ? ' refused' : taker ? ' ok' : '')}>
+      <line x1={base.x} y1={base.y} x2={tip.x} y2={tip.y} />
+      <circle cx={tip.x} cy={tip.y} r={5.5 / k} />
+    </g>
+  );
 }
 
 const NONE: InferredMembership[] = [];
@@ -488,7 +621,7 @@ let labelSpots = new Map<string, Pt>();
  * responsive: the scene itself does not change while the view is panned or zoomed, and within it
  * a term or relation is redrawn only when something about it changed.
  */
-const Scene = memo(function Scene({ model, route, sel, highlight, filter, editing, targetId, actions, sub, derived }: SceneProps) {
+const Scene = memo(function Scene({ model, route, sel, highlight, filter, editing, targetId, actions, sub, derived, drag }: SceneProps) {
   const rootSet = useMemo(() => new Set(sub?.roots), [sub?.roots]);
   const expandedSet = useMemo(() => new Set(sub?.expanded), [sub?.expanded]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
@@ -518,11 +651,13 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
   // A derived line takes its place among the relations between the same two terms.
   const offsets = useMemo(() => edgeOffsets(derived.length ? [...relations, ...derived] : relations), [relations, derived]);
   // Geometry is kept per relation and reused while its two ends stay where they are.
-  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; geom: EdgeGeom }>());
+  const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; pins: EdgeAnchors | undefined; geom: EdgeGeom }>());
+  // An end that is sliding along its term is drawn where it is held, before that is kept.
+  const sliding = drag?.anchors ? drag : undefined;
   // Routed lines are told of the others at their terms: where to arrive among them, and where their words fit.
   const routeHint = useMemo(() => routeHints(derived.length ? [...relations, ...derived] : relations, byId, route), [relations, derived, byId, route]);
   const geoms = useMemo(() => {
-    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; geom: EdgeGeom }>();
+    const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; pins: EdgeAnchors | undefined; geom: EdgeGeom }>();
     for (const r of relations) {
       const a = byId.get(r.from);
       const b = byId.get(r.to);
@@ -533,14 +668,16 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
       const old = cache.current.get(r.id);
       // Only position and size matter, and size follows from the label. Any change of style is a new style object.
       const hint = routeHint.get(r.id);
-      const same = old && old.es === es && old.route === route && old.hint === hint && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
-      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, es, route, hint, geom: edgeGeom(a, b, offset, r.kind, es.arrow, route, hint) });
+      // Where its ends were put by hand, if they were: the same object for as long as neither is moved.
+      const pins = sliding?.rel === r.id ? sliding.anchors : style.anchors[r.id];
+      const same = old && old.es === es && old.route === route && old.hint === hint && old.pins === pins && old.offset === offset && old.kind === r.kind && old.a.x === a.x && old.a.y === a.y && old.b.x === b.x && old.b.y === b.y && nodeLabel(old.a) === nodeLabel(a) && nodeLabel(old.b) === nodeLabel(b);
+      next.set(r.id, same ? { ...old, a, b } : { a, b, offset, kind: r.kind, es, route, hint, pins, geom: edgeGeom(a, b, offset, r.kind, es.arrow, route, hint, pins) });
     }
     cache.current = next;
     return next;
     // The style object stands for everything about the nodes' sizes and shapes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relations, offsets, byId, edgeStyles, style, route, routeHint]);
+  }, [relations, offsets, byId, edgeStyles, style, route, routeHint, sliding]);
   // What each edge says. A restriction reads "directs some Film", and several on one line "directs some, only".
   const labels = useMemo(() => edgeLabelsOf(meaning), [meaning]);
   const labelOf = useCallback((r: Relation) => labels.get(r.id) ?? '', [labels]);
@@ -591,6 +728,12 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
     const b = byId.get(r.to);
     return !(a && b && matches(a) && matches(b));
   };
+  // The one relationship that is selected, by itself, has its two ends to take hold of.
+  const held = sel.rels.length === 1 && !sel.terms.length && !(editing?.kind === 'rel' && editing.id === sel.rels[0]) ? relations.find((r) => r.id === sel.rels[0]) : undefined;
+  const heldGeom = held && geoms.get(held.id);
+  // While an end looks for another term: whether each term could take it.
+  const taking = drag?.refusal;
+  const takes = (t: Term) => (!taking ? '' : drag.over === t.id ? (taking(t.id) === undefined ? ' can-take target' : ' cannot-take refused') : taking(t.id) === undefined ? ' can-take' : ' cannot-take');
 
   return (
     <>
@@ -603,7 +746,7 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
         const at = spots.get(r.id) ?? g.geom.label;
         // Cardinalities are drawn for plain relationships only.
         const cards = skos ? r.kind === 'association' : plain.has(r.id);
-        const cls = `edge ${r.kind}${instanceOf ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}`;
+        const cls = `edge ${r.kind}${instanceOf ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}${taking && drag.rel === r.id ? ' moving' : ''}`;
         return <EdgeView key={r.id} r={r} geom={g.geom} es={g.es} lx={at.x} ly={at.y} label={(editing?.kind === 'rel' && editing.id === r.id) || g.es.labels === false ? '' : label} cls={cls} cards={cards} actions={actions} />;
       })}
       {derived.map((x) => {
@@ -613,7 +756,7 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
         return <DerivedView key={x.id} x={x} geom={g.geom} es={g.es} lx={at.x} ly={at.y} dim={relDim(x)} />;
       })}
       {model.terms.map((t) => {
-        const cls = `node ${t.type}${t.external !== undefined ? ' external' : ''}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}`;
+        const cls = `node ${t.type}${t.external !== undefined ? ' external' : ''}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}${takes(t)}`;
         const more = sub?.result?.more.get(t.id) ?? 0;
         return (
           <NodeView
@@ -627,6 +770,47 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
             // In a subgraph: how many neighbours are out of sight (click to show), or that they were shown by hand (click to fold).
             badge={!sub ? '' : expandedSet.has(t.id) ? '−' : more ? `+${more}` : ''}
           />
+        );
+      })}
+      {held && heldGeom && <EndHandles r={held} ends={heldGeom.geom.ends} pins={heldGeom.pins} from={heldGeom.a} to={heldGeom.b} hidden={taking && drag.rel === held.id ? drag.end : undefined} actions={actions} />}
+    </>
+  );
+});
+
+/**
+ * The two ends of the selected relationship, each to take hold of: slid along its term it moves
+ * where the line meets the term, dragged to another term it reconnects the relationship. An end
+ * that was put somewhere by hand is drawn filled, one that is placed automatically hollow. They
+ * keep their size on the screen however far the view is zoomed, which is why this, and nothing
+ * else of the scene, follows the zoom.
+ */
+const EndHandles = memo(function EndHandles({ r, ends, pins, from, to, hidden, actions }: { r: Relation; ends: [Pt, Pt]; pins: EdgeAnchors | undefined; from: Term; to: Term; hidden: End | undefined; actions: SceneActions }) {
+  const k = useStore((s) => s.vp.k);
+  const scale = 1 / k;
+  return (
+    <>
+      {(['from', 'to'] as const).map((end, i) => {
+        if (hidden === end) return null;
+        const term = end === 'from' ? from : to;
+        const set = !!pins?.[end];
+        return (
+          <g
+            key={end}
+            data-noexport
+            data-end={end}
+            className={'end-handle' + (set ? ' set' : '')}
+            transform={`translate(${ends[i].x},${ends[i].y}) scale(${scale})`}
+            onPointerDown={(e) => actions.endDown(e, r, end)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              useStore.getState().setAnchor(r.id, end, undefined);
+            }}
+            onContextMenu={(e) => actions.relMenu(e, r)}
+          >
+            <title>{`${end === 'from' ? 'Where the line starts' : 'Where the line ends'}, on “${term.name || 'Unnamed'}”${set ? ', put there by hand' : ''}. Drag it along the term to move where the line meets it, or onto another term to reconnect the relationship.${set ? ' Double-click to have it placed automatically again.' : ''}`}</title>
+            <circle className="end-hit" r={13} />
+            <circle className="end-dot" r={5.5} />
+          </g>
         );
       })}
     </>

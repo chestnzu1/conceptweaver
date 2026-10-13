@@ -112,6 +112,25 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     const tab = (name) => page.locator('.header').getByRole('tab', { name, exact: name === 'RDF' }).click();
     await page.locator('.node').first().locator('.node-box').click();
     report('Graph', await page.evaluate(measure));
+    // A relationship selected: its two ends to take hold of, and its connection points in the panel.
+    // Then one end held over a term that cannot take it, with the reason beside the pointer.
+    await page.locator('.edge.association .edge-line').first().dispatchEvent('pointerdown', { button: 0 });
+    await page.waitForSelector('.end-handle');
+    report('Graph · a relationship selected', await page.evaluate(measure));
+    {
+      const mid = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+      const from = mid(await page.locator('.end-handle[data-end="to"] .end-dot').boundingBox());
+      const to = mid(await page.locator('.node.instance .node-box').first().boundingBox());
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+      await page.mouse.move(to.x, to.y, { steps: 4 });
+      await page.locator('.reconnect-why.refused').waitFor();
+      report('Graph · an end held over a term that cannot take it', await page.evaluate(measure));
+      await page.keyboard.press('Escape');
+      await page.mouse.up();
+    }
+    await page.locator('.node').first().locator('.node-box').click();
     // The graph style editor, tab by tab, with a term selected so that every control is live.
     await page.locator('.subgraph').getByRole('button', { name: 'Style' }).click();
     for (const name of ['Nodes', 'Edges', 'Themes']) {

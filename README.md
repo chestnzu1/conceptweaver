@@ -13,7 +13,7 @@ pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
 pnpm build      # static site in dist/
 pnpm reasoner   # the OWL 2 DL reasoning service (HermiT) on http://localhost:5190; needs a JDK, 11 or later
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs, e2e/relationship-kinds.mjs, e2e/inferred-relations.mjs); need `pnpm exec vite preview --port 5181` running
+node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs, e2e/relationship-kinds.mjs, e2e/inferred-relations.mjs, e2e/edge-endpoints.mjs); need `pnpm exec vite preview --port 5181` running
 node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
 
@@ -116,6 +116,18 @@ More on what the advanced reasoner does and does not cover is under
 - **Canvas** – double-click to add a term, drag a term's ⊕ handle onto another term to relate
   them (or onto empty space to create the other term), right-click anything for its menu.
   Pan by dragging, zoom with the wheel, Ctrl+drag to box-select. Full undo/redo.
+- **The ends of a line** – a selected relationship shows a handle at each end. Dragged along
+  its term, an end moves where the line meets the term: any side, anywhere along it. That is
+  how the graph is drawn and nothing the ontology says: it is kept with the graph style, never
+  written to RDF, stays on the term when the term moves or changes size, and holds under every
+  layout. Dragged onto another term, an end *reconnects* the relationship, which is an edit: the
+  terms that can take it are outlined and the others fade, the reason a term cannot is said
+  beside the pointer, and the relationship is never made another kind to fit where it was
+  dropped. Esc, or letting go anywhere else, puts it back; one undo takes a reconnection back.
+  *Reset connection points* (in the relationship's menu and panel; a double-click on a handle
+  for one end) gives the ends back to the layout. The panel has the same as a side and a
+  slider, for whoever would rather not drag. See *The ends of a line: what moves, and what is
+  refused*.
 - **My Models** – save models in this browser (IndexedDB) and reopen them later: Save, Save as,
   and a list to open, rename, duplicate and delete. The header shows whether the model in the
   editor has unsaved changes. Browser storage is local and can be cleared, so export files too.
@@ -540,7 +552,10 @@ that *Layered* says so and uses the built-in hierarchical layout.
 ## Layout of the code
 
 - `src/model` – everything that isn't UI: types, the zustand store (state, history, autosave),
-  layout algorithms, checks, RDF import/export, file handling.
+  layout algorithms, checks, RDF import/export, file handling. What two terms can be related by
+  is in `props.ts`, `relating.ts` and `axioms.ts`, and `reconnect.ts` asks them whether an end
+  of a relationship can be moved to another term. How a line runs is `geometry.ts`, including
+  from an end that was put somewhere by hand; where those ends are is kept in `graphStyle.ts`.
 - `src/components` – the SVG canvas, side panels, views and menus.
 - `src/entities` – the search, the sorting and the filters of the Entities page, apart from the
   page. `contracts.ts` is all the page knows: three questions (`EntityQueryService`: which sorts
@@ -822,7 +837,8 @@ Dagre was added for the layered layout (15 kB gzipped, in a chunk of its own). E
 at and left out: it is 1.5 MB, and what it does best, routing each line around the terms with
 bend points, the canvas cannot keep (see below).
 
-- **A line is drawn from where its two terms are, and from nothing else.** That is what lets a
+- **A line is drawn from where its two terms are, and where its ends were put by hand if they
+  were, and from nothing else.** That is what lets a
   term be dragged in any layout with its lines following, and what the picture exports and the
   exported page rely on. It also means no layout can hand the canvas a route: Dagre's bend
   points are not used, a line does not go round a term that lies in its way, and right-angle
@@ -846,6 +862,81 @@ bend points, the canvas cannot keep (see below).
   does not.
 - In the exported page a moved term redraws its lines the way the layout has them, with the
   places among other lines they had when exported.
+
+## The ends of a line: what moves, and what is refused
+
+Two things can be done with an end of a relationship, and they are kept apart all the way down.
+
+**Where the line meets its term** is a matter of the picture. It is kept as a side of the term
+and how far along that side (`style.anchors[relationshipId].from` and `.to`, each
+`{ side: 'top' | 'right' | 'bottom' | 'left', at: 0..1 }`), beside the styles of single
+relationships and nowhere near the statements. So it travels with the model in its JSON file,
+in the browser's working copy and in *My Models*; it is not in Turtle, RDF/XML or JSON-LD, and
+an ontology opened from one of those has every end placed automatically. Being a proportion of
+a side, it stays put when the term is moved and keeps its place when the term grows with its
+name or is given another shape. Changing it does not touch `model.relations`: nothing is
+reasoned or validated again for it, and the exported ontology is the same text.
+
+**Which term the end is on** is what the ontology says, and moving it is an edit. One module
+decides it, `src/model/reconnect.ts`, which draws nothing: `reconnection(model, id, end)` works
+out once which terms could take an end (so that every term on the canvas can be asked while the
+end is dragged, at no cost that grows with the model), and `reconnect(model, id, end, term)`
+gives the model with the end moved, or the reason it cannot be. The canvas, the store and a
+server that kept the ontology would all ask the same two questions. Its rules are the ones the
+rest of the app relates terms by, not a second set:
+
+| Relationship | Its start | Its end |
+| --- | --- | --- |
+| Is a | a class (or a data property) | a class (or a data property), not itself, not one it is a kind of already |
+| Is an instance of | an individual | a class it is not stated to be an instance of already |
+| Has data property | a class | a data property |
+| Object property, between classes (a restriction) | a class | a class; the class itself is allowed, as a loop |
+| Object property, between individuals (a fact) | an individual | an individual |
+| Standard property (`owl:disjointWith` and the like) | what the property is meant to connect | the same; not what is stated already, either way round where it holds both ways, and not what the opposite statement rules out |
+| Plain relationship, broader (a vocabulary) | any concept | any concept; "is a" not itself |
+
+- **What it is never changes.** An "is a" dropped on a data property is refused; it does not
+  become "has data property". (The *From* and *To* boxes of the panel still do what they did:
+  there a relationship is given the kind its new ends make it, and says so. A drag never does.)
+- **One step, or nothing.** The relationship keeps its id, its name, its restrictions
+  ("only", "min 1"), its cardinalities, its description and its style; only the end is another
+  term. No class or property is made and no other statement is rewritten. Where a rule refuses,
+  the model is the very object it was, nothing is added to the undo history, and the reason is
+  shown. A circular hierarchy is allowed, as adding a superclass allows it, and said.
+- **What follows from the uses of a property follows.** A domain or range that was never set by
+  hand follows where the property is used, as it always did, so it can change with a
+  reconnection; one that was set by hand is left alone.
+- **Not everything can be reconnected.** What the reasoner works out and what an enumeration
+  lists are not stored relationships: they cannot be selected, so they have no handles. A
+  relationship between two terms of other ontologies is that ontology's statement, and a mapping
+  to another ontology is kept under *Align* with its status and notes: both show their handles,
+  so that where the line meets its terms can still be changed, but no term will take their ends,
+  and the reason is said. A plain relationship left over in an ontology is given a kind first.
+  Class expressions the app has no drawing for (kept word for word from an import) are not lines
+  at all.
+- The end that moved is drawn where the layout puts it again: where it had been dragged to was a
+  place on the term it left. The other end stays where it was put.
+
+What the canvas itself limits (it is the app's own SVG canvas; there is no graph library under
+it, and nothing was replaced):
+
+- **A line with an end put by hand goes round its own two terms, not round others.** Straight,
+  it runs from the place it was given; if that place faces away from the other term it bows
+  round. Curved, it leaves square to its side. With right angles it turns as often as it takes
+  not to double back, up to four times. A third term lying in its way is crossed, as it is by
+  any other line (see *Graph layouts: what the canvas can and cannot do*).
+- **A place is a side and a position along it**, not a free point: on an ellipse, a circle, a
+  diamond or a hexagon that is the point of the outline above, below or beside it. There are no
+  bend points to drag, and a loop from a term to itself has the one place it always had.
+- **The handles are for a pointer.** They are 26 pixels across whatever the zoom, but they are
+  not reached with Tab: from the keyboard the panel's *Connection points* (side and slider) and
+  its *From* and *To* do the same. Only one relationship has handles at a time, the one that is
+  selected by itself.
+- **Terms are told apart while an end is dragged by redrawing each once**: with a few thousand
+  on the canvas that is a moment's pause when the end leaves its term, on top of what *Size*
+  says about drawing that many at all. The rules themselves are worked out once per drag.
+- In the exported page the ends are where they were put, and stay there when a term is moved;
+  the page cannot move them.
 
 ## Reading ontologies: what is and is not covered
 

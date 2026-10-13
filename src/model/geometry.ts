@@ -167,6 +167,27 @@ export interface EdgeGeom {
   toCard: Pt;
   /** The curve a straight or bent edge follows: its start, its control point and its end. A loop has none. */
   curve?: [Pt, Pt, Pt];
+  /** Where the line leaves its first term and where it arrives at its second: where its ends can be taken hold of. */
+  ends: [Pt, Pt];
+}
+
+export const SIDES = ['top', 'right', 'bottom', 'left'] as const;
+export type Side = (typeof SIDES)[number];
+
+/**
+ * Where a line meets a term when that was set by hand: a side of the term and how far along it,
+ * from 0 (its left or upper end) to 1. Kept this way it stays where it was put when the term is
+ * moved, and in the same proportion when the term grows or shrinks with its name.
+ */
+export interface Anchor {
+  side: Side;
+  at: number;
+}
+
+/** The ends of one line that were set by hand. An end that is not here is placed automatically. */
+export interface EdgeAnchors {
+  from?: Anchor;
+  to?: Anchor;
 }
 
 const norm = (x: number, y: number): Pt => {
@@ -194,9 +215,10 @@ function arrowHead(tip: Pt, d: Pt, head: ArrowHead): { points: string; inset: nu
  * several relations between the same two terms don't overlap. The arrowhead follows the kind of
  * relation ("is a" has a hollow one) unless one is asked for. `route` is how the layout wants its
  * lines drawn; without it, or where two terms are too close for anything else, a line runs
- * straight from one to the other.
+ * straight from one to the other. `anchors` are the ends that were set by hand: each is where it
+ * was put on its term's outline, and the rest of the line follows from there.
  */
-export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?: ArrowHead, route?: Route, hint?: RouteHint): EdgeGeom {
+export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?: ArrowHead, route?: Route, hint?: RouteHint, anchors?: EdgeAnchors): EdgeGeom {
   const how: ArrowHead = arrow ?? (kind === 'generalization' ? 'hollow' : 'filled');
   if (a.id === b.id) {
     const { w, h } = nodeSize(a);
@@ -211,19 +233,29 @@ export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?
       label: { x: a.x + w / 2 + size * 0.35, y: a.y - h / 2 - size * 0.62 },
       fromCard: { x: p0.x - 10, y: p0.y - 10 },
       toCard: { x: p1.x + 14, y: p1.y + 14 },
+      ends: [p0, p1],
     };
   }
+  const pinned = anchors?.from || anchors?.to ? anchors : undefined;
   if (route && route.how !== 'direct') {
-    const routed = routedGeom(a, b, offset, how, route, hint);
+    const routed = pinned ? pinnedRoute(a, b, how, route, pinned) : routedGeom(a, b, offset, how, route, hint);
     if (routed) return routed;
   }
+  // An end set by hand is where it was put; the other is where the line, drawn towards it, leaves its term.
+  const pa = pinned?.from && anchorPoint(a, pinned.from);
+  const pb = pinned?.to && anchorPoint(b, pinned.to);
+  const [ra, rb] = [pa ?? a, pb ?? b];
+  // An end put on a side that faces away from the other term would have a straight line run through
+  // its own term to reach it. Such a line leaves square to its side instead, and bows round.
+  const away = (anchor: Anchor | undefined, at: Pt | undefined, toward: Pt) => !!anchor && !!at && NORMAL[anchor.side].x * (toward.x - at.x) + NORMAL[anchor.side].y * (toward.y - at.y) < 8;
+  if (pinned && (away(pinned.from, pa, rb) || away(pinned.to, pb, ra))) return pinnedRoute(a, b, how, { how: 'curved', dir: route?.dir ?? 'TB' }, pinned);
   // The bend direction is defined in a frame that doesn't depend on which way the relation points.
   const flip = a.id > b.id ? -1 : 1;
-  const dir = norm(b.x - a.x, b.y - a.y);
+  const dir = norm(rb.x - ra.x, rb.y - ra.y);
   const n = { x: -dir.y * flip, y: dir.x * flip };
-  const c = { x: (a.x + b.x) / 2 + n.x * offset, y: (a.y + b.y) / 2 + n.y * offset };
-  const p0 = boxExit(a, c.x, c.y);
-  const p1 = boxExit(b, c.x, c.y);
+  const c = { x: (ra.x + rb.x) / 2 + n.x * offset, y: (ra.y + rb.y) / 2 + n.y * offset };
+  const p0 = pa ?? boxExit(a, c.x, c.y);
+  const p1 = pb ?? boxExit(b, c.x, c.y);
   const dEnd = norm(p1.x - c.x, p1.y - c.y);
   const dStart = norm(c.x - p0.x, c.y - p0.y);
   const head = arrowHead(p1, dEnd, how);
@@ -236,10 +268,140 @@ export function edgeGeom(a: Term, b: Term, offset: number, kind: RelKind, arrow?
     fromCard: { x: p0.x + dStart.x * 16 - dStart.y * 11, y: p0.y + dStart.y * 16 + dStart.x * 11 },
     toCard: { x: p1.x - dEnd.x * 24 + side.x * 11, y: p1.y - dEnd.y * 24 + side.y * 11 },
     curve: [p0, c, p1],
+    ends: [p0, p1],
   };
 }
 
-type Side = 'top' | 'bottom' | 'left' | 'right';
+// ---------------------------------------------------------------- ends set by hand
+
+/** The point of a term's outline that an anchor names, whatever the term's shape and size. */
+export function anchorPoint(t: Term, anchor: Anchor, gap = 3): Pt {
+  const { w, h } = nodeSize(t);
+  const along = anchor.side === 'top' || anchor.side === 'bottom' ? w : h;
+  return sideExit(t, anchor.side, (Math.max(0, Math.min(1, anchor.at)) - 0.5) * along, gap, 1);
+}
+
+/**
+ * The anchor nearest to a point: the side of the term the point is at, and how far along it. Near
+ * the middle of a side it is the middle, which is where most ends are wanted.
+ */
+export function anchorAt(t: Term, p: Pt): Anchor {
+  const { w, h } = nodeSize(t);
+  const [dx, dy] = [p.x - t.x, p.y - t.y];
+  const upright = Math.abs(dy) / (h / 2) >= Math.abs(dx) / (w / 2);
+  const side: Side = upright ? (dy < 0 ? 'top' : 'bottom') : dx < 0 ? 'left' : 'right';
+  const raw = Math.max(0, Math.min(1, 0.5 + (upright ? dx / w : dy / h)));
+  return { side, at: Math.abs(raw - 0.5) < 0.06 ? 0.5 : Math.round(raw * 100) / 100 };
+}
+
+/** Whether a point is on a term or within `margin` of it: near enough to be about that term's outline. */
+export function nearNode(t: Term, p: Pt, margin: number): boolean {
+  const { w, h } = nodeSize(t);
+  return Math.abs(p.x - t.x) <= w / 2 + margin && Math.abs(p.y - t.y) <= h / 2 + margin;
+}
+
+/** Where a line drawn from a term's centre towards a point leaves the term's outline. */
+export const outlineToward = (t: Term, toward: Pt): Pt => boxExit(t, toward.x, toward.y);
+
+const NORMAL: Record<Side, Pt> = { top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+
+/** The side of a term that faces a point. */
+function facing(t: Term, p: Pt): Side {
+  const { w, h } = nodeSize(t);
+  const [dx, dy] = [p.x - t.x, p.y - t.y];
+  return Math.abs(dy) / (h / 2) >= Math.abs(dx) / (w / 2) ? (dy < 0 ? 'top' : 'bottom') : dx < 0 ? 'left' : 'right';
+}
+
+/**
+ * A curved or right-angled line of which at least one end was set by hand. It leaves each term
+ * square to the side it is on: an end set by hand on its side, the other on the side that faces
+ * it. With right angles it goes out a little from each term and turns as often as it takes to
+ * meet without doubling back or passing through either of its own terms; curved, it bows out
+ * from each side. Other terms that happen to lie in its way are not gone round.
+ */
+function pinnedRoute(a: Term, b: Term, head: ArrowHead, route: Route, anchors: EdgeAnchors): EdgeGeom {
+  const sideA = anchors.from?.side ?? facing(a, anchors.to ? anchorPoint(b, anchors.to) : b);
+  const p0 = anchors.from ? anchorPoint(a, anchors.from) : sideExit(a, sideA, 0);
+  const sideB = anchors.to?.side ?? facing(b, p0);
+  const p1 = anchors.to ? anchorPoint(b, anchors.to) : sideExit(b, sideB, 0);
+  const [n0, n1] = [NORMAL[sideA], NORMAL[sideB]];
+  // The line arrives against the way its side faces.
+  const tip = arrowHead(p1, { x: -n1.x, y: -n1.y }, head);
+  const end = { x: p1.x + n1.x * tip.inset, y: p1.y + n1.y * tip.inset };
+  const cards = { fromCard: { x: p0.x + n0.x * 14 - n0.y * 12, y: p0.y + n0.y * 14 + n0.x * 12 }, toCard: { x: p1.x + n1.x * 22 + n1.y * 12, y: p1.y + n1.y * 22 - n1.x * 12 } };
+  const seg = (p: Pt) => `${f(p.x)},${f(p.y)}`;
+  if (route.how === 'curved') {
+    const reach = Math.max(28, Math.min(170, Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.45));
+    const c0 = { x: p0.x + n0.x * reach, y: p0.y + n0.y * reach };
+    const c1 = { x: p1.x + n1.x * reach, y: p1.y + n1.y * reach };
+    const label = { x: (p0.x + 3 * c0.x + 3 * c1.x + p1.x) / 8, y: (p0.y + 3 * c0.y + 3 * c1.y + p1.y) / 8 };
+    return { path: `M${seg(p0)} C${seg(c0)} ${seg(c1)} ${seg(end)}`, arrow: tip.points, label, ...cards, curve: [p0, label, p1], ends: [p0, p1] };
+  }
+  // Out a little from each term, square to its side, and then across by the fewest turns that neither
+  // double back on the way out nor come in through the term the line arrives at.
+  const STUB = 18;
+  const dot = (p: Pt, q: Pt) => p.x * q.x + p.y * q.y;
+  const go = (from: Pt, way: Pt, far: number): Pt => ({ x: from.x + way.x * far, y: from.y + way.y * far });
+  const s0 = go(p0, n0, STUB);
+  const s1 = go(p1, n1, STUB);
+  const d = { x: s1.x - s0.x, y: s1.y - s0.y };
+  // How far ahead the second of those points is, the way the line leaves; and the way across that.
+  const ahead = dot(d, n0);
+  const across = { x: -n0.y, y: n0.x };
+  const between: Pt[] = [];
+  if (dot(n0, n1) === 0) {
+    // The two sides are square to each other. One turn does where the line can go on as it left and
+    // still arrive from outside; where it cannot, it turns at once and comes in from the side.
+    between.push(ahead >= 0 && dot(d, n1) <= 0 ? go(s0, n0, ahead) : go(s0, n1, dot(d, n1)));
+  } else if (dot(n0, n1) < 0 && ahead >= 0) {
+    // They face each other: across halfway.
+    const half = go(s0, n0, ahead / 2);
+    between.push(half, go(half, across, dot(d, across)));
+  } else if (dot(n0, n1) > 0) {
+    // They face the same way: out beyond both, and across there.
+    const out = go(s0, n0, Math.max(0, ahead));
+    between.push(out, go(out, across, dot(d, across)));
+  } else {
+    // Back to back: round both terms, on the side that is the shorter way.
+    const half = (t: Term) => (across.x !== 0 ? nodeSize(t).w : nodeSize(t).h) / 2;
+    const over = Math.max(dot(a, across) + half(a), dot(b, across) + half(b)) + STUB;
+    const under = Math.min(dot(a, across) - half(a), dot(b, across) - half(b)) - STUB;
+    const [u0, u1] = [dot(s0, across), dot(s1, across)];
+    const clear = Math.abs(over - u0) + Math.abs(over - u1) <= Math.abs(under - u0) + Math.abs(under - u1) ? over : under;
+    const beside = go(s0, across, clear - u0);
+    between.push(beside, go(beside, n0, ahead));
+  }
+  // Points that repeat, or lie on a straight stretch that goes on the same way, are no turns.
+  const turns: Pt[] = [];
+  for (const p of [p0, s0, ...between, s1, end]) {
+    const last = turns[turns.length - 1];
+    const before = turns[turns.length - 2];
+    if (last && Math.abs(last.x - p.x) < 0.5 && Math.abs(last.y - p.y) < 0.5) continue;
+    if (last && before) {
+      const [was, now] = [{ x: last.x - before.x, y: last.y - before.y }, { x: p.x - last.x, y: p.y - last.y }];
+      if (Math.abs(was.x * now.y - was.y * now.x) < 0.5 && dot(was, now) > 0) turns.pop();
+    }
+    turns.push(p);
+  }
+  let path = `M${seg(turns[0])}`;
+  let longest = { a: turns[0], b: turns[1] ?? turns[0], length: -1 };
+  for (let i = 1; i < turns.length; i++) {
+    const [from, at, to] = [turns[i - 1], turns[i], turns[i + 1]];
+    const length = Math.hypot(at.x - from.x, at.y - from.y);
+    if (length > longest.length) longest = { a: from, b: at, length };
+    if (!to) {
+      path += ` L${seg(at)}`;
+      break;
+    }
+    // A corner is rounded, by no more than half of either stretch that meets in it.
+    const r = Math.min(6, length / 2, Math.hypot(to.x - at.x, to.y - at.y) / 2);
+    const back = norm(from.x - at.x, from.y - at.y);
+    const on = norm(to.x - at.x, to.y - at.y);
+    path += r < 0.5 ? ` L${seg(at)}` : ` L${seg({ x: at.x + back.x * r, y: at.y + back.y * r })} Q${seg(at)} ${seg({ x: at.x + on.x * r, y: at.y + on.y * r })}`;
+  }
+  const label = { x: (longest.a.x + longest.b.x) / 2, y: (longest.a.y + longest.b.y) / 2 };
+  return { path, arrow: tip.points, label, ...cards, curve: [longest.a, label, longest.b], ends: [p0, p1] };
+}
 
 /** What a routed line is told about the other lines at its two terms. */
 export interface RouteHint {
@@ -289,12 +451,13 @@ export function routeHints(relations: Pick<Relation, 'id' | 'from' | 'to'>[], by
 }
 
 /** The point on one side of a node's outline, `shift` along that side from its middle, whatever its shape. */
-function sideExit(t: Term, side: Side, shift: number, gap = 3): Pt {
+function sideExit(t: Term, side: Side, shift: number, gap = 3, limit = 0.7): Pt {
   const { w, h } = nodeSize(t);
   const upright = side === 'top' || side === 'bottom';
   // Along the side, and out from the centre to it.
   const [half, out] = upright ? [w / 2, h / 2] : [h / 2, w / 2];
-  const s = Math.max(-half * 0.7, Math.min(half * 0.7, shift));
+  // A line placed automatically keeps clear of the corners; one set by hand can be anywhere along the side.
+  const s = Math.max(-half * limit, Math.min(half * limit, shift));
   let reach = out;
   switch (lookOf(t)?.shape) {
     case 'ellipse':
@@ -376,7 +539,7 @@ function routedGeom(a: Term, b: Term, offset: number, head: ArrowHead, route: Ro
   }
   // The cardinalities sit beside the ends, on the side the line does not turn to.
   const beside = sv || 1;
-  return { path, arrow: tip.points, label, fromCard: at(u0 + su * 14, v0 - beside * 12), toCard: at(u1 - su * 22, v1 + beside * 12), curve };
+  return { path, arrow: tip.points, label, fromCard: at(u0 + su * 14, v0 - beside * 12), toCard: at(u1 - su * 22, v1 + beside * 12), curve, ends: [p0, p1] };
 }
 
 export const LABEL_H = 18;

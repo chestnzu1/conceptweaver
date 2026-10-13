@@ -2,7 +2,7 @@ import viewerCss from '../export/viewer.css?raw';
 import viewerJs from '../export/viewer.js?raw';
 import { enumOf, literalText, rangeLabel } from './datatypes';
 import { edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL } from './edgeKinds';
-import { edgeOffsets, nodeSize, routeHints } from './geometry';
+import { edgeOffsets, nodeSize, routeHints, type EdgeAnchors } from './geometry';
 import { fieldKey, fieldsFor, metaEntity, sameKey, valuesOf, type MetaEntity } from './governance';
 import { nodeTypeOf, resolveEdge, resolveNode, type EdgeType } from './graphStyle';
 import { baseIriOf } from './iri';
@@ -76,6 +76,8 @@ export interface ViewerRel {
   /** Where a routed line arrives at its lower term, and whether its words go by the upper one: as the picture has them. */
   port?: number;
   labelUp?: boolean;
+  /** The ends that were put somewhere on their terms by hand: the page keeps them there when a term is moved. */
+  pins?: EdgeAnchors;
 }
 
 export interface ViewerProp {
@@ -218,6 +220,7 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
         ...(cards ? { cards } : {}),
         bend: (offsets.get(r.id) ?? 0) + (es.curve ?? 0),
         head: es.arrow ?? (r.kind === 'generalization' ? ('hollow' as const) : ('filled' as const)),
+        ...(model.style.anchors[r.id] ? { pins: model.style.anchors[r.id] } : {}),
       };
     });
   // What the reasoner worked out is in the picture when it was asked for, and so is listed, marked as inferred.

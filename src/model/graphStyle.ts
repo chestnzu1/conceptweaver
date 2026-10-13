@@ -1,3 +1,4 @@
+import { SIDES, type Anchor, type EdgeAnchors } from './geometry';
 import { compactIri } from './prefixes';
 import { ENUM_RANGE, type Model, type Term, type TermType } from './types';
 
@@ -88,9 +89,15 @@ export interface GraphStyle {
   nodes: Record<string, NodeStyle>;
   /** Styles of single relationships, by relationship id. */
   edges: Record<string, EdgeStyle>;
+  /**
+   * Where the ends of single relationships meet their terms, where that was set by hand, by
+   * relationship id. Like everything here it is how the graph is drawn and nothing the ontology
+   * says: moving an end along a term changes no statement.
+   */
+  anchors: Record<string, EdgeAnchors>;
 }
 
-export const noStyle = (): GraphStyle => ({ theme: 'standard', nodeTypes: {}, edgeTypes: {}, nodes: {}, edges: {} });
+export const noStyle = (): GraphStyle => ({ theme: 'standard', nodeTypes: {}, edgeTypes: {}, nodes: {}, edges: {}, anchors: {} });
 
 // ---------------------------------------------------------------- colours
 
@@ -216,6 +223,41 @@ export const resetOwn = (s: GraphStyle, nodes: string[], edges: string[]): Graph
   edges: Object.fromEntries(Object.entries(s.edges).filter(([id]) => !edges.includes(id))),
 });
 
+// ---------------------------------------------------------------- where lines meet their terms
+
+/**
+ * Puts one end of a relationship where it was dragged to, or back to being placed automatically
+ * when no anchor is given. An entry with neither end set is taken away again.
+ */
+export function withAnchor(s: GraphStyle, relId: string, end: 'from' | 'to', anchor: Anchor | undefined): GraphStyle {
+  const now = s.anchors[relId] ?? {};
+  const same = (a: Anchor | undefined, b: Anchor | undefined) => a?.side === b?.side && a?.at === b?.at;
+  if (same(now[end], anchor)) return s;
+  const { [end]: _, ...other } = now;
+  const next = anchor ? { ...other, [end]: { side: anchor.side, at: anchor.at } } : other;
+  const { [relId]: __, ...rest } = s.anchors;
+  return { ...s, anchors: Object.keys(next).length ? { ...rest, [relId]: next } : rest };
+}
+
+/** Lets the ends of these relationships be placed automatically again. */
+export function withoutAnchors(s: GraphStyle, relIds: string[]): GraphStyle {
+  if (!relIds.some((id) => s.anchors[id])) return s;
+  return { ...s, anchors: Object.fromEntries(Object.entries(s.anchors).filter(([id]) => !relIds.includes(id))) };
+}
+
+function normalizeAnchor(raw: unknown): Anchor | undefined {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const side = oneOf(o.side, SIDES);
+  const at = num(o.at, 0, 1);
+  return side && at !== undefined ? { side, at } : undefined;
+}
+
+export function normalizeAnchors(raw: unknown): EdgeAnchors {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const [from, to] = [normalizeAnchor(o.from), normalizeAnchor(o.to)];
+  return { ...(from ? { from } : {}), ...(to ? { to } : {}) };
+}
+
 // ---------------------------------------------------------------- themes
 
 export interface Theme {
@@ -279,6 +321,7 @@ export const withTheme = (s: GraphStyle, theme: Pick<Theme, 'nodeTypes' | 'edgeT
   edgeTypes: structuredClone(theme.edgeTypes),
   nodes: s.nodes,
   edges: s.edges,
+  anchors: s.anchors,
 });
 
 /** A style someone saved under a name, to use again in any model: the styles by kind, not those of single terms. */
@@ -353,6 +396,7 @@ export function normalizeGraphStyle(raw: unknown, termIds: Set<string>, relIds: 
     ...normalizeByKind(o),
     nodes: record(o.nodes, (k) => termIds.has(k), normalizeNodeStyle),
     edges: record(o.edges, (k) => relIds.has(k), normalizeEdgeStyle),
+    anchors: record(o.anchors, (k) => relIds.has(k), normalizeAnchors),
   };
 }
 

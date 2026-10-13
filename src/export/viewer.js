@@ -349,11 +349,12 @@
   }
 
   /** The point on one side of a term's outline, `shift` along that side from its middle, whatever its shape. */
-  function sideExit(t, side, shift) {
+  function sideExit(t, side, shift, limit = 0.7) {
     const upright = side === 'top' || side === 'bottom';
     const half = upright ? t.w / 2 : t.h / 2;
     const out = upright ? t.h / 2 : t.w / 2;
-    const s = Math.max(-half * 0.7, Math.min(half * 0.7, shift));
+    // A line placed automatically keeps clear of the corners; an end put by hand can be anywhere along the side.
+    const s = Math.max(-half * limit, Math.min(half * limit, shift));
     let reach = out;
     if (t.shape === 'ellipse') reach = out * Math.sqrt(1 - (s / half) * (s / half));
     else if (t.shape === 'diamond') reach = out * (1 - Math.abs(s) / half);
@@ -413,6 +414,98 @@
     return Object.assign({ d, head, at: (t) => at(ua + (ub - ua) * t, vl) }, cards);
   }
 
+  // ---- ends that were put somewhere on their terms by hand in the app (the anchors of geometry.ts)
+
+  const NORMAL = { top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+  /** The point of a term's outline an end was put at: a side of the term, and how far along it. */
+  const pinPoint = (t, pin) => sideExit(t, pin.side, (Math.max(0, Math.min(1, pin.at)) - 0.5) * (pin.side === 'top' || pin.side === 'bottom' ? t.w : t.h), 1);
+  /** The side of a term that faces a point. */
+  const facing = (t, p) => (Math.abs(p.y - t.y) / (t.h / 2) >= Math.abs(p.x - t.x) / (t.w / 2) ? (p.y < t.y ? 'top' : 'bottom') : p.x < t.x ? 'left' : 'right');
+
+  /**
+   * A curved or right-angled line of which an end was put somewhere by hand. It leaves each term
+   * square to the side it is on, as the canvas draws it: with right angles it goes out a little and
+   * turns once or twice to meet, curved it bows out from each side.
+   */
+  function pinnedLine(r, a, b, how) {
+    const sideA = r.pins.from ? r.pins.from.side : facing(a, r.pins.to ? pinPoint(b, r.pins.to) : b);
+    const p0 = r.pins.from ? pinPoint(a, r.pins.from) : sideExit(a, sideA, 0);
+    const sideB = r.pins.to ? r.pins.to.side : facing(b, p0);
+    const p1 = r.pins.to ? pinPoint(b, r.pins.to) : sideExit(b, sideB, 0);
+    const n0 = NORMAL[sideA];
+    const n1 = NORMAL[sideB];
+    const head = arrowHead(p1, { x: -n1.x, y: -n1.y }, r.head);
+    const end = { x: p1.x + n1.x * head.inset, y: p1.y + n1.y * head.inset };
+    const cards = { fromCard: { x: p0.x + n0.x * 14 - n0.y * 12, y: p0.y + n0.y * 14 + n0.x * 12 }, toCard: { x: p1.x + n1.x * 22 + n1.y * 12, y: p1.y + n1.y * 22 - n1.x * 12 } };
+    if (how === 'curved') {
+      const reach = Math.max(28, Math.min(170, Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.45));
+      const c0 = { x: p0.x + n0.x * reach, y: p0.y + n0.y * reach };
+      const c1 = { x: p1.x + n1.x * reach, y: p1.y + n1.y * reach };
+      const along = (t, k) => (1 - t) ** 3 * p0[k] + 3 * (1 - t) ** 2 * t * c0[k] + 3 * (1 - t) * t * t * c1[k] + t ** 3 * p1[k];
+      return Object.assign({ d: 'M' + pt(p0) + ' C' + pt(c0) + ' ' + pt(c1) + ' ' + pt(end), head, at: (t) => ({ x: along(t, 'x'), y: along(t, 'y') }) }, cards);
+    }
+    // Out a little from each term, then across by the fewest turns that neither double back on the
+    // way out nor come in through the term the line arrives at (as pinnedRoute does in the app).
+    const STUB = 18;
+    const dot = (p, q) => p.x * q.x + p.y * q.y;
+    const go = (from, way, far) => ({ x: from.x + way.x * far, y: from.y + way.y * far });
+    const s0 = go(p0, n0, STUB);
+    const s1 = go(p1, n1, STUB);
+    const gap = { x: s1.x - s0.x, y: s1.y - s0.y };
+    const ahead = dot(gap, n0);
+    const across = { x: -n0.y, y: n0.x };
+    const between = [];
+    if (dot(n0, n1) === 0) {
+      between.push(ahead >= 0 && dot(gap, n1) <= 0 ? go(s0, n0, ahead) : go(s0, n1, dot(gap, n1)));
+    } else if (dot(n0, n1) < 0 && ahead >= 0) {
+      const half = go(s0, n0, ahead / 2);
+      between.push(half, go(half, across, dot(gap, across)));
+    } else if (dot(n0, n1) > 0) {
+      const out = go(s0, n0, Math.max(0, ahead));
+      between.push(out, go(out, across, dot(gap, across)));
+    } else {
+      const half = (t) => (across.x !== 0 ? t.w : t.h) / 2;
+      const over = Math.max(dot(a, across) + half(a), dot(b, across) + half(b)) + STUB;
+      const under = Math.min(dot(a, across) - half(a), dot(b, across) - half(b)) - STUB;
+      const u0 = dot(s0, across);
+      const u1 = dot(s1, across);
+      const clear = Math.abs(over - u0) + Math.abs(over - u1) <= Math.abs(under - u0) + Math.abs(under - u1) ? over : under;
+      const beside = go(s0, across, clear - u0);
+      between.push(beside, go(beside, n0, ahead));
+    }
+    // Points that repeat, or lie on a straight stretch that goes on the same way, are no turns.
+    const turns = [];
+    for (const p of [p0, s0, ...between, s1, end]) {
+      const last = turns[turns.length - 1];
+      const before = turns[turns.length - 2];
+      if (last && Math.abs(last.x - p.x) < 0.5 && Math.abs(last.y - p.y) < 0.5) continue;
+      if (last && before) {
+        const was = { x: last.x - before.x, y: last.y - before.y };
+        const now = { x: p.x - last.x, y: p.y - last.y };
+        if (Math.abs(was.x * now.y - was.y * now.x) < 0.5 && dot(was, now) > 0) turns.pop();
+      }
+      turns.push(p);
+    }
+    let d = 'M' + pt(turns[0]);
+    let longest = { a: turns[0], b: turns[1] || turns[0], length: -1 };
+    for (let i = 1; i < turns.length; i++) {
+      const from = turns[i - 1];
+      const at = turns[i];
+      const to = turns[i + 1];
+      const length = Math.hypot(at.x - from.x, at.y - from.y);
+      if (length > longest.length) longest = { a: from, b: at, length };
+      if (!to) {
+        d += ' L' + pt(at);
+        break;
+      }
+      const q = Math.min(6, length / 2, Math.hypot(to.x - at.x, to.y - at.y) / 2);
+      const back = unit(from.x - at.x, from.y - at.y);
+      const on = unit(to.x - at.x, to.y - at.y);
+      d += q < 0.5 ? ' L' + pt(at) : ' L' + pt({ x: at.x + back.x * q, y: at.y + back.y * q }) + ' Q' + pt(at) + ' ' + pt({ x: at.x + on.x * q, y: at.y + on.y * q });
+    }
+    return Object.assign({ d, head, at: (t) => ({ x: longest.a.x + (longest.b.x - longest.a.x) * t, y: longest.a.y + (longest.b.y - longest.a.y) * t }) }, cards);
+  }
+
   /** The line of a relationship as it runs now: its path, its head, and where its words go. */
   function route(r) {
     const a = terms.get(r.from);
@@ -427,15 +520,24 @@
       const label = { x: a.x + a.w / 2 + size * 0.35, y: a.y - a.h / 2 - size * 0.62 };
       return { d: 'M' + pt(p0) + ' C' + pt({ x: p0.x, y: p0.y - size }) + ' ' + pt({ x: end.x + size, y: end.y }) + ' ' + pt(end), head, at: () => label, fromCard: { x: p0.x - 10, y: p0.y - 10 }, toCard: { x: p1.x + 14, y: p1.y + 14 } };
     }
-    const routed = data.route && data.route.how !== 'direct' ? routedLine(r, a, b) : null;
+    const pins = r.pins && (r.pins.from || r.pins.to) ? r.pins : null;
+    const routed = data.route && data.route.how !== 'direct' ? (pins ? pinnedLine(r, a, b, data.route.how) : routedLine(r, a, b)) : null;
     if (routed) return routed;
+    // An end put by hand is where it was put; the other is where the line, drawn towards it, leaves its term.
+    const pa = pins && pins.from ? pinPoint(a, pins.from) : null;
+    const pb = pins && pins.to ? pinPoint(b, pins.to) : null;
+    const ra = pa || a;
+    const rb = pb || b;
+    // On a side that faces away from the other term the line bows round its own term, not through it.
+    const away = (pin, at, toward) => !!pin && NORMAL[pin.side].x * (toward.x - at.x) + NORMAL[pin.side].y * (toward.y - at.y) < 8;
+    if (pins && (away(pins.from, pa, rb) || away(pins.to, pb, ra))) return pinnedLine(r, a, b, 'curved');
     // Which way a line bows does not depend on which way the relationship points.
     const flip = r.from > r.to ? -1 : 1;
-    const dir = unit(b.x - a.x, b.y - a.y);
+    const dir = unit(rb.x - ra.x, rb.y - ra.y);
     const n = { x: -dir.y * flip, y: dir.x * flip };
-    const c = { x: (a.x + b.x) / 2 + n.x * r.bend, y: (a.y + b.y) / 2 + n.y * r.bend };
-    const p0 = leave(a, c.x, c.y);
-    const p1 = leave(b, c.x, c.y);
+    const c = { x: (ra.x + rb.x) / 2 + n.x * r.bend, y: (ra.y + rb.y) / 2 + n.y * r.bend };
+    const p0 = pa || leave(a, c.x, c.y);
+    const p1 = pb || leave(b, c.x, c.y);
     const dEnd = unit(p1.x - c.x, p1.y - c.y);
     const dStart = unit(c.x - p0.x, c.y - p0.y);
     const head = arrowHead(p1, dEnd, r.head);

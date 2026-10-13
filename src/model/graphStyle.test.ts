@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { edgeTypesOf } from './edgeKinds';
 import { edgeGeom, nodeSize, setNodeLook } from './geometry';
-import { dashOf, nodeLookFor, noStyle, normalizeGraphStyle, paint, patchEdges, patchEdgeType, patchNodes, patchNodeType, readableOn, resetOwn, resolveEdge, resolveNode, THEMES, withTheme, type GraphStyle } from './graphStyle';
+import { dashOf, nodeLookFor, noStyle, normalizeGraphStyle, paint, patchEdges, patchEdgeType, patchNodes, patchNodeType, readableOn, resetOwn, resolveEdge, resolveNode, THEMES, withAnchor, withoutAnchors, withTheme, type GraphStyle } from './graphStyle';
 import { toTurtle } from './rdf';
 import { sampleModel } from './sample';
 import { stable } from './stable';
@@ -103,7 +103,52 @@ describe('graph style', () => {
       new Set(['t1']),
       new Set(['r1']),
     );
-    expect(s).toEqual({ theme: 'colorful', nodeTypes: { class: { strokeWidth: 8, fontSize: 10, label: 'iri', opacity: 0.1 } }, edgeTypes: { subClassOf: { arrow: 'open', curve: 160 } }, nodes: { t1: { shape: 'circle' } }, edges: { r1: { color: 'teal' } } });
+    expect(s).toEqual({ theme: 'colorful', nodeTypes: { class: { strokeWidth: 8, fontSize: 10, label: 'iri', opacity: 0.1 } }, edgeTypes: { subClassOf: { arrow: 'open', curve: 160 } }, nodes: { t1: { shape: 'circle' } }, edges: { r1: { color: 'teal' } }, anchors: {} });
+  });
+
+  it('keeps where the ends of a line were put, by relationship, apart from what the model says', () => {
+    const m = sample();
+    const [r, other] = m.relations;
+    let style = withAnchor(m.style, r.id, 'from', { side: 'bottom', at: 0.25 });
+    style = withAnchor(style, r.id, 'to', { side: 'left', at: 0.5 });
+    style = withAnchor(style, other.id, 'to', { side: 'top', at: 1 });
+    expect(style.anchors).toEqual({ [r.id]: { from: { side: 'bottom', at: 0.25 }, to: { side: 'left', at: 0.5 } }, [other.id]: { to: { side: 'top', at: 1 } } });
+    // The same place again is no change at all, so nothing is drawn or kept for it.
+    expect(withAnchor(style, r.id, 'to', { side: 'left', at: 0.5 })).toBe(style);
+    expect(withAnchor(style, 'none', 'to', undefined)).toBe(style);
+    // Moving one end leaves every other relationship's entry the very object it was.
+    expect(withAnchor(style, r.id, 'to', { side: 'left', at: 0.6 }).anchors[other.id]).toBe(style.anchors[other.id]);
+
+    const pinned = { ...m, style };
+    // It is no statement: the model means what it meant, and is written as it was.
+    expect(stable(pinned)).toBe(stable(m));
+    expect(toTurtle(pinned)).toBe(toTurtle(m));
+    // Saved and opened again, the ends are where they were put.
+    const back = normalizeModel(JSON.parse(JSON.stringify(pinned)));
+    expect(back.style.anchors).toEqual(style.anchors);
+    // Another theme changes how things look, not where lines meet their terms.
+    expect(withTheme(style, THEMES[1]).anchors).toBe(style.anchors);
+    // Styles of single relationships are another matter, and taking those away leaves the ends alone.
+    expect(resetOwn(style, [], [r.id]).anchors).toEqual(style.anchors);
+
+    // One end back to automatic, then the other: the entry goes with the last of them.
+    const one = withAnchor(style, r.id, 'from', undefined);
+    expect(one.anchors[r.id]).toEqual({ to: { side: 'left', at: 0.5 } });
+    expect(withAnchor(one, r.id, 'to', undefined).anchors).toEqual({ [other.id]: { to: { side: 'top', at: 1 } } });
+    expect(withoutAnchors(style, [r.id, other.id]).anchors).toEqual({});
+    expect(withoutAnchors(style, ['none'])).toBe(style);
+  });
+
+  it('reads back only ends that can be: of relationships there are, on a side, somewhere along it', () => {
+    const s = normalizeGraphStyle(
+      { anchors: { r1: { from: { side: 'top', at: 0.4 }, to: { side: 'inside', at: 0.5 } }, r2: { from: { side: 'left', at: 9 }, to: { side: 'right' } }, r3: 'top', gone: { from: { side: 'top', at: 0.5 } } } },
+      new Set<string>(),
+      new Set(['r1', 'r2', 'r3']),
+    );
+    // An entry with neither end left in it is no entry.
+    expect(s.anchors).toEqual({ r1: { from: { side: 'top', at: 0.4 } }, r2: { from: { side: 'left', at: 1 } } });
+    // A model from before lines could be put anywhere opens with every end placed automatically.
+    expect(normalizeGraphStyle({ theme: 'standard' }, new Set(), new Set()).anchors).toEqual({});
   });
 
   it('measures a node by its shape and meets its outline with its edges', () => {

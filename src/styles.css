@@ -486,6 +486,11 @@ textarea {
   gap: 10px;
 }
 
+/* Where there is more than fits, the panel scrolls: nothing in it is squeezed to make room. */
+.inspector > * {
+  flex-shrink: 0;
+}
+
 .inspector h2,
 .dialog h2 {
   margin: 0;
@@ -522,6 +527,36 @@ textarea {
 .field.two {
   flex-direction: row;
   gap: 8px;
+}
+
+/* Where a line meets each of its terms: which end, the side, and how far along it. */
+.pin-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.pin-row > span {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.pin-row input[type='range'] {
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--accent);
+}
+
+.pin-row input[type='range']:disabled {
+  opacity: 0.45;
+}
+
+.field.pins > .btn {
+  align-self: flex-start;
 }
 
 .field.two label {
@@ -825,6 +860,132 @@ textarea {
   stroke-width: 2;
   stroke-dasharray: 6 4;
   pointer-events: none;
+}
+
+/* The two ends of the selected relationship, to take hold of: hollow where the end is placed
+   automatically, filled where it was put by hand. */
+.end-handle {
+  cursor: grab;
+}
+
+.end-hit {
+  fill: transparent;
+}
+
+.end-dot {
+  fill: var(--canvas);
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  transition: r var(--quick);
+}
+
+.end-handle.set .end-dot {
+  fill: var(--accent);
+  stroke: var(--canvas);
+  stroke-width: 2;
+}
+
+.end-handle:hover .end-dot {
+  r: 7px;
+}
+
+.graph.dragging-end,
+.graph.dragging-end * {
+  cursor: grabbing !important;
+}
+
+/* The handle a new relationship is drawn from has no business showing under an end that is held. */
+.graph.dragging-end .handle {
+  display: none;
+}
+
+/* An end that is looking for another term: the line it belongs to steps back, a dashed one
+   follows the pointer, and each term says whether it could take the end. A term that cannot is
+   faded, which reads without colour; the one under the pointer is ringed, solid if it can take the
+   end and broken if it cannot. */
+.edge.moving {
+  opacity: 0.3;
+}
+
+.edge.moving .edge-line {
+  stroke-dasharray: 3 4;
+}
+
+.reconnect-line {
+  pointer-events: none;
+}
+
+.reconnect-line line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.reconnect-line circle {
+  fill: var(--accent);
+  stroke: var(--canvas);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.reconnect-line.ok line {
+  stroke-dasharray: none;
+  stroke-width: 2.5;
+}
+
+.reconnect-line.refused line,
+.reconnect-line.refused circle {
+  stroke: var(--danger);
+}
+
+.reconnect-line.refused circle {
+  fill: var(--canvas);
+}
+
+.node.cannot-take {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.node.can-take .node-box {
+  stroke: var(--accent) !important;
+}
+
+.node.refused {
+  opacity: 0.7;
+}
+
+.node.refused .node-box {
+  stroke: var(--danger) !important;
+  stroke-width: 3;
+  stroke-dasharray: 3 3;
+}
+
+.reconnect-why {
+  position: absolute;
+  z-index: 6;
+  max-width: 280px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.reconnect-why.refused {
+  border-left-color: var(--danger);
+}
+
+.reconnect-why.refused::before {
+  content: 'Not here. ';
+  font-weight: 600;
+  color: var(--danger);
 }
 
 .select-box {

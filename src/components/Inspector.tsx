@@ -1,5 +1,7 @@
 import { currentDl, useStore } from '../model/store';
 import { typed } from '../model/relating';
+import type { End } from '../model/reconnect';
+import { SIDES, type Side } from '../model/geometry';
 import { creditOf, entailmentsOf } from '../model/reasoning';
 import { useMemo, useState } from 'react';
 import { baseIriOf } from '../model/iri';
@@ -154,6 +156,8 @@ function ModelPanel() {
         <dd>Add a term, or rename one</dd>
         <dt>Drag the ⊕ handle</dt>
         <dd>Relate two terms</dd>
+        <dt>Drag a line's end</dt>
+        <dd>Move where it meets its term, or reconnect it</dd>
         <dt>Right-click</dt>
         <dd>Menu for anything</dd>
         <dt>Ctrl + drag</dt>
@@ -912,10 +916,69 @@ function RelationPanel({ rel }: { rel: Relation }) {
         <span>Description</span>
         <CommitTextarea rows={4} value={rel.description} onCommit={(description) => update(rel.id, { description })} />
       </label>
+      <ConnectionPoints rel={rel} />
       <button className="btn danger" onClick={() => st().remove([], [rel.id])}>
         Delete relation
       </button>
     </>
+  );
+}
+
+const SIDE_NAME: Record<Side, string> = { top: 'Top', right: 'Right', bottom: 'Bottom', left: 'Left' };
+
+/**
+ * Where the two ends of the line meet their terms on the canvas: what dragging an end along its
+ * term does, for whoever would rather choose than drag. It is how the graph is drawn and is kept
+ * with its style; the ontology says nothing else for it.
+ */
+function ConnectionPoints({ rel }: { rel: Relation }) {
+  const pins = useStore((s) => s.model.style.anchors[rel.id]);
+  const names = useStore((s) => [s.model.terms.find((t) => t.id === rel.from)?.name || 'Unnamed', s.model.terms.find((t) => t.id === rel.to)?.name || 'Unnamed'].join('\n')).split('\n');
+  const st = useStore.getState;
+  // A relationship from a term to itself is drawn as a loop, which has one place to be.
+  if (rel.from === rel.to) return null;
+  const row = (end: End) => {
+    const pin = pins?.[end];
+    const term = names[end === 'from' ? 0 : 1];
+    return (
+      <div className="pin-row">
+        <span>{end === 'from' ? 'Start' : 'End'}</span>
+        <select
+          aria-label={`Side of “${term}” the line ${end === 'from' ? 'starts' : 'ends'} on`}
+          value={pin?.side ?? ''}
+          onChange={(e) => st().setAnchor(rel.id, end, e.target.value ? { side: e.target.value as Side, at: pin?.at ?? 0.5 } : undefined)}
+        >
+          <option value="">Automatic</option>
+          {SIDES.map((side) => (
+            <option key={side} value={side}>
+              {SIDE_NAME[side]}
+            </option>
+          ))}
+        </select>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          disabled={!pin}
+          value={Math.round((pin?.at ?? 0.5) * 100)}
+          aria-label={`How far along that side of “${term}”, in percent`}
+          title={pin ? 'How far along the side: from its left or upper end to its right or lower end' : 'Choose a side first'}
+          onChange={(e) => pin && st().setAnchor(rel.id, end, { side: pin.side, at: Number(e.target.value) / 100 }, `anchor:${rel.id}:${end}`)}
+        />
+      </div>
+    );
+  };
+  return (
+    <div className="field pins">
+      <span>Connection points</span>
+      {row('from')}
+      {row('to')}
+      <small>Where the line meets each term on the canvas. This changes the picture only, never what the model says. On the canvas: select the line and drag one of its ends along the term.</small>
+      <button className="btn small" disabled={!pins} title="Have both ends placed automatically again" onClick={() => st().resetAnchors([rel.id])}>
+        Reset to automatic
+      </button>
+    </div>
   );
 }
 

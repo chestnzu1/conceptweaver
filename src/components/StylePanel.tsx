@@ -475,9 +475,9 @@ function ThemesTab({ style }: { style: GraphStyle }) {
         </button>
         <button
           className="btn small"
-          title="The standard theme, and no styles of their own on single terms or relationships. Colours given to terms on the canvas stay."
+          title="The standard theme, and no styles of their own on single terms or relationships. Colours given to terms on the canvas stay, and so does where lines were made to meet their terms."
           onClick={() => {
-            st().setStyle(() => noStyle());
+            st().setStyle((s) => ({ ...noStyle(), anchors: s.anchors }));
             st().notify('Graph style restored to the default. Undo brings the previous one back.');
           }}
         >
