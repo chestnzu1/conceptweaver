@@ -20,8 +20,8 @@ describe('types of model', () => {
     expect(MODEL_TYPE_LIST.map((t) => t.id)).toEqual(['ontology', 'skos']);
     const owl = MODEL_TYPES.ontology;
     const skos = MODEL_TYPES.skos;
-    expect(owl.views).toEqual(['graph', 'table', 'hierarchy', 'checks', 'align', 'rdf', 'sparql', 'vocab']);
-    expect(skos.views).toEqual(['graph', 'table', 'hierarchy']);
+    expect(owl.views).toEqual(['graph', 'table', 'structure', 'checks', 'align', 'rdf', 'sparql', 'vocab']);
+    expect(skos.views).toEqual(['graph', 'table', 'structure']);
     expect(skos.entityTabs).toEqual(['concept', 'relations', 'governance']);
     expect(skos.entityColumns).toEqual(['name', 'iri', 'suffix', 'type']);
     expect(skos.editorSections).toEqual([]);
@@ -41,7 +41,7 @@ describe('types of model', () => {
     expect(configOf(m).label).toBe('SKOS-like vocabulary');
     expect(allowsView(m, 'checks')).toBe(false);
     expect(viewFor(m, 'rdf')).toBe('graph');
-    expect(viewFor(m, 'hierarchy')).toBe('hierarchy');
+    expect(viewFor(m, 'structure')).toBe('structure');
     expect(supports(m, 'reasoning')).toBe(false);
     expect(termTypeFor(m, 'instance')).toBe('concept');
     // A model saved before there were types of model is an OWL ontology.
@@ -66,11 +66,11 @@ describe('types of model', () => {
     beforeEach(() => st().replaceModel(vocabulary()));
 
     it('does not open a function the type of model does not have', () => {
-      st().setView('hierarchy');
-      expect(st().view).toBe('hierarchy');
+      st().setView('structure');
+      expect(st().view).toBe('structure');
       for (const view of ['checks', 'align', 'rdf', 'sparql', 'vocab'] as const) {
         st().setView(view);
-        expect(st().view).toBe('hierarchy');
+        expect(st().view).toBe('structure');
       }
     });
 

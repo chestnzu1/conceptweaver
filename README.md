@@ -81,7 +81,7 @@ More on what the advanced reasoner does and does not cover is under
   conversion (broader ↔ is-a, exactMatch ↔ equivalentClass, …). Either form can be exported
   without converting.
   - An ontology has every function.
-  - A vocabulary has *Graph*, *Entities* and *Hierarchy*. Its entities are concepts
+  - A vocabulary has *Graph*, *Entities* and *Structure*. Its entities are concepts
     (`skos:Concept`), managed by name, IRI, IRI suffix and type; their labels, definitions, notes
     and ownership are under *Governance & Metadata*. A relationship is plain or "is a", which
     builds the hierarchy and is written `skos:broader`. There is no reasoning, no restrictions and
@@ -198,7 +198,91 @@ More on what the advanced reasoner does and does not cover is under
   only when asked. The button shows how many are drawn and stays as it was left; *Show
   inferred facts in the graph*, above the list under Validation → Inferred facts, switches it
   on and goes to the graph.
-- **Views** – graph, editable table, hierarchy tree, and model checks.
+- **Views** – graph, editable table, structure explorer, and model checks.
+- **Structure** – the hierarchy to look through, where the sidebar is for getting to an entity
+  and *Entities* for editing one. It reads the ontology and changes nothing in it.
+  - *Explore* shows one of two hierarchies. **Asserted**: every class under each superclass
+    stated for it (`rdfs:subClassOf`; in a vocabulary, every concept under its broader concepts)
+    and nothing else. **Inferred**: what the reasoner chosen under Validation entails, each class
+    under the classes *directly* above it. Classes entailed to be equivalent share one place
+    (that includes classes that are each other's superclasses), and a class that can have no
+    instance is under `owl:Nothing` and nowhere else. A place that is entailed and nowhere stated
+    is marked *inferred*; the mark can be switched off.
+  - The inferred hierarchy always says which reasoner it is from, whether that reasoner's answer
+    may be incomplete (the fast reasoner's always may; HermiT's when it left something out, which
+    *why* spells out), and that it is of the ontology as it is now. The fast reasoner is asked at
+    once. HermiT answers when it is run, and its answer is withdrawn as soon as the ontology
+    changes: then, or when it gave none, or when the ontology is inconsistent, there is no inferred
+    hierarchy and the view says why. The asserted hierarchy is never shown in its place, and one
+    reasoner's answer is never filled in with the other's.
+  - Only named classes are in either hierarchy: an individual is not under its class, a data
+    property is not under the class that has it, and a superclass that is an anonymous class
+    expression is not a class above anything (the class in focus says how many of those it has).
+    A class with several superclasses is one class in several places, says how many, and each
+    place opens by itself. In the asserted hierarchy, stated equivalence is shown on the class
+    without merging it with the other, and classes that are each other's superclasses are marked
+    as a cycle and followed once.
+  - Choosing a class brings it into focus without selecting it, so no editor opens. Beside the
+    hierarchy is what there is to say of its structure: its asserted superclasses, and apart
+    from them the direct ones the reasoner entails; equivalent classes; how many subclasses it
+    has directly and in all; how many levels it is below `owl:Thing`, as a range where it is
+    reached by ways of different length; whether it has one superclass or several; and each way
+    down to it, which can be pressed to see that place. Its superclasses by every way up are
+    marked in the hierarchy, and so is what is on show below it. *Open in Entities* and *View in
+    Graph* lead to where it is edited and drawn, and a class chosen in the sidebar or on the
+    canvas is the one in focus there.
+  - The search narrows the hierarchy by name, other labels and IRI (in full or with a prefix).
+    Branches are fetched as they are opened, long lists come a page at a time, and only the
+    lines in view are drawn. The hierarchy is one stop for the Tab key: the arrow keys move
+    through it, open and fold branches, and Home and End go to its ends.
+  - *Compare* sets two classes side by side. They are chosen by search, from the class in focus
+    (*Compare…* beside it in Explore), or, with one chosen, from its superclasses; *Swap*
+    exchanges them. It says how the two stand to each other (one a subclass of the other,
+    equivalent, siblings, or neither, with the nearest classes above both) and whether they can
+    share an instance, each with how it is known: stated outright, through stated links (which
+    are listed), or entailed according to the reasoner in use. Then every restriction and kept
+    class expression of either: *Own* where the class asserts it, *Inherited* where a class
+    above it (or equivalent to it) does, with that class named and marked where only the
+    reasoner puts it above, and the counts of what the two share and what each has alone. Their
+    superclasses are set side by side in the same way. What a line names opens in the side panel.
+  - One restriction is called *stronger than* another only on evidence: the two are on the same
+    property, the numbers allow it, and the filler of the one is a subclass of the filler of the
+    other, which is shown with how it is known. `hasLocalProfile some OrganisationLocalProfile`
+    is stronger than `hasLocalProfile some PartyLocalProfile` because, and only while,
+    OrganisationLocalProfile is a subclass of PartyLocalProfile. Two restrictions that merely
+    read alike are two restrictions. Where the reasoner chosen has no answer, the comparison says
+    that only what is stated was read, and marks what could not be checked *unverified* rather
+    than deciding it either way.
+  - *View semantic explanation* gives the asserted axioms a subclass relationship follows from:
+    the stated links of a chain, or, for what only the fast reasoner entails, the grounds that
+    reasoner gives. For what only HermiT entails there is none to give, and that is what it says.
+  - Not compared: restrictions on different properties, even where one is a sub-property of the
+    other; datatypes with each other; and what a kept class expression means, which is compared
+    as text. A property that merely has a class as its domain is not listed as a restriction of it.
+  - *Analyze* sums the hierarchy up in numbers, for the asserted or the inferred one: how many
+    classes, how many at the top and how many leaves, the deepest level and the average depth
+    (the mean of each class's deepest level; `owl:Thing` is level 0, and classes that are each
+    other's superclasses count as one level), how many classes have several superclasses, how
+    many have no stated superclass, the groups of equivalent classes, the classes in cycles, and
+    the unsatisfiable classes. That last number is a reasoner's, says whose it is, and is "not
+    known" rather than 0 when the reasoner chosen has no answer.
+  - Four charts show how the classes are spread: over the levels, by how many direct subclasses
+    they have, over the branches under each class at the top, and by how many direct superclasses
+    they have. *Structural findings* lists what stands out: cycles, superclasses that are stated
+    and also follow from another stated one, classes with several superclasses, and classes with
+    unusually many direct subclasses, unusually deep leaves, or unusually many statements about
+    them. "Unusually" is judged against the ontology itself (far beyond its upper quartile), and
+    none of it is called an error: only an unsatisfiable class is a reasoner's finding. A stated
+    superclass that a reasoner merely does not put directly above the class is not counted as
+    redundant, since the reasoner may have needed it to find the class in between.
+  - Every number, bar and finding lists the classes behind it, a page at a time; a class in the
+    list opens in Explore, *View in Graph* draws the listed classes as a subgraph on the canvas,
+    and *Open Validation* goes to what Validation found under the same rule. The measuring runs
+    in short stretches so the page stays usable, shows how far it has got with a *Cancel* beside
+    it when it takes long, and is kept for the revision it was made for.
+  - Not done: the fast reasoner is asked about this ontology alone, without the ontologies it
+    imports (HermiT is sent them, as under Validation). A class entailed to be equivalent to
+    `owl:Thing` is not marked as such.
 - **Model checks** – unnamed and duplicate terms, circular or redundant hierarchies, isolated
   terms, unlabelled or duplicate relations, malformed cardinalities, missing descriptions and more.
 - **Arrange** – layered hierarchy layout or force-directed network layout.
@@ -338,11 +422,41 @@ terms the tables, checks, reasoner, RDF and SPARQL still work but the canvas bec
 Long tables and result lists are shown a page at a time; the search box narrows them.
 `BENCH_OUT=/tmp/bench.txt pnpm exec vitest run src/model/bench.test.ts` times the model layer.
 
+The Structure Explorer is built for more than that, because it does not need the ontology to be
+in the page: it asks a service, a branch or a page at a time, and draws only the lines in view.
+`BENCH_OUT=/tmp/structure.txt pnpm exec vitest run src/structure/bench.test.ts` times that
+service on generated hierarchies. On this machine, for 50,000 classes (200,000 in brackets):
+building the hierarchy 0.11 s (0.6 s), the inferred hierarchy from a reasoner's direct links
+0.23 s (1.3 s), measuring it for *Analyze* 0.2 s (1 s, in stretches that leave the page usable),
+and under 10 ms (25 ms) for a page of subclasses, a search, the ways down to a class and a
+comparison. What is said of a class takes as little once the depths have been worked out, which
+is done once for a revision and takes 0.08 s (0.5 s). *Expand all* to 10,000 lines is 29
+questions to the service, one for each level, not one for each branch.
+
+What does not scale with it is the rest of the app, which holds the whole model in the page. The
+fast reasoner takes 0.13 s for 650 classes and 1.3 s for 5,200, and runs after every edit; the
+canvas draws every term. So that the second of these does not slow the other views down, the
+canvas is not laid out or painted while a view covers it: on 5,200 classes that took a click in
+*Structure* from about 600 ms to under 70 ms. In the browser, with the 5,200-class generated
+ontology open, *Expand all* (7,325 lines, 40 of them drawn) takes 0.2 s, what is said of a class
+0.1 s, *Analyze* 0.2 s; opening such a model still takes several seconds, most of it the canvas
+and the checks behind the Validation count.
+
 ## Layout of the code
 
 - `src/model` – everything that isn't UI: types, the zustand store (state, history, autosave),
   layout algorithms, checks, RDF import/export, file handling.
 - `src/components` – the SVG canvas, side panels, views and menus.
+- `src/structure` – what the Structure Explorer asks about an ontology and how it is answered,
+  apart from both of the above. `contracts.ts` is the whole of what its views know: the questions
+  (`StructureService`), asked by IRI, of a named revision, a page at a time, each answer with
+  where it comes from. `graph.ts`, `compare.ts`, `analyze.ts` and `service.ts` answer them from classes,
+  subclass links and asserted axioms held in memory; `outline.ts` is what a reader of the
+  hierarchy keeps of it; `http.ts` is the same service asked over HTTP, with what a server does
+  with a request, for when there is a backend (see *Moving the Structure Explorer to a semantic
+  backend*). Only `local.ts`
+  reads the app's model, and a test (`boundaries.test.ts`) fails if anything else there does, or
+  if any of it reaches for the interface. A backend takes part by implementing `StructureService`.
 
 ## OWL constructs without an editor
 
@@ -375,6 +489,74 @@ domains, ranges and hierarchies of annotation properties, `owl:imports` and the 
 annotations other than its name and description, and a domain or range that is a class
 expression other than a union of named classes. A value whose datatype is not one of the twelve
 the app offers is kept as plain text.
+
+## Moving the Structure Explorer to a semantic backend
+
+The Structure Explorer is written so that the ontology can move out of the browser (to Spring
+Boot with the OWL API, HermiT or ELK, and Jena TDB2, say) without its views being touched.
+
+**What depends on what.** The views (`src/components/Structure*.tsx`) know one interface,
+`StructureService` in `src/structure/contracts.ts`: nine questions, each asked by IRI of a named
+revision of a named ontology, each answered with plain data. `Structure.tsx` has the one line
+that says which service that is: today `createLocalStructureService`, which reads the model in
+the editor. With a backend it is `createHttpStructureService(url)` from `src/structure/http.ts`.
+A test puts every question through that client and through JSON and compares the answers with
+the local ones, so what goes over the wire is settled. `boundaries.test.ts` fails if anything in
+`src/structure` other than `local.ts` reads the app's model, or if any of it reaches for React
+or the store.
+
+**The wire.** One `POST {base}/structure/{question}` for each question, the query as the JSON
+body, the answer as the JSON response. A refusal is a status with `{ code, message }`:
+`stale-revision` 409, `not-found` 404, `invalid` 400, `unsupported` 501.
+`answerStructureRequest` in `http.ts` is all a controller has to do.
+
+| Question | Answers | With the OWL API and a reasoner | Notes |
+|---|---|---|---|
+| `children`, `branches` | The direct subclasses of a class (or the top), a page at a time; `branches` for many classes at once | Asserted: the `SubClassOf` axioms with that named superclass. Inferred: `reasoner.getSubClasses(c, true)`; each `Node` is one line, its other members the `equivalents` | Sorted by label then IRI on the server. `through` asks for the page a subclass is on. `filter` keeps what matches and what leads to it: a label index (Lucene, or Jena's text index) and the ancestors of the hits |
+| `paths` | The ways down to a class, shortest first | Upward over the same links, never passing a class twice | A few ways at most; `truncated` says there are more |
+| `summary` | Stated superclasses and equivalents, the direct inferred ones, depth, descendants | `getSuperClasses(c, true)`, `getEquivalentClasses(c)`, `isSatisfiable(c)`; anonymous superclasses are counted, not listed | Depths are worth working out once for a revision |
+| `search` | Classes by text, best first | The label index | |
+| `compare` | How two classes stand, and what each asserts and inherits | Restrictions come as structured axioms, so more kinds can be read than here (`hasValue`, nested expressions). Whether one implies another can be asked outright: `isEntailed(SubClassOf(R2, R1))`, which also covers sub-properties and datatypes | Extend `ClassAxiom` for the further kinds; keep `Basis` saying how each thing is known |
+| `explain` | The asserted axioms a subclass relationship follows from | The OWL API's explanation generator, for `SubClassOf(sub, sup)` | The one thing the local service cannot give for HermiT, which is why it says "no justification" |
+| `analyze`, `members` | The hierarchy in numbers, and the classes behind each | Over the reasoner's class hierarchy, as a job for a revision | Over plain HTTP there is no progress to report until it is done; for that, poll or stream |
+
+**Revisions.** `revisionId` has to change whenever an axiom changes and at no other time (not
+when something is moved on a canvas). A counter bumped by an `OWLOntologyChangeListener`, or
+the TDB2 commit, will do. Every answer carries the revision it is of; a reasoner's answer
+carries the revision that was reasoned over, and is `stale` once that is no longer the current
+one. The views show nothing of a stale answer, and ask again when the revision changes.
+
+**Provenance.** One reasoner stands behind an answer, and it is named. ELK is complete for OWL
+2 EL only: for an ontology outside it, say `incomplete` and why, as the fast reasoner does here.
+For an inconsistent ontology there is no inferred hierarchy: answer with status `inconsistent`
+and no classes, never with the asserted hierarchy in its place.
+
+**What the local service does that a backend has to do the same way.** These are the choices
+the views rely on, each covered by a test in `src/structure`:
+
+- Only named classes are in a hierarchy. An individual is not under its class, and a superclass
+  that is a class expression is counted for the class and is not a line.
+- The asserted hierarchy is what is stated: classes that are each other's superclasses are a
+  cycle (`inCycle`), followed once, and one class of a cycle with nothing above it is listed at
+  the top so that every class can be reached. Stated equivalence is shown on each class and
+  does not merge them.
+- The inferred hierarchy has one line for each group of equivalent classes, under the first of
+  them by label; a class that can have no instance is under `owl:Nothing` and nowhere else; a
+  place that is entailed and nowhere stated is marked `entailedOnly`.
+- Direct and indirect are never mixed: `children`, `summary` and `paths` give direct links only.
+- owl:Thing is level 0; a class's depth is a range; a cycle is one level.
+- A stated superclass is redundant only when another stated one leads to it.
+- "Unusually" many subclasses, levels or statements is judged against the ontology itself.
+
+**What stays in the browser.** `outline.ts` (which branches are open, and the lines to draw from
+what was fetched), the focus and the two compared classes (in the store), and `StructureHost`,
+through which the views open an entity in the editor or on the canvas. Those last two still
+need the app to find its own term for an IRI; a class without an IRI yet is known locally as
+`urn:conceptweaver:term:…`, which a backend never has to produce.
+
+**Limits a server may set.** A page is 200 classes unless asked otherwise and never more than
+1,000; `branches` takes up to 500 classes; a search gives 12 matches and the total. None of these
+is known to the views, which ask for the next page or the next batch.
 
 ## OWL 2 DL reasoning (HermiT)
 

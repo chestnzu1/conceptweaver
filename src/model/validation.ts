@@ -222,6 +222,18 @@ export const REASONER_LIMITS = [
  * that cannot hold together, and property characteristics that exclude each other.
  */
 export function owlFindings(model: Model, fresh = false): { summary: OwlSummary; findings: Finding[] } {
+  // The count in the header, the Structure Explorer and anything else that asks about the model as it
+  // is are given the one answer. A run of the workbench asks afresh.
+  const kept = fresh ? undefined : owlFound.get(model);
+  if (kept) return kept;
+  const result = findOwl(model, fresh);
+  owlFound.set(model, result);
+  return result;
+}
+
+const owlFound = new WeakMap<Model, { summary: OwlSummary; findings: Finding[] }>();
+
+function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings: Finding[] } {
   const t0 = performance.now();
   const findings: Finding[] = [];
   const ix = entityIndex(model);

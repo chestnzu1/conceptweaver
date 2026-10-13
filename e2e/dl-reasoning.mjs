@@ -150,6 +150,69 @@ ok(facts.length === 4 && facts[0] === 'inferred “Ann” is an instance of “W
 await tab('RDF');
 const stated = await page.locator('.rdf-code').innerText();
 ok(!/:Clerk [^.]*:Worker/.test(stated) && !/:Ann [^.]*:Worker/.test(stated), 'none of it is in the ontology: inferred and asserted stay apart');
+
+// ---------------------------------------------------------------- the inferred hierarchy, in the Structure Explorer
+const structure = page.locator('.view.structure');
+// The hierarchy as text: indentation from the line's level, and the tags a line carries.
+const outline = () => structure.locator('.tree-row').evaluateAll((rows) => rows.map((r) => `${'  '.repeat(Number(r.getAttribute('aria-level')) - 1)}${r.querySelector('.tree-name, .st-root-name').textContent}${[...r.querySelectorAll('.tag')].filter((x) => getComputedStyle(x).display !== 'none').map((x) => ` [${x.textContent.trim()}]`).join('')}`).join('\n'));
+const drawn = () => page.waitForFunction(() => document.querySelector('.view.structure .tree')?.getAttribute('aria-busy') === 'false' && !document.querySelector('.view.structure .st-wait'));
+await tab('Structure');
+await structure.locator('.tree-row').nth(1).waitFor();
+await drawn();
+ok((await outline()) === ['owl:Thing', '  Employed', '    Clerk [2 superclasses]', '  Party Local Profile', '    Organisation Local Profile', '  Person', '    Clerk [2 superclasses]', '  Physical Address', '  Worker'].join('\n'), 'the asserted hierarchy is what the ontology states: Worker at the top, Clerk under Person and Employed:\n' + (await outline()));
+await structure.locator('.st-which').getByRole('button', { name: 'Inferred', exact: true }).click();
+await structure.locator('.st-reasoner').waitFor();
+await drawn();
+await structure.getByRole('button', { name: 'Expand all' }).click();
+await drawn();
+ok(flat(await structure.locator('.st-prov').innerText()) === 'HermiT 1.4.5.456 · complete · of the ontology as it is now', 'the inferred hierarchy is HermiT’s, which says so, and that its answer is complete and current: ' + flat(await structure.locator('.st-prov').innerText()));
+const INFERRED = ['owl:Thing', '  Employed', '    Worker [inferred] [2 superclasses]', '      Clerk [inferred]', '  Person', '    Worker [inferred] [2 superclasses]', '      Clerk [inferred]', '  Physical Address', '  owl:Nothing', '    Organisation Local Profile [unsatisfiable]', '    Party Local Profile [unsatisfiable]'].join('\n');
+ok((await outline()) === INFERRED, 'each class under the classes directly above it: Worker under what defines it, Clerk under Worker and no longer directly under Person, the two unsatisfiable classes under owl:Nothing:\n' + (await outline()));
+await structure.getByLabel('Mark what is only inferred').uncheck();
+ok(!(await outline()).includes('[inferred]'), 'the marks on what is only inferred can be switched off');
+await structure.getByLabel('Mark what is only inferred').check();
+await structure.locator('.tree-name', { hasText: /^Clerk$/ }).first().click();
+await page.waitForFunction(() => document.querySelector('.view.structure .st-summary section'));
+let about = flat(await structure.locator('.st-summary section').first().innerText());
+ok(/Asserted Employed, Person Inferred Worker ?inferred Directly above it, according to HermiT 1\.4\.5\.456\./i.test(about), 'of Clerk it says what is asserted, and apart from that the direct superclass HermiT entails, marked as inferred and credited: ' + about);
+await structure.locator('.tree-name', { hasText: /^Party Local Profile$/ }).click();
+await structure.locator('.st-unsat').waitFor();
+ok(/^Unsatisfiable\. It can never have an instance.*according to HermiT 1\.4\.5\.456\./.test(flat(await structure.locator('.st-unsat').innerText())), 'of an unsatisfiable class it says so, and who found it');
+await structure.locator('.st-unsat').getByRole('button', { name: 'See why in Validation' }).click();
+ok((await v.locator('tr.result.sel').count()) === 1 && flat(await v.locator('tr.result.sel').innerText()).includes('Party Local Profile') && (await explanation.locator('li').count()) === 3, 'and leads to the finding and HermiT’s own justification of it');
+await page.screenshot({ path: shots + 'dl-structure.png' });
+
+// two classes side by side, with HermiT's answer behind what is entailed
+await tab('Structure');
+await structure.getByRole('tab', { name: 'Compare' }).click();
+const slot = (n) => structure.locator('.st-slot').nth(n);
+const put = async (n, text, name) => { await slot(n).getByRole('combobox').fill(text); await slot(n).locator('.subgraph-found button', { hasText: new RegExp('^' + name + '\\b') }).first().click(); };
+await put(0, 'clerk', 'Clerk');
+await put(1, 'worker', 'Worker');
+const compared = structure.locator('.st-compared');
+await compared.waitFor();
+let relation = flat(await compared.locator('.st-relation').innerText());
+ok(flat(await compared.locator('.st-headline').innerText()) === 'Clerk SubClassOf Worker' && relation.includes('Entailed, according to HermiT 1.4.5.456. No stated links lead from the one to the other.') && relation.includes('is from HermiT 1.4.5.456, whose answer is complete'), 'a relationship only HermiT finds is given as entailed, credited to it, and told apart from a stated one: ' + relation.slice(0, 150));
+await compared.locator('.st-relation').getByRole('button', { name: 'View semantic explanation' }).click();
+await compared.locator('.st-why').waitFor();
+ok(flat(await compared.locator('.st-why').innerText()) === 'No justification is available. The reasoner entails it and gives no justification for it here.', 'asked to explain it, it says there is no justification to give, and makes none up: ' + flat(await compared.locator('.st-why').innerText()));
+const supersOf = await compared.locator('section[aria-label="The superclasses of the two"] tbody tr').evaluateAll((trs) => trs.map((r) => [...r.cells].map((c) => c.innerText.trim()).join(' | ')));
+ok(supersOf.join('; ') === 'Employed | Stated | entailed; Person | Stated | entailed; Worker | entailed | is this class', 'the superclasses of the two are set side by side, the entailed ones marked: ' + supersOf.join('; '));
+
+// the hierarchy in numbers, with HermiT's answer for what only a reasoner can say
+await structure.getByRole('tab', { name: 'Analyze' }).click();
+await structure.locator('.st-tiles').waitFor();
+await structure.locator('.st-prov-line').waitFor();
+const metric = async (id) => flat(await structure.locator(`[data-metric="${id}"] .st-tile`).innerText());
+ok(flat(await structure.locator('.st-prov-line').innerText()) === 'The inferred hierarchy, from HermiT 1.4.5.456, whose answer is complete, of the ontology as it is now.' && (await metric('unsatisfiable')) === 'Unsatisfiable 2 according to HermiT 1.4.5.456', 'the inferred hierarchy is measured as HermiT gave it, and the unsatisfiable classes are counted as its finding: ' + (await metric('unsatisfiable')));
+ok((await metric('classes')).startsWith('Classes 7') && (await metric('top')).startsWith('At the top 3') && (await metric('maxDepth')).startsWith('Deepest level 3') && (await metric('multipleInheritance')).startsWith('Multiple inheritance 1'), 'its numbers are of that hierarchy: three classes at the top, Clerk on the third level under Worker, which has two superclasses');
+const serious = structure.locator('[data-finding="unsatisfiable"]');
+ok(flat(await serious.locator('strong').innerText()) === '2 unsatisfiable classes' && /according to HermiT 1\.4\.5\.456/.test(await serious.innerText()) && (await serious.getAttribute('class')) === 'serious', 'they lead the findings, as the one kind that is a reasoner’s finding and not a pattern to review');
+await serious.getByRole('button', { name: 'Open Validation' }).click();
+ok((await v.locator('tr.result.sel').count()) === 1 && /Unsatisfiable class/.test(flat(await v.locator('tr.result.sel').innerText())), 'and Open Validation goes to the finding itself');
+await tab('Structure');
+await structure.getByRole('tab', { name: 'Explore' }).click();
+
 await tab(/^Validation/);
 await v.locator('.tabs.sub').getByRole('tab', { name: /^Results/ }).click();
 
@@ -168,12 +231,21 @@ await types.locator('.subgraph-found button').first().dispatchEvent('pointerdown
 await page.locator('.term-list').getByRole('tab', { name: /^Classes/ }).click();
 await page.locator('.term-list').getByRole('button', { name: 'Clerk', exact: true }).first().click();
 ok((await listed('inferred-superclasses')).length === 0, 'after an edit what the OWL 2 DL reasoner entailed of the old model is no longer shown in the editor');
+await tab('Structure');
+await structure.locator('.st-none').waitFor();
+let none = flat(await structure.locator('.st-none').innerText());
+ok(none.startsWith('There is no inferred hierarchy to show. The answer of HermiT 1.4.5.456 is of the ontology as it was before it was last changed.') && (await structure.locator('.tree').count()) === 0 && flat(await structure.locator('.st-prov').innerText()).includes('its answer is out of date'), 'nor in the Structure Explorer: HermiT’s hierarchy is withdrawn, and no other is shown in its place: ' + none.slice(0, 120));
 await tab(/^Validation/);
 ok(flat(await v.innerText()).includes('The model has changed since these results'), 'and its results are marked as no longer current');
 await run();
 t = await text();
 ok(t.includes('Reasoner: HermiT 1.4.5.456') && t.includes('Status: Inconsistent') && !t.includes('Unsatisfiable classes') && !t.includes('inferred'), 'with an instance of the class the ontology is inconsistent, and nothing is given as inferred from it: ' + t.slice(0, 70));
 ok((await card.getAttribute('class')).includes('is-bad'), 'the card says so');
+await tab('Structure');
+await structure.locator('.st-none').waitFor();
+none = flat(await structure.locator('.st-none').innerText());
+ok(none.includes('HermiT 1.4.5.456 finds the ontology inconsistent') && none.includes('nothing is inferred from it') && (await structure.locator('.st-none').getByRole('button', { name: 'Run reasoning' }).count()) === 0 && (await structure.locator('.st-none').getByRole('button', { name: 'Open Validation' }).count()) === 1, 'of an inconsistent ontology there is no inferred hierarchy either, and the Structure Explorer says why: ' + none.slice(0, 130));
+await tab(/^Validation/);
 await card.locator('.status').getByRole('button', { name: 'View explanation' }).click();
 ok((await explanation.locator('li').allInnerTexts()).map(flat).includes("Acme Type 'Party Local Profile'") && (await explanation.locator('li').count()) === 4 && flat(await explanation.locator('.conclusion').innerText()) === 'Conclusion: these cannot all be true at once, so the ontology is inconsistent.', 'its explanation is the justification of the inconsistency, the instance among the axioms');
 await page.screenshot({ path: shots + 'dl-inconsistent.png' });

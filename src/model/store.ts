@@ -24,6 +24,8 @@ import { MODEL_DATA, validate, type DataGraph, type Scope, type ValidationRun } 
 import { askReasoner, DEFAULT_REASONER_URL, dlRequest, type EngineId, type ReasoningResult } from './reasoning';
 import { stable } from './stable';
 import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
+import { classIriOf } from '../structure/local';
+import type { HierarchyMode, Iri } from '../structure/contracts';
 import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term, type TermType } from './types';
 
 export type { View } from './modelTypes';
@@ -114,6 +116,30 @@ export function viewOf(s: { model: Model; subgraph: SubgraphState; graphScope?: 
 interface Selection {
   terms: string[];
   rels: string[];
+}
+
+/** What the Structure Explorer is used for at the moment: looking through the hierarchy, setting two classes side by side, or measuring the whole. */
+export type StructureMode = 'explore' | 'compare' | 'analyze';
+
+/**
+ * The Structure Explorer. It reads the ontology and changes nothing in it, and what it is
+ * looking at is its own: a class is brought into focus there without being selected, so the
+ * entity editor opens only when it is asked for.
+ */
+export interface StructureState {
+  mode: StructureMode;
+  /** Which hierarchy is on show: what is stated, or what the chosen reasoner entails. */
+  hierarchy: HierarchyMode;
+  /** In the inferred hierarchy: whether the places that are entailed and nowhere stated are marked. */
+  markInferred: boolean;
+  /** The class in focus, by IRI. */
+  focus: Iri | null;
+  /** Goes up each time a class is pointed at from outside the explorer, which then brings it into view. */
+  pointed: number;
+  /** The text the hierarchy is narrowed to. */
+  search: string;
+  /** The two classes set side by side, by IRI. */
+  compare: { a: Iri | null; b: Iri | null };
 }
 
 const MODEL_KEY = 'conceptweaver:model:v1';
@@ -270,6 +296,8 @@ interface State {
   };
   graphScope: GraphScope;
   setGraphScope: (scope: GraphScope) => void;
+  structure: StructureState;
+  setStructure: (patch: Partial<Pick<StructureState, 'mode' | 'hierarchy' | 'markInferred' | 'focus' | 'search' | 'compare'>>) => void;
   /**
    * Other ontologies. Their content is read from the browser's cache into `loaded` and is never
    * part of the model; `missing` are the ones the model refers to whose content is not in this browser.
@@ -335,8 +363,6 @@ interface State {
   bulkAddRelations: (items: BulkRelation[], createMissing: boolean) => { added: number; created: number; skipped: number };
   /** Adds an indented hierarchy: its terms (reusing existing ones by name) and the links between them. */
   bulkAddOutline: (outline: Outline) => { terms: number; rels: number };
-  /** Creates a term under `parentId` in the hierarchy (or a top-level one) and returns its id. */
-  addNarrower: (parentId: string | null, name: string) => string;
   /** Turns the model into the other type, translating what its relations mean. */
   convertTo: (mode: ModelMode) => void;
   selectProp: (key: string | null) => void;
@@ -440,6 +466,15 @@ const sidebarWidthOf = (width: number) => (Number.isFinite(width) ? Math.round(M
 export const currentDl = (s: Pick<State, 'model' | 'validation'>): ReasoningResult | undefined => {
   const run = s.validation.run;
   return s.validation.engine === 'dl' && run?.dl && run.model === stable(s.model) && run.dl.result.status !== 'failed' ? run.dl.result : undefined;
+};
+
+/**
+ * The Structure Explorer follows what is pointed at elsewhere: when one term is selected and it
+ * is a class, that class is in focus there too. Anything else leaves its focus where it was.
+ */
+const pointingAt = (s: Pick<State, 'model' | 'structure'>, terms: string[], rels: string[] = []): StructureState => {
+  const iri = terms.length === 1 && !rels.length ? classIriOf(s.model, terms[0]) : undefined;
+  return iri === undefined ? s.structure : { ...s.structure, focus: iri, pointed: s.structure.pointed + 1 };
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -602,6 +637,8 @@ export const useStore = create<State>((set, get) => ({
     set({ graphScope });
     get().fit();
   },
+  structure: { mode: 'explore', hierarchy: 'asserted', markInferred: true, focus: null, pointed: 0, search: '', compare: { a: null, b: null } },
+  setStructure: (patch) => set((s) => ({ structure: { ...s.structure, ...patch } })),
   ext: { loaded: {}, missing: [], tab: 'library', selected: null, preview: null },
   setExt: (patch) => set((s) => ({ ext: { ...s.ext, ...patch } })),
   previewExternal: (text, source, kind) => {
@@ -748,7 +785,7 @@ export const useStore = create<State>((set, get) => ({
     const model = withIris(m);
     // A different document: its history starts afresh, and it counts as unchanged until edited.
     // Another model may be of another type: the view stays only if that type has it.
-    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
+    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
     void get().loadExternals();
     get().fit();
   },
@@ -1063,25 +1100,6 @@ export const useStore = create<State>((set, get) => ({
     get().fit();
     return { terms: created.length, rels: rels.length };
   },
-  addNarrower: (parentId, name) => {
-    const { model, vp, canvasSize } = get();
-    const parent = model.terms.find((t) => t.id === parentId);
-    const siblings = parent ? model.relations.filter((r) => r.kind === 'generalization' && r.to === parent.id).length : 0;
-    const b = bounds(model.terms);
-    // Under its parent, fanning out to the right; a top-level term goes beside everything else.
-    const at = parent
-      ? { x: parent.x + (siblings - 0.5) * 170, y: parent.y + 110 + (siblings % 2) * 26 }
-      : b
-        ? { x: b.x1 + 130, y: b.y0 + 20 }
-        : { x: (canvasSize.w / 2 - vp.x) / vp.k, y: (canvasSize.h / 2 - vp.y) / vp.k };
-    const t = newTerm({ name, x: Math.round(at.x), y: Math.round(at.y), color: parent?.color ?? '' });
-    get().apply((m) => ({
-      ...m,
-      terms: [...m.terms, t],
-      relations: parent ? [...m.relations, newRelation({ from: t.id, to: parent.id, kind: 'generalization' })] : m.relations,
-    }));
-    return t.id;
-  },
   convertTo: (mode) => {
     const before = get().model;
     if (before.mode === mode) return;
@@ -1289,7 +1307,7 @@ export const useStore = create<State>((set, get) => ({
       return { ...m, vocab: { ...m.vocab, map: predicate ? { ...rest, [labelKey(label)]: predicate } : rest } };
     }),
 
-  select: (terms, rels = []) => set((s) => ({ sel: { terms, rels }, selProp: terms.length || rels.length ? null : s.selProp })),
+  select: (terms, rels = []) => set((s) => ({ sel: { terms, rels }, selProp: terms.length || rels.length ? null : s.selProp, structure: pointingAt(s, terms, rels) })),
   toggleTerm: (id) =>
     set((s) => ({
       sel: { ...s.sel, terms: s.sel.terms.includes(id) ? s.sel.terms.filter((x) => x !== id) : [...s.sel.terms, id] },
@@ -1305,7 +1323,7 @@ export const useStore = create<State>((set, get) => ({
     const { canvasSize, vp } = get();
     const t = viewOf(get()).terms.find((x) => x.id === id);
     if (!t) return;
-    set({ view: 'graph', sel: { terms: [id], rels: [] }, vp: { ...vp, x: canvasSize.w / 2 - t.x * vp.k, y: canvasSize.h / 2 - t.y * vp.k } });
+    set((s) => ({ view: 'graph', sel: { terms: [id], rels: [] }, structure: pointingAt(s, [id]), vp: { ...vp, x: canvasSize.w / 2 - t.x * vp.k, y: canvasSize.h / 2 - t.y * vp.k } }));
   },
   focusRelation: (id) => {
     const r = get().model.relations.find((x) => x.id === id);

@@ -16,6 +16,11 @@ type Tab = 'concept' | 'object' | 'property' | 'instance' | 'relations' | 'gover
 /** Remembered while the app is open. */
 let lastTab: Tab = 'concept';
 
+/** Has the Entities view open on this section the next time it is shown: for coming to an entity from elsewhere. */
+export const openEntityTab = (tab: Tab) => {
+  lastTab = tab;
+};
+
 /** Rows shown at a time; a table of thousands of editable rows is slow to draw and no use to read. */
 const PAGE = 150;
 
@@ -123,7 +128,7 @@ export function EntitiesView() {
     governance: { label: configuring ? 'Back to the entities' : 'Configure fields', run: () => setConfiguring(!configuring) },
   };
   const hint: Record<Tab, string> = {
-    concept: skos ? 'Every concept of the vocabulary, by its name and its IRI. Its labels, definition and ownership are under Governance & Metadata; what it is broader or narrower than is under Hierarchy.' : 'The classes of the ontology, each with the restrictions its properties place on it. Click a row to edit it in the side panel.',
+    concept: skos ? 'Every concept of the vocabulary, by its name and its IRI. Its labels, definition and ownership are under Governance & Metadata; what it is broader or narrower than is under Structure.' : 'The classes of the ontology, each with the restrictions its properties place on it. Click a row to edit it in the side panel.',
     object: 'Object properties link two terms. Each is declared once here and reused wherever its name is used. A domain or range marked “from use” follows where the property is used; choose a class in the cell to set it yourself.',
     property: 'Data properties hold a value such as a date or a number. Attach one to a class with a “has property” relation.',
     instance: 'Individuals are particular things. Give one a type by making it “is a” of a class.',

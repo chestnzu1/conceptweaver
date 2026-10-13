@@ -166,7 +166,8 @@ ok((await node('Studio').getAttribute('transform')) === exported.studio, 'and it
 // ---------------------------------------------------------------- a vocabulary, in the dark
 await app.getByRole('button', { name: 'File', exact: true }).click();
 await app.getByRole('menuitem', { name: 'Load the SKOS example' }).click();
-await app.waitForSelector('.node');
+// The model is loaded under another view, where the canvas is there but is not drawn.
+await app.waitForSelector('.node', { state: 'attached' });
 await app.getByRole('button', { name: 'Toggle theme' }).click();
 await app.waitForTimeout(400);
 const skos = await exportPage('export-skos.html');

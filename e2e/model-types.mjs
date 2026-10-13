@@ -24,7 +24,7 @@ const panel = page.locator('.inspector');
 const view = page.locator('.view');
 const dialog = page.getByRole('dialog');
 const node = (name) => page.locator('.node', { has: page.locator('text', { hasText: new RegExp('^' + name + '$') }) });
-const ALL = 'Graph|Entities|Hierarchy|Validation|Align|RDF|SPARQL|Vocabulary';
+const ALL = 'Graph|Entities|Structure|Validation|Align|RDF|SPARQL|Vocabulary';
 // Adds a term by double-clicking the canvas and typing its name.
 const addTerm = async (name, x, y) => {
   await page.locator('#graph-svg').dblclick({ position: { x, y } });
@@ -65,7 +65,7 @@ await page.waitForFunction(() => document.querySelector('.model-name')?.value ==
 ok((await dialog.count()) === 0 && (await page.locator('.model-name').inputValue()) === 'Glossary', 'the model is created under its name');
 
 // ---------------------------------------------------------------- what a vocabulary has
-ok((await views()) === 'Graph|Entities|Hierarchy', 'a vocabulary has three functions: ' + (await views()));
+ok((await views()) === 'Graph|Entities|Structure', 'a vocabulary has three functions: ' + (await views()));
 ok(flat(await panel.locator('.model-type-shown').innerText()) === 'Model type SKOS-like vocabulary' && (await panel.locator('.model-type-shown select').count()) === 0, 'its type is shown in the model details, and is not a choice there');
 ok(flat(await panel.locator('.ns-summary').innerText()) === 'http://example.org/glossary#', 'with the namespace it was given');
 ok((await page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ }).count()) === 0 && (await page.locator('.subgraph').getByRole('button', { name: 'Style' }).count()) === 1, 'there is no reasoner to ask for inferred facts, so no button for them');
@@ -119,18 +119,24 @@ await form.locator('[data-field="definition"] textarea').blur();
 await form.locator('[data-field="status"] select').selectOption('Approved');
 ok((await form.locator('[data-field="note"]').count()) === 1 && (await form.locator('[data-field="owner"]').count()) === 1 && (await form.locator('[data-field="sensitivity"]').count()) === 1, 'with notes, ownership and classification among its fields');
 
-// ---------------------------------------------------------------- hierarchy
-await tab('Hierarchy');
-const tree = page.locator('.tree');
-ok(flat(await tree.innerText()).startsWith('Animal') && (await tree.locator('li li', { hasText: 'Domestic dog' }).count()) === 1, 'the hierarchy is built from “is a”: Domestic dog under Animal');
-await page.locator('input[aria-label="Search terms"]').fill('dog');
-ok((await tree.locator('.tree-name').allInnerTexts()).map(flat).join('|') === 'Animal|Domestic dog' && (await tree.locator('.tree-name.match').count()) === 1, 'the search narrows it to what was found and what that is under');
-await page.locator('input[aria-label="Search terms"]').fill('');
-// A ring: Animal is also a Domestic dog. Every concept is still shown, once, and nothing hangs.
+// ---------------------------------------------------------------- structure
+await tab('Structure');
+const tree = page.locator('.view.structure .tree');
+const search = page.getByLabel('Search the hierarchy');
+const treeLine = (name) => tree.locator('.tree-row', { has: page.locator('.tree-name', { hasText: new RegExp('^' + name + '$') }) });
+await treeLine('Domestic dog').waitFor();
+ok(flat(await tree.locator('.tree-row').first().innerText()).startsWith('Concept scheme') && Number(await treeLine('Domestic dog').getAttribute('aria-level')) === Number(await treeLine('Animal').getAttribute('aria-level')) + 1, 'the hierarchy is built from “is a”: Domestic dog under Animal, under the concept scheme');
+ok((await page.locator('.view.structure').getByRole('button', { name: /narrower|add/i }).count()) === 0, 'it is read there, not edited');
+await search.fill('dog');
+await page.waitForFunction(() => document.querySelectorAll('.view.structure .tree-name.match').length === 1);
+ok((await tree.locator('.tree-name').allInnerTexts()).map(flat).join('|') === 'Animal|Domestic dog', 'the search narrows it to what was found and what that is under');
+await search.fill('');
+// A ring: Animal is also a Domestic dog. Every concept is still shown, and nothing hangs.
 await tab('Graph');
 await draw('Animal', 'Domestic dog', 'is a');
-await tab('Hierarchy');
-ok((await tree.locator('.tag.warn', { hasText: 'cycle' }).count()) >= 1 && flat(await tree.innerText()).includes('Animal') && flat(await tree.innerText()).includes('Bone'), 'two concepts that are each other’s broader concept are shown as a cycle, and the rest stays');
+await tab('Structure');
+await tree.locator('.tag.warn', { hasText: 'cycle' }).first().waitFor();
+ok(flat(await tree.innerText()).includes('Animal') && flat(await tree.innerText()).includes('Bone') && (await tree.locator('.tree-row').count()) < 12, 'two concepts that are each other’s broader concept are shown as a cycle, and the rest stays');
 await page.locator('.header').getByRole('button', { name: 'Undo' }).click();
 await page.screenshot({ path: shots + 'model-types.png' });
 
@@ -144,11 +150,11 @@ await tab('Validation');
 await file('My Models…');
 await dialog.locator('li, tr', { hasText: 'Glossary' }).getByRole('button', { name: /^Open/ }).first().click();
 await page.waitForFunction(() => document.querySelector('.model-name')?.value === 'Glossary');
-ok((await views()) === 'Graph|Entities|Hierarchy' && (await page.locator('.header [role=tab].on').innerText()) === 'Graph', 'reopened from My Models, the vocabulary is a vocabulary again, and the Validation view it does not have is left');
+ok((await views()) === 'Graph|Entities|Structure' && (await page.locator('.header [role=tab].on').innerText()) === 'Graph', 'reopened from My Models, the vocabulary is a vocabulary again, and the Validation view it does not have is left');
 await page.waitForTimeout(900);
 await page.reload();
 await page.waitForSelector('.node');
-ok((await views()) === 'Graph|Entities|Hierarchy' && (await node('Domestic dog').count()) === 1, 'and after a reload too');
+ok((await views()) === 'Graph|Entities|Structure' && (await node('Domestic dog').count()) === 1, 'and after a reload too');
 await tab('Entities');
 await view.getByRole('tab', { name: 'Governance & Metadata' }).click();
 await page.locator('.gov-list tbody tr', { hasText: 'Domestic dog' }).click();

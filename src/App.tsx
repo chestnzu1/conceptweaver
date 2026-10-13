@@ -11,7 +11,8 @@ import { VocabView } from './components/VocabView';
 import { EntitiesView } from './components/Entities';
 import { AlignmentView } from './components/Alignment';
 import { ValidationView } from './components/Validation';
-import { BulkDialog, HierarchyView } from './components/views';
+import { StructureView } from './components/Structure';
+import { BulkDialog } from './components/views';
 import { viewFor } from './model/modelTypes';
 import { confirmDiscard, isDirty, useStore } from './model/store';
 import { NewModelDialog } from './components/NewModel';
@@ -105,7 +106,7 @@ export function App() {
           {/* The canvas stays mounted under the other views so its size and image export keep working. */}
           <Canvas />
           {view === 'table' && <EntitiesView />}
-          {view === 'hierarchy' && <HierarchyView />}
+          {view === 'structure' && <StructureView />}
           {view === 'checks' && <ValidationView />}
           {view === 'align' && <AlignmentView />}
           {view === 'rdf' && <RdfView />}

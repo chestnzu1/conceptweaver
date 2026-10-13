@@ -8,8 +8,8 @@ import { INSTANCE_OF, type ModelMode, type TermType } from './types';
  */
 
 /** The main functions of the app, as they appear in the navigation. */
-export type View = 'graph' | 'table' | 'hierarchy' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
-export const VIEW_LABEL: Record<View, string> = { graph: 'Graph', table: 'Entities', hierarchy: 'Hierarchy', checks: 'Validation', align: 'Align', rdf: 'RDF', sparql: 'SPARQL', vocab: 'Vocabulary' };
+export type View = 'graph' | 'table' | 'structure' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
+export const VIEW_LABEL: Record<View, string> = { graph: 'Graph', table: 'Entities', structure: 'Structure', checks: 'Validation', align: 'Align', rdf: 'RDF', sparql: 'SPARQL', vocab: 'Vocabulary' };
 
 /** The sections of the Entities view. */
 export type EntityTab = 'concept' | 'object' | 'property' | 'instance' | 'relations' | 'governance';
@@ -73,7 +73,7 @@ const OWL: ModelTypeConfig = {
   id: 'ontology',
   label: 'OWL ontology',
   about: 'Advanced ontology modelling with classes, properties, restrictions and reasoning.',
-  views: ['graph', 'table', 'hierarchy', 'checks', 'align', 'rdf', 'sparql', 'vocab'],
+  views: ['graph', 'table', 'structure', 'checks', 'align', 'rdf', 'sparql', 'vocab'],
   entityTabs: ['concept', 'object', 'property', 'instance', 'relations', 'governance'],
   entityColumns: ['name', 'iri', 'hierarchy', 'restrictions', 'inferred', 'description', 'synonyms', 'relations'],
   termTypes: ['concept', 'property', 'instance'],
@@ -101,7 +101,7 @@ const SKOS: ModelTypeConfig = {
   id: 'skos',
   label: 'SKOS-like vocabulary',
   about: 'Concept and taxonomy modelling with semantic relationships and governance metadata.',
-  views: ['graph', 'table', 'hierarchy'],
+  views: ['graph', 'table', 'structure'],
   entityTabs: ['concept', 'relations', 'governance'],
   // A concept is managed here by what identifies it. What is said about it is under Governance & Metadata.
   entityColumns: ['name', 'iri', 'suffix', 'type'],

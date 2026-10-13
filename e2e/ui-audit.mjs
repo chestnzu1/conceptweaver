@@ -128,8 +128,60 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     report('Governance', await page.evaluate(measure));
     await page.locator('.view').getByRole('tab', { name: /^Relationships/ }).click();
     report('Relationships', await page.evaluate(measure));
-    await tab('Hierarchy');
-    report('Hierarchy', await page.evaluate(measure));
+    // The Structure Explorer: its hierarchy with a class in focus and one searched for, and its other two modes.
+    await tab('Structure');
+    const structure = page.locator('.view.structure');
+    await structure.locator('.tree-name', { hasText: /^Actor$/ }).click();
+    report('Structure', await page.evaluate(measure));
+    await structure.getByLabel('Search the hierarchy').fill('doc');
+    await page.waitForFunction(() => document.querySelectorAll('.view.structure .tree-name.match').length === 1);
+    report('Structure · search', await page.evaluate(measure));
+    await structure.getByLabel('Search the hierarchy').fill('');
+    // The inferred hierarchy: of the fast reasoner, with what it left out spelled out, and of a reasoner that has no answer.
+    await structure.locator('.st-which').getByRole('button', { name: 'Inferred', exact: true }).click();
+    await structure.locator('.st-reasoner').waitFor();
+    await structure.locator('.st-prov').getByRole('button', { name: 'why' }).click();
+    await structure.locator('.tree').focus();
+    await page.keyboard.press('ArrowDown');
+    report('Structure · inferred', await page.evaluate(measure));
+    await structure.getByLabel('Reasoner').selectOption({ label: 'Advanced reasoner (OWL 2 DL)' });
+    await structure.locator('.st-prov:not(:empty)').waitFor();
+    await page.waitForFunction(() => !document.querySelector('.view.structure .st-reasoner select')?.disabled);
+    report('Structure · inferred, OWL 2 DL', await page.evaluate(measure));
+    await structure.getByLabel('Reasoner').selectOption({ label: 'Fast reasoner (RDFS / partial OWL RL)' });
+    await page.waitForFunction(() => !document.querySelector('.view.structure .st-reasoner select')?.disabled);
+    await structure.locator('.st-which').getByRole('button', { name: 'Asserted', exact: true }).click();
+    for (const name of ['Compare', 'Analyze']) {
+      await structure.getByRole('tab', { name }).click();
+      report('Structure · ' + name, await page.evaluate(measure));
+    }
+    // Two classes side by side, with a search open, and then compared with an explanation shown.
+    await structure.getByRole('tab', { name: 'Compare' }).click();
+    const slot = (n) => structure.locator('.st-slot').nth(n);
+    await slot(0).getByRole('combobox').fill('a');
+    await slot(0).locator('.subgraph-found button').first().waitFor();
+    report('Structure · Compare, choosing', await page.evaluate(measure));
+    await slot(0).getByRole('combobox').fill('Documentary');
+    await slot(0).locator('.subgraph-found button', { hasText: /^Documentary/ }).click();
+    await slot(1).getByRole('combobox').fill('Film');
+    await slot(1).locator('.subgraph-found button', { hasText: /^Film/ }).first().click();
+    await structure.locator('.st-compared').waitFor();
+    await structure.locator('.st-relation').getByRole('button', { name: 'View semantic explanation' }).click();
+    await structure.locator('.st-why ol').waitFor();
+    report('Structure · Compare, compared', await page.evaluate(measure));
+    // The hierarchy in numbers, with the classes behind one of them listed, for both hierarchies.
+    await structure.getByRole('tab', { name: 'Analyze' }).click();
+    await structure.locator('.st-tiles').waitFor();
+    await structure.locator('[data-metric="leaves"] button').click();
+    await structure.locator('.st-member-list li').first().waitFor();
+    report('Structure · Analyze, listing', await page.evaluate(measure));
+    await structure.locator('.st-dash').evaluate((el) => (el.scrollTop = el.scrollHeight));
+    report('Structure · Analyze, findings', await page.evaluate(measure));
+    await structure.locator('.st-which').getByRole('button', { name: 'Inferred', exact: true }).click();
+    await structure.locator('.st-prov-line').waitFor();
+    report('Structure · Analyze, inferred', await page.evaluate(measure));
+    await structure.locator('.st-which').getByRole('button', { name: 'Asserted', exact: true }).click();
+    await structure.getByRole('tab', { name: 'Explore' }).click();
     await tab('Validation');
     await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
     report('Validation', await page.evaluate(measure));
