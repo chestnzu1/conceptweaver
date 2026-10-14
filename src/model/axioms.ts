@@ -1,4 +1,4 @@
-import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, isInstanceOf, objectProperties, propKey, propLinks, wouldCycle } from './props';
+import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, isInstanceOf, objectProperties, propLinks, wouldCycle } from './props';
 import { reason } from './reasoner';
 import { outsideEnumeration } from './datatypes';
 import { validateLiteral } from './literals';
@@ -148,6 +148,7 @@ export function makeInstanceOf(model: Model, relId: string): Edit {
 
 const LINK_PHRASE: Record<PropLink, string> = { parents: 'a sub-property of', inverses: 'the inverse of', equivalents: 'equivalent to', disjoints: 'disjoint with' };
 
+/** States that one object property (by id) is a sub-property of, inverse to, equivalent to or disjoint with another. */
 export function addPropLink(model: Model, key: string, other: string, link: PropLink): Edit {
   const a = findProp(model, key);
   const b = findProp(model, other);
@@ -172,20 +173,17 @@ export function addPropLink(model: Model, key: string, other: string, link: Prop
     if (seen.has(key)) note = `${q(b.name)} is already a sub-property of ${q(a.name)}, so the two now mean the same.`;
     else if (propLinks(model, key, 'disjoints').includes(other)) note = `${q(a.name)} is also stated to be disjoint with ${q(b.name)}, so it can now never hold between two things.`;
   }
-  const declared = model.props.some((p) => propKey(p.name) === key);
-  const entry = model.props.find((p) => propKey(p.name) === key) ?? { name: a.name, description: '', chars: [] };
-  const next = { ...entry, [link]: [...(entry[link] ?? []), other] };
-  return { model: { ...model, props: declared ? model.props.map((p) => (propKey(p.name) === key ? next : p)) : [...model.props, next] }, note };
+  return { model: { ...model, props: model.props.map((p) => (p.id === key ? { ...p, [link]: [...(p[link] ?? []), other] } : p)) }, note };
 }
 
 /** Withdraws the statement from whichever of the two properties carries it. */
 export function removePropLink(model: Model, key: string, other: string, link: PropLink): Model {
   const strip = (owner: string, target: string, m: Model): Model =>
-    m.props.some((p) => propKey(p.name) === owner && p[link]?.includes(target))
+    m.props.some((p) => p.id === owner && p[link]?.includes(target))
       ? {
           ...m,
           props: m.props.map((p) => {
-            if (propKey(p.name) !== owner || !p[link]) return p;
+            if (p.id !== owner || !p[link]) return p;
             const { [link]: list, ...rest } = p;
             const left = list!.filter((k) => k !== target);
             return left.length ? { ...rest, [link]: left } : rest;
@@ -228,7 +226,7 @@ export interface ClassProperty {
  */
 export function propertiesOfClass(model: Model, classId: string): ClassProperty[] {
   const out: ClassProperty[] = [];
-  for (const p of objectProperties(model)) if (p.domain.includes(classId)) out.push({ ref: p.key, data: false, name: p.name, iri: p.iri, auto: p.domainAuto });
+  for (const p of objectProperties(model)) if (p.domain.includes(classId)) out.push({ ref: p.id, data: false, name: p.name, iri: p.iri, auto: p.domainAuto });
   for (const t of model.terms) {
     if (t.type !== 'property') continue;
     const d = dataDomain(model, t);
@@ -268,7 +266,7 @@ export function addToDomain(model: Model, classId: string, p: { ref: string; dat
   const v = findProp(model, p.ref);
   if (!v) return refuse('That object property no longer exists.');
   if (v.domain.includes(classId)) return refuse(`${q(nameOf(model, classId))} is already in the domain of ${q(v.name)}.`);
-  return { model: { ...model, props: model.props.map((x) => (propKey(x.name) === v.key ? { ...x, domain: [...v.domain, classId] } : x)) } };
+  return { model: { ...model, props: model.props.map((x) => (x.id === v.id ? { ...x, domain: [...v.domain, classId] } : x)) } };
 }
 
 /** Takes the class out of a domain that was set by hand. One that follows use changes only by changing the use. */
@@ -278,7 +276,7 @@ export function removeFromDomain(model: Model, classId: string, p: { ref: string
     if (!t?.domain) return refuse('This domain follows the classes the property is attached to. Remove the restriction that attaches it instead.');
     return { model: { ...model, terms: model.terms.map((x) => (x.id === t.id ? { ...x, domain: t.domain!.filter((id) => id !== classId) } : x)) } };
   }
-  const entry = model.props.find((x) => propKey(x.name) === p.ref);
+  const entry = model.props.find((x) => x.id === p.ref);
   if (!entry?.domain) return refuse('This domain follows the classes the property is used between. Remove the restriction that uses it instead.');
   return { model: { ...model, props: model.props.map((x) => (x === entry ? { ...x, domain: entry.domain!.filter((id) => id !== classId) } : x)) } };
 }
@@ -326,7 +324,7 @@ export function removeValue(model: Model, id: string, index: number): Model {
   };
 }
 
-/** States a fact: one individual is related to another by an object property. */
+/** States a fact: one individual is related to another by an object property (by id). */
 export function addFact(model: Model, id: string, key: string, other: string): Edit {
   const a = model.terms.find((t) => t.id === id);
   const b = model.terms.find((t) => t.id === other);
@@ -336,7 +334,7 @@ export function addFact(model: Model, id: string, key: string, other: string): E
   if (b?.type !== 'instance') return refuse('The value of an object property is another individual.');
   if (prop.rels.some((r) => r.from === id && r.to === other)) return refuse(`${q(a.name)} ${prop.name} ${q(b.name)} is already stated.`);
   const self = id === other && prop.chars.includes('irreflexive') ? `${q(prop.name)} is irreflexive, so nothing can be related to itself by it. Validation will list this.` : undefined;
-  return { model: { ...model, relations: [...model.relations, newRelation({ from: id, to: other, label: prop.name })] }, note: self };
+  return { model: { ...model, relations: [...model.relations, newRelation({ from: id, to: other, label: prop.name, prop: prop.id })] }, note: self };
 }
 
 // ---------------------------------------------------------------- enumeration classes

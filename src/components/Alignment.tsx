@@ -5,7 +5,6 @@ import { download } from '../model/files';
 import { listModels, loadModel, type SavedInfo } from '../model/library';
 import { suggestMappings, type Suggestion } from '../model/matcher';
 import { compactIri } from '../model/prefixes';
-import { propKey } from '../model/props';
 import { toTurtle } from '../model/rdf';
 import { asTurtle, fetchDocument, fileText, ONTOLOGY_FILES } from '../model/rdfFormats';
 import { stable } from '../model/stable';
@@ -42,7 +41,7 @@ function itemsOf(model: Model, kind: EntityKind, own: boolean): Item[] {
   if (kind === 'object property') {
     return model.props
       .filter((p) => p.iri && (!own || p.external === undefined))
-      .map((p) => ({ id: propKey(p.name), prop: true, iri: p.iri!, name: p.name, description: p.description, depth: 0 }))
+      .map((p) => ({ id: p.id, prop: true, iri: p.iri!, name: p.name, description: p.description, depth: 0 }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
   const type = kind === 'class' ? 'concept' : kind === 'data property' ? 'property' : 'instance';

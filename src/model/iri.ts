@@ -19,15 +19,21 @@ export function baseIriOf(m: Model): string {
   return /[#/]$/.test(base) ? base : base + '#';
 }
 
+/** What an entity is called in an IRI that stands in until it has a name, by its kind. */
+const STAND_IN = { concept: 'Class', property: 'Data property', instance: 'Individual', prop: 'Object property', datatype: 'Datatype' } as const;
+
 /**
- * Gives an IRI to every named term and object property that has none yet, in the model's base
- * namespace. An IRI is made once, from the name the entity has at that moment, and is never
- * changed afterwards: renaming an entity changes its label, not its identity.
+ * Gives every entity an IRI, in the model's base namespace, from the moment it exists (FR-M1-2).
+ * An entity with a name gets one made from it. One without a name yet, or with a name that only
+ * stands in ("New class"), gets one that stands in too, marked `pendingIri`: the first real name
+ * it is given replaces it, once, and whatever referred to it follows. After that an IRI is never
+ * changed by a rename: renaming an entity changes its label, not its identity.
  */
 export function withIris(m: Model): Model {
-  const needs = (x: { iri?: string; name: string }) => !x.iri && !!x.name.trim() && !PLACEHOLDER.test(x.name.trim());
+  const named = (x: { name: string }) => !!x.name.trim() && !PLACEHOLDER.test(x.name.trim());
+  const needs = (x: { iri?: string; name: string; pendingIri?: true }) => !x.iri || (!!x.pendingIri && named(x));
   const datatypes = m.datatypes ?? [];
-  const lacks = (d: { iri?: string; name: string; anonymous?: boolean }) => !d.anonymous && needs(d);
+  const lacks = (d: { iri?: string; name: string; pendingIri?: true; anonymous?: boolean }) => !d.anonymous && needs(d);
   if (!m.terms.some(needs) && !m.props.some(needs) && !datatypes.some(lacks)) return m;
   const base = baseIriOf(m);
   const used = new Set<string>();
@@ -41,13 +47,67 @@ export function withIris(m: Model): Model {
     used.add(iri.toLowerCase());
     return iri;
   };
-  return {
+  // Stand-in IRIs replaced by ones made from a name: what referred to them follows.
+  const replaced = new Map<string, string>();
+  const give = <T extends { iri?: string; name: string; pendingIri?: true }>(x: T, camel: boolean, standIn: string): T => {
+    if (!needs(x)) return x;
+    if (named(x)) {
+      const iri = mint(x.name, camel);
+      if (x.iri) replaced.set(x.iri, iri);
+      const { pendingIri: _was, ...rest } = x;
+      return { ...rest, iri } as T;
+    }
+    return { ...x, iri: mint(x.name.trim() || standIn, camel), pendingIri: true };
+  };
+  const skos = m.mode === 'skos';
+  const out: Model = {
     ...m,
     baseIri,
-    terms: m.terms.map((t) => (needs(t) ? { ...t, iri: mint(t.name, t.type === 'property') } : t)),
-    props: m.props.map((p) => (needs(p) ? { ...p, iri: mint(p.name, true) } : p)),
+    terms: m.terms.map((t) => give(t, t.type === 'property', skos ? 'Concept' : STAND_IN[t.type])),
+    props: m.props.map((p) => give(p, true, STAND_IN.prop)),
     // A datatype is named like a class: StatusCode.
-    ...(datatypes.some(lacks) ? { datatypes: datatypes.map((d) => (lacks(d) ? { ...d, iri: mint(d.name, false) } : d)) } : {}),
+    ...(datatypes.some(lacks) ? { datatypes: datatypes.map((d) => (d.anonymous ? d : give(d, false, STAND_IN.datatype))) } : {}),
+  };
+  return replaced.size ? followIris(out, replaced) : out;
+}
+
+/**
+ * Makes whatever refers to entities by IRI follow when their IRIs change (old → new): class
+ * expressions kept as text, annotations that point at them, SHACL shapes, and the records of
+ * mappings and of suggestions turned down. The entities themselves are not touched.
+ */
+export function followIris(m: Model, changed: Map<string, string>): Model {
+  if (!changed.size) return m;
+  const swap = (x: string) => changed.get(x) ?? x;
+  const inText = (text: string) => text.replace(/<([^<>\s]*)>/g, (all, iri: string) => (changed.has(iri) ? `<${changed.get(iri)}>` : all));
+  const all = (list: string[]) => (list.some((x) => changed.has(x)) ? list.map(swap) : list);
+  const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && changed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && changed.has(f.value) ? { ...f, value: swap(f.value) } : f)) } : x);
+  return {
+    ...m,
+    terms: m.terms.map((t) => {
+      const out = refs(t);
+      return out.axioms?.some((a) => inText(a) !== a) ? { ...out, axioms: out.axioms.map(inText) } : out;
+    }),
+    props: m.props.map(refs),
+    shapes: {
+      extra: inText(m.shapes.extra),
+      nodes: m.shapes.nodes.map((n) => ({
+        ...n,
+        targetClass: all(n.targetClass),
+        targetNode: all(n.targetNode),
+        targetSubjectsOf: all(n.targetSubjectsOf),
+        targetObjectsOf: all(n.targetObjectsOf),
+        properties: n.properties.map((s) => ({
+          ...s,
+          path: swap(s.path),
+          ...(s.class ? { class: swap(s.class) } : {}),
+          ...(s.hasValue?.iri ? { hasValue: { ...s.hasValue, v: swap(s.hasValue.v) } } : {}),
+          ...(s.in ? { in: s.in.map((v) => (v.iri ? { ...v, v: swap(v.v) } : v)) } : {}),
+        })),
+      })),
+    },
+    mappings: m.mappings.map((x) => (changed.has(x.source) || changed.has(x.target) ? { ...x, source: swap(x.source), target: swap(x.target) } : x)),
+    rejected: m.rejected.map((r) => r.split('|').map(swap).join('|')),
   };
 }
 
@@ -86,7 +146,7 @@ export function moveNamespace(m: Model, from: string, to: string): Model {
 /** Where the last part of an IRI starts: after its final # or /. */
 export const iriCut = (iri: string) => Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1;
 
-/** Which entity an IRI belongs to: a term by id, or an object property by key (its lower-cased name). */
+/** Which entity an IRI belongs to: a term by id, or an object property by id. */
 export type IriOwner = { term: string } | { prop: string };
 
 /**
@@ -97,7 +157,7 @@ export type IriOwner = { term: string } | { prop: string };
  * IRI is already taken.
  */
 export function setIriSuffix(m: Model, owner: IriOwner, suffix: string): { model: Model; note?: string; error?: undefined } | { error: string; model?: undefined; note?: undefined } {
-  const entity = 'term' in owner ? m.terms.find((t) => t.id === owner.term) : m.props.find((p) => p.name.trim().toLowerCase() === owner.prop);
+  const entity = 'term' in owner ? m.terms.find((t) => t.id === owner.term) : m.props.find((p) => p.id === owner.prop);
   if (!entity) return { error: 'That entity no longer exists.' };
   if (entity.external !== undefined) return { error: 'This entity belongs to another ontology, so its IRI is not this model’s to change.' };
   const local = suffix.trim();
@@ -111,44 +171,18 @@ export function setIriSuffix(m: Model, owner: IriOwner, suffix: string): { model
   const taken = [...m.terms, ...m.props].find((x) => x !== entity && x.iri?.toLowerCase() === next.toLowerCase());
   if (taken) return { error: `“${taken.name || 'Unnamed'}” already has the IRI <${taken.iri}>.` };
 
-  const swap = (x: string) => (x === old ? next : x);
-  const inText = (text: string) => (old ? text.split(`<${old}>`).join(`<${next}>`) : text);
-  const all = (list: string[]) => (list.includes(old!) ? list.map(swap) : list);
-  // Annotations that point at the entity (its owner, a related asset) keep pointing at it.
-  const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (old && x.fields?.some((f) => f.iri && f.value === old) ? { ...x, fields: x.fields.map((f) => (f.iri && f.value === old ? { ...f, value: next } : f)) } : x);
-  return {
-    model: {
-      ...m,
-      // The first IRI settles the default namespace, as it does when one is made from a name.
-      baseIri: m.baseIri.trim() ? m.baseIri : base,
-      terms: m.terms.map((t) => {
-        const out = refs(t === entity ? { ...t, iri: next } : t);
-        return old && out.axioms?.some((a) => inText(a) !== a) ? { ...out, axioms: out.axioms.map(inText) } : out;
-      }),
-      props: m.props.map((p) => refs(p === entity ? { ...p, iri: next } : p)),
-      ...(old
-        ? {
-            shapes: {
-              extra: inText(m.shapes.extra),
-              nodes: m.shapes.nodes.map((n) => ({
-                ...n,
-                targetClass: all(n.targetClass),
-                targetNode: all(n.targetNode),
-                targetSubjectsOf: all(n.targetSubjectsOf),
-                targetObjectsOf: all(n.targetObjectsOf),
-                properties: n.properties.map((s) => ({
-                  ...s,
-                  path: swap(s.path),
-                  ...(s.class ? { class: swap(s.class) } : {}),
-                  ...(s.hasValue?.iri ? { hasValue: { ...s.hasValue, v: swap(s.hasValue.v) } } : {}),
-                  ...(s.in ? { in: s.in.map((v) => (v.iri ? { ...v, v: swap(v.v) } : v)) } : {}),
-                })),
-              })),
-            },
-            mappings: m.mappings.map((x) => (x.source === old || x.target === old ? { ...x, source: swap(x.source), target: swap(x.target) } : x)),
-            rejected: m.rejected.map((r) => r.split('|').map(swap).join('|')),
-          }
-        : {}),
-    },
+  // Chosen by hand: it no longer stands in for one to be made from a name.
+  const set = <T extends { iri?: string; pendingIri?: true }>(x: T): T => {
+    const { pendingIri: _was, ...rest } = x;
+    return { ...rest, iri: next } as T;
   };
+  const moved: Model = {
+    ...m,
+    // The first IRI settles the default namespace, as it does when one is made from a name.
+    baseIri: m.baseIri.trim() ? m.baseIri : base,
+    terms: m.terms.map((t) => (t === entity ? set(t) : t)),
+    props: m.props.map((p) => (p === entity ? set(p) : p)),
+  };
+  // Whatever refers to it by IRI keeps referring to it.
+  return { model: old ? followIris(moved, new Map([[old, next]])) : moved };
 }

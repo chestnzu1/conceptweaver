@@ -13,7 +13,7 @@ import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { sampleModel, skosSample } from './sample';
 import { universitySample } from './sampleUniversity';
 import { stressModel } from './stress';
-import { emptyModel, newRelation, newTerm, normalizeModel } from './types';
+import { newProp, emptyModel, newRelation, newTerm, normalizeModel } from './types';
 
 const names = (m: ReturnType<typeof sampleModel>) => new Map(m.terms.map((t) => [t.id, t.name]));
 const triples = (m: ReturnType<typeof sampleModel>) => {
@@ -49,7 +49,7 @@ describe('rdf', () => {
     const m = emptyModel('Shared');
     const [a, b, c] = ['A', 'B', 'C'].map((name) => newTerm({ name }));
     m.terms.push(a, b, c);
-    m.props.push({ name: 'uses', description: '', chars: [] });
+    m.props.push(newProp({ name: 'uses', description: '', chars: [] }));
     m.relations.push(newRelation({ from: a.id, to: b.id, label: 'uses' }), newRelation({ from: b.id, to: c.id, label: 'Uses', restriction: 'only' }), newRelation({ from: a.id, to: c.id, label: 'uses', restriction: 'max', restrictionN: 2 }));
     const ttl = toTurtle(m);
     expect(ttl.match(/a owl:ObjectProperty/g)).toHaveLength(1);
@@ -61,7 +61,7 @@ describe('rdf', () => {
     expect(triples(back)).toEqual(triples(m).map((x) => x.replace('Uses', 'uses')));
     expect(back.relations.map((r) => `${r.restriction ?? 'some'}${r.restrictionN ?? ''}`).sort()).toEqual(['max2', 'only', 'some']);
     // The domain and range only repeated the uses, so they still follow them.
-    expect(back.props).toEqual([{ name: 'uses', iri: 'http://example.org/shared#uses', description: '', chars: [] }]);
+    expect(back.props.map(({ id: _id, ...p }) => p)).toEqual([{ name: 'uses', iri: 'http://example.org/shared#uses', description: '', chars: [] }]);
     expect(toTurtle(back)).toBe(ttl);
   });
 
@@ -293,7 +293,7 @@ describe('reasoner', () => {
     rel('Automobile', 'Vehicle', { kind: 'generalization' });
     rel('Herbie', 'Car', { kind: 'generalization' });
     rel('Herbie', 'The Love Bug', { predicate: 'owl:sameAs' });
-    m.props.push({ name: 'works for', description: '', chars: [] });
+    m.props.push(newProp({ name: 'works for', description: '', chars: [] }));
     rel('Person', 'Company', { label: 'works for' });
     rel('Alice', 'Acme', { label: 'works for' });
     const texts = reason(structuredClone(m)).inferences.map((i) => i.text);
@@ -542,7 +542,7 @@ describe('data and object properties', () => {
 
   it('keeps declared object properties apart from plain relationships', () => {
     const { m, t, rel } = family();
-    m.props.push({ name: 'works for', description: '', chars: [] }, { name: 'has ancestor', description: '', chars: ['transitive'], domain: [t.Person], range: [t.Person] });
+    m.props.push(newProp({ name: 'works for', description: '', chars: [] }), newProp({ name: 'has ancestor', description: '', chars: ['transitive'], domain: [t.Person], range: [t.Person] }));
     rel('Person', 'Company', { label: 'works for' });
     rel('Parent', 'Company', { label: 'Works for' });
     rel('Person', 'Company', { label: 'likes' });
@@ -557,7 +557,7 @@ describe('data and object properties', () => {
 
   it('describes a class by its restrictions, on object and on data properties', () => {
     const { m, t, term, rel } = family();
-    m.props.push({ name: 'works for', description: '', chars: [] });
+    m.props.push(newProp({ name: 'works for', description: '', chars: [] }));
     Object.assign(term('Birth date', 'property'), { range: 'xsd:date' });
     Object.assign(term('Has name', 'property'), { range: 'xsd:string' });
     term('Nickname', 'property');
@@ -596,11 +596,9 @@ describe('data and object properties', () => {
 
   it('writes a declared object property with its characteristics, inverse and parent', () => {
     const { m, t } = family();
-    m.props.push(
-      { name: 'has ancestor', description: 'Any forebear.', chars: ['transitive'], domain: [t.Person], range: [t.Person] },
-      { name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'], parents: ['has ancestor'], inverses: ['has child'], domain: [t.Person], range: [t.Parent] },
-      { name: 'has child', description: '', chars: [] },
-    );
+    const ancestor = newProp({ name: 'has ancestor', description: 'Any forebear.', chars: ['transitive'], domain: [t.Person], range: [t.Person] });
+    const child = newProp({ name: 'has child', description: '', chars: [] });
+    m.props.push(ancestor, newProp({ name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'], parents: [ancestor.id], inverses: [child.id], domain: [t.Person], range: [t.Parent] }), child);
     const ttl = toTurtle(m);
     const block = (subject: string) => ttl.split('\n\n').find((b) => b.startsWith(subject + ' '))!;
     expect(block(':hasAncestor')).toBe(':hasAncestor a owl:ObjectProperty , owl:TransitiveProperty ;\n    rdfs:label "has ancestor" ;\n    skos:definition "Any forebear." ;\n    rdfs:domain :Person ;\n    rdfs:range :Person .');
@@ -608,7 +606,8 @@ describe('data and object properties', () => {
     expect(block(':hasParent')).toContain('rdfs:subPropertyOf :hasAncestor');
     expect(block(':hasParent')).toContain('owl:inverseOf :hasChild');
     const back = fromTurtle(ttl);
-    expect(back.props.find((p) => p.name === 'has parent')).toMatchObject({ chars: ['asymmetric', 'irreflexive'], parents: ['has ancestor'], inverses: ['has child'], range: [expect.any(String)] });
+    const backId = (name: string) => back.props.find((p) => p.name === name)!.id;
+    expect(back.props.find((p) => p.name === 'has parent')).toMatchObject({ chars: ['asymmetric', 'irreflexive'], parents: [backId('has ancestor')], inverses: [backId('has child')], range: [expect.any(String)] });
     // A domain and range alone put the property between no particular classes, so nothing is drawn.
     expect(back.relations.filter((r) => r.kind === 'association')).toEqual([]);
     expect(toTurtle(back)).toBe(ttl);
@@ -616,12 +615,17 @@ describe('data and object properties', () => {
 
   it('reasons with property characteristics', () => {
     const { m, t, rel } = family();
+    const ancestor = newProp({ name: 'has ancestor', description: '', chars: ['transitive'] });
     m.props.push(
-      { name: 'has ancestor', description: '', chars: ['transitive'] },
-      { name: 'has parent', description: '', chars: [], parents: ['has ancestor'], inverses: ['has child'], range: [t.Parent] },
-      { name: 'married to', description: '', chars: ['symmetric'] },
-      { name: 'has employer', description: '', chars: ['functional'] },
+      ancestor,
+      newProp({ name: 'has parent', description: '', chars: [], parents: [ancestor.id], range: [t.Parent] }),
+      newProp({ name: 'married to', description: '', chars: ['symmetric'] }),
+      newProp({ name: 'has employer', description: '', chars: ['functional'] }),
     );
+    // An inverse is another property, declared or not: here it is declared afterwards and linked by id.
+    const child = newProp({ name: 'has child', description: '', chars: [] });
+    m.props.push(child);
+    m.props[1].inverses = [child.id];
     rel('Ann', 'Bob', { label: 'has parent' });
     rel('Bob', 'Cy', { label: 'has parent' });
     rel('Ann', 'Cy', { label: 'married to' });
@@ -648,7 +652,7 @@ describe('data and object properties', () => {
 
   it('finds asymmetric and irreflexive properties used the wrong way', () => {
     const { m, rel } = family();
-    m.props.push({ name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'] });
+    m.props.push(newProp({ name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'] }));
     rel('Ann', 'Bob', { label: 'has parent' });
     rel('Bob', 'Ann', { label: 'has parent' });
     rel('Cy', 'Cy', { label: 'has parent' });
@@ -660,7 +664,7 @@ describe('data and object properties', () => {
   it('judges each use against a domain or range set by hand, accepting kinds of the class', () => {
     const { m, t, rel, term } = family();
     // Domain widened to the general class: Person and Parent are kinds of Agent, so both uses fit.
-    m.props.push({ name: 'works for', description: '', chars: [], domain: [t.Agent], range: [t.Company] });
+    m.props.push(newProp({ name: 'works for', description: '', chars: [], domain: [t.Agent], range: [t.Company] }));
     rel('Person', 'Company', { label: 'works for' });
     rel('Parent', 'Company', { label: 'works for' });
     expect(runChecks(structuredClone(m)).filter((i) => i.rule.startsWith('Outside'))).toEqual([]);
@@ -688,7 +692,7 @@ describe('data and object properties', () => {
       relations: [{ from: 'f', to: 'p', kind: 'property' }, { from: 'p', to: 's', kind: 'range' }],
     });
     expect(m.terms.map((t) => t.name)).toEqual(['Film', 'Studio']);
-    expect(m.props).toEqual([{ name: 'Distributed by', description: 'Who releases it.', chars: [], domain: ['f'], range: ['s'] }]);
+    expect(m.props.map(({ id: _id, ...p }) => p)).toEqual([{ name: 'Distributed by', description: 'Who releases it.', chars: [], domain: ['f'], range: ['s'] }]);
     expect(m.relations).toMatchObject([{ from: 'f', to: 's', kind: 'association', label: 'Distributed by' }]);
   });
 
@@ -715,7 +719,7 @@ describe('university example', () => {
     expect(m.props).toHaveLength(26);
     expect(m.relations.length).toBeGreaterThan(190);
     expect(plainRelationships(m).map((p) => p.name)).toEqual(['graduated from', 'hosted by', 'sponsors', 'works at']);
-    expect(objectProperties(m).every((p) => p.inverses.every((k) => m.props.some((x) => x.name === k)))).toBe(true);
+    expect(objectProperties(m).every((p) => p.inverses.every((k) => m.props.some((x) => x.id === k)))).toBe(true);
   });
 
   it('passes its checks apart from suggestions, and is consistent', () => {
@@ -805,20 +809,21 @@ describe('a large model', () => {
 });
 
 describe('IRIs', () => {
-  it('gives each named entity an IRI in the base namespace, once', () => {
+  it('gives each entity an IRI in the base namespace, once: from its name, or standing in until it has one', () => {
     const m = emptyModel('Film ontology');
     m.baseIri = 'http://example.org/ontology#';
     m.terms.push(newTerm({ name: 'Person' }), newTerm({ name: 'Release date', type: 'property' }), newTerm({ name: '' }), newTerm({ name: 'New class' }), newTerm({ name: 'Person' }));
-    m.props.push({ name: 'acts in', description: '', chars: [] });
+    m.props.push(newProp({ name: 'acts in', description: '', chars: [] }));
     const a = withIris(m);
-    expect(a.terms.map((t) => t.iri)).toEqual(['http://example.org/ontology#Person', 'http://example.org/ontology#releaseDate', undefined, undefined, 'http://example.org/ontology#Person_2']);
+    expect(a.terms.map((t) => t.iri)).toEqual(['http://example.org/ontology#Person', 'http://example.org/ontology#releaseDate', 'http://example.org/ontology#Class', 'http://example.org/ontology#NewClass', 'http://example.org/ontology#Person_2']);
+    expect(a.terms.map((t) => !!t.pendingIri)).toEqual([false, false, true, true, false]);
     expect(a.props[0].iri).toBe('http://example.org/ontology#actsIn');
     // Nothing more to do the second time, so the very same model comes back.
     expect(withIris(a)).toBe(a);
   });
 
   it('keeps an IRI when the entity is renamed or the base namespace changes', () => {
-    let m = withIris({ ...emptyModel('X'), baseIri: 'http://example.org/ontology#', terms: [newTerm({ name: 'Actor' })], props: [{ name: 'acts in', description: '', chars: [] }] });
+    let m = withIris({ ...emptyModel('X'), baseIri: 'http://example.org/ontology#', terms: [newTerm({ name: 'Actor' })], props: [newProp({ name: 'acts in', description: '', chars: [] })] });
     m = withIris({ ...m, baseIri: 'http://other.org/v2#', terms: [{ ...m.terms[0], name: 'Performer' }, newTerm({ name: 'Stage' })], props: [{ ...m.props[0], name: 'performs in' }] });
     expect(m.terms.map((t) => `${t.name} ${t.iri}`)).toEqual(['Performer http://example.org/ontology#Actor', 'Stage http://other.org/v2#Stage']);
     expect(m.props[0]).toMatchObject({ name: 'performs in', iri: 'http://example.org/ontology#actsIn' });
@@ -1037,7 +1042,7 @@ describe('moving entities to a new namespace', () => {
       ...emptyModel('Cast'),
       baseIri: 'http://old.org/ns#',
       terms: [newTerm({ name: 'Actor' }), newTerm({ name: 'Person', iri: 'https://schema.org/Person' }), newTerm({ name: 'Film', axioms: ['rdfs:subClassOf [ owl:unionOf ( <http://old.org/ns#Actor> <https://schema.org/Person> ) ]'] })],
-      props: [{ name: 'acts in', description: '', chars: [] }],
+      props: [newProp({ name: 'acts in', description: '', chars: [] })],
     });
     const moved = moveNamespace({ ...m, baseIri: 'http://new.org/v2#' }, 'http://old.org/ns#', 'http://new.org/v2#');
     expect(moved.terms.map((t) => t.iri)).toEqual(['http://new.org/v2#Actor', 'https://schema.org/Person', 'http://new.org/v2#Film']);

@@ -4,7 +4,7 @@ import type { DlReport, ReasoningResult } from '../model/reasoning';
 import { stable } from '../model/stable';
 import { useStore } from '../model/store';
 import { stressModel } from '../model/stress';
-import { emptyModel, newRelation, newTerm, type Model } from '../model/types';
+import { newProp, emptyModel, newRelation, newTerm, type Model } from '../model/types';
 import { OWL_NOTHING, StructureError, type HierarchyPage, type HierarchyQuery, type Iri, type StructureService } from './contracts';
 import { classIriOf, createLocalStructureService, ontologyRef, revisionOf, termOfClass, WORKING_COPY, type LocalReasoning } from './local';
 import { PAGE } from './service';
@@ -459,7 +459,7 @@ describe('comparing two classes of the model in the editor', () => {
     for (const name of ['Party', 'Organisation', 'Party local profile', 'Organisation local profile', 'Person']) term(name);
     term('global identifier', { type: 'property', range: 'xsd:string' });
     // The property is declared with Party as its domain. That is a statement about the property, not about Party.
-    m.props = [{ name: 'has local profile', description: '', chars: [], domain: [id.Party] }];
+    m.props = [newProp({ name: 'has local profile', description: '', chars: [], domain: [id.Party] })];
     const rel = (from: string, to: string, patch: Parameters<typeof newRelation>[0] extends infer P ? Partial<P> : never = {}) => m.relations.push(newRelation({ from: id[from], to: id[to], ...patch }));
     rel('Organisation', 'Party', { kind: 'generalization' });
     rel('Person', 'Party', { kind: 'generalization' });

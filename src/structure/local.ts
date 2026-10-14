@@ -1,7 +1,7 @@
 import { enumerationExpression, isEnumeration } from '../model/axioms';
 import { configOf, supports } from '../model/modelTypes';
 import { compactIri } from '../model/prefixes';
-import { assertedSuperclasses, findProp, propKey, restrictionsOf } from '../model/props';
+import { assertedSuperclasses, findProp, restrictionsOf } from '../model/props';
 import { reason } from '../model/reasoner';
 import type { EngineId, ReasoningResult } from '../model/reasoning';
 import { stable } from '../model/stable';
@@ -140,7 +140,7 @@ function axiomsOf(given: Model, iris: Iri[]): Map<Iri, ClassAxiom[]> {
     const axioms: ClassAxiom[] = [];
     for (const r of restrictionsOf(model, term.id)) {
       const to = byId.get(r.rel.to);
-      const property = r.data ? { iri: to?.iri || UNNAMED + r.rel.to, label: r.property, type: 'data' as const } : { iri: findProp(model, propKey(r.rel.label))?.iri || UNNAMED_PROPERTY + propKey(r.rel.label), label: r.property, type: 'object' as const };
+      const property = r.data ? { iri: to?.iri || UNNAMED + r.rel.to, label: r.property, type: 'data' as const } : { iri: (r.rel.prop !== undefined ? findProp(model, r.rel.prop)?.iri : undefined) || UNNAMED_PROPERTY + r.rel.prop, label: r.property, type: 'object' as const };
       const filler = r.data ? { label: r.filler, kind: 'datatype' as const } : { iri: index.iriOf.get(r.rel.to) ?? UNNAMED + r.rel.to, label: r.filler, kind: 'class' as const };
       // A restriction is the same restriction wherever it is asserted: by its property, how many, and of what.
       axioms.push({ kind: 'restriction', key: `r|${property.iri}|${r.quantifier}|${r.n ?? ''}|${filler.iri ?? filler.label}`, property, quantifier: r.quantifier, ...(r.n !== undefined ? { n: r.n } : {}), filler, text: r.text });

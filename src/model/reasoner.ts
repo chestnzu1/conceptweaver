@@ -1,6 +1,7 @@
 import type { DataValue, Model, Relation } from './types';
 import { denotes, enumOf, literalText } from './datatypes';
-import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, propKey } from './props';
+import { linkProps, nameKey } from './identity';
+import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties } from './props';
 import { resolveModel } from './vocab';
 
 /**
@@ -98,7 +99,8 @@ let last: { relations: Relation[]; props: Model['props']; datatypes: Model['data
 
 /** `fresh` skips the cached result and reasons from scratch. */
 export function reason(model: Model, fresh = false): Reasoning {
-  const m = resolveModel(model);
+  // Each relationship joined to the property it uses (identity.ts), and read with the standard properties in force.
+  const m = resolveModel(linkProps(model));
   // Dragging terms around changes the model on every frame but not what it means.
   const sig =
     (m.vocab.enabled ? '1' : '0') +
@@ -146,7 +148,7 @@ function run(m: Model): Reasoning {
   const chars = new Map<string, Fact[]>();
   if (m.mode !== 'skos') {
     for (const v of objectProperties(m)) {
-      const key: Pred = `p:${v.key}`;
+      const key: Pred = `p:${v.id}`;
       propLabel.set(key, v.name);
       const classLevel = v.rels.find((r) => byId.get(r.from)?.type === 'concept' && byId.get(r.to)?.type === 'concept');
       // A single class can be reasoned with; "any of several" cannot be turned into one type.
@@ -230,8 +232,9 @@ function run(m: Model): Reasoning {
       // Attaching a data property restricts the class; the property's domain is handled below.
     } else if (a.type === 'instance' && b.type === 'instance') {
       // A relationship between two individuals is a fact that uses the property.
-      // One kept plain shares only the name with the object property, not its meaning.
-      const key: Pred = `p:${r.plain ? '~' : ''}${propKey(r.label)}`;
+      // One that uses no property is known by its label, apart from the properties: it may share
+      // a property's name (kept plain), but not its meaning.
+      const key: Pred = r.prop !== undefined ? `p:${r.prop}` : `p:~${nameKey(r.label)}`;
       if (!propLabel.has(key)) propLabel.set(key, r.label.trim() || DEFAULT_PROP);
       add(a.id, key, b.id, undefined, r.id);
     }

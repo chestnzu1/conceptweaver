@@ -233,6 +233,21 @@ More on what the advanced reasoner does and does not cover is under
   with a predicate nobody declared, a vocabulary turned into an ontology) is kept and shown as
   what it is, with the ontology's kinds to choose from; it is not turned into something else
   behind your back.
+- **An object property is known by an id of its own, not by its name** (model format 2, from
+  2026-10-14; `src/model/identity.ts`). A line that uses a property names it, and shows its name.
+  Rename the property and the lines that use it follow, and nothing else: two properties may
+  have one name (FOAF has two called "account"; two ontologies may each have a `hasPart`), and
+  each keeps its own uses, its own IRI and its own links to other properties. A name typed on a
+  line still chooses the property of that name, the model's own before one of another ontology;
+  two of the model's own cannot be given one name, which would only invite mistakes.
+- **A model saved before** (format 1, which knew a property by its name in lower case) opens as
+  it was: the same Turtle, the same relationships, the same properties and the same picture.
+  `src/model/migration.test.ts` checks that on three models saved in format 1. It is saved in
+  format 2 from then on, which a version of the app from before cannot read in full.
+- **Every entity has an IRI from the moment it exists**: one made from its name or, while it has
+  none (a new class is "New class"), one that stands in, in the default namespace. The first real
+  name replaces that one, once, and whatever referred to it follows; after that a rename never
+  changes an IRI.
 - **In a SKOS-like vocabulary** a relationship is plain or "is a (broader)", as before.
 - **Governance & Metadata** – a tab under *Entities* lists every entity with its kind, lifecycle
   status, owner and whether its required metadata is complete; selecting one shows its metadata
@@ -568,6 +583,9 @@ that *Layered* says so and uses the built-in hierarchical layout.
   is in `props.ts`, `relating.ts` and `axioms.ts`, and `reconnect.ts` asks them whether an end
   of a relationship can be moved to another term. How a line runs is `geometry.ts`, including
   from an end that was put somewhere by hand; where those ends are is kept in `graphStyle.ts`.
+  Which object property a relationship uses, by id, is `identity.ts`; every entity's IRI is
+  `iri.ts`; a model of an older format is brought up to date in `normalizeModel` (`types.ts`),
+  checked against the files in `fixtures/v1`.
 - `src/components` – the SVG canvas, side panels, views and menus.
 - `src/entities` – the search, the sorting and the filters of the Entities page, apart from the
   page. `contracts.ts` is all the page knows: three questions (`EntityQueryService`: which sorts
@@ -700,8 +718,9 @@ the views rely on, each covered by a test in `src/structure`:
 **What stays in the browser.** `outline.ts` (which branches are open, and the lines to draw from
 what was fetched), the focus and the two compared classes (in the store), and `StructureHost`,
 through which the views open an entity in the editor or on the canvas. Those last two still
-need the app to find its own term for an IRI; a class without an IRI yet is known locally as
-`urn:conceptweaver:term:…`, which a backend never has to produce.
+need the app to find its own term for an IRI. Every class has one from the moment it is made, so
+the views and a backend speak IRIs only; `local.ts` knows a class without one as
+`urn:conceptweaver:term:…` only for a model built in code that never had its IRIs given.
 
 **Limits a server may set.** A page is 200 classes unless asked otherwise and never more than
 1,000; `branches` takes up to 500 classes; a search gives 12 matches and the total. None of these
@@ -986,8 +1005,9 @@ it, and nothing was replaced):
 - **What a round trip loses, measured.** `src/model/corpus.test.ts` opens each ontology of a
   fixed corpus (`corpus/corpus.mjs`: the seven above, the OWL 2 Primer's example and the core of
   the Relation Ontology), saves it as Turtle unchanged, and has the OWL API compare the two
-  statement by statement. On 2026-10-14 the nine lost 795 statements between them and gained
-  2,056; the message on opening names at most 36 of the lost. Besides what it names: version IRIs
+  statement by statement. On 2026-10-14 the nine lost 790 statements between them and gained
+  2,058 (795 and 2,056 before object properties had ids of their own, when FOAF's second
+  "account" property was dropped); the message on opening names at most 36 of the lost. Besides what it names: version IRIs
   and most annotations of the ontology itself; every `rdfs:comment` comes back as
   `skos:definition`; a class defined by an `owl:intersectionOf` stated on the class itself, as
   Wine writes 61 of its classes; datatype definitions, `owl:sameAs`, class assertions of a class

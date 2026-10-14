@@ -118,12 +118,12 @@ function build(model: Model): Index {
     },
     objectProperty: () =>
       objectProperties(model).map((p) => ({
-        key: p.key,
+        key: p.id,
         ...(p.iri ? { iri: p.iri } : {}),
         label: p.name,
         texts: textsOf(model, p),
         sort: { name: p.name, iri: p.iri, relations: p.rels.length },
-        facts: { domain: withOrWithout(p.domain.length > 0), range: withOrWithout(p.range.length > 0), characteristics: p.chars, inverse: flag(propLinks(model, p.key, 'inverses').length > 0) },
+        facts: { domain: withOrWithout(p.domain.length > 0), range: withOrWithout(p.range.length > 0), characteristics: p.chars, inverse: flag(propLinks(model, p.id, 'inverses').length > 0) },
       })),
     dataProperty: () =>
       (oneKind ? [] : of('property')).map((t) => ({

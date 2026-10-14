@@ -2,11 +2,12 @@ import { Parser } from 'n3';
 import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
 import { baseIriOf, localName } from './iri';
 import { arrangeAsHierarchy } from './layout';
-import { DATATYPES, ENUM_RANGE, emptyModel, newRelation, newTerm, PROP_LINKS, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
+import { DATATYPES, ENUM_RANGE, emptyModel, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
 import { enumOf, isEnumRange } from './datatypes';
 import { keyIri } from './governance';
-import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, propKey, restrictionSpecs, specsPatch } from './props';
+import { linkProps } from './identity';
+import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, restrictionSpecs, specsPatch } from './props';
 import { resolveModel, STD_PROPS } from './vocab';
 
 const NS = {
@@ -36,7 +37,8 @@ interface RdfNode {
 }
 
 function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string, string>; propRef: Map<string, string> } {
-  const m = resolveModel(model);
+  // Each relationship joined to the property it uses (identity.ts), with the standard properties in force.
+  const m = resolveModel(linkProps(model));
   const base = baseIriOf(m);
   const used = new Set<string>();
   const unique = (s: string) => {
@@ -211,10 +213,10 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   // the relationships between terms are uses of it.
   const views = objectProperties(m);
   const propRef = new Map<string, string>();
-  for (const v of views) if (v.iri) propRef.set(v.key, short(v.iri));
-  for (const v of views) if (!v.iri) propRef.set(v.key, ':' + unique(localName(v.name, true)));
+  for (const v of views) if (v.iri) propRef.set(v.id, short(v.iri));
+  for (const v of views) if (!v.iri) propRef.set(v.id, ':' + unique(localName(v.name, true)));
   const objProps: RdfNode[] = views.map((v) => {
-    const n: RdfNode = { id: propRef.get(v.key)!, props: [['rdf:type', { id: 'owl:ObjectProperty' }]] };
+    const n: RdfNode = { id: propRef.get(v.id)!, props: [['rdf:type', { id: 'owl:ObjectProperty' }]] };
     for (const c of CHARACTERISTICS) if (v.chars.includes(c.id)) n.props.push(['rdf:type', { id: c.owl }]);
     if (v.external === undefined) {
       n.props.push(['rdfs:label', text(v.name)]);
@@ -265,7 +267,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       // One superclass for each restriction the relationship states.
       if (a.type === 'concept') for (const spec of restrictionSpecs(r)) A.props.push(['rdfs:subClassOf', restrict(spec, bRef.id, rangeVal(b.range) ?? 'rdfs:Literal', true)]);
     } else {
-      const declared = r.kind === 'association' && !r.plain ? propRef.get(propKey(r.label)) : undefined;
+      const declared = r.kind === 'association' && r.prop !== undefined ? propRef.get(r.prop) : undefined;
       if (declared && a.type === 'concept' && b.type === 'concept') {
         for (const spec of restrictionSpecs(r)) A.props.push(['rdfs:subClassOf', restrict(spec, declared, bRef.id, false)]);
         continue;
@@ -506,10 +508,11 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     return t;
   };
   const relKeys = new Set<string>();
-  const relate = (from: string, to: string, kind: Relation['kind'], label = '', predicate?: string, restriction?: Pick<Relation, 'restriction' | 'restrictionN' | 'plain'>) => {
+  // A use of an object property carries the property's id (`prop`), so that two properties with one label stay two.
+  const relate = (from: string, to: string, kind: Relation['kind'], label = '', predicate?: string, restriction?: Pick<Relation, 'restriction' | 'restrictionN' | 'plain' | 'prop'>) => {
     const a = terms.get(from);
     const b = terms.get(to);
-    const k = `${from}|${to}|${kind}|${label}|${predicate ?? ''}|${restriction?.restriction ?? ''}`;
+    const k = `${from}|${to}|${kind}|${restriction?.prop ?? label}|${predicate ?? ''}|${restriction?.restriction ?? ''}`;
     if (!a || !b) return false;
     if (relKeys.has(k)) return true;
     relKeys.add(k);
@@ -518,8 +521,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   };
   // Several restrictions by one property on one target are one relationship that states them all.
   const restricted = new Map<string, Relation>();
-  const restrictBy = (from: string, to: string, kind: Relation['kind'], label: string, how: Pick<Relation, 'restriction' | 'restrictionN'>): boolean => {
-    const k = `${from}|${to}|${kind}|${label}`;
+  const restrictBy = (from: string, to: string, kind: Relation['kind'], label: string, how: Pick<Relation, 'restriction' | 'restrictionN'>, prop?: string): boolean => {
+    const k = `${from}|${to}|${kind}|${prop ?? label}`;
     const drawn = restricted.get(k);
     if (drawn) {
       Object.assign(drawn, specsPatch([...restrictionSpecs(drawn), { restriction: how.restriction ?? 'some', restrictionN: how.restrictionN }]));
@@ -527,7 +530,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       return true;
     }
     const before = m.relations.length;
-    if (!relate(from, to, kind, label, undefined, how)) return false;
+    if (!relate(from, to, kind, label, undefined, prop !== undefined ? { ...how, prop } : how)) return false;
     if (m.relations.length > before) restricted.set(k, m.relations[before]);
     return true;
   };
@@ -539,6 +542,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   const annotationProps = new Set(typed(NS.owl + 'AnnotationProperty'));
   const dataProps = new Set(typed(NS.owl + 'DatatypeProperty').filter((p) => !objProps.has(p) && !annotationProps.has(p)));
   const propLabel = (p: string) => literal(p, NS.rdfs + 'label', NS.skos + 'prefLabel') || humanize(p, true);
+  // Each object property's id in the model, made now: its uses are read before its declaration.
+  const propIdOf = new Map([...objProps].map((p) => [p, uid()]));
 
   // Classes: declared ones first, then anything used in a class position.
   for (const type of [NS.owl + 'Class', NS.rdfs + 'Class', NS.skos + 'Concept']) for (const c of typed(type)) ensure(c, 'concept');
@@ -615,7 +620,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       ensure(prop.value, 'property');
       return restrictBy(c, prop.value, 'property', '', how);
     }
-    return objProps.has(prop.value) && classes.has(fillers[0].value) && restrictBy(c, fillers[0].value, 'association', propLabel(prop.value), how);
+    return objProps.has(prop.value) && classes.has(fillers[0].value) && restrictBy(c, fillers[0].value, 'association', propLabel(prop.value), how, propIdOf.get(prop.value));
   };
 
   /**
@@ -673,27 +678,27 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   const propEntries = new Map<string, ObjProp>();
   const expandCurie = (curie: string) => (curie.startsWith('owl:') ? NS.owl : NS.rdfs) + curie.split(':')[1];
   const charOf = new Map(CHARACTERISTICS.map((c) => [NS.owl + c.owl.slice(4), c.id]));
-  const others = (p: string, pred: string) => [...new Set(named(objs(p, pred)).filter((x) => objProps.has(x) && x !== p).map((x) => propKey(propLabel(x))))];
+  const others = (p: string, pred: string) => [...new Set(named(objs(p, pred)).filter((x) => objProps.has(x) && x !== p).map((x) => propIdOf.get(x)!))];
   /** The same terms, whatever the order. */
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
   for (const p of objProps) {
     const domain = [...new Set(objs(p, NS.rdfs + 'domain').flatMap(expand))].filter((c) => terms.has(c)).map((c) => terms.get(c)!.id);
     const range = [...new Set(objs(p, NS.rdfs + 'range').flatMap(expand))].filter((c) => terms.has(c)).map((c) => terms.get(c)!.id);
-    if (m.props.some((x) => propKey(x.name) === propKey(propLabel(p)))) continue;
     const entry: ObjProp = {
+      id: propIdOf.get(p)!,
       name: propLabel(p),
       iri: p,
       description: literal(p, NS.skos + 'definition', NS.rdfs + 'comment'),
       chars: objs(p, NS.rdf + 'type').map((o) => charOf.get(o.value)).filter((c): c is string => !!c),
     };
     // A domain or range that only repeats where the property is used is left to follow its use.
-    const uses = m.relations.filter((r) => r.kind === 'association' && !r.predicate && propKey(r.label) === propKey(entry.name));
+    const uses = m.relations.filter((r) => r.prop === entry.id);
     if (domain.length && !same(domain, [...new Set(uses.map((r) => r.from))])) entry.domain = domain;
     if (range.length && !same(range, [...new Set(uses.map((r) => r.to))])) entry.range = range;
     for (const link of PROP_LINKS) {
-      const keys = others(p, expandCurie(LINK_PREDICATE[link])).filter((k) => k !== propKey(entry.name));
+      const ids = others(p, expandCurie(LINK_PREDICATE[link]));
       // Kept on whichever property the file states it, even where both do: nothing stated is dropped.
-      if (keys.length) entry[link] = keys;
+      if (ids.length) entry[link] = ids;
     }
     m.props.push(entry);
     propEntries.set(p, entry);
@@ -798,7 +803,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     const subject = terms.get(s);
     if (!subject) continue;
     for (const [p, os] of preds) {
-      if (objProps.has(p)) named(os).forEach((o) => relate(s, o, 'association', propLabel(p)));
+      if (objProps.has(p)) named(os).forEach((o) => relate(s, o, 'association', propLabel(p), undefined, { prop: propIdOf.get(p)! }));
       // The literal values an individual has for a data property.
       const prop = dataProps.has(p) ? terms.get(p) : undefined;
       if (!prop || subject.type !== 'instance') continue;
@@ -839,8 +844,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
         for (let j = i + 1; j < all.length; j++) {
           const [a, b] = [propEntries.get(all[i]), propEntries.get(all[j])];
           if (a && b && predicate === 'owl:propertyDisjointWith') {
-            const [ka, kb] = [propKey(a.name), propKey(b.name)];
-            if (ka !== kb && !a.disjoints?.includes(kb) && !b.disjoints?.includes(ka)) a.disjoints = [...(a.disjoints ?? []), kb];
+            if (a !== b && !a.disjoints?.includes(b.id) && !b.disjoints?.includes(a.id)) a.disjoints = [...(a.disjoints ?? []), b.id];
           } else if (terms.has(all[i]) && terms.has(all[j]) && !relKeys.has(`${all[j]}|${all[i]}|association||${predicate}|`)) {
             if (relate(all[i], all[j], 'association', '', predicate)) m.vocab.enabled = true;
           }
@@ -1063,7 +1067,7 @@ export function termIris(m: Model): Map<string, string> {
 
 /**
  * The IRI each entity is written with, the other way round: from an IRI in the exported RDF to
- * the term (its id) or the object property (its key) it stands for. This is how what a reasoner
+ * the term or the object property (by id) it stands for. This is how what a reasoner
  * says about the RDF is found again in the editor.
  */
 export function entityIris(m: Model): { terms: Map<string, string>; props: Map<string, string> } {

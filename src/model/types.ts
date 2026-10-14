@@ -46,10 +46,16 @@ export const TYPE_CHOICES: { value: TermType; label: string; patch: Pick<Term, '
 export const typeChoice = (t: Pick<Term, 'type'>): TermType => t.type;
 
 /**
- * An object property of an ontology: a named, reusable kind of relationship. Relationships on
- * the canvas use it by carrying its name as their label.
+ * An object property of an ontology: a named, reusable kind of relationship. A relationship on
+ * the canvas is a use of it by naming it in `Relation.prop`, and carries its name as its label.
  */
 export interface ObjProp {
+  /**
+   * What the property is known by inside the model: relationships and other properties refer to
+   * it by this. It never changes and is never written to RDF, where the IRI identifies it. Two
+   * properties may have the same name (from two ontologies, say); never the same id.
+   */
+  id: string;
   name: string;
   description: string;
   /** Term ids. Left out, the domain (or range) follows the relationships that use the property. */
@@ -58,9 +64,9 @@ export interface ObjProp {
   /** Ids from CHARACTERISTICS, e.g. "transitive". */
   chars: string[];
   /**
-   * Other object properties, by key (lower-cased name): the ones it specialises
-   * (rdfs:subPropertyOf), its inverses, and the ones it is equivalent to or disjoint with.
-   * The last three hold both ways and are stored on one of the two properties.
+   * Other object properties, by id: the ones it specialises (rdfs:subPropertyOf), its inverses,
+   * and the ones it is equivalent to or disjoint with. The last three hold both ways and are
+   * stored on one of the two properties.
    */
   parents?: string[];
   inverses?: string[];
@@ -70,6 +76,11 @@ export interface ObjProp {
   fields?: ExtraField[];
   /** Full IRI: kept from an import, or made once from the name. */
   iri?: string;
+  /**
+   * The IRI only stands in: it was made before the entity had a name, and is replaced once, by
+   * one made from the first name it is given (see withIris). Not set on any other IRI.
+   */
+  pendingIri?: true;
   /** Defined in another ontology and only referred to here: the id of that ontology, or '' if it is not known. */
   external?: string;
 }
@@ -109,6 +120,11 @@ export interface EnumDatatype {
   values: EnumLiteral[];
   /** Full IRI: kept from an import, or made once from the name. */
   iri?: string;
+  /**
+   * The IRI only stands in: it was made before the entity had a name, and is replaced once, by
+   * one made from the first name it is given (see withIris). Not set on any other IRI.
+   */
+  pendingIri?: true;
   /** Written in place wherever it is the range of a property, with no name of its own, as some files have it. */
   anonymous?: boolean;
 }
@@ -144,8 +160,13 @@ export interface Term {
   y: number;
   synonyms: string;
   fields: ExtraField[];
-  /** Full IRI, kept when the term came from an RDF import. */
+  /** Full IRI: kept from an import, or made once from the name (see withIris). */
   iri?: string;
+  /**
+   * The IRI only stands in: it was made before the entity had a name, and is replaced once, by
+   * one made from the first name it is given (see withIris). Not set on any other IRI.
+   */
+  pendingIri?: true;
   /**
    * For a data property: the datatype of its values. Either one of the standard ones, by name
    * ("xsd:date"), or an enumerated datatype of the model, as "enum:" and its id (see EnumDatatype).
@@ -206,6 +227,12 @@ export interface Relation {
    * and also "directs only Film", or "min 1" together with "max 3".
    */
   more?: RestrictionSpec[];
+  /**
+   * The object property this relationship is a use of, by id (an association only). Its label is
+   * then that property's name, in whatever case it was written, and follows it when the property
+   * is renamed (see identity.ts).
+   */
+  prop?: string;
   /** Kept as a plain relationship even though its label is the name of an object property. */
   plain?: boolean;
 }
@@ -230,9 +257,16 @@ export interface Prefix {
   iri: string;
 }
 
+/**
+ * The version of the model format this code writes. 1: object properties are known by their
+ * name, lower-cased. 2 (from 2026-10-14): by an id of their own, which relationships and other
+ * properties refer to. A model of version 1 is read and brought up to date by normalizeModel.
+ */
+export const MODEL_VERSION = 2;
+
 export interface Model {
   format: 'conceptweaver';
-  version: 1;
+  version: typeof MODEL_VERSION;
   name: string;
   description: string;
   /** The default namespace: where the IRIs of new entities are made. */
@@ -246,7 +280,7 @@ export interface Model {
   lang: string;
   /** Optional RDFS/OWL layer: whether it is on, and which relation labels map to which standard property. */
   vocab: { enabled: boolean; map: Record<string, string> };
-  /** Declared object properties. Relationship labels in use that have no entry here are properties too. */
+  /** Declared object properties. A relationship is a use of one when it names it (Relation.prop). */
   props: ObjProp[];
   terms: Term[];
   relations: Relation[];
@@ -435,7 +469,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: 1, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
+  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -451,6 +485,10 @@ export function newTerm(p: Partial<Term> = {}): Term {
     fields: [],
     ...p,
   };
+}
+
+export function newProp(p: Partial<ObjProp> & { name: string }): ObjProp {
+  return { id: uid(), description: '', chars: [], ...p };
 }
 
 export function newRelation(p: Partial<Relation> & { from: string; to: string }): Relation {
@@ -558,7 +596,7 @@ export function normalizeModel(raw: unknown): Model {
       const lit: EnumLiteral = { value: v.value, ...(str(v.dt) ? { dt: str(v.dt) } : {}), ...(LANG.test(str(v.lang)) ? { lang: str(v.lang).toLowerCase() } : {}) };
       if (!values.some((x) => x.value === lit.value && (x.dt ?? '') === (lit.dt ?? '') && (x.lang ?? '') === (lit.lang ?? ''))) values.push(lit);
     }
-    datatypes.push({ id: str(d.id), name: str(d.name), description: str(d.description), values, ...(str(d.iri) ? { iri: str(d.iri) } : {}), ...(d.anonymous === true ? { anonymous: true } : {}) });
+    datatypes.push({ id: str(d.id), name: str(d.name), description: str(d.description), values, ...(str(d.iri) ? { iri: str(d.iri), ...(d.pendingIri === true ? { pendingIri: true as const } : {}) } : {}), ...(d.anonymous === true ? { anonymous: true } : {}) });
   }
   const knownRange = (range: string) => DATATYPES.some((x) => x.id === range) || (range.startsWith(ENUM_RANGE) && datatypes.some((x) => x.id === range.slice(ENUM_RANGE.length)));
   const ids = new Set<string>();
@@ -580,7 +618,7 @@ export function normalizeModel(raw: unknown): Model {
       y: num(t.y),
       synonyms: str(t.synonyms),
       fields: fieldList(t.fields),
-      ...(str(t.iri) ? { iri: str(t.iri) } : {}),
+      ...(str(t.iri) ? { iri: str(t.iri), ...(t.pendingIri === true ? { pendingIri: true as const } : {}) } : {}),
       ...(knownRange(str(t.range)) ? { range: str(t.range) } : {}),
       ...(Array.isArray(t.axioms) && t.axioms.length ? { axioms: t.axioms.map((a) => str(a)).filter(Boolean) } : {}),
       ...(t.functional === true ? { functional: true } : {}),
@@ -628,6 +666,7 @@ export function normalizeModel(raw: unknown): Model {
       ...(QUANTIFIERS.some((q) => q.id === r.restriction) ? { restriction: r.restriction as Quantifier } : {}),
       ...(typeof r.restrictionN === 'number' && r.restrictionN >= 0 ? { restrictionN: Math.floor(r.restrictionN) } : {}),
       ...(moreSpecs(r.more).length ? { more: moreSpecs(r.more) } : {}),
+      ...(str(r.prop) ? { prop: str(r.prop) } : {}),
       ...(r.plain === true ? { plain: true } : {}),
       description: str(r.description),
       fromCard: str(r.fromCard),
@@ -640,28 +679,44 @@ export function normalizeModel(raw: unknown): Model {
   if (v.map && typeof v.map === 'object') {
     for (const [k, p] of Object.entries(v.map as Record<string, unknown>)) if (STD.test(str(p))) map[k.trim().toLowerCase()] = str(p);
   }
+  // Format 1 knew an object property by its name, lower-cased: no two could share one, and every
+  // reference to one was that name. From format 2 each has an id, and references are ids.
+  const byName = !(typeof o.version === 'number' && o.version >= 2);
   const props: ObjProp[] = [];
   const key = (name: string) => name.trim().toLowerCase();
   const idList = (v: unknown) => (Array.isArray(v) ? { list: [...new Set(v.map((x) => str(x)).filter((id) => ids.has(id)))] } : undefined);
+  const read: { raw: Record<string, unknown>; entry: ObjProp }[] = [];
   for (const p of (Array.isArray(o.props) ? o.props : []) as Record<string, unknown>[]) {
-    if (!p || typeof p !== 'object' || !str(p.name).trim() || props.some((x) => key(x.name) === key(str(p.name)))) continue;
+    if (!p || typeof p !== 'object' || !str(p.name).trim()) continue;
+    if (byName && props.some((x) => key(x.name) === key(str(p.name)))) continue;
+    let id = byName ? '' : str(p.id);
+    if (!id || props.some((x) => x.id === id)) id = uid();
     const domain = idList(p.domain);
     const range = idList(p.range);
-    props.push({
+    const entry: ObjProp = {
+      id,
       name: str(p.name).trim(),
       description: str(p.description),
       chars: Array.isArray(p.chars) ? [...new Set(p.chars.map((c) => str(c)).filter(Boolean))] : [],
       ...(domain ? { domain: domain.list } : {}),
       ...(range ? { range: range.list } : {}),
-      ...(str(p.iri) ? { iri: str(p.iri) } : {}),
+      ...(str(p.iri) ? { iri: str(p.iri), ...(p.pendingIri === true ? { pendingIri: true as const } : {}) } : {}),
       ...(fieldList(p.fields).length ? { fields: fieldList(p.fields) } : {}),
       ...(typeof p.external === 'string' ? { external: p.external } : {}),
-    });
+    };
+    props.push(entry);
+    read.push({ raw: p, entry });
+  }
+  // The links between properties, once all of them are known. A name in format 1 that no
+  // property had pointed at nothing (and was never exported): it is not kept.
+  const propIds = new Set(props.map((p) => p.id));
+  const idOfName = new Map(props.map((p) => [key(p.name), p.id]));
+  for (const { raw, entry } of read) {
     // Models from before a property could have several: one parent, one inverse.
-    const entry = props[props.length - 1];
-    const legacy: Record<PropLink, unknown> = { parents: p.parent, inverses: p.inverseOf, equivalents: undefined, disjoints: undefined };
+    const legacy: Record<PropLink, unknown> = { parents: raw.parent, inverses: raw.inverseOf, equivalents: undefined, disjoints: undefined };
     for (const link of PROP_LINKS) {
-      const list = [...new Set([...(Array.isArray(p[link]) ? (p[link] as unknown[]) : []), legacy[link]].map((x) => key(str(x))).filter((k) => k && k !== key(entry.name)))];
+      const refs = [...(Array.isArray(raw[link]) ? (raw[link] as unknown[]) : []), legacy[link]].map((x) => str(x)).filter(Boolean);
+      const list = [...new Set(refs.map((x) => (byName ? idOfName.get(key(x)) : propIds.has(x) ? x : undefined)).filter((x): x is string => !!x && x !== entry.id))];
       if (list.length) entry[link] = list;
     }
   }
@@ -673,7 +728,7 @@ export function normalizeModel(raw: unknown): Model {
     const domain = relations.filter((r) => r.kind === 'property' && r.to === t.id).map((r) => r.from);
     const range = (o.relations as Record<string, unknown>[]).filter((r) => r && r.kind === 'range' && r.from === t.id && ids.has(str(r.to))).map((r) => str(r.to));
     if (!props.some((x) => key(x.name) === key(t.name)) && t.name.trim()) {
-      props.push({ name: t.name.trim(), description: t.description, chars: [], ...(domain.length ? { domain } : {}), ...(range.length ? { range } : {}) });
+      props.push(newProp({ name: t.name.trim(), description: t.description, ...(domain.length ? { domain } : {}), ...(range.length ? { range } : {}) }));
     }
     terms.splice(terms.indexOf(t), 1);
     ids.delete(t.id);
@@ -682,7 +737,7 @@ export function normalizeModel(raw: unknown): Model {
   }
   return {
     format: 'conceptweaver',
-    version: 1,
+    version: MODEL_VERSION,
     name: str(o.name, 'Untitled model') || 'Untitled model',
     description: str(o.description),
     baseIri: str(o.baseIri),

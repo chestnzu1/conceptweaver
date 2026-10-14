@@ -1,0 +1,168 @@
+{
+  "relations": {
+    "s4fwk64bqok": "generalization",
+    "2n3ja2kiqok": "object",
+    "x6vvn522qok": "object",
+    "2pmjw020qok": "object",
+    "mjo9bk1uqok": "plain",
+    "ijwlj8y5qok": "object",
+    "q09swaobqok": "plain",
+    "zh77h4b9qok": "object",
+    "mmjr86udqok": "object",
+    "3wv85ysxqok": "object",
+    "o0ffrvdgqok": "instanceOf",
+    "y5tvbvvvqok": "property",
+    "dxe5qw7gqok": "plain"
+  },
+  "props": [
+    {
+      "name": "directed by",
+      "iri": "http://example.org/fixture#directedBy",
+      "chars": [],
+      "domain": [
+        "8j8ji2h5qok"
+      ],
+      "range": [
+        "7dgu8vkrqok"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "x6vvn522qok"
+      ]
+    },
+    {
+      "name": "directs",
+      "iri": "http://example.org/fixture#directs",
+      "chars": [
+        "inverseFunctional"
+      ],
+      "domain": [
+        "7dgu8vkrqok"
+      ],
+      "range": [
+        "8j8ji2h5qok"
+      ],
+      "parents": [],
+      "inverses": [
+        "directed by"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "2n3ja2kiqok",
+        "3wv85ysxqok"
+      ]
+    },
+    {
+      "name": "funds",
+      "iri": "http://example.org/fixture#funds",
+      "chars": [],
+      "domain": [],
+      "range": [],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": []
+    },
+    {
+      "name": "related to",
+      "iri": "http://example.org/fixture#relatedTo",
+      "chars": [],
+      "domain": [
+        "1w6rdiapqok"
+      ],
+      "range": [
+        "ryli4s8fqok"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "zh77h4b9qok"
+      ]
+    },
+    {
+      "name": "Sponsors",
+      "iri": "http://example.org/fixture#sponsors",
+      "chars": [],
+      "domain": [
+        "ryli4s8fqok"
+      ],
+      "range": [
+        "7r1sge9lqok"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [
+        "funds"
+      ],
+      "disjoints": [
+        "wins"
+      ],
+      "uses": [
+        "2pmjw020qok"
+      ]
+    },
+    {
+      "name": "wins",
+      "iri": "http://example.org/fixture#wins",
+      "chars": [
+        "asymmetric"
+      ],
+      "domain": [
+        "7dgu8vkrqok"
+      ],
+      "range": [
+        "7r1sge9lqok"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "ijwlj8y5qok"
+      ]
+    },
+    {
+      "name": "works with",
+      "iri": "http://example.org/fixture#worksWith",
+      "chars": [
+        "symmetric"
+      ],
+      "domain": [
+        "1w6rdiapqok"
+      ],
+      "range": [
+        "1w6rdiapqok"
+      ],
+      "parents": [
+        "related to"
+      ],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "mmjr86udqok"
+      ]
+    }
+  ],
+  "plain": [
+    {
+      "name": "produces",
+      "uses": [
+        "q09swaobqok"
+      ]
+    },
+    {
+      "name": "wins",
+      "uses": [
+        "mjo9bk1uqok"
+      ]
+    }
+  ]
+}

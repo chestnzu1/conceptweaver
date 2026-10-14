@@ -1,0 +1,385 @@
+{
+  "format": "conceptweaver",
+  "version": 1,
+  "name": "Identity fixture",
+  "description": "",
+  "baseIri": "http://example.org/fixture#",
+  "ontologyIri": "",
+  "prefixes": [],
+  "mode": "ontology",
+  "lang": "en",
+  "vocab": {
+    "enabled": true,
+    "map": {
+      "same as": "owl:sameAs"
+    }
+  },
+  "props": [
+    {
+      "name": "directs",
+      "description": "Who made the film.",
+      "chars": [
+        "inverseFunctional"
+      ],
+      "inverses": [
+        "directed by"
+      ],
+      "iri": "http://example.org/fixture#directs"
+    },
+    {
+      "name": "directed by",
+      "description": "",
+      "chars": [],
+      "iri": "http://example.org/fixture#directedBy"
+    },
+    {
+      "name": "Sponsors",
+      "description": "",
+      "chars": [],
+      "fields": [
+        {
+          "key": "rdfs:comment",
+          "value": "Money for prizes."
+        }
+      ],
+      "equivalents": [
+        "funds"
+      ],
+      "disjoints": [
+        "wins"
+      ],
+      "iri": "http://example.org/fixture#sponsors"
+    },
+    {
+      "name": "funds",
+      "description": "",
+      "chars": [],
+      "iri": "http://example.org/fixture#funds"
+    },
+    {
+      "name": "wins",
+      "description": "",
+      "chars": [
+        "asymmetric"
+      ],
+      "range": [
+        "7r1sge9lqok"
+      ],
+      "iri": "http://example.org/fixture#wins"
+    },
+    {
+      "name": "works with",
+      "description": "",
+      "chars": [
+        "symmetric"
+      ],
+      "parents": [
+        "related to"
+      ],
+      "iri": "http://example.org/fixture#worksWith"
+    },
+    {
+      "name": "related to",
+      "description": "The default name of a line.",
+      "chars": [],
+      "iri": "http://example.org/fixture#relatedTo"
+    }
+  ],
+  "terms": [
+    {
+      "id": "1w6rdiapqok",
+      "name": "Person",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 0,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#Person"
+    },
+    {
+      "id": "7dgu8vkrqok",
+      "name": "Director",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 0,
+      "y": 160,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#Director"
+    },
+    {
+      "id": "8j8ji2h5qok",
+      "name": "Film",
+      "description": "A motion picture.",
+      "type": "concept",
+      "color": "amber",
+      "x": 300,
+      "y": 160,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#Film"
+    },
+    {
+      "id": "ryli4s8fqok",
+      "name": "Studio",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 600,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#Studio"
+    },
+    {
+      "id": "7r1sge9lqok",
+      "name": "Award",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 600,
+      "y": 300,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#Award"
+    },
+    {
+      "id": "g0yzh57qqok",
+      "name": "release date",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 300,
+      "y": 400,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:date",
+      "iri": "http://example.org/fixture#releaseDate"
+    },
+    {
+      "id": "epcot0dcqok",
+      "name": "Parasite",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 300,
+      "y": 520,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#Parasite"
+    },
+    {
+      "id": "gg24ijmdqok",
+      "name": "Bong Joon-ho",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 0,
+      "y": 520,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#BongJoonHo"
+    },
+    {
+      "id": "ja62ehszqok",
+      "name": "Bong",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 0,
+      "y": 640,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/fixture#Bong"
+    }
+  ],
+  "relations": [
+    {
+      "id": "s4fwk64bqok",
+      "from": "7dgu8vkrqok",
+      "to": "1w6rdiapqok",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2n3ja2kiqok",
+      "from": "7dgu8vkrqok",
+      "to": "8j8ji2h5qok",
+      "label": "directs",
+      "kind": "association",
+      "restriction": "only",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "x6vvn522qok",
+      "from": "8j8ji2h5qok",
+      "to": "7dgu8vkrqok",
+      "label": "Directed By",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2pmjw020qok",
+      "from": "ryli4s8fqok",
+      "to": "7r1sge9lqok",
+      "label": "sponsors",
+      "kind": "association",
+      "restriction": "min",
+      "restrictionN": 1,
+      "more": [
+        {
+          "restriction": "max",
+          "restrictionN": 3
+        }
+      ],
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mjo9bk1uqok",
+      "from": "1w6rdiapqok",
+      "to": "7r1sge9lqok",
+      "label": "wins",
+      "kind": "association",
+      "plain": true,
+      "description": "",
+      "fromCard": "1",
+      "toCard": "*"
+    },
+    {
+      "id": "ijwlj8y5qok",
+      "from": "7dgu8vkrqok",
+      "to": "7r1sge9lqok",
+      "label": "Wins",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "q09swaobqok",
+      "from": "ryli4s8fqok",
+      "to": "8j8ji2h5qok",
+      "label": "produces",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "zh77h4b9qok",
+      "from": "1w6rdiapqok",
+      "to": "ryli4s8fqok",
+      "label": "",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mmjr86udqok",
+      "from": "1w6rdiapqok",
+      "to": "1w6rdiapqok",
+      "label": "works with",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "3wv85ysxqok",
+      "from": "gg24ijmdqok",
+      "to": "epcot0dcqok",
+      "label": "directs",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "o0ffrvdgqok",
+      "from": "epcot0dcqok",
+      "to": "8j8ji2h5qok",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "y5tvbvvvqok",
+      "from": "8j8ji2h5qok",
+      "to": "g0yzh57qqok",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "dxe5qw7gqok",
+      "from": "gg24ijmdqok",
+      "to": "ja62ehszqok",
+      "label": "same as",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    }
+  ],
+  "shapes": {
+    "nodes": [],
+    "extra": ""
+  },
+  "externals": [],
+  "mappings": [],
+  "rejected": [],
+  "governance": {
+    "custom": [],
+    "overrides": {}
+  },
+  "style": {
+    "theme": "standard",
+    "nodeTypes": {},
+    "edgeTypes": {},
+    "nodes": {
+      "8j8ji2h5qok": {
+        "fill": "#ffeeaa"
+      }
+    },
+    "edges": {},
+    "anchors": {
+      "mjo9bk1uqok": {
+        "from": {
+          "side": "right",
+          "at": 0.25
+        }
+      }
+    }
+  },
+  "layout": {
+    "kind": "manual",
+    "direction": "TB",
+    "nodeSpacing": 36,
+    "layerSpacing": 70,
+    "repulsion": 1,
+    "routing": "auto",
+    "root": ""
+  },
+  "datatypes": [],
+  "quality": {
+    "off": [],
+    "on": []
+  }
+}

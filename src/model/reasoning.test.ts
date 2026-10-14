@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { withIris } from './iri';
 import { askReasoner, DEFAULT_REASONER_URL, dlRequest, dlResult, ENGINES, readable, type DlReport } from './reasoning';
-import { emptyModel, newRelation, newTerm, type Model } from './types';
+import { newProp, emptyModel, newRelation, newTerm, type Model } from './types';
 import { dlFindings, MODEL_DATA, validate } from './validation';
 
 /** An animal, a dog that is one, a puppy, and Rex. */
@@ -16,7 +16,7 @@ const kennel = (): Model => {
     newTerm({ id: 'rex', name: 'Rex', type: 'instance' }),
   ];
   m.relations = [newRelation({ id: 'r1', from: 'dog', to: 'animal', kind: 'generalization' }), newRelation({ id: 'r2', from: 'rex', to: 'puppy', kind: 'generalization' })];
-  m.props = [{ name: 'chases', description: '', chars: [] }];
+  m.props = [newProp({ name: 'chases', description: '', chars: [] })];
   return withIris(m);
 };
 const K = 'http://example.org/k#';

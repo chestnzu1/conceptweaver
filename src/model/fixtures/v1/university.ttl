@@ -1,0 +1,724 @@
+@prefix : <http://example.org/university-ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/university-ontology> a owl:Ontology ;
+    rdfs:label "University ontology"@en ;
+    rdfs:comment "A larger example ontology about a university: people, organisation, teaching and research."@en .
+
+:Agent a owl:Class ;
+    rdfs:label "Agent"@en .
+
+:Person a owl:Class ;
+    rdfs:label "Person"@en ;
+    skos:definition "A human being with a role at or around the university."@en ;
+    rdfs:subClassOf :Agent , [ a owl:Restriction ; owl:onProperty :fullName ; owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:string ] , [ a owl:Restriction ; owl:onProperty :birthDate ; owl:someValuesFrom xsd:date ] , [ a owl:Restriction ; owl:onProperty :email ; owl:someValuesFrom xsd:string ] ;
+    owl:disjointWith :Organisation .
+
+:Student a owl:Class ;
+    rdfs:label "Student"@en ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty :enrolledIn ; owl:someValuesFrom :Programme ] , [ a owl:Restriction ; owl:onProperty :takes ; owl:someValuesFrom :CourseEdition ] , [ a owl:Restriction ; owl:onProperty :studentNumber ; owl:someValuesFrom xsd:string ] , [ a owl:Restriction ; owl:onProperty :enrolmentDate ; owl:someValuesFrom xsd:date ] .
+
+:UndergraduateStudent a owl:Class ;
+    rdfs:label "Undergraduate student"@en ;
+    rdfs:subClassOf :Student ;
+    owl:disjointWith :GraduateStudent .
+
+:GraduateStudent a owl:Class ;
+    rdfs:label "Graduate student"@en ;
+    rdfs:subClassOf :Student .
+
+:MScStudent a owl:Class ;
+    rdfs:label "MSc student"@en ;
+    rdfs:subClassOf :GraduateStudent .
+
+:PhDCandidate a owl:Class ;
+    rdfs:label "PhD candidate"@en ;
+    skos:definition "A doctoral researcher, who is both a student and a member of academic staff."@en ;
+    rdfs:subClassOf :GraduateStudent , :AcademicStaff , [ a owl:Restriction ; owl:onProperty :supervisedBy ; owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass :Professor ] , [ a owl:Restriction ; owl:onProperty :participatesIn ; owl:someValuesFrom :ResearchProject ] .
+
+:ExchangeStudent a owl:Class ;
+    rdfs:label "Exchange student"@en ;
+    rdfs:subClassOf :Student .
+
+:Employee a owl:Class ;
+    rdfs:label "Employee"@en ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty :employedBy ; owl:someValuesFrom :Organisation ] , [ a owl:Restriction ; owl:onProperty :employeeNumber ; owl:someValuesFrom xsd:string ] , [ a owl:Restriction ; owl:onProperty :salaryScale ; owl:someValuesFrom xsd:integer ] , [ a owl:Restriction ; owl:onProperty :startDate ; owl:someValuesFrom xsd:date ] .
+
+:AcademicStaff a owl:Class ;
+    rdfs:label "Academic staff"@en ;
+    rdfs:subClassOf :Employee , [ a owl:Restriction ; owl:onProperty :teaches ; owl:someValuesFrom :CourseEdition ] .
+
+:Professor a owl:Class ;
+    rdfs:label "Professor"@en ;
+    rdfs:subClassOf :AcademicStaff , [ a owl:Restriction ; owl:onProperty :supervises ; owl:someValuesFrom :PhDCandidate ] , [ a owl:Restriction ; owl:onProperty :leads ; owl:someValuesFrom :ResearchProject ] .
+
+:FullProfessor a owl:Class ;
+    rdfs:label "Full professor"@en ;
+    rdfs:subClassOf :Professor .
+
+:AssociateProfessor a owl:Class ;
+    rdfs:label "Associate professor"@en ;
+    rdfs:subClassOf :Professor .
+
+:AssistantProfessor a owl:Class ;
+    rdfs:label "Assistant professor"@en ;
+    rdfs:subClassOf :Professor .
+
+:Lecturer a owl:Class ;
+    rdfs:label "Lecturer"@en ;
+    rdfs:subClassOf :AcademicStaff .
+
+:PostdoctoralResearcher a owl:Class ;
+    rdfs:label "Postdoctoral researcher"@en ;
+    rdfs:subClassOf :AcademicStaff .
+
+:TeachingAssistant a owl:Class ;
+    rdfs:label "Teaching assistant"@en ;
+    rdfs:subClassOf :AcademicStaff , :GraduateStudent .
+
+:SupportStaff a owl:Class ;
+    rdfs:label "Support staff"@en ;
+    rdfs:subClassOf :Employee .
+
+:Administrator a owl:Class ;
+    rdfs:label "Administrator"@en ;
+    rdfs:subClassOf :SupportStaff .
+
+:Librarian a owl:Class ;
+    rdfs:label "Librarian"@en ;
+    rdfs:subClassOf :SupportStaff ;
+    :worksAt :Library .
+
+:Technician a owl:Class ;
+    rdfs:label "Technician"@en ;
+    rdfs:subClassOf :SupportStaff .
+
+:Alumnus a owl:Class ;
+    rdfs:label "Alumnus"@en ;
+    rdfs:subClassOf :Person ;
+    :graduatedFrom :University .
+
+:VisitingScholar a owl:Class ;
+    rdfs:label "Visiting scholar"@en ;
+    rdfs:subClassOf :Person ;
+    :hostedBy :AcademicUnit .
+
+:Organisation a owl:Class ;
+    rdfs:label "Organisation"@en ;
+    rdfs:subClassOf :Agent , [ a owl:Restriction ; owl:onProperty :email ; owl:someValuesFrom xsd:string ] , [ a owl:Restriction ; owl:onProperty :founded ; owl:someValuesFrom xsd:gYear ] .
+
+:University a owl:Class ;
+    rdfs:label "University"@en ;
+    rdfs:subClassOf :Organisation .
+
+:AcademicUnit a owl:Class ;
+    rdfs:label "Academic unit"@en ;
+    rdfs:subClassOf :Organisation .
+
+:Faculty a owl:Class ;
+    rdfs:label "Faculty"@en ;
+    rdfs:subClassOf :AcademicUnit , [ a owl:Restriction ; owl:onProperty :partOf ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass :University ] .
+
+:Department a owl:Class ;
+    rdfs:label "Department"@en ;
+    rdfs:subClassOf :AcademicUnit , [ a owl:Restriction ; owl:onProperty :partOf ; owl:someValuesFrom :Faculty ] .
+
+:Institute a owl:Class ;
+    rdfs:label "Institute"@en ;
+    rdfs:subClassOf :AcademicUnit , [ a owl:Restriction ; owl:onProperty :partOf ; owl:someValuesFrom :University ] .
+
+:ResearchGroup a owl:Class ;
+    rdfs:label "Research group"@en ;
+    rdfs:subClassOf :AcademicUnit , [ a owl:Restriction ; owl:onProperty :partOf ; owl:someValuesFrom :Department ] .
+
+:FundingBody a owl:Class ;
+    rdfs:label "Funding body"@en ;
+    rdfs:subClassOf :Organisation .
+
+:Company a owl:Class ;
+    rdfs:label "Company"@en ;
+    rdfs:subClassOf :Organisation ;
+    :sponsors :ResearchProject .
+
+:Publisher a owl:Class ;
+    rdfs:label "Publisher"@en ;
+    rdfs:subClassOf :Organisation .
+
+:EducationalOffering a owl:Class ;
+    rdfs:label "Educational offering"@en .
+
+:Programme a owl:Class ;
+    rdfs:label "Programme"@en ;
+    rdfs:subClassOf :EducationalOffering , [ a owl:Restriction ; owl:onProperty :credits ; owl:someValuesFrom xsd:integer ] .
+
+:BScProgramme a owl:Class ;
+    rdfs:label "BSc programme"@en ;
+    rdfs:subClassOf :Programme , [ a owl:Restriction ; owl:onProperty :awards ; owl:allValuesFrom :BScDegree ] .
+
+:MScProgramme a owl:Class ;
+    rdfs:label "MSc programme"@en ;
+    rdfs:subClassOf :Programme , [ a owl:Restriction ; owl:onProperty :awards ; owl:allValuesFrom :MScDegree ] .
+
+:PhDProgramme a owl:Class ;
+    rdfs:label "PhD programme"@en ;
+    rdfs:subClassOf :Programme , [ a owl:Restriction ; owl:onProperty :awards ; owl:allValuesFrom :Doctorate ] .
+
+:Course a owl:Class ;
+    rdfs:label "Course"@en ;
+    rdfs:subClassOf :EducationalOffering , [ a owl:Restriction ; owl:onProperty :hasField ; owl:someValuesFrom :ResearchField ] , [ a owl:Restriction ; owl:onProperty :hasPrerequisite ; owl:allValuesFrom :Course ] , [ a owl:Restriction ; owl:onProperty :assessedBy ; owl:someValuesFrom :Assessment ] , [ a owl:Restriction ; owl:onProperty :courseCode ; owl:someValuesFrom xsd:string ] , [ a owl:Restriction ; owl:onProperty :credits ; owl:someValuesFrom xsd:integer ] , [ a owl:Restriction ; owl:onProperty :title ; owl:someValuesFrom rdf:langString ] .
+
+:LectureCourse a owl:Class ;
+    rdfs:label "Lecture course"@en ;
+    rdfs:subClassOf :Course .
+
+:Seminar a owl:Class ;
+    rdfs:label "Seminar"@en ;
+    rdfs:subClassOf :Course .
+
+:LaboratoryCourse a owl:Class ;
+    rdfs:label "Laboratory course"@en ;
+    rdfs:subClassOf :Course .
+
+:ThesisProject a owl:Class ;
+    rdfs:label "Thesis project"@en ;
+    rdfs:subClassOf :Course , [ a owl:Restriction ; owl:onProperty :assessedBy ; owl:allValuesFrom :Thesis ] .
+
+:CourseEdition a owl:Class ;
+    rdfs:label "Course edition"@en ;
+    skos:definition "One run of a course in a particular academic period."@en ;
+    rdfs:subClassOf :EducationalOffering , [ a owl:Restriction ; owl:onProperty :editionOf ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass :Course ] , [ a owl:Restriction ; owl:onProperty :takesPlaceIn ; owl:someValuesFrom :Room ] , [ a owl:Restriction ; owl:onProperty :heldDuring ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass :Semester ] , [ a owl:Restriction ; owl:onProperty :capacity ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onDataRange xsd:integer ] .
+
+:Assessment a owl:Class ;
+    rdfs:label "Assessment"@en .
+
+:Exam a owl:Class ;
+    rdfs:label "Exam"@en ;
+    rdfs:subClassOf :Assessment , [ a owl:Restriction ; owl:onProperty :examDate ; owl:someValuesFrom xsd:dateTime ] , [ a owl:Restriction ; owl:onProperty :duration ; owl:someValuesFrom xsd:duration ] .
+
+:WrittenExam a owl:Class ;
+    rdfs:label "Written exam"@en ;
+    rdfs:subClassOf :Exam ;
+    owl:disjointWith :OralExam .
+
+:OralExam a owl:Class ;
+    rdfs:label "Oral exam"@en ;
+    rdfs:subClassOf :Exam .
+
+:Assignment a owl:Class ;
+    rdfs:label "Assignment"@en ;
+    rdfs:subClassOf :Assessment .
+
+:Thesis a owl:Class ;
+    rdfs:label "Thesis"@en ;
+    rdfs:subClassOf :Assessment , [ a owl:Restriction ; owl:onProperty :title ; owl:someValuesFrom rdf:langString ] .
+
+:BScThesis a owl:Class ;
+    rdfs:label "BSc thesis"@en ;
+    rdfs:subClassOf :Thesis .
+
+:MScThesis a owl:Class ;
+    rdfs:label "MSc thesis"@en ;
+    rdfs:subClassOf :Thesis .
+
+:DoctoralDissertation a owl:Class ;
+    rdfs:label "Doctoral dissertation"@en ;
+    rdfs:subClassOf :Thesis , :Publication .
+
+:ResearchOutput a owl:Class ;
+    rdfs:label "Research output"@en .
+
+:Publication a owl:Class ;
+    rdfs:label "Publication"@en ;
+    rdfs:subClassOf :ResearchOutput , [ a owl:Restriction ; owl:onProperty :authoredBy ; owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass :Person ] , [ a owl:Restriction ; owl:onProperty :cites ; owl:allValuesFrom :Publication ] , [ a owl:Restriction ; owl:onProperty :title ; owl:someValuesFrom rdf:langString ] , [ a owl:Restriction ; owl:onProperty :publicationYear ; owl:someValuesFrom xsd:gYear ] , [ a owl:Restriction ; owl:onProperty :dOI ; owl:someValuesFrom xsd:anyURI ] , [ a owl:Restriction ; owl:onProperty :peerReviewed ; owl:someValuesFrom xsd:boolean ] .
+
+:JournalArticle a owl:Class ;
+    rdfs:label "Journal article"@en ;
+    rdfs:subClassOf :Publication , [ a owl:Restriction ; owl:onProperty :publishedBy ; owl:someValuesFrom :Publisher ] .
+
+:ConferencePaper a owl:Class ;
+    rdfs:label "Conference paper"@en ;
+    rdfs:subClassOf :Publication .
+
+:Book a owl:Class ;
+    rdfs:label "Book"@en ;
+    rdfs:subClassOf :Publication , [ a owl:Restriction ; owl:onProperty :publishedBy ; owl:someValuesFrom :Publisher ] .
+
+:BookChapter a owl:Class ;
+    rdfs:label "Book chapter"@en ;
+    rdfs:subClassOf :Publication .
+
+:TechnicalReport a owl:Class ;
+    rdfs:label "Technical report"@en ;
+    rdfs:subClassOf :Publication .
+
+:Dataset a owl:Class ;
+    rdfs:label "Dataset"@en ;
+    rdfs:subClassOf :ResearchOutput , [ a owl:Restriction ; owl:onProperty :dOI ; owl:someValuesFrom xsd:anyURI ] .
+
+:Software a owl:Class ;
+    rdfs:label "Software"@en ;
+    rdfs:subClassOf :ResearchOutput .
+
+:Patent a owl:Class ;
+    rdfs:label "Patent"@en ;
+    rdfs:subClassOf :ResearchOutput .
+
+:ResearchProject a owl:Class ;
+    rdfs:label "Research project"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :hasField ; owl:someValuesFrom :ResearchField ] , [ a owl:Restriction ; owl:onProperty :startDate ; owl:someValuesFrom xsd:date ] , [ a owl:Restriction ; owl:onProperty :endDate ; owl:someValuesFrom xsd:date ] , [ a owl:Restriction ; owl:onProperty :budget ; owl:someValuesFrom xsd:decimal ] .
+
+:FundedProject a owl:Class ;
+    rdfs:label "Funded project"@en ;
+    rdfs:subClassOf :ResearchProject , [ a owl:Restriction ; owl:onProperty :fundedBy ; owl:someValuesFrom :FundingBody ] .
+
+:InternalProject a owl:Class ;
+    rdfs:label "Internal project"@en ;
+    rdfs:subClassOf :ResearchProject .
+
+:Grant a owl:Class ;
+    rdfs:label "Grant"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :budget ; owl:someValuesFrom xsd:decimal ] .
+
+:Place a owl:Class ;
+    rdfs:label "Place"@en ;
+    owl:disjointWith :Agent .
+
+:Campus a owl:Class ;
+    rdfs:label "Campus"@en ;
+    rdfs:subClassOf :Place .
+
+:Building a owl:Class ;
+    rdfs:label "Building"@en ;
+    rdfs:subClassOf :Place , [ a owl:Restriction ; owl:onProperty :locatedIn ; owl:someValuesFrom :Campus ] .
+
+:Library a owl:Class ;
+    rdfs:label "Library"@en ;
+    rdfs:subClassOf :Building .
+
+:LaboratoryBuilding a owl:Class ;
+    rdfs:label "Laboratory building"@en ;
+    rdfs:subClassOf :Building .
+
+:Room a owl:Class ;
+    rdfs:label "Room"@en ;
+    rdfs:subClassOf :Place , [ a owl:Restriction ; owl:onProperty :locatedIn ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass :Building ] , [ a owl:Restriction ; owl:onProperty :capacity ; owl:someValuesFrom xsd:integer ] , [ a owl:Restriction ; owl:onProperty :roomNumber ; owl:someValuesFrom xsd:string ] .
+
+:LectureHall a owl:Class ;
+    rdfs:label "Lecture hall"@en ;
+    rdfs:subClassOf :Room .
+
+:Office a owl:Class ;
+    rdfs:label "Office"@en ;
+    rdfs:subClassOf :Room .
+
+:Laboratory a owl:Class ;
+    rdfs:label "Laboratory"@en ;
+    rdfs:subClassOf :Room .
+
+:AcademicPeriod a owl:Class ;
+    rdfs:label "Academic period"@en .
+
+:AcademicYear a owl:Class ;
+    rdfs:label "Academic year"@en ;
+    rdfs:subClassOf :AcademicPeriod .
+
+:Semester a owl:Class ;
+    rdfs:label "Semester"@en ;
+    rdfs:subClassOf :AcademicPeriod .
+
+:ResearchField a owl:Class ;
+    rdfs:label "Research field"@en .
+
+:Degree a owl:Class ;
+    rdfs:label "Degree"@en .
+
+:BScDegree a owl:Class ;
+    rdfs:label "BSc degree"@en ;
+    rdfs:subClassOf :Degree .
+
+:MScDegree a owl:Class ;
+    rdfs:label "MSc degree"@en ;
+    rdfs:subClassOf :Degree .
+
+:Doctorate a owl:Class ;
+    rdfs:label "Doctorate"@en ;
+    rdfs:subClassOf :Degree .
+
+:assessedBy a owl:ObjectProperty ;
+    rdfs:label "assessed by"@en ;
+    rdfs:domain :Course ;
+    rdfs:range :Assessment .
+
+:authorOf a owl:ObjectProperty ;
+    rdfs:label "author of"@en ;
+    owl:inverseOf :authoredBy .
+
+:authoredBy a owl:ObjectProperty ;
+    rdfs:label "authored by"@en ;
+    skos:definition "Was written or created by."@en ;
+    owl:inverseOf :authorOf ;
+    rdfs:domain :ResearchOutput ;
+    rdfs:range :Person .
+
+:awards a owl:ObjectProperty ;
+    rdfs:label "awards"@en ;
+    skos:definition "The degree a programme leads to."@en ;
+    rdfs:domain :Programme ;
+    rdfs:range :Degree .
+
+:cites a owl:ObjectProperty ;
+    rdfs:label "cites"@en ;
+    skos:definition "Refers to another publication."@en ;
+    rdfs:domain :Publication ;
+    rdfs:range :Publication .
+
+:collaboratesWith a owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:label "collaborates with"@en ;
+    skos:definition "Works together with."@en ;
+    rdfs:domain :Person ;
+    rdfs:range :Person .
+
+:editionOf a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "edition of"@en ;
+    skos:definition "The course this edition is a run of."@en ;
+    rdfs:domain :CourseEdition ;
+    rdfs:range :Course .
+
+:employedBy a owl:ObjectProperty ;
+    rdfs:label "employed by"@en ;
+    skos:definition "Has a contract of employment with."@en ;
+    rdfs:subPropertyOf :memberOf ;
+    rdfs:domain :Employee ;
+    rdfs:range :Organisation .
+
+:enrolledIn a owl:ObjectProperty ;
+    rdfs:label "enrolled in"@en ;
+    skos:definition "Is registered as a student of a programme."@en ;
+    rdfs:domain :Student ;
+    rdfs:range :Programme .
+
+:fundedBy a owl:ObjectProperty ;
+    rdfs:label "funded by"@en ;
+    rdfs:domain :ResearchProject ;
+    rdfs:range :FundingBody .
+
+:hasField a owl:ObjectProperty ;
+    rdfs:label "has field"@en ;
+    skos:definition "The research field something is about."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Course :ResearchProject ) ] ;
+    rdfs:range :ResearchField .
+
+:hasPart a owl:ObjectProperty , owl:TransitiveProperty ;
+    rdfs:label "has part"@en ;
+    owl:inverseOf :partOf .
+
+:hasPrerequisite a owl:ObjectProperty , owl:TransitiveProperty , owl:AsymmetricProperty ;
+    rdfs:label "has prerequisite"@en ;
+    skos:definition "Must be completed first."@en ;
+    rdfs:domain :Course ;
+    rdfs:range :Course .
+
+:heldDuring a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "held during"@en ;
+    rdfs:domain :CourseEdition ;
+    rdfs:range :AcademicPeriod .
+
+:leads a owl:ObjectProperty ;
+    rdfs:label "leads"@en ;
+    skos:definition "Is the principal investigator of."@en ;
+    rdfs:subPropertyOf :participatesIn ;
+    rdfs:domain :Professor ;
+    rdfs:range :ResearchProject .
+
+:locatedIn a owl:ObjectProperty , owl:TransitiveProperty ;
+    rdfs:label "located in"@en ;
+    skos:definition "Is physically inside."@en ;
+    rdfs:domain :Place ;
+    rdfs:range :Place .
+
+:memberOf a owl:ObjectProperty ;
+    rdfs:label "member of"@en ;
+    skos:definition "Belongs to an organisation in any capacity."@en ;
+    rdfs:domain :Person ;
+    rdfs:range :Organisation .
+
+:partOf a owl:ObjectProperty , owl:TransitiveProperty ;
+    rdfs:label "part of"@en ;
+    skos:definition "Is a component of a larger whole."@en ;
+    owl:inverseOf :hasPart ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Department :Faculty :Institute :ResearchGroup ) ] ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( :Department :Faculty :University ) ] .
+
+:participatesIn a owl:ObjectProperty ;
+    rdfs:label "participates in"@en ;
+    skos:definition "Takes part in a research project."@en ;
+    rdfs:domain :Person ;
+    rdfs:range :ResearchProject .
+
+:publishedBy a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:label "published by"@en ;
+    rdfs:domain :Publication ;
+    rdfs:range :Publisher .
+
+:supervisedBy a owl:ObjectProperty ;
+    rdfs:label "supervised by"@en ;
+    owl:inverseOf :supervises ;
+    rdfs:domain :PhDCandidate ;
+    rdfs:range :Professor .
+
+:supervises a owl:ObjectProperty , owl:AsymmetricProperty , owl:IrreflexiveProperty ;
+    rdfs:label "supervises"@en ;
+    skos:definition "Guides the research or thesis work of."@en ;
+    owl:inverseOf :supervisedBy ;
+    rdfs:domain :AcademicStaff ;
+    rdfs:range :Student .
+
+:takes a owl:ObjectProperty ;
+    rdfs:label "takes"@en ;
+    skos:definition "Attends an edition of a course."@en ;
+    rdfs:domain :Student ;
+    rdfs:range :CourseEdition .
+
+:takesPlaceIn a owl:ObjectProperty ;
+    rdfs:label "takes place in"@en ;
+    rdfs:domain :CourseEdition ;
+    rdfs:range :Room .
+
+:taughtBy a owl:ObjectProperty ;
+    rdfs:label "taught by"@en ;
+    owl:inverseOf :teaches .
+
+:teaches a owl:ObjectProperty ;
+    rdfs:label "teaches"@en ;
+    skos:definition "Gives an edition of a course."@en ;
+    owl:inverseOf :taughtBy ;
+    rdfs:domain :AcademicStaff ;
+    rdfs:range :CourseEdition .
+
+:graduatedFrom a rdf:Property ;
+    rdfs:label "graduated from"@en .
+
+:sponsors a rdf:Property ;
+    rdfs:label "sponsors"@en .
+
+:worksAt a rdf:Property ;
+    rdfs:label "works at"@en .
+
+:hostedBy a rdf:Property ;
+    rdfs:label "hosted by"@en .
+
+:fullName a owl:DatatypeProperty ;
+    rdfs:label "Full name"@en ;
+    skos:definition "The name a person is formally known by."@en ;
+    rdfs:domain :Person ;
+    rdfs:range xsd:string .
+
+:birthDate a owl:DatatypeProperty ;
+    rdfs:label "Birth date"@en ;
+    rdfs:domain :Person ;
+    rdfs:range xsd:date .
+
+:email a owl:DatatypeProperty ;
+    rdfs:label "Email"@en ;
+    skos:definition "Contact address."@en ;
+    rdfs:domain :Agent ;
+    rdfs:range xsd:string .
+
+:studentNumber a owl:DatatypeProperty ;
+    rdfs:label "Student number"@en ;
+    rdfs:domain :Student ;
+    rdfs:range xsd:string .
+
+:enrolmentDate a owl:DatatypeProperty ;
+    rdfs:label "Enrolment date"@en ;
+    rdfs:domain :Student ;
+    rdfs:range xsd:date .
+
+:employeeNumber a owl:DatatypeProperty ;
+    rdfs:label "Employee number"@en ;
+    rdfs:domain :Employee ;
+    rdfs:range xsd:string .
+
+:salaryScale a owl:DatatypeProperty ;
+    rdfs:label "Salary scale"@en ;
+    rdfs:domain :Employee ;
+    rdfs:range xsd:integer .
+
+:startDate a owl:DatatypeProperty ;
+    rdfs:label "Start date"@en ;
+    skos:definition "When an appointment or project begins."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Employee :ResearchProject ) ] ;
+    rdfs:range xsd:date .
+
+:endDate a owl:DatatypeProperty ;
+    rdfs:label "End date"@en ;
+    rdfs:domain :ResearchProject ;
+    rdfs:range xsd:date .
+
+:budget a owl:DatatypeProperty ;
+    rdfs:label "Budget"@en ;
+    skos:definition "Total budget in euros."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Grant :ResearchProject ) ] ;
+    rdfs:range xsd:decimal .
+
+:courseCode a owl:DatatypeProperty ;
+    rdfs:label "Course code"@en ;
+    rdfs:domain :Course ;
+    rdfs:range xsd:string .
+
+:credits a owl:DatatypeProperty ;
+    rdfs:label "Credits"@en ;
+    skos:definition "Study load in ECTS."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Course :Programme ) ] ;
+    rdfs:range xsd:integer .
+
+:title a owl:DatatypeProperty ;
+    rdfs:label "Title"@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Course :Publication :Thesis ) ] ;
+    rdfs:range rdf:langString .
+
+:capacity a owl:DatatypeProperty ;
+    rdfs:label "Capacity"@en ;
+    skos:definition "Maximum number of participants or seats."@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :CourseEdition :Room ) ] ;
+    rdfs:range xsd:integer .
+
+:publicationYear a owl:DatatypeProperty ;
+    rdfs:label "Publication year"@en ;
+    rdfs:domain :Publication ;
+    rdfs:range xsd:gYear .
+
+:dOI a owl:DatatypeProperty ;
+    rdfs:label "DOI"@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Dataset :Publication ) ] ;
+    rdfs:range xsd:anyURI .
+
+:roomNumber a owl:DatatypeProperty ;
+    rdfs:label "Room number"@en ;
+    rdfs:domain :Room ;
+    rdfs:range xsd:string .
+
+:examDate a owl:DatatypeProperty ;
+    rdfs:label "Exam date"@en ;
+    rdfs:domain :Exam ;
+    rdfs:range xsd:dateTime .
+
+:duration a owl:DatatypeProperty ;
+    rdfs:label "Duration"@en ;
+    rdfs:domain :Exam ;
+    rdfs:range xsd:duration .
+
+:founded a owl:DatatypeProperty ;
+    rdfs:label "Founded"@en ;
+    rdfs:domain :Organisation ;
+    rdfs:range xsd:gYear .
+
+:peerReviewed a owl:DatatypeProperty ;
+    rdfs:label "Peer reviewed"@en ;
+    rdfs:domain :Publication ;
+    rdfs:range xsd:boolean .
+
+:NorthfieldUniversity a owl:NamedIndividual , :University ;
+    rdfs:label "Northfield University"@en .
+
+:FacultyOfScience a owl:NamedIndividual , :Faculty ;
+    rdfs:label "Faculty of Science"@en ;
+    :partOf :NorthfieldUniversity .
+
+:DepartmentOfComputerScience a owl:NamedIndividual , :Department ;
+    rdfs:label "Department of Computer Science"@en ;
+    :partOf :FacultyOfScience .
+
+:DataSystemsGroup a owl:NamedIndividual , :ResearchGroup ;
+    rdfs:label "Data Systems Group"@en ;
+    :partOf :DepartmentOfComputerScience .
+
+:NationalScienceFund a owl:NamedIndividual , :FundingBody ;
+    rdfs:label "National Science Fund"@en .
+
+:MeridianPress a owl:NamedIndividual , :Publisher ;
+    rdfs:label "Meridian Press"@en .
+
+:AdaMoreno a owl:NamedIndividual , :FullProfessor ;
+    rdfs:label "Ada Moreno"@en ;
+    :employedBy :DepartmentOfComputerScience ;
+    :supervises :ChloeTan ;
+    :collaboratesWith :ElenaRossi ;
+    :leads :ProjectAtlas .
+
+:BenOkafor a owl:NamedIndividual , :AssistantProfessor ;
+    rdfs:label "Ben Okafor"@en ;
+    :employedBy :DepartmentOfComputerScience ;
+    :teaches :DatabasesAutumn2026 .
+
+:ChloeTan a owl:NamedIndividual , :PhDCandidate ;
+    rdfs:label "Chloe Tan"@en ;
+    :participatesIn :ProjectAtlas .
+
+:DavidKim a owl:NamedIndividual , :MScStudent ;
+    rdfs:label "David Kim"@en ;
+    :takes :DatabasesAutumn2026 ;
+    :enrolledIn :MScComputerScience .
+
+:ElenaRossi a owl:NamedIndividual , :PostdoctoralResearcher ;
+    rdfs:label "Elena Rossi"@en .
+
+:FaridHaddad a owl:NamedIndividual , :UndergraduateStudent ;
+    rdfs:label "Farid Haddad"@en ;
+    :takes :DatabasesAutumn2026 .
+
+:GitaNovak a owl:NamedIndividual ;
+    rdfs:label "Gita Novak"@en ;
+    :supervises :DavidKim .
+
+:MScComputerScience a owl:NamedIndividual , :MScProgramme ;
+    rdfs:label "MSc Computer Science"@en .
+
+:Databases a owl:NamedIndividual , :LectureCourse ;
+    rdfs:label "Databases"@en .
+
+:AdvancedDatabases a owl:NamedIndividual , :LectureCourse ;
+    rdfs:label "Advanced Databases"@en ;
+    :hasPrerequisite :Databases .
+
+:DistributedSystems a owl:NamedIndividual , :Seminar ;
+    rdfs:label "Distributed Systems"@en ;
+    :hasPrerequisite :AdvancedDatabases .
+
+:DatabasesAutumn2026 a owl:NamedIndividual , :CourseEdition ;
+    rdfs:label "Databases autumn 2026"@en ;
+    :editionOf :Databases ;
+    :heldDuring :Autumn2026 ;
+    :takesPlaceIn :HallA1 .
+
+:Autumn2026 a owl:NamedIndividual , :Semester ;
+    rdfs:label "Autumn 2026"@en .
+
+:HallA1 a owl:NamedIndividual , :LectureHall ;
+    rdfs:label "Hall A1"@en ;
+    :locatedIn :ScienceBuilding .
+
+:ScienceBuilding a owl:NamedIndividual , :Building ;
+    rdfs:label "Science Building"@en ;
+    :locatedIn :NorthCampus .
+
+:NorthCampus a owl:NamedIndividual , :Campus ;
+    rdfs:label "North Campus"@en .
+
+:ProjectAtlas a owl:NamedIndividual , :FundedProject ;
+    rdfs:label "Project Atlas"@en ;
+    :fundedBy :NationalScienceFund .
+
+:IndexingAtScale a owl:NamedIndividual , :JournalArticle ;
+    rdfs:label "Indexing at Scale"@en ;
+    :authoredBy :AdaMoreno , :ChloeTan ;
+    :publishedBy :MeridianPress .
+
+:QueryPlanningRevisited a owl:NamedIndividual , :ConferencePaper ;
+    rdfs:label "Query Planning Revisited"@en ;
+    :authoredBy :ElenaRossi ;
+    :cites :IndexingAtScale .

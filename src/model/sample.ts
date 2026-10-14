@@ -1,6 +1,6 @@
 import { parseOutline } from './bulk';
 import { arrangeAsHierarchy } from './layout';
-import { emptyModel, newRelation, newTerm, type Model, type RelKind, type TermType } from './types';
+import { emptyModel, newProp, newRelation, newTerm, type Model, type RelKind, type TermType } from './types';
 
 /** A small film-industry knowledge graph used as the starting example. */
 export function sampleModel(): Model {
@@ -43,11 +43,11 @@ export function sampleModel(): Model {
   rel('Film', '', 'Running time', 'property');
 
   m.props = [
-    { name: 'acts in', description: 'Performs a role in a film.', chars: [] },
-    { name: 'directs', description: 'Is the director of a film.', chars: [] },
-    { name: 'produces', description: '', chars: [] },
-    { name: 'belongs to', description: '', chars: [] },
-    { name: 'wins', description: '', chars: [] },
+    newProp({ name: 'acts in', description: 'Performs a role in a film.' }),
+    newProp({ name: 'directs', description: 'Is the director of a film.' }),
+    newProp({ name: 'produces' }),
+    newProp({ name: 'belongs to' }),
+    newProp({ name: 'wins' }),
   ];
 
   arrangeAsHierarchy(m);

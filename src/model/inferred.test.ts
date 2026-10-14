@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { inferredRestrictions } from './inferred';
-import { emptyModel, newRelation, newTerm, type Model, type Quantifier } from './types';
+import { newProp, emptyModel, newRelation, newTerm, type Model, type Quantifier } from './types';
 
 /** "Actor < Person" for is-a, "Person -hasPart some-> Body" for a restriction, "Person has Name:xsd:string" for a data property. */
 function build(lines: string[], patch: (m: Model, id: Record<string, string>) => void = () => {}) {
@@ -20,7 +20,7 @@ function build(lines: string[], patch: (m: Model, id: Record<string, string>) =>
     if ((x = line.match(/^(.+) < (.+)$/))) m.relations.push(newRelation({ from: term(x[1]), to: term(x[2]), kind: 'generalization' }));
     else if ((x = line.match(/^(.+) = (.+)$/))) m.relations.push(newRelation({ from: term(x[1]), to: term(x[2]), predicate: 'owl:equivalentClass' }));
     else if ((x = line.match(/^(.+) -(\S+) (\w+)(?: (\d+))?-> (.+)$/))) {
-      if (!m.props.some((p) => p.name === x![2])) m.props.push({ name: x[2], description: '', chars: [] });
+      if (!m.props.some((p) => p.name === x![2])) m.props.push(newProp({ name: x[2], description: '', chars: [] }));
       m.relations.push(newRelation({ from: term(x[1]), to: term(x[5]), label: x[2], ...(x[3] !== 'some' ? { restriction: x[3] as Quantifier } : {}), ...(x[4] ? { restrictionN: Number(x[4]) } : {}) }));
     } else if ((x = line.match(/^(.+) has ([^:]+):(.+)$/))) m.relations.push(newRelation({ from: term(x[1]), to: term(x[2], 'property', x[3]), kind: 'property' }));
     else term(line);

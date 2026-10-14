@@ -86,6 +86,11 @@ shows as a change there; `pnpm exec vitest run src/model/corpus.test.ts -u` reco
 | Relation Ontology, core | RDF/XML | 372 → 358 | 37 | 21 | 2 property chains, 2 annotations on an axiom, 4 SWRL rules |
 | **All nine** | | | **795** | **2,056** | at most 36 of the lost |
 
+**Since then.** Task 1.4 (stable identity, the same day) changed one line: FOAF has two object
+properties labelled "account" (`foaf:account`, `foaf:holdsAccount`), and the reader kept only the
+first. Both are kept now, and FOAF loses 234 statements and gains 161 (551 → 479 axioms); over
+the nine, 790 are lost and 2,058 added. `corpus/expected/foaf.txt` shows the difference.
+
 Only Koala comes back with nothing lost. What is lost, by cause, from the lists:
 
 - **Changed, not dropped.** Every `rdfs:comment` on an entity comes back as `skos:definition`,

@@ -128,7 +128,7 @@ export function StructureView() {
         const t = term(iri) ?? model.terms.find((x) => x.iri === iri);
         if (t) return st().select([t.id]);
         const prop = model.mode === 'skos' ? undefined : objectProperties(model).find((p) => p.iri === iri);
-        if (prop) st().selectProp(prop.key);
+        if (prop) st().selectProp(prop.id);
       },
       reasoning: reasons ? { engines: ENGINES, engine, asked: engine === 'dl', running, phase, key: `${engine} ${ranAt} ${running}` } : null,
       chooseReasoner: (id) => {

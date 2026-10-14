@@ -4,7 +4,8 @@ import { metaProblems } from './governance';
 import { baseIriOf } from './iri';
 import { validateLiteral } from './literals';
 import { isAbsoluteIri, STANDARD } from './prefixes';
-import { assertedSuperclasses, objectProperties, propKey, propLinks } from './props';
+import { nameKey } from './identity';
+import { assertedSuperclasses, objectProperties, propLinks } from './props';
 import { shapeReferences } from './shapes';
 import { DATATYPES, PROP_LINKS, isLang, type Model, type QualityConfig, type Term } from './types';
 import { resolveModel } from './vocab';
@@ -198,7 +199,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
 
   // ---- documentation
   const props = skos ? [] : objectProperties(model);
-  if (!skos) for (const p of props) if (!p.description.trim()) add('missing-definition', `Object property ${q(p.name)} has no description.`, { prop: p.key, suggestion: 'Open the property and write a description under Annotations, if it needs one.' });
+  if (!skos) for (const p of props) if (!p.description.trim()) add('missing-definition', `Object property ${q(p.name)} has no description.`, { prop: p.id, suggestion: 'Open the property and write a description under Annotations, if it needs one.' });
 
   if (on('missing-language')) {
     if (!model.lang && model.terms.length) {
@@ -220,7 +221,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
       }
       for (const p of props) {
         const bare = untagged(p.fields);
-        if (bare.length) add('missing-language', `Object property ${q(p.name)} has ${bare.length} annotation${bare.length === 1 ? '' : 's'} without a language: ${bare.map((f) => f.key).join(', ')}.`, { prop: p.key });
+        if (bare.length) add('missing-language', `Object property ${q(p.name)} has ${bare.length} annotation${bare.length === 1 ? '' : 's'} without a language: ${bare.map((f) => f.key).join(', ')}.`, { prop: p.id });
       }
     }
   }
@@ -229,7 +230,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     // What most entities of a kind do is taken as the convention; nothing is imposed from outside.
     const kinds: { what: string; items: { iri: string; term?: string; prop?: string; name: string }[] }[] = [
       { what: 'classes', items: model.terms.filter((t) => t.type === 'concept' && t.iri).map((t) => ({ iri: t.iri!, term: t.id, name: t.name })) },
-      { what: 'properties', items: [...model.terms.filter((t) => t.type === 'property' && t.iri).map((t) => ({ iri: t.iri!, term: t.id, name: t.name })), ...props.filter((p) => p.iri).map((p) => ({ iri: p.iri!, prop: p.key, name: p.name }))] },
+      { what: 'properties', items: [...model.terms.filter((t) => t.type === 'property' && t.iri).map((t) => ({ iri: t.iri!, term: t.id, name: t.name })), ...props.filter((p) => p.iri).map((p) => ({ iri: p.iri!, prop: p.id, name: p.name }))] },
     ];
     for (const { what, items } of kinds) {
       if (items.length < 8) continue;
@@ -271,13 +272,13 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
   }
   if (!skos) {
     for (const p of props) {
-      if (!p.rels.length && !p.domain.length && !p.range.length && !PROP_LINKS.some((l) => propLinks(model, p.key, l).length)) add('unused-entity', `Object property ${q(p.name)} is declared but never used, and has no domain or range.`, { prop: p.key });
-      else if (!p.domain.length || !p.range.length) add('missing-domain-range', `Object property ${q(p.name)} has no ${!p.domain.length && !p.range.length ? 'domain or range' : !p.domain.length ? 'domain' : 'range'}.`, { prop: p.key, suggestion: 'Open the property and add a class, if there is one that everything having it belongs to. A property does not need a domain or a range.' });
+      if (!p.rels.length && !p.domain.length && !p.range.length && !PROP_LINKS.some((l) => propLinks(model, p.id, l).length)) add('unused-entity', `Object property ${q(p.name)} is declared but never used, and has no domain or range.`, { prop: p.id });
+      else if (!p.domain.length || !p.range.length) add('missing-domain-range', `Object property ${q(p.name)} has no ${!p.domain.length && !p.range.length ? 'domain or range' : !p.domain.length ? 'domain' : 'range'}.`, { prop: p.id, suggestion: 'Open the property and add a class, if there is one that everything having it belongs to. A property does not need a domain or a range.' });
     }
   }
 
   // ---- IRIs and namespaces
-  const entities: { iri?: string; term?: string; prop?: string; name: string }[] = [...model.terms.map((t) => ({ iri: t.iri, term: t.id, name: t.name })), ...model.props.map((p) => ({ iri: p.iri, prop: propKey(p.name), name: p.name }))];
+  const entities: { iri?: string; term?: string; prop?: string; name: string }[] = [...model.terms.map((t) => ({ iri: t.iri, term: t.id, name: t.name })), ...model.props.map((p) => ({ iri: p.iri, prop: p.id, name: p.name }))];
   const where = (e: { term?: string; prop?: string }) => ({ terms: e.term ? [e.term] : [], prop: e.prop });
   for (const e of entities) if (e.iri && !isAbsoluteIri(e.iri)) add('malformed-iri', `The IRI of ${q(e.name)}, ${q(e.iri)}, is not an absolute IRI.`, { ...where(e), explanation: 'An absolute IRI has a scheme such as http: and no spaces or characters like < > " { }.' });
   if (on('duplicate-iri')) {
@@ -300,8 +301,8 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     }
   }
   if (on('unresolved-reference')) {
-    const keys = new Set(props.map((p) => p.key));
-    for (const p of model.props) for (const link of PROP_LINKS) for (const k of p[link] ?? []) if (!keys.has(k)) add('unresolved-reference', `Object property ${q(p.name)} refers to a property ${q(k)} that is not in the model.`, { prop: propKey(p.name), suggestion: 'Open the property and remove the reference, or declare the missing property.' });
+    const ids = new Set(props.map((p) => p.id));
+    for (const p of model.props) for (const link of PROP_LINKS) for (const k of p[link] ?? []) if (!ids.has(k)) add('unresolved-reference', `Object property ${q(p.name)} refers to a property that is not in the model.`, { prop: p.id, suggestion: 'Open the property and remove the reference, or declare the missing property.' });
     const iris = new Set(entities.map((e) => e.iri).filter(Boolean));
     const missing = new Map<string, string[]>();
     for (const r of shapeReferences(model.shapes)) if (!iris.has(r.iri)) missing.set(r.shape.id, [...(missing.get(r.shape.id) ?? []), `${r.as} <${r.iri}>`]);
@@ -325,10 +326,10 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
 
   // ---- modelling practice
   if (!skos && on('property-kind')) {
-    const dataNames = new Map(model.terms.filter((t) => t.type === 'property' && t.name.trim()).map((t) => [propKey(t.name), t]));
+    const dataNames = new Map(model.terms.filter((t) => t.type === 'property' && t.name.trim()).map((t) => [nameKey(t.name), t]));
     for (const p of props) {
-      const twin = dataNames.get(p.key);
-      if (twin) add('property-kind', `${q(p.name)} is the name of an object property and of a data property. They are two properties with two IRIs; it is easy to use the wrong one.`, { terms: [twin.id], prop: p.key });
+      const twin = dataNames.get(nameKey(p.name));
+      if (twin) add('property-kind', `${q(p.name)} is the name of an object property and of a data property. They are two properties with two IRIs; it is easy to use the wrong one.`, { terms: [twin.id], prop: p.id });
     }
     for (const r of resolveModel(model).relations) {
       const ends = [byId.get(r.from)?.type, byId.get(r.to)?.type].sort().join('|');

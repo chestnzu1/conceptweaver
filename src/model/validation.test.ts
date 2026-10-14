@@ -6,7 +6,7 @@ import { loadModel, saveModel } from './library';
 import { QUALITY_RULES, setRule } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
 import { importShapes, newPropertyShape, newShape, shapesToTurtle } from './shapes';
-import { emptyModel, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
+import { emptyModel, newProp, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
 import { isStale, MODEL_DATA, owlFindings, qualityFindings, reportJson, reportTurtle, shaclFindings, validate, type DataGraph } from './validation';
 
 function build() {
@@ -22,7 +22,7 @@ function build() {
   term('has age', 'property', { range: 'xsd:integer' });
   for (const i of ['Ann', 'Bob', 'Acme']) term(i, 'instance');
   const rel = (from: string, to: string, p: Partial<ReturnType<typeof newRelation>> = {}) => (m = { ...m, relations: [...m.relations, newRelation({ from: id[from], to: id[to], ...p })] });
-  m = { ...m, props: [{ name: 'works for', description: 'Is employed by.', chars: [] }] };
+  m = { ...m, props: [newProp({ name: 'works for', description: 'Is employed by.', chars: [] })] };
   rel('Person', 'Agent', { kind: 'generalization' });
   rel('Employee', 'Person', { kind: 'generalization' });
   rel('Actor', 'Person', { kind: 'generalization' });

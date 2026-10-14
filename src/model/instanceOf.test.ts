@@ -4,7 +4,7 @@ import { inferredMemberships } from './inferred';
 import { isInstanceOf, offeredChoices, relChoice, relChoices } from './props';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { reason } from './reasoner';
-import { emptyModel, INSTANCE_OF, newRelation, newTerm, normalizeModel, relLabel, type Model } from './types';
+import { newProp, emptyModel, INSTANCE_OF, newRelation, newTerm, normalizeModel, relLabel, type Model } from './types';
 
 /** John and Mary (individuals), Person ⊒ Employee (classes), and a data property. */
 function people() {
@@ -85,7 +85,7 @@ describe('is instance of', () => {
     expect(offered(age.id, john.id)).toEqual([]);
     // A relationship of a kind its ends no longer allow still shows what it is.
     const odd = newRelation({ from: john.id, to: person.id, label: 'knows' });
-    const model = { ...m, props: [{ name: 'knows', description: '', chars: [] }], relations: [...m.relations, odd] };
+    const model = { ...m, props: [newProp({ name: 'knows', description: '', chars: [] })], relations: [...m.relations, odd] };
     expect(relChoice(model, odd)).toBe('object');
     expect(offeredChoices(model, odd).map((c) => `${c.value}${c.disabled ? ' (not allowed)' : ''}`)).toEqual(['object (not allowed)', 'instanceOf']);
   });

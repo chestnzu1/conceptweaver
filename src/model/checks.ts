@@ -1,3 +1,4 @@
+import { linkProps } from './identity';
 import type { Model } from './types';
 import { dataDomain, fitsIn, hasCardinality, objectProperties, plainRelationships } from './props';
 import { resolveModel, stdProp } from './vocab';
@@ -16,7 +17,7 @@ const CARD = /^(\d+|\*)(\.\.(\d+|\*))?$/;
 
 /** The built-in model checks. Each returns zero or more issues pointing at the offending items. */
 export function runChecks(model: Model): Issue[] {
-  const m = resolveModel(model);
+  const m = resolveModel(linkProps(model));
   const issues: Issue[] = [];
   const add = (rule: string, severity: Severity, message: string, terms: string[] = [], rels: string[] = []) =>
     issues.push({ rule, severity, message, terms, rels });
@@ -106,7 +107,8 @@ export function runChecks(model: Model): Issue[] {
   // 6. Duplicate relations
   const seen = new Map<string, string>();
   for (const r of m.relations) {
-    const k = `${r.from}|${r.to}|${r.kind}|${r.predicate ?? ''}|${r.label.trim().toLowerCase()}`;
+    // A use of an object property by that property; any other relationship by its label.
+    const k = `${r.from}|${r.to}|${r.kind}|${r.predicate ?? ''}|${r.prop !== undefined ? 'prop:' + r.prop : r.label.trim().toLowerCase()}`;
     const first = seen.get(k);
     if (first) add('Duplicate relation', 'warning', `"${name(r.from)}" → "${name(r.to)}" is defined twice.`, [], [first, r.id]);
     else seen.set(k, r.id);

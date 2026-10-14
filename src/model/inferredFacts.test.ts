@@ -8,7 +8,7 @@ import { fromTurtle, toTurtle, toTurtleWithInferred } from './rdf';
 import { dlResult, type DlReport } from './reasoning';
 import { stable } from './stable';
 import { currentDl, useStore } from './store';
-import { emptyModel, newRelation, newTerm, type Model, type ObjProp } from './types';
+import { emptyModel, newProp, newRelation, newTerm, PROP_LINKS, type Model, type ObjProp } from './types';
 import { dlFindings, MODEL_DATA } from './validation';
 
 /**
@@ -27,23 +27,28 @@ const EXAMPLE = `
   :John a owl:NamedIndividual ; :isMemberOf :CompanyA .
   :CompanyA a owl:NamedIndividual .`;
 
-/** Individuals a, b, c, d and the object properties given, with facts as [from, property, to]. */
+/**
+ * Individuals a, b, c, d and the object properties given, with facts as [from, property, to].
+ * The properties link to each other by name here, for reading; in the model by id.
+ */
 const world = (props: ObjProp[], facts: [string, string, string][]): Model => {
   const m = emptyModel('World');
   m.baseIri = N;
   m.terms = ['a', 'b', 'c', 'd'].map((id) => newTerm({ id, name: id.toUpperCase(), type: 'instance' }));
-  m.props = props;
+  const idOf = (name: string) => props.find((x) => x.name === name)!.id;
+  m.props = props.map((x) => ({ ...x, ...Object.fromEntries(PROP_LINKS.filter((l) => x[l]).map((l) => [l, x[l]!.map(idOf)])) }));
   m.relations = facts.map(([from, label, to]) => newRelation({ from, to, label }));
   return withIris(m);
 };
-const p = (name: string, more: Partial<ObjProp> = {}): ObjProp => ({ name, description: '', chars: [], ...more });
+const p = (name: string, more: Partial<ObjProp> = {}): ObjProp => newProp({ name, ...more });
 const said = (m: Model) => inferredFacts(m).facts.map((f) => `${f.from} ${f.name} ${f.to}`).sort();
 const report = (over: Partial<DlReport> = {}): DlReport => ({ engine: 'HermiT', engineVersion: '1.4.5.456', status: 'complete', consistency: 'consistent', ms: 1, errors: [], warnings: [], ...over });
 
 describe('the example: an inverse property', () => {
   it('is read and written with the inverse and the assertion in place', () => {
     const m = fromTurtle(EXAMPLE);
-    expect(objectProperties(m).find((x) => x.name === 'is member of')!.inverses).toEqual(['has member']);
+    const hasMember = m.props.find((x) => x.name === 'has member')!.id;
+    expect(objectProperties(m).find((x) => x.name === 'is member of')!.inverses).toEqual([hasMember]);
     const ttl = toTurtle(m);
     expect(ttl).toContain('owl:inverseOf :hasMember');
     expect(ttl).toContain(':isMemberOf :CompanyA');
@@ -57,7 +62,8 @@ describe('the example: an inverse property', () => {
     const facts = inferredFacts(m).facts;
     expect(facts.map((f) => `${name(f.from)} ${f.name} ${name(f.to)}`)).toEqual(['Company A has member John']);
     expect(facts[0].because).toContain('is the inverse of');
-    expect(facts[0].id).toBe(`fact:${facts[0].from}|has member|${facts[0].to}`);
+    // Known by the property's id, which does not change when the property is renamed.
+    expect(facts[0].id).toBe(`fact:${facts[0].from}|${m.props.find((x) => x.name === 'has member')!.id}|${facts[0].to}`);
   });
 });
 
@@ -101,6 +107,7 @@ describe('what the app’s own reasoner entails between individuals', () => {
 describe('one account of what is entailed, whichever reasoner found it', () => {
   const m = fromTurtle(EXAMPLE);
   const [john, company] = [m.terms.find((t) => t.name === 'John')!.id, m.terms.find((t) => t.name === 'Company A')!.id];
+  const [isMemberOf, hasMember] = ['is member of', 'has member'].map((name) => m.props.find((x) => x.name === name)!.id);
   const answer = report({
     relations: [
       { subject: N + 'John', property: N + 'isMemberOf', object: N + 'CompanyA' },
@@ -112,8 +119,8 @@ describe('one account of what is entailed, whichever reasoner found it', () => {
   it('takes the relationships out of the OWL 2 DL reasoner’s answer, and tells the stated from the inferred', () => {
     const result = dlResult(m, answer);
     expect(result.relations).toEqual([
-      { subject: john, property: 'is member of', object: company, asserted: true },
-      { subject: company, property: 'has member', object: john, asserted: false },
+      { subject: john, property: isMemberOf, object: company, asserted: true },
+      { subject: company, property: hasMember, object: john, asserted: false },
     ]);
     // In a validation run they are part of what counts as inferred.
     expect(dlFindings(m, answer).summary.inferred).toBe(1);

@@ -1,5 +1,5 @@
 import { arrangeAsHierarchy } from './layout';
-import { emptyModel, newRelation, newTerm, DATATYPES, type Model, type ObjProp, type Quantifier } from './types';
+import { emptyModel, newProp, newRelation, newTerm, DATATYPES, type Model, type Quantifier } from './types';
 
 /**
  * A synthetic ontology for testing at scale: `classes` classes in a deep hierarchy, plus
@@ -38,15 +38,15 @@ export function stressModel(classes = 650): Model {
   const chars = ['transitive', 'symmetric', 'functional', 'asymmetric', 'irreflexive', 'inverseFunctional'];
   const nProps = Math.round(classes / 9);
   for (let i = 0; i < nProps; i++) {
-    const p: ObjProp = { name: `relates ${i + 1}`, description: '', chars: i % 4 === 0 ? [chars[(i / 4) % chars.length]] : [] };
+    const p = newProp({ name: `relates ${i + 1}`, chars: i % 4 === 0 ? [chars[(i / 4) % chars.length]] : [] });
     if (i % 2 === 0) {
       p.domain = [cls[Math.floor(rand() * roots * 3)].id];
       p.range = [cls[Math.floor(rand() * roots * 3)].id];
     }
     // Only a property with no domain and no characteristic (an odd-numbered one) is used as a
     // parent or an inverse, so that facts passed on to it cannot contradict anything.
-    if (i % 7 === 3 && i % 2 === 0) p.parents = [`relates ${i}`];
-    if (i % 10 === 6) p.inverses = [`relates ${i}`];
+    if (i % 7 === 3 && i % 2 === 0) p.parents = [m.props[i - 1].id];
+    if (i % 10 === 6) p.inverses = [m.props[i - 1].id];
     m.props.push(p);
   }
   const quantifiers: Quantifier[] = ['some', 'some', 'some', 'only', 'min', 'max', 'exactly'];

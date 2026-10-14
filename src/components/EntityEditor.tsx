@@ -41,7 +41,7 @@ import { enumOf, rangeLabel } from '../model/datatypes';
  */
 
 const choice = (t: Term): Choice => ({ id: t.id, name: t.name || 'Unnamed', iri: t.iri, ...(t.external !== undefined ? { tag: 'external' } : {}) });
-const propChoice = (p: PropView): Choice => ({ id: p.key, name: p.name, iri: p.iri, ...(p.external !== undefined ? { tag: 'external' } : {}) });
+const propChoice = (p: PropView): Choice => ({ id: p.id, name: p.name, iri: p.iri, ...(p.external !== undefined ? { tag: 'external' } : {}) });
 
 /** The heading of the editor: what kind of entity it is, whether the model has unsaved changes, and a wider layout. */
 export function EditorHead({ kind }: { kind: string }) {
@@ -407,7 +407,7 @@ export function IndividualAssertions({ term }: { term: Term }) {
         <ul className="assertions" aria-label="Object property assertions">
           {facts.map(({ p, r }) => (
             <li key={r.id}>
-              <button className="link prop" title={`${p.iri ?? ''}\nOpen the property`} onClick={() => st().selectProp(p.key)}>
+              <button className="link prop" title={`${p.iri ?? ''}\nOpen the property`} onClick={() => st().selectProp(p.id)}>
                 {p.name}
               </button>
               <button className="link" title={`${byId.get(r.to)?.iri ?? ''}\nOpen it`} onClick={() => st().select([r.to])}>
@@ -509,13 +509,13 @@ export function PropLinks({ prop }: { prop: PropView }) {
             {label} <code className="pred">{predicate}</code>
           </span>
           <EntityPicker
-            values={propLinks(model, prop.key, link).map((k) => {
-              const p = all.find((x) => x.key === k);
-              return p ? propChoice(p) : { id: k, name: k };
+            values={propLinks(model, prop.id, link).map((k) => {
+              const p = all.find((x) => x.id === k);
+              return p ? propChoice(p) : { id: k, name: 'A property that is no longer there' };
             })}
-            options={() => all.filter((p) => p.key !== prop.key).map(propChoice)}
-            onAdd={(k) => st().edit((m) => addPropLink(m, prop.key, k, link))}
-            onRemove={(k) => st().apply((m) => removePropLink(m, prop.key, k, link))}
+            options={() => all.filter((p) => p.id !== prop.id).map(propChoice)}
+            onAdd={(k) => st().edit((m) => addPropLink(m, prop.id, k, link))}
+            onRemove={(k) => st().apply((m) => removePropLink(m, prop.id, k, link))}
             onOpen={(k) => findProp(model, k) && st().selectProp(k)}
             noun={noun}
             of={prop.name}

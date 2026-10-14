@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ThHTMLAttributes } from 'react';
 import type { EntityMatch, ListKind, MatchField } from '../entities/contracts';
 import { inferredRestrictions } from '../model/inferred';
-import { CHARACTERISTICS, dataDomain, fitsIn, hasCardinality, objectProperties, isInstanceOf, plainRelationships, propKey, propLinks, offeredChoices, relChoice, restrictionsOf, type RelChoice } from '../model/props';
+import { propNamed, propOf } from '../model/identity';
+import { CHARACTERISTICS, dataDomain, fitsIn, hasCardinality, objectProperties, isInstanceOf, plainRelationships, propLinks, offeredChoices, relChoice, restrictionsOf, type RelChoice } from '../model/props';
 import { endsForNew } from '../model/relating';
 import { compactIri } from '../model/prefixes';
 import { useStore } from '../model/store';
@@ -27,7 +28,7 @@ let pointed: string | null = null;
 
 /**
  * Has the Entities view open on this section the next time it is shown: for coming to an entity
- * from elsewhere. Given the entity (a term by its id, an object property by its key), its row is
+ * from elsewhere. Given the entity (a term or an object property, by its id), its row is
  * listed and in sight there, whatever the section is searched for, filtered by or sorted by.
  */
 export const openEntityTab = (tab: Tab, key?: string) => {
@@ -104,7 +105,6 @@ export function EntitiesView() {
 
   const props = useMemo(() => objectProperties(model), [model]);
   const plain = useMemo(() => new Set(skos ? [] : plainRelationships(model).flatMap((p) => p.rels.map((r) => r.id))), [model, skos]);
-  const declared = useMemo(() => new Set(props.map((p) => p.key)), [props]);
   const name = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
   const names = (ids: string[]) => ids.map((id) => name.get(id)).join(', ');
   const type = useMemo(() => new Map(model.terms.map((t) => [t.id, t.type])), [model.terms]);
@@ -387,18 +387,18 @@ export function EntitiesView() {
   };
   // The rows of the list are keys in an order; what each row shows and edits is the entity itself.
   const termById = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
-  const propByKey = useMemo(() => new Map(props.map((p) => [p.key, p])), [props]);
+  const propById = useMemo(() => new Map(props.map((p) => [p.id, p])), [props]);
   const relById = useMemo(() => new Map(model.relations.map((r) => [r.id, r])), [model.relations]);
   const keys = extra ? [...entities.rows.map((r) => r.key), extra] : entities.rows.map((r) => r.key);
   const present = <T,>(found: (T | undefined)[]): T[] => found.filter((x): x is T => x !== undefined);
   const list = kind === 'class' || kind === 'dataProperty' || kind === 'individual' ? present(keys.map((k) => termById.get(k))) : [];
-  const shownProps = kind === 'objectProperty' ? present(keys.map((k) => propByKey.get(k))) : [];
+  const shownProps = kind === 'objectProperty' ? present(keys.map((k) => propById.get(k))) : [];
   const shownRelations = kind === 'relationship' ? present(keys.map((k) => relById.get(k))) : [];
   /** What a filter names by its key: a term, or an object property. */
   const resolve = (key: string) => {
     const t = termById.get(key);
     if (t) return { name: t.name || 'Unnamed', iri: t.iri };
-    const p = propByKey.get(key);
+    const p = propById.get(key);
     return p ? { name: p.name, iri: p.iri } : undefined;
   };
   const noun: Record<ListKind, { one: string; many: string }> = {
@@ -482,21 +482,21 @@ export function EntitiesView() {
             <tbody>
               {shownProps.map((p) => (
                 <tr
-                  key={p.key}
-                  data-key={p.key}
-                  className={rowClass(p.key, selProp === p.key)}
-                  title={p.key === extra ? pinnedTitle : undefined}
-                  onFocusCapture={() => selProp !== p.key && st().selectProp(p.key)}
-                  onClick={() => selProp !== p.key && st().selectProp(p.key)}
+                  key={p.id}
+                  data-key={p.id}
+                  className={rowClass(p.id, selProp === p.id)}
+                  title={p.id === extra ? pinnedTitle : undefined}
+                  onFocusCapture={() => selProp !== p.id && st().selectProp(p.id)}
+                  onClick={() => selProp !== p.id && st().selectProp(p.id)}
                 >
                   <td>
-                    <MarkedField text={p.name} ranges={marksIn(p.key, 'name', p.name)}>
-                      <CommitInput aria-label="Property name" value={p.name} onCommit={(v) => st().renameProp(p.key, v)} />
+                    <MarkedField text={p.name} ranges={marksIn(p.id, 'name', p.name)}>
+                      <CommitInput aria-label="Property name" value={p.name} onCommit={(v) => st().renameProp(p.id, v)} />
                     </MarkedField>
-                    {foundElsewhere(p.key, p, { description: false, synonyms: false })}
+                    {foundElsewhere(p.id, p, { description: false, synonyms: false })}
                   </td>
                   <td className="ro">
-                    <IriCell iri={p.iri} of={p.name} marks={iriMarks(p.key)} />
+                    <IriCell iri={p.iri} of={p.name} marks={iriMarks(p.id)} />
                   </td>
                   {(['domain', 'range'] as const).map((side) => {
                     const ids = p[side];
@@ -512,12 +512,12 @@ export function EntitiesView() {
                           placeholder={`Add a class to the ${side}`}
                           of={p.name}
                           empty="anything"
-                          add={(id) => st().updateProp(p.key, { [side]: [...ids, id] })}
-                          remove={(id) => st().updateProp(p.key, { [side]: ids.filter((x) => x !== id) })}
+                          add={(id) => st().updateProp(p.id, { [side]: [...ids, id] })}
+                          remove={(id) => st().updateProp(p.id, { [side]: ids.filter((x) => x !== id) })}
                         />
                         {auto && ids.length > 0 && <span className="tag auto">from use</span>}
                         {!auto && (
-                          <button className="link reset" title="Let it follow where the property is used again" onClick={() => st().updateProp(p.key, { [side]: undefined })}>
+                          <button className="link reset" title="Let it follow where the property is used again" onClick={() => st().updateProp(p.id, { [side]: undefined })}>
                             reset
                           </button>
                         )}
@@ -531,10 +531,10 @@ export function EntitiesView() {
                     );
                   })}
                   <td className="ro">{CHARACTERISTICS.filter((c) => p.chars.includes(c.id)).map((c) => c.label).join(', ') || '—'}</td>
-                  <td className="ro">{propLinks(model, p.key, 'inverses').map((k) => props.find((x) => x.key === k)?.name ?? k).join(', ') || '—'}</td>
+                  <td className="ro">{propLinks(model, p.id, 'inverses').map((k) => props.find((x) => x.id === k)?.name).filter(Boolean).join(', ') || '—'}</td>
                   <td className="num">{p.rels.length}</td>
                   <td className="row-actions">
-                    <button className="btn icon ghost" title="Delete the property and the relationships that use it" aria-label={`Delete ${p.name}`} onClick={() => st().deleteProp(p.key)}>
+                    <button className="btn icon ghost" title="Delete the property and the relationships that use it" aria-label={`Delete ${p.name}`} onClick={() => st().deleteProp(p.id)}>
                       ×
                     </button>
                   </td>
@@ -688,15 +688,15 @@ export function EntitiesView() {
                     <td className="ro">
                       {r.kind !== 'association' || r.predicate ? (
                         <span className="muted">{isInstanceOf(model, r) ? 'class membership (rdf:type)' : (r.predicate ?? (r.kind === 'generalization' ? 'hierarchy' : 'data property'))}</span>
-                      ) : declared.has(propKey(r.label)) && !plain.has(r.id) ? (
-                        <button className="link" title="Open the object property" onClick={() => st().selectProp(propKey(r.label))}>
+                      ) : !plain.has(r.id) && propOf(model, r) ? (
+                        <button className="link" title="Open the object property" onClick={() => st().selectProp(propOf(model, r)!.id)}>
                           object property
                         </button>
                       ) : plain.has(r.id) ? (
                         <button
                           className="btn small"
-                          title={declared.has(propKey(r.label)) ? 'Make this relationship a use of the object property with this name' : 'Declare this label as an object property; every relationship carrying it becomes a use of it'}
-                          onClick={() => (declared.has(propKey(r.label)) ? st().setRelChoice(r.id, 'object') : st().declareProp(r.label))}
+                          title={propNamed(model, r.label) ? 'Make this relationship a use of the object property with this name' : 'Declare this label as an object property; every relationship carrying it becomes a use of it'}
+                          onClick={() => (propNamed(model, r.label) ? st().setRelChoice(r.id, 'object') : st().declareProp(r.label))}
                         >
                           Make object property
                         </button>
@@ -777,7 +777,7 @@ export function EntitiesView() {
       </div>
       <datalist id="object-props">
         {props.map((p) => (
-          <option key={p.key} value={p.name} />
+          <option key={p.id} value={p.name} />
         ))}
       </datalist>
     </div>

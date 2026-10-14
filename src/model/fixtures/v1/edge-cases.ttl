@@ -1,0 +1,93 @@
+@prefix : <http://example.org/fixture#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/fixture> a owl:Ontology ;
+    rdfs:label "Identity fixture"@en .
+
+:Person a owl:Class ;
+    rdfs:label "Person"@en ;
+    :wins_2 :Award ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :relatedTo ; owl:someValuesFrom :Studio ] , [ a owl:Restriction ; owl:onProperty :worksWith ; owl:someValuesFrom :Person ] .
+
+:Director a owl:Class ;
+    rdfs:label "Director"@en ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty :directs ; owl:allValuesFrom :Film ] , [ a owl:Restriction ; owl:onProperty :wins ; owl:someValuesFrom :Award ] .
+
+:Film a owl:Class ;
+    rdfs:label "Film"@en ;
+    skos:definition "A motion picture."@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :directedBy ; owl:someValuesFrom :Director ] , [ a owl:Restriction ; owl:onProperty :releaseDate ; owl:someValuesFrom xsd:date ] .
+
+:Studio a owl:Class ;
+    rdfs:label "Studio"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :sponsors ; owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass :Award ] , [ a owl:Restriction ; owl:onProperty :sponsors ; owl:maxQualifiedCardinality "3"^^xsd:nonNegativeInteger ; owl:onClass :Award ] ;
+    :produces :Film .
+
+:Award a owl:Class ;
+    rdfs:label "Award"@en .
+
+:directedBy a owl:ObjectProperty ;
+    rdfs:label "directed by"@en ;
+    rdfs:domain :Film ;
+    rdfs:range :Director .
+
+:directs a owl:ObjectProperty , owl:InverseFunctionalProperty ;
+    rdfs:label "directs"@en ;
+    skos:definition "Who made the film."@en ;
+    owl:inverseOf :directedBy ;
+    rdfs:domain :Director ;
+    rdfs:range :Film .
+
+:funds a owl:ObjectProperty ;
+    rdfs:label "funds"@en .
+
+:relatedTo a owl:ObjectProperty ;
+    rdfs:label "related to"@en ;
+    skos:definition "The default name of a line."@en ;
+    rdfs:domain :Person ;
+    rdfs:range :Studio .
+
+:sponsors a owl:ObjectProperty ;
+    rdfs:label "Sponsors"@en ;
+    rdfs:comment "Money for prizes." ;
+    owl:equivalentProperty :funds ;
+    owl:propertyDisjointWith :wins ;
+    rdfs:domain :Studio ;
+    rdfs:range :Award .
+
+:wins a owl:ObjectProperty , owl:AsymmetricProperty ;
+    rdfs:label "wins"@en ;
+    rdfs:domain :Director ;
+    rdfs:range :Award .
+
+:worksWith a owl:ObjectProperty , owl:SymmetricProperty ;
+    rdfs:label "works with"@en ;
+    rdfs:subPropertyOf :relatedTo ;
+    rdfs:domain :Person ;
+    rdfs:range :Person .
+
+:wins_2 a rdf:Property ;
+    rdfs:label "wins"@en .
+
+:produces a rdf:Property ;
+    rdfs:label "produces"@en .
+
+:releaseDate a owl:DatatypeProperty ;
+    rdfs:label "release date"@en ;
+    rdfs:domain :Film ;
+    rdfs:range xsd:date .
+
+:Parasite a owl:NamedIndividual , :Film ;
+    rdfs:label "Parasite"@en .
+
+:BongJoonHo a owl:NamedIndividual ;
+    rdfs:label "Bong Joon-ho"@en ;
+    :directs :Parasite ;
+    owl:sameAs :Bong .
+
+:Bong a owl:NamedIndividual ;
+    rdfs:label "Bong"@en .

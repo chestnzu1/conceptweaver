@@ -159,6 +159,15 @@ backend that speaks IRIs has to translate through names.
 migration, `version: 2`, with the old format still read). This is a prerequisite for TD-18 and
 for the change-set contract of Phase 1.
 
+**Status, 2026-10-14.** Done (roadmap task 1.4). `ObjProp.id`; a relationship names the
+property it uses in `Relation.prop`; links between properties are ids; `src/model/identity.ts`
+joins a relationship given only a label (drawn, pasted, read from a file) to the property of that
+name, once. Model format 2; format 1 is read and brought up to date by `normalizeModel`, and
+`src/model/migration.test.ts` opens three models saved in format 1 and checks that their Turtle,
+their relationships, their properties and their picture are what they were. Two properties may
+share a name: FOAF's two "account" properties are now both kept on import (the round-trip corpus
+lost five fewer statements for it). Annotation properties are still not entities.
+
 ### TD-04 `store.ts` holds document, UI, jobs and persistence in one module — Medium
 
 **Where.** `src/model/store.ts`: 1,801 lines, 99 actions, about 45 state fields.
@@ -406,6 +415,11 @@ properties by name (TD-03). Translation happens at each boundary.
 
 **Remediation.** Every entity has an IRI from creation (a placeholder in the model's namespace
 until named), internal ids stay as a local convenience, and service contracts use IRIs only.
+
+**Status, 2026-10-14.** Done for the IRI (roadmap task 1.4): every term, object property and
+named datatype has one from creation, a stand-in marked `pendingIri` until its first real name
+replaces it, once. The Structure service speaks IRIs only; the Entities service keeps keys of its
+own choosing, which its contract already treats as opaque. Internal ids remain the editor's.
 
 ## 4. Architectural risks
 

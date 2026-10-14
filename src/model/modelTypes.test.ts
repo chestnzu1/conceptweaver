@@ -3,7 +3,7 @@ import { allowsView, configOf, MODEL_TYPE_LIST, MODEL_TYPES, supports, termTypeF
 import { offeredChoices, relChoice, relChoices } from './props';
 import { fromTurtle, toTurtle } from './rdf';
 import { createModel, useStore } from './store';
-import { emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
+import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
 
 const vocabulary = (): Model => {
   const m = emptyModel('Glossary');
@@ -57,7 +57,7 @@ describe('types of model', () => {
     expect(relChoice(m, m.relations[0])).toBe('generalization');
     expect(relChoice(m, m.relations[1])).toBe('plain');
     // Even where a property of that name is declared, as it can be in a model that was converted.
-    const withProp = { ...m, props: [{ name: 'chews', description: '', chars: [] }] };
+    const withProp = { ...m, props: [newProp({ name: 'chews', description: '', chars: [] })] };
     expect(relChoice(withProp, m.relations[1])).toBe('plain');
     expect(offeredChoices(withProp, m.relations[1]).map((c) => c.value)).toEqual(['plain', 'generalization']);
   });

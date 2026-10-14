@@ -1,6 +1,7 @@
 import { enumerationEdges } from './edgeKinds';
 import { compactIri } from './prefixes';
-import { objectProperties, propKey } from './props';
+import { linkProps } from './identity';
+import { objectProperties } from './props';
 import type { Model, Relation } from './types';
 import { resolveModel } from './vocab';
 
@@ -83,9 +84,9 @@ const cache = new WeakMap<Model, Index>();
 function buildIndex(model: Model): Index {
   const hit = cache.get(model);
   if (hit) return hit;
-  const m = resolveModel(model);
+  const m = resolveModel(linkProps(model));
   const type = new Map(m.terms.map((t) => [t.id, t.type]));
-  const declared = new Set(m.mode === 'skos' ? [] : objectProperties(model).map((p) => p.key));
+  const declared = new Set(m.mode === 'skos' ? [] : objectProperties(model).map((p) => p.id));
   const index: Index = { out: new Map(), in: new Map(), type: new Map(), types: [] };
   const counts = new Map<string, number>();
   const kindOf = (r: Relation): string => {
@@ -98,7 +99,7 @@ function buildIndex(model: Model): Index {
     }
     if (r.kind === 'property') return 'data';
     if (m.mode === 'skos') return r.label.trim() ? 'plain' : 'skos:related';
-    if (r.plain || !declared.has(propKey(r.label))) return 'plain';
+    if (r.prop === undefined || !declared.has(r.prop)) return 'plain';
     return a === 'concept' && b === 'concept' ? 'restriction' : 'fact';
   };
   const push = (map: Map<string, Edge[]>, key: string, e: Edge) => (map.get(key) ?? map.set(key, []).get(key)!).push(e);

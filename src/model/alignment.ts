@@ -2,8 +2,7 @@ import { Parser } from 'n3';
 import { addIsA, addLink, addPropLink, removeIsA, removeLink, removePropLink, type Edit, type LinkKind } from './axioms';
 import type { Entity } from './external';
 import { allPrefixes, compactIri } from './prefixes';
-import { propKey } from './props';
-import { newRelation, newTerm, type MappingMeta, type Model, type PropLink, type Term } from './types';
+import { newProp, newRelation, newTerm, type MappingMeta, type Model, type PropLink, type Term } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -79,7 +78,7 @@ export function describe(model: Model, ref: Entity): MappedEntity | undefined {
     const t = model.terms.find((x) => x.id === ref.id);
     return t?.iri ? { ref, iri: t.iri, name: t.name || 'Unnamed', kind: termKind(t), ...(t.external !== undefined ? { external: t.external } : {}) } : undefined;
   }
-  const p = model.props.find((x) => propKey(x.name) === ref.id);
+  const p = model.props.find((x) => x.id === ref.id);
   return p?.iri ? { ref, iri: p.iri, name: p.name, kind: 'object property', ...(p.external !== undefined ? { external: p.external } : {}) } : undefined;
 }
 
@@ -114,7 +113,7 @@ export function listMappings(model: Model): Mapping[] {
   }
   for (const p of model.props) {
     for (const [link, predicate] of Object.entries(PREDICATE_OF_LINK) as [PropLink, string][]) {
-      for (const other of p[link] ?? []) put(describe(model, { kind: 'prop', id: propKey(p.name) }), predicate, describe(model, { kind: 'prop', id: other }));
+      for (const other of p[link] ?? []) put(describe(model, { kind: 'prop', id: p.id }), predicate, describe(model, { kind: 'prop', id: other }));
     }
   }
   return [...out.values()];
@@ -370,7 +369,7 @@ export function importMappings(model: Model, text: string, lookup: (iri: string)
     const t = m.terms.find((x) => x.iri === iri);
     if (t) return { kind: 'term', id: t.id };
     const p = m.props.find((x) => x.iri === iri);
-    return p ? { kind: 'prop', id: propKey(p.name) } : undefined;
+    return p ? { kind: 'prop', id: p.id } : undefined;
   };
   for (const x of quads) {
     const def = byPredicate.get(x.predicate.value);
@@ -391,10 +390,10 @@ export function importMappings(model: Model, text: string, lookup: (iri: string)
       const words = local.replace(/[_-]+/g, ' ').replace(/(\p{Ll}|\p{N})(\p{Lu})/gu, '$1 $2').trim();
       const likeProp = like.kind === 'prop';
       if (known ? known.type === 'object' : likeProp) {
-        let name = known?.name ?? words.toLowerCase();
-        for (let i = 2; out.props.some((p) => propKey(p.name) === propKey(name)); i++) name = `${known?.name ?? words.toLowerCase()} (${i})`;
-        out = { ...out, props: [...out.props, { name, description: '', chars: [], iri, external: owner }] };
-        return { kind: 'prop', id: propKey(name) };
+        // Its own name, even where a property of the model has it: the two are told apart by IRI.
+        const stub = newProp({ name: known?.name ?? words.toLowerCase(), iri, external: owner });
+        out = { ...out, props: [...out.props, stub] };
+        return { kind: 'prop', id: stub.id };
       }
       const type = known && known.type !== 'object' ? known.type : out.terms.find((t) => t.id === like.id)?.type;
       if (!type) return undefined;

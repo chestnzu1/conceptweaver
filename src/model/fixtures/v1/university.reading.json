@@ -1,0 +1,756 @@
+{
+  "relations": {
+    "9tly108zqoc": "generalization",
+    "8ygihnh7qoc": "generalization",
+    "fnfn05y9qoc": "generalization",
+    "q1uyogecqoc": "generalization",
+    "u6br44phqoc": "generalization",
+    "sjy1i7vaqoc": "generalization",
+    "2vlu93chqoc": "generalization",
+    "c019fbwkqoc": "generalization",
+    "9i7g0k4dqoc": "generalization",
+    "8vgvlxpsqoc": "generalization",
+    "aodoi38bqoc": "generalization",
+    "blxqqo6dqoc": "generalization",
+    "xq0fqydqqoc": "generalization",
+    "f0a2ie5vqoc": "generalization",
+    "lisxdhfwqoc": "generalization",
+    "ib0czd6wqoc": "generalization",
+    "xnaqkvpyqoc": "generalization",
+    "tmtyd9pdqoc": "generalization",
+    "z80k90f8qoc": "generalization",
+    "6dpxzrr7qoc": "generalization",
+    "vkkwtdieqoc": "generalization",
+    "h6oivya7qoc": "generalization",
+    "97eveobnqoc": "generalization",
+    "gvtu4snnqoc": "generalization",
+    "g9hdh3k8qoc": "generalization",
+    "0bxxv4vyqoc": "generalization",
+    "w9evzjilqoc": "generalization",
+    "hjs5eygrqoc": "generalization",
+    "lh4boxhcqoc": "generalization",
+    "hf2qjf9iqoc": "generalization",
+    "mli5z4n3qoc": "generalization",
+    "kfgzx2cvqoc": "generalization",
+    "jp2d2fbmqoc": "generalization",
+    "hym8hvgyqoc": "generalization",
+    "49a3u9k3qoc": "generalization",
+    "tag824v1qoc": "generalization",
+    "w5a42ahhqoc": "generalization",
+    "gbtthurrqoc": "generalization",
+    "bu91m7xpqoc": "generalization",
+    "j5lgxmf2qoc": "generalization",
+    "5ompwm8rqoc": "generalization",
+    "wbyjnauvqoc": "generalization",
+    "5kvt7xifqoc": "generalization",
+    "hwcc01zjqoc": "generalization",
+    "x08y1aizqoc": "generalization",
+    "mdmrmh11qoc": "generalization",
+    "u6rch3isqoc": "generalization",
+    "nttwhoj1qoc": "generalization",
+    "qyju8d94qoc": "generalization",
+    "voizc1hyqoc": "generalization",
+    "zy7fpd2uqoc": "generalization",
+    "vqgrz2weqoc": "generalization",
+    "a3ykvqqdqoc": "generalization",
+    "mbez7xw1qoc": "generalization",
+    "nn84y72yqoc": "generalization",
+    "o5v5mocqqoc": "generalization",
+    "ait4dfajqoc": "generalization",
+    "7x0gzc1aqoc": "generalization",
+    "coceom65qoc": "generalization",
+    "86blory1qoc": "generalization",
+    "i9ic2r6jqoc": "generalization",
+    "selq9abcqoc": "generalization",
+    "k6qffz81qoc": "generalization",
+    "jfx51x2gqoc": "generalization",
+    "mdg8gz3uqoc": "generalization",
+    "pdmkstmtqoc": "generalization",
+    "j7mh3f41qoc": "generalization",
+    "j6xahh51qoc": "generalization",
+    "spbv09b3qoc": "generalization",
+    "jzagd5iuqoc": "generalization",
+    "uv5gbkqsqoc": "generalization",
+    "x34519k1qoc": "generalization",
+    "kyv2qfc2qoc": "generalization",
+    "496js9xaqoc": "generalization",
+    "qo0iitxlqoc": "generalization",
+    "5xw0yfajqoc": "generalization",
+    "kch43319qoc": "generalization",
+    "7rdy3kj0qoc": "object",
+    "bgwiqt90qoc": "object",
+    "gsj42nu4qoc": "object",
+    "ses6eyn4qoc": "object",
+    "361zuoowqoc": "object",
+    "tr8wvuqmqoc": "object",
+    "u68hzwomqoc": "object",
+    "2q0lhofiqoc": "object",
+    "sr87tvu7qoc": "object",
+    "khbq14e5qoc": "object",
+    "fcingwpaqoc": "object",
+    "92gjjjgnqoc": "object",
+    "1c9o6n1vqoc": "object",
+    "8pqoalzsqoc": "object",
+    "ba62zj8uqoc": "object",
+    "rtdcnvyjqoc": "object",
+    "47cuy6hfqoc": "object",
+    "dyzcrpfkqoc": "object",
+    "m3q13x0eqoc": "object",
+    "5ha88twoqoc": "object",
+    "vrw5ph9cqoc": "object",
+    "h1yksim9qoc": "object",
+    "a58m8rw4qoc": "object",
+    "jg74n8npqoc": "object",
+    "g8gvvfuzqoc": "object",
+    "avj595dfqoc": "object",
+    "fh3lsi3sqoc": "object",
+    "n47n69kcqoc": "object",
+    "64mjveqyqoc": "object",
+    "d7zp4uacqoc": "object",
+    "djgajga3qoc": "plain",
+    "vswfwn4zqoc": "plain",
+    "elg4n3nkqoc": "plain",
+    "oczeqrvlqoc": "plain",
+    "rtnworkoqoc": "property",
+    "f2sj43vkqoc": "property",
+    "r9r284chqoc": "property",
+    "a6w4agwbqoc": "property",
+    "7d43k17oqoc": "property",
+    "6vsuiicrqoc": "property",
+    "mqcm390sqoc": "property",
+    "ypmn0z58qoc": "property",
+    "3e7ly4zdqoc": "property",
+    "gobhpmm6qoc": "property",
+    "820hry3bqoc": "property",
+    "ncbr6f2tqoc": "property",
+    "7qji6uvjqoc": "property",
+    "1vduljg3qoc": "property",
+    "eh051dy0qoc": "property",
+    "vqlyq1m7qoc": "property",
+    "u1k0voacqoc": "property",
+    "qg9eby27qoc": "property",
+    "7nv4ii17qoc": "property",
+    "0ylj5ckdqoc": "property",
+    "hv3g5wlbqoc": "property",
+    "zzk1mpwyqoc": "property",
+    "csw2uc61qoc": "property",
+    "98ag4gmyqoc": "property",
+    "xvcamr3bqoc": "property",
+    "injhc9naqoc": "property",
+    "xc02ogxeqoc": "property",
+    "xgpobphhqoc": "property",
+    "fv8o916yqoc": "property",
+    "rjhjm8aaqoc": "plain",
+    "35pxcv24qoc": "plain",
+    "k0lt79o5qoc": "plain",
+    "gxzm0hx6qoc": "plain",
+    "3lsuigmiqoc": "instanceOf",
+    "9z6jgoi7qoc": "instanceOf",
+    "zhyrjm4eqoc": "instanceOf",
+    "yycii3viqoc": "instanceOf",
+    "1u2h2nxmqoc": "instanceOf",
+    "0urcvvisqoc": "instanceOf",
+    "8g066vi2qoc": "instanceOf",
+    "dtti2ro2qoc": "instanceOf",
+    "a51unfjkqoc": "instanceOf",
+    "el775lkqqoc": "instanceOf",
+    "c7tgw58kqoc": "instanceOf",
+    "i8j918bqqoc": "instanceOf",
+    "j5ih9o63qoc": "instanceOf",
+    "x60gt6cgqoc": "instanceOf",
+    "if5bhadeqoc": "instanceOf",
+    "mqsntr7fqoc": "instanceOf",
+    "404nkkymqoc": "instanceOf",
+    "e0sdcewbqoc": "instanceOf",
+    "kvrqa31mqoc": "instanceOf",
+    "6zu7k7rhqoc": "instanceOf",
+    "jcyjj59kqoc": "instanceOf",
+    "2brdgiajqoc": "instanceOf",
+    "aphy9vidqoc": "instanceOf",
+    "r43bribaqoc": "instanceOf",
+    "gfkd9t4oqoc": "object",
+    "kxavjr6zqoc": "object",
+    "xlpfvh15qoc": "object",
+    "1r5klvd6qoc": "object",
+    "5abhr0riqoc": "object",
+    "x673qrvhqoc": "object",
+    "db33en4iqoc": "object",
+    "gdxs2wyjqoc": "object",
+    "icaxbdbiqoc": "object",
+    "zi5z516nqoc": "object",
+    "2abzpacdqoc": "object",
+    "l1vfcov8qoc": "object",
+    "vkiyrtmrqoc": "object",
+    "n55rtfqjqoc": "object",
+    "og89mzzeqoc": "object",
+    "1qdb66ecqoc": "object",
+    "4s3uo9jyqoc": "object",
+    "gy9jwpplqoc": "object",
+    "ur6jauz0qoc": "object",
+    "4u2b4uoeqoc": "object",
+    "2n7ecidnqoc": "object",
+    "ubww27vlqoc": "object",
+    "flqvgdhrqoc": "object",
+    "c0cvz303qoc": "object",
+    "4zeqgte2qoc": "object",
+    "pmt7neekqoc": "object",
+    "8vrmcg21qoc": "object"
+  },
+  "props": [
+    {
+      "name": "assessed by",
+      "iri": "http://example.org/university-ontology#assessedBy",
+      "chars": [],
+      "domain": [
+        "v8i0skksqoc"
+      ],
+      "range": [
+        "8hu9czeuqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "64mjveqyqoc",
+        "d7zp4uacqoc"
+      ]
+    },
+    {
+      "name": "author of",
+      "iri": "http://example.org/university-ontology#authorOf",
+      "chars": [],
+      "domain": [],
+      "range": [],
+      "parents": [],
+      "inverses": [
+        "authored by"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": []
+    },
+    {
+      "name": "authored by",
+      "iri": "http://example.org/university-ontology#authoredBy",
+      "chars": [],
+      "domain": [
+        "g8vwr04dqoc"
+      ],
+      "range": [
+        "p8on39zgqob"
+      ],
+      "parents": [],
+      "inverses": [
+        "author of"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "c0cvz303qoc",
+        "flqvgdhrqoc",
+        "pmt7neekqoc",
+        "rtdcnvyjqoc"
+      ]
+    },
+    {
+      "name": "awards",
+      "iri": "http://example.org/university-ontology#awards",
+      "chars": [],
+      "domain": [
+        "umqqp1hhqoc"
+      ],
+      "range": [
+        "btvg9rc1qoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "avj595dfqoc",
+        "fh3lsi3sqoc",
+        "g8gvvfuzqoc"
+      ]
+    },
+    {
+      "name": "cites",
+      "iri": "http://example.org/university-ontology#cites",
+      "chars": [],
+      "domain": [
+        "98d8029vqoc"
+      ],
+      "range": [
+        "98d8029vqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "8vrmcg21qoc",
+        "m3q13x0eqoc"
+      ]
+    },
+    {
+      "name": "collaborates with",
+      "iri": "http://example.org/university-ontology#collaboratesWith",
+      "chars": [
+        "symmetric"
+      ],
+      "domain": [
+        "p8on39zgqob"
+      ],
+      "range": [
+        "p8on39zgqob"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "gdxs2wyjqoc"
+      ]
+    },
+    {
+      "name": "edition of",
+      "iri": "http://example.org/university-ontology#editionOf",
+      "chars": [
+        "functional"
+      ],
+      "domain": [
+        "hgyhk3rfqoc"
+      ],
+      "range": [
+        "v8i0skksqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "n55rtfqjqoc",
+        "ses6eyn4qoc"
+      ]
+    },
+    {
+      "name": "employed by",
+      "iri": "http://example.org/university-ontology#employedBy",
+      "chars": [],
+      "domain": [
+        "dyhr7vu7qob"
+      ],
+      "range": [
+        "63xb479wqob"
+      ],
+      "parents": [
+        "member of"
+      ],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "1r5klvd6qoc",
+        "5abhr0riqoc",
+        "u68hzwomqoc"
+      ]
+    },
+    {
+      "name": "enrolled in",
+      "iri": "http://example.org/university-ontology#enrolledIn",
+      "chars": [],
+      "domain": [
+        "rj9d4kxjqob"
+      ],
+      "range": [
+        "umqqp1hhqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "4u2b4uoeqoc",
+        "7rdy3kj0qoc"
+      ]
+    },
+    {
+      "name": "funded by",
+      "iri": "http://example.org/university-ontology#fundedBy",
+      "chars": [],
+      "domain": [
+        "mjv49yd1qoc"
+      ],
+      "range": [
+        "j1vpx315qob"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "2abzpacdqoc",
+        "5ha88twoqoc"
+      ]
+    },
+    {
+      "name": "has field",
+      "iri": "http://example.org/university-ontology#hasField",
+      "chars": [],
+      "domain": [
+        "mjv49yd1qoc",
+        "v8i0skksqoc"
+      ],
+      "range": [
+        "v1hhfv8kqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "h1yksim9qoc",
+        "vrw5ph9cqoc"
+      ]
+    },
+    {
+      "name": "has part",
+      "iri": "http://example.org/university-ontology#hasPart",
+      "chars": [
+        "transitive"
+      ],
+      "domain": [],
+      "range": [],
+      "parents": [],
+      "inverses": [
+        "part of"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": []
+    },
+    {
+      "name": "has prerequisite",
+      "iri": "http://example.org/university-ontology#hasPrerequisite",
+      "chars": [
+        "transitive",
+        "asymmetric"
+      ],
+      "domain": [
+        "v8i0skksqoc"
+      ],
+      "range": [
+        "v8i0skksqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "l1vfcov8qoc",
+        "n47n69kcqoc",
+        "vkiyrtmrqoc"
+      ]
+    },
+    {
+      "name": "held during",
+      "iri": "http://example.org/university-ontology#heldDuring",
+      "chars": [
+        "functional"
+      ],
+      "domain": [
+        "hgyhk3rfqoc"
+      ],
+      "range": [
+        "8il0u0eoqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "og89mzzeqoc",
+        "tr8wvuqmqoc"
+      ]
+    },
+    {
+      "name": "leads",
+      "iri": "http://example.org/university-ontology#leads",
+      "chars": [],
+      "domain": [
+        "7hh6fzi5qob"
+      ],
+      "range": [
+        "mjv49yd1qoc"
+      ],
+      "parents": [
+        "participates in"
+      ],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "a58m8rw4qoc",
+        "icaxbdbiqoc"
+      ]
+    },
+    {
+      "name": "located in",
+      "iri": "http://example.org/university-ontology#locatedIn",
+      "chars": [
+        "transitive"
+      ],
+      "domain": [
+        "nmlmsmn6qoc"
+      ],
+      "range": [
+        "nmlmsmn6qoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "1c9o6n1vqoc",
+        "2n7ecidnqoc",
+        "92gjjjgnqoc",
+        "ubww27vlqoc"
+      ]
+    },
+    {
+      "name": "member of",
+      "iri": "http://example.org/university-ontology#memberOf",
+      "chars": [],
+      "domain": [
+        "p8on39zgqob"
+      ],
+      "range": [
+        "63xb479wqob"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": []
+    },
+    {
+      "name": "part of",
+      "iri": "http://example.org/university-ontology#partOf",
+      "chars": [
+        "transitive"
+      ],
+      "domain": [
+        "7fx60brqqob",
+        "lk4qif92qob",
+        "e1v995nzqob",
+        "chtqbc93qob"
+      ],
+      "range": [
+        "lk4qif92qob",
+        "rl90ha75qob",
+        "7fx60brqqob"
+      ],
+      "parents": [],
+      "inverses": [
+        "has part"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "2q0lhofiqoc",
+        "fcingwpaqoc",
+        "gfkd9t4oqoc",
+        "khbq14e5qoc",
+        "kxavjr6zqoc",
+        "sr87tvu7qoc",
+        "xlpfvh15qoc"
+      ]
+    },
+    {
+      "name": "participates in",
+      "iri": "http://example.org/university-ontology#participatesIn",
+      "chars": [],
+      "domain": [
+        "p8on39zgqob"
+      ],
+      "range": [
+        "mjv49yd1qoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "jg74n8npqoc",
+        "zi5z516nqoc"
+      ]
+    },
+    {
+      "name": "published by",
+      "iri": "http://example.org/university-ontology#publishedBy",
+      "chars": [
+        "functional"
+      ],
+      "domain": [
+        "98d8029vqoc"
+      ],
+      "range": [
+        "sap8h20eqob"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "47cuy6hfqoc",
+        "4zeqgte2qoc",
+        "dyzcrpfkqoc"
+      ]
+    },
+    {
+      "name": "supervised by",
+      "iri": "http://example.org/university-ontology#supervisedBy",
+      "chars": [],
+      "domain": [
+        "zut4mj8dqob"
+      ],
+      "range": [
+        "7hh6fzi5qob"
+      ],
+      "parents": [],
+      "inverses": [
+        "supervises"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "8pqoalzsqoc"
+      ]
+    },
+    {
+      "name": "supervises",
+      "iri": "http://example.org/university-ontology#supervises",
+      "chars": [
+        "asymmetric",
+        "irreflexive"
+      ],
+      "domain": [
+        "vyk74ct8qob"
+      ],
+      "range": [
+        "rj9d4kxjqob"
+      ],
+      "parents": [],
+      "inverses": [
+        "supervised by"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "ba62zj8uqoc",
+        "db33en4iqoc",
+        "x673qrvhqoc"
+      ]
+    },
+    {
+      "name": "takes",
+      "iri": "http://example.org/university-ontology#takes",
+      "chars": [],
+      "domain": [
+        "rj9d4kxjqob"
+      ],
+      "range": [
+        "hgyhk3rfqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "bgwiqt90qoc",
+        "gy9jwpplqoc",
+        "ur6jauz0qoc"
+      ]
+    },
+    {
+      "name": "takes place in",
+      "iri": "http://example.org/university-ontology#takesPlaceIn",
+      "chars": [],
+      "domain": [
+        "hgyhk3rfqoc"
+      ],
+      "range": [
+        "924fka9yqoc"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "1qdb66ecqoc",
+        "361zuoowqoc"
+      ]
+    },
+    {
+      "name": "taught by",
+      "iri": "http://example.org/university-ontology#taughtBy",
+      "chars": [],
+      "domain": [],
+      "range": [],
+      "parents": [],
+      "inverses": [
+        "teaches"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": []
+    },
+    {
+      "name": "teaches",
+      "iri": "http://example.org/university-ontology#teaches",
+      "chars": [],
+      "domain": [
+        "vyk74ct8qob"
+      ],
+      "range": [
+        "hgyhk3rfqoc"
+      ],
+      "parents": [],
+      "inverses": [
+        "taught by"
+      ],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "4s3uo9jyqoc",
+        "gsj42nu4qoc"
+      ]
+    }
+  ],
+  "plain": [
+    {
+      "name": "graduated from",
+      "uses": [
+        "djgajga3qoc"
+      ]
+    },
+    {
+      "name": "hosted by",
+      "uses": [
+        "oczeqrvlqoc"
+      ]
+    },
+    {
+      "name": "sponsors",
+      "uses": [
+        "vswfwn4zqoc"
+      ]
+    },
+    {
+      "name": "works at",
+      "uses": [
+        "elg4n3nkqoc"
+      ]
+    }
+  ]
+}

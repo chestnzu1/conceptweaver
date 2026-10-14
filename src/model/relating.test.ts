@@ -9,7 +9,7 @@ import { fromTurtle, toTurtle } from './rdf';
 import { cannotRelate, endsForNew, IS_A, settleRelation } from './relating';
 import { skosSample } from './sample';
 import { useStore } from './store';
-import { emptyModel, newRelation, newTerm, type Model, type Relation } from './types';
+import { newProp, emptyModel, newRelation, newTerm, type Model, type Relation } from './types';
 
 /** Classes, a data property and two individuals, and one object property that is there already. */
 const studio = (): Model => {
@@ -24,7 +24,7 @@ const studio = (): Model => {
     newTerm({ id: 'parasite', name: 'Parasite', type: 'instance' }),
     newTerm({ id: 'bong', name: 'Bong', type: 'instance' }),
   ];
-  m.props = [{ name: 'directed by', description: 'Who directed it.', chars: [] }];
+  m.props = [newProp({ name: 'directed by', description: 'Who directed it.', chars: [] })];
   return withIris(m);
 };
 const st = useStore.getState;

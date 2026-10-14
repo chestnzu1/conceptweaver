@@ -1,6 +1,6 @@
 import { parseOutline } from './bulk';
 import { arrangeAsHierarchy } from './layout';
-import { emptyModel, newRelation, newTerm, type Model, type ObjProp, type Quantifier } from './types';
+import { emptyModel, newProp, newRelation, newTerm, type Model, type ObjProp, type Quantifier } from './types';
 
 const CLASSES = `Agent
   Person
@@ -274,13 +274,19 @@ export function universitySample(): Model {
   m.terms.find((t) => t.name === 'Course edition')!.description = 'One run of a course in a particular academic period.';
   m.terms.find((t) => t.name === 'PhD candidate')!.description = 'A doctoral researcher, who is both a student and a member of academic staff.';
 
+  // An inverse or a parent is named in the table; it may come further down, so it is looked up after.
+  const named: [ObjProp, string, string][] = [];
   for (const [name, description, chars, inverseOf, parent, domain, range] of rows(OBJECT_PROPERTIES)) {
-    const p: ObjProp = { name, description, chars: chars ? chars.split(',') : [] };
-    if (inverseOf) p.inverses = [inverseOf];
-    if (parent) p.parents = [parent];
+    const p = newProp({ name, description, chars: chars ? chars.split(',') : [] });
     if (domain) p.domain = [id[domain]];
     if (range) p.range = [id[range]];
     m.props.push(p);
+    named.push([p, inverseOf, parent]);
+  }
+  const propId = (name: string) => m.props.find((p) => p.name === name)!.id;
+  for (const [p, inverseOf, parent] of named) {
+    if (inverseOf) p.inverses = [propId(inverseOf)];
+    if (parent) p.parents = [propId(parent)];
   }
   for (const [from, label, to, quantifier, n] of rows(CLASS_RELATIONS)) {
     rel(from, to, { label, ...(quantifier && quantifier !== 'some' ? { restriction: quantifier as Quantifier } : {}), ...(n ? { restrictionN: Number(n) } : {}) });

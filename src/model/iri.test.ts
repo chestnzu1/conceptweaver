@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { setIriSuffix, withIris } from './iri';
 import { fromTurtle, toTurtle } from './rdf';
-import { emptyModel, newRelation, newTerm, normalizeModel } from './types';
+import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
 
 function films() {
   const m = emptyModel('Films');
@@ -9,7 +9,7 @@ function films() {
   const film = newTerm({ name: 'Film' });
   const award = newTerm({ name: 'Award' });
   m.terms.push(film, award);
-  m.props.push({ name: 'wins', description: '', chars: [] });
+  m.props.push(newProp({ name: 'wins', description: '', chars: [] }));
   m.relations.push(newRelation({ from: film.id, to: award.id, label: 'wins' }));
   return { m: withIris(m), film, award };
 }
@@ -36,7 +36,7 @@ describe('IRI suffix', () => {
 
   it('works for an object property', () => {
     const { m } = films();
-    const edit = setIriSuffix(m, { prop: 'wins' }, 'P12');
+    const edit = setIriSuffix(m, { prop: m.props.find((p) => p.name === 'wins')!.id }, 'P12');
     expect(edit.model!.props[0]).toMatchObject({ name: 'wins', iri: 'http://example.org/films#P12' });
     expect(toTurtle(edit.model!)).toContain(':P12 a owl:ObjectProperty ;\n    rdfs:label "wins"');
   });
@@ -82,5 +82,41 @@ describe('IRI suffix', () => {
     expect(next.shapes.nodes[0].properties[0]).toMatchObject({ path: 'http://example.org/films#wins', class: iri, in: [{ v: iri, iri: true }, { v: old }] });
     expect(next.mappings[0]).toMatchObject({ source: iri, target: 'http://schema.org/Movie' });
     expect(next.rejected).toEqual([`${iri}|http://schema.org/Film`]);
+  });
+});
+
+describe('an IRI from the moment an entity exists', () => {
+  const base = () => {
+    const m = emptyModel('Films');
+    m.baseIri = 'http://example.org/films#';
+    const t = newTerm({ name: 'New class' });
+    m.terms.push(t);
+    return { m: withIris(m), id: t.id };
+  };
+  const named = (m: Model, id: string, name: string) => withIris({ ...m, terms: m.terms.map((x) => (x.id === id ? { ...x, name } : x)) });
+
+  it('stands in until the entity is named, and is then made from the name, once', () => {
+    const { m, id } = base();
+    expect(m.terms[0]).toMatchObject({ iri: 'http://example.org/films#NewClass', pendingIri: true });
+    const n = named(m, id, 'Documentary');
+    expect(n.terms[0].iri).toBe('http://example.org/films#Documentary');
+    expect(n.terms[0].pendingIri).toBeUndefined();
+    // A later rename changes the label, not the IRI.
+    expect(named(n, id, 'Docu-drama').terms[0].iri).toBe('http://example.org/films#Documentary');
+  });
+
+  it('takes what referred to the stand-in along when it is replaced', () => {
+    const { m, id } = base();
+    const shaped: Model = { ...m, shapes: { extra: '', nodes: [{ id: 's', iri: 'http://example.org/films#Shape', name: 'Shape', targetClass: ['http://example.org/films#NewClass'], targetNode: [], targetSubjectsOf: [], targetObjectsOf: [], properties: [] }] } };
+    const n = named(shaped, id, 'Documentary');
+    expect(n.shapes.nodes[0].targetClass).toEqual(['http://example.org/films#Documentary']);
+  });
+
+  it('is no longer a stand-in once it is set by hand', () => {
+    const { m, id } = base();
+    const set = setIriSuffix(m, { term: id }, 'F12').model!;
+    expect(set.terms[0]).toMatchObject({ iri: 'http://example.org/films#F12' });
+    expect(set.terms[0].pendingIri).toBeUndefined();
+    expect(named(set, id, 'Documentary').terms[0].iri).toBe('http://example.org/films#F12');
   });
 });

@@ -1,6 +1,7 @@
+import { DEFAULT_PROP, linkProps, nameKey, propOf } from './identity';
 import { allowsKind, configOf, type RelKindId } from './modelTypes';
 import { ENUM_RANGE, PROP_LINKS, QUANTIFIERS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
-import { labelKey, resolveModel } from './vocab';
+import { resolveModel } from './vocab';
 
 /** The characteristics an object property can have, as in OWL. */
 export const CHARACTERISTICS: { id: string; owl: string; label: string; about: string }[] = [
@@ -13,15 +14,12 @@ export const CHARACTERISTICS: { id: string; owl: string; label: string; about: s
   { id: 'irreflexive', owl: 'owl:IrreflexiveProperty', label: 'Irreflexive', about: 'Nothing relates to itself.' },
 ];
 
-/** Name used for an unlabelled relationship. */
-export const DEFAULT_PROP = 'related to';
-
-/** The key a property or relationship label is known by: its name, ignoring case and outer spaces. */
-export const propKey = (name: string) => labelKey(name) || DEFAULT_PROP;
+export { DEFAULT_PROP };
 
 /** An object property as it stands: what is declared about it, and how it is used. */
 export interface PropView {
-  key: string;
+  /** The property's id (ObjProp.id). */
+  id: string;
   name: string;
   description: string;
   /** Term ids. When not set by hand these follow the classes the property is used between. */
@@ -30,7 +28,7 @@ export interface PropView {
   domainAuto: boolean;
   rangeAuto: boolean;
   chars: string[];
-  /** Keys of other properties, as declared on this one (see `propLinks` for both directions). */
+  /** Ids of other properties, as declared on this one (see `propLinks` for both directions). */
   parents: string[];
   inverses: string[];
   equivalents: string[];
@@ -45,7 +43,7 @@ export interface PropView {
 
 interface Analysis {
   props: PropView[];
-  /** Relationship labels that are not (yet) an object property. */
+  /** Relationship labels that are not (yet) an object property, by the label's key (nameKey). */
   plain: { key: string; name: string; rels: Relation[] }[];
   /** Whether a term is, or is a kind / an instance of, one of the allowed terms. */
   fits: (id: string, allowed: string[]) => boolean;
@@ -62,12 +60,13 @@ const cache = new WeakMap<Model, Analysis>();
 function analyse(model: Model): Analysis {
   const hit = cache.get(model);
   if (hit) return hit;
-  const m = resolveModel(model);
+  // Each relationship joined to the property it uses (identity.ts), then read with the standard properties in force.
+  const m = resolveModel(linkProps(model));
   const types = new Map(m.terms.map((t) => [t.id, t.type]));
   const props = new Map<string, PropView>();
   for (const p of m.props) {
-    props.set(propKey(p.name), {
-      key: propKey(p.name),
+    props.set(p.id, {
+      id: p.id,
       name: p.name,
       description: p.description,
       chars: p.chars,
@@ -95,9 +94,9 @@ function analyse(model: Model): Analysis {
     if (r.kind === 'generalization' && r.from !== r.to && !parents.get(r.from)?.includes(r.to)) parents.set(r.from, [...(parents.get(r.from) ?? []), r.to]);
     // "is a", "has property" and relations given a standard RDFS/OWL/SKOS meaning are neither.
     if (r.kind !== 'association' || r.predicate) continue;
-    const key = propKey(r.label);
-    const v = r.plain ? undefined : props.get(key);
+    const v = r.prop !== undefined ? props.get(r.prop) : undefined;
     if (!v) {
+      const key = nameKey(r.label);
       (plain.get(key) ?? plain.set(key, { key, name: r.label.trim() || DEFAULT_PROP, rels: [] }).get(key)!).rels.push(r);
       continue;
     }
@@ -118,7 +117,7 @@ function analyse(model: Model): Analysis {
     }
     return false;
   };
-  const restrictions = allRestrictions(m, new Map([...props.values()].map((p) => [p.key, p.name])));
+  const restrictions = allRestrictions(m, new Map([...props.values()].map((p) => [p.id, p.name])));
   const out: Analysis = {
     props: [...props.values()].sort((a, b) => a.name.localeCompare(b.name)),
     plain: [...plain.values()].sort((a, b) => a.name.localeCompare(b.name)),
@@ -140,23 +139,21 @@ function analyse(model: Model): Analysis {
 export const objectProperties = (model: Model): PropView[] => analyse(model).props;
 export const plainRelationships = (model: Model) => analyse(model).plain;
 export const fitsIn = (model: Model, id: string, allowed: string[]) => analyse(model).fits(id, allowed);
-export const findProp = (model: Model, key: string) => analyse(model).props.find((p) => p.key === key);
+export const findProp = (model: Model, id: string) => analyse(model).props.find((p) => p.id === id);
 
-/** The declared entry for an object property. */
-export function declaredProp(model: Model, key: string): ObjProp {
-  return model.props.find((p) => propKey(p.name) === key) ?? { name: key, description: '', chars: [] };
-}
+/** The declared entry for an object property, by id. */
+export const declaredProp = (model: Model, id: string): ObjProp | undefined => model.props.find((p) => p.id === id);
 
 /**
  * The properties an object property is linked to in one way. Being a sub-property has a
  * direction; inverse, equivalent and disjoint hold both ways, so a statement made on either
  * property counts for both.
  */
-export function propLinks(model: Model, key: string, link: PropLink): string[] {
+export function propLinks(model: Model, id: string, link: PropLink): string[] {
   const all = analyse(model).props;
-  const own = all.find((p) => p.key === key)?.[link] ?? [];
+  const own = all.find((p) => p.id === id)?.[link] ?? [];
   if (link === 'parents') return own;
-  return [...new Set([...own, ...all.filter((p) => p.key !== key && p[link].includes(key)).map((p) => p.key)])];
+  return [...new Set([...own, ...all.filter((p) => p.id !== id && p[link].includes(id)).map((p) => p.id)])];
 }
 export { PROP_LINKS };
 
@@ -180,7 +177,7 @@ export function relChoice(model: Model, r: Relation): RelChoice {
   if (isInstanceOf(model, r)) return 'instanceOf';
   if (r.kind !== 'association') return r.kind;
   // Where the type of model has no object properties, a label is only ever a label.
-  return allowsKind(model, 'object') && !r.predicate && !r.plain && model.props.some((p) => propKey(p.name) === propKey(r.label)) ? 'object' : 'plain';
+  return allowsKind(model, 'object') && propOf(model, r) ? 'object' : 'plain';
 }
 
 /**
@@ -317,8 +314,8 @@ function allRestrictions(m: Model, declared: Map<string, string>): Map<string, R
       // The values it has to have: a standard datatype by its name, an enumerated one by the name it was given.
       const listed = to.range?.startsWith(ENUM_RANGE) ? m.datatypes.find((d) => d.id === to.range!.slice(ENUM_RANGE.length))?.name : undefined;
       line = { data: true, property: to.name || 'Unnamed', filler: listed ?? (to.range?.startsWith(ENUM_RANGE) ? undefined : to.range) ?? 'rdfs:Literal' };
-    } else if (r.kind === 'association' && !r.plain && to.type === 'concept' && declared.has(propKey(r.label))) {
-      line = { data: false, property: declared.get(propKey(r.label))!, filler: to.name || 'Unnamed' };
+    } else if (r.kind === 'association' && r.prop !== undefined && to.type === 'concept' && declared.has(r.prop)) {
+      line = { data: false, property: declared.get(r.prop)!, filler: to.name || 'Unnamed' };
     }
     if (!line) continue;
     for (const [index, spec] of restrictionSpecs(r).entries()) {

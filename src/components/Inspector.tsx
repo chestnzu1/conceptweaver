@@ -8,7 +8,8 @@ import { baseIriOf } from '../model/iri';
 import { QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type Relation, type Term } from '../model/types';
 import { allowsView, configOf, MODEL_TYPE_LIST, supports, type EditorSection } from '../model/modelTypes';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
-import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, propKey, restrictionsOf, type PropView } from '../model/props';
+import { propOf } from '../model/identity';
+import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { CommitInput, CommitTextarea } from './fields';
@@ -31,7 +32,7 @@ export function Inspector() {
   const modelHidden = useStore((s) => s.modelPanelHidden);
 
   let body;
-  if (prop && !terms.length && !rels.length) body = <ObjectPropertyPanel key={prop.key} prop={prop} />;
+  if (prop && !terms.length && !rels.length) body = <ObjectPropertyPanel key={prop.id} prop={prop} />;
   else if (terms.length === 1 && !rels.length) body = <TermPanel key={terms[0].id} term={terms[0]} />;
   else if (rels.length === 1 && !terms.length) body = <RelationPanel key={rels[0].id} rel={rels[0]} />;
   else if (terms.length + rels.length > 1) body = <MultiPanel terms={terms} rels={rels} />;
@@ -480,13 +481,13 @@ function ClassRestrictions({ term }: { term: Term }) {
   const isData = prop.startsWith('d:');
   const add = () => {
     // A further restriction by a property the class already has towards the same target joins that relationship.
-    const drawn = restrictions.find((r) => (isData ? r.data && r.rel.to === prop.slice(2) : !r.data && r.rel.to === target && propKey(r.rel.label) === prop.slice(2)))?.rel;
+    const drawn = restrictions.find((r) => (isData ? r.data && r.rel.to === prop.slice(2) : !r.data && r.rel.to === target && r.rel.prop === prop.slice(2)))?.rel;
     const further = drawn && nextSpec(drawn);
     if (drawn) {
       if (further) st().updateRelation(drawn.id, specsPatch([...restrictionSpecs(drawn), further]));
       else st().notify('That relationship already states a restriction of every kind.');
     } else if (isData) st().addRelation({ from: term.id, to: prop.slice(2), kind: 'property' });
-    else st().addRelation({ from: term.id, to: target, label: objProps.find((p) => p.key === prop.slice(2))!.name });
+    else st().addRelation({ from: term.id, to: target, label: objProps.find((p) => p.id === prop.slice(2))!.name, prop: prop.slice(2) });
     setProp('');
     setTarget('');
   };
@@ -519,7 +520,7 @@ function ClassRestrictions({ term }: { term: Term }) {
           <option value="">Add: choose a property…</option>
           <optgroup label="Object properties">
             {objProps.map((p) => (
-              <option key={p.key} value={'o:' + p.key}>
+              <option key={p.id} value={'o:' + p.id}>
                 {p.name}
               </option>
             ))}
@@ -644,7 +645,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
   const st = useStore.getState;
   const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
-  const set = (patch: Parameters<ReturnType<typeof useStore.getState>['updateProp']>[1]) => st().updateProp(prop.key, patch);
+  const set = (patch: Parameters<ReturnType<typeof useStore.getState>['updateProp']>[1]) => st().updateProp(prop.id, patch);
   const side = (which: 'domain' | 'range') => {
     const ids = prop[which];
     const auto = which === 'domain' ? prop.domainAuto : prop.rangeAuto;
@@ -675,10 +676,10 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
         <span>
           Name <code className="pred">rdfs:label</code>
         </span>
-        <CommitInput value={prop.name} onCommit={(v) => st().renameProp(prop.key, v)} />
+        <CommitInput value={prop.name} onCommit={(v) => st().renameProp(prop.id, v)} />
         <small>Renaming it renames every relationship that uses it.</small>
       </label>
-      <IriDetails key={prop.key} iri={prop.iri} name={prop.name} owner={{ prop: prop.key }} external={prop.external !== undefined} />
+      <IriDetails key={prop.id} iri={prop.iri} name={prop.name} owner={{ prop: prop.id }} external={prop.external !== undefined} />
       <Section id="property-axioms" title="Property axioms">
         {side('domain')}
         {side('range')}
@@ -740,7 +741,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
           Highlight on the canvas
         </button>
       )}
-      <button className="btn danger" onClick={() => st().deleteProp(prop.key)}>
+      <button className="btn danger" onClick={() => st().deleteProp(prop.id)}>
         {prop.rels.length ? `Delete property and its ${prop.rels.length} relationship${prop.rels.length === 1 ? '' : 's'}` : 'Delete property'}
       </button>
     </>
@@ -759,7 +760,8 @@ function RelationPanel({ rel }: { rel: Relation }) {
   // In an ontology a relationship either uses a declared object property or is still just a relationship.
   const usesProp = !skos && rel.kind === 'association' && !own && !model.vocab.map[rel.label.trim().toLowerCase()];
   const objProps = usesProp ? objectProperties(model) : [];
-  const prop = usesProp ? objProps.find((p) => p.key === propKey(rel.label)) : undefined;
+  const used = usesProp ? propOf(model, rel) : undefined;
+  const prop = used ? objProps.find((p) => p.id === used.id) : undefined;
   // Every restriction this relationship puts on its class: one or several.
   const stated = !skos ? restrictionsOf(model, rel.from).filter((r) => r.rel.id === rel.id) : [];
   const restriction = stated[0];
@@ -801,14 +803,14 @@ function RelationPanel({ rel }: { rel: Relation }) {
         {usesProp && (
           <datalist id="panel-object-props">
             {objProps.map((p) => (
-              <option key={p.key} value={p.name} />
+              <option key={p.id} value={p.name} />
             ))}
           </datalist>
         )}
         {prop && (
           <small>
             Domain: {names(prop.domain)}. Range: {names(prop.range)}.{' '}
-            <button className="link" onClick={() => st().selectProp(prop.key)}>
+            <button className="link" onClick={() => st().selectProp(prop.id)}>
               Edit the property
             </button>
           </small>

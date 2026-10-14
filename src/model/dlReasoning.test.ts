@@ -272,7 +272,9 @@ describe.skipIf(!!why)('OWL 2 DL reasoning with HermiT', () => {
       const model = fromTurtle(turtle.includes('@prefix') ? turtle : PREFIXES + turtle);
       const result = dlResult(model, await askReasoner(service.url, dlRequest(model)));
       const name = (id: string) => model.terms.find((t) => t.id === id)!.name;
-      const said = (asserted: boolean) => result.relations.filter((x) => x.asserted === asserted).map((x) => `${name(x.subject)} ${x.property} ${name(x.object)}`).sort();
+      // A relationship names its property by id, as the model knows it.
+      const prop = (id: string) => model.props.find((p) => p.id === id)?.name ?? id;
+      const said = (asserted: boolean) => result.relations.filter((x) => x.asserted === asserted).map((x) => `${name(x.subject)} ${prop(x.property)} ${name(x.object)}`).sort();
       return { model, result, stated: said(true), inferred: said(false) };
     };
 

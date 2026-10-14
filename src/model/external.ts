@@ -1,9 +1,9 @@
 import { bounds } from './geometry';
-import { compactIri } from './prefixes';
-import { objectProperties, propKey } from './props';
+import { nameKey, propOf } from './identity';
+import { objectProperties } from './props';
 import { fromTurtle } from './rdf';
 import { detectFormat, FORMAT_LABEL } from './rdfFormats';
-import { PROP_LINKS, newRelation, newTerm, uid, type ExternalRef, type Model, type ObjProp, type Relation, type Term } from './types';
+import { PROP_LINKS, newProp, newRelation, newTerm, uid, type ExternalRef, type Model, type ObjProp, type Relation, type Term } from './types';
 
 /**
  * Other ontologies, and the three different things that can be done with one:
@@ -98,17 +98,6 @@ function placer(model: Model) {
   };
 }
 
-/** A name for an object property that no property of the model has yet (properties are told apart by name). */
-function freeName(model: Model, name: string, hint: string): string {
-  const taken = new Set(model.props.map((p) => propKey(p.name)));
-  if (!taken.has(propKey(name))) return name;
-  let out = `${name} (${hint})`;
-  for (let i = 2; taken.has(propKey(out)); i++) out = `${name} (${hint} ${i})`;
-  return out;
-}
-
-const hintOf = (model: Model, ref: Pick<ExternalRef, 'name' | 'namespace'>) => (compactIri(model, ref.namespace + 'x')?.split(':')[0] || ref.name.split(/\s+/)[0] || 'external').toLowerCase();
-
 /**
  * Makes an external entity usable in the active model: a reference to it, under its own IRI,
  * that can be chosen as a superclass, a domain, a range or a filler. Its definition stays where
@@ -123,12 +112,13 @@ export function reuseEntity(model: Model, ref: Pick<ExternalRef, 'id' | 'name' |
     const stub = newTerm({ name: t.name, type: t.type, iri: t.iri, description: t.description, external: ref.id, ...(t.range ? { range: t.range } : {}), ...placer(model)() });
     return { model: { ...model, terms: [...model.terms, stub] }, entity: { kind: 'term', id: stub.id }, added: true };
   }
-  const p = ext.props.find((x) => propKey(x.name) === entity.prop);
+  const p = ext.props.find((x) => x.id === entity.prop);
   if (!p?.iri) throw new Error('That property has no IRI, so it cannot be referred to.');
   const here = model.props.find((x) => x.iri === p.iri);
-  if (here) return { model, entity: { kind: 'prop', id: propKey(here.name) }, added: false };
-  const name = freeName(model, p.name, hintOf(model, ref));
-  return { model: { ...model, props: [...model.props, { name, description: p.description, chars: [], iri: p.iri, external: ref.id }] }, entity: { kind: 'prop', id: propKey(name) }, added: true };
+  if (here) return { model, entity: { kind: 'prop', id: here.id }, added: false };
+  // It keeps its name, even where a property of the model has the same one: they are told apart by IRI.
+  const stub = newProp({ name: p.name, description: p.description, iri: p.iri, external: ref.id });
+  return { model: { ...model, props: [...model.props, stub] }, entity: { kind: 'prop', id: stub.id }, added: true };
 }
 
 export interface CopyResult {
@@ -150,7 +140,6 @@ export interface CopyResult {
  */
 export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' | 'namespace'>, ext: Model, chosen: { terms: string[]; props: string[] }, attach = false): CopyResult {
   const place = placer(model);
-  const hint = hintOf(model, ref);
   const terms = [...model.terms];
   const props = [...model.props];
   const relations = [...model.relations];
@@ -198,57 +187,62 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
     return here.id;
   };
 
-  const extProp = new Map(ext.props.map((p) => [propKey(p.name), p]));
-  const propName = new Map<string, string>();
+  // Properties by their id in the external ontology; `propId` gives the model's property for each.
+  const extProp = new Map(ext.props.map((p) => [p.id, p]));
+  const propId = new Map<string, string>();
   const speakingProps = new Set<string>();
-  const taken = () => ({ ...model, props }) as Model;
-  for (const key of chosen.props) {
-    const p = extProp.get(key);
+  for (const id of chosen.props) {
+    const p = extProp.get(id);
     if (!p?.iri) continue;
     const here = propByIri.get(p.iri);
     if (here) {
-      propName.set(key, here.name);
-      if (attach && here.external !== undefined) speakingProps.add(key);
+      propId.set(id, here.id);
+      if (attach && here.external !== undefined) speakingProps.add(id);
       else skipped.push(p.iri);
       continue;
     }
+    // It keeps its name, even where a property of the model has the same one: they are told apart by IRI.
     const { domain: _d, range: _r, parents: _p, inverses: _i, equivalents: _e, disjoints: _j, external: _x, ...rest } = p;
-    const copy: ObjProp = { ...rest, name: freeName(taken(), p.name, hint) };
+    const copy: ObjProp = { ...rest, id: uid() };
     props.push(copy);
     propByIri.set(p.iri, copy);
-    propName.set(key, copy.name);
-    speakingProps.add(key);
+    propId.set(id, copy.id);
+    speakingProps.add(id);
     copied++;
   }
-  const propFor = (key: string): string | undefined => {
-    if (propName.has(key)) return propName.get(key);
-    const p = extProp.get(key);
+  /** The model's property for a property of the external ontology: its copy, or failing that a reference to it. */
+  const propFor = (id: string): ObjProp | undefined => {
+    const known = propId.get(id);
+    if (known) return props.find((p) => p.id === known);
+    const p = extProp.get(id);
     if (!p?.iri) return undefined;
     let here = propByIri.get(p.iri);
     if (!here) {
-      here = { name: freeName(taken(), p.name, hint), description: p.description, chars: [], iri: p.iri, external: ref.id };
+      here = newProp({ name: p.name, description: p.description, iri: p.iri, external: ref.id });
       props.push(here);
       propByIri.set(p.iri, here);
       referenced++;
     }
-    propName.set(key, here.name);
-    return here.name;
+    propId.set(id, here.id);
+    return here;
   };
 
   // What the ontology says about each copied entity comes along.
-  const stated = new Set(model.relations.map((r) => `${r.from}|${r.to}|${r.kind}|${r.predicate ?? ''}|${propKey(r.label)}`));
+  const said = (r: Pick<Relation, 'from' | 'to' | 'kind' | 'predicate' | 'label'>, prop?: string) => `${r.from}|${r.to}|${r.kind}|${r.predicate ?? ''}|${prop ?? nameKey(r.label)}`;
+  const stated = new Set(model.relations.map((r) => said(r, propOf(model, r)?.id)));
   for (const r of ext.relations) {
     if (!speaking.has(r.from)) continue;
     const from = termFor(r.from);
     const to = termFor(r.to);
     if (!from || !to) continue;
-    const uses = r.kind === 'association' && !r.predicate && !r.plain && extProp.has(propKey(r.label));
-    const label = uses ? (propFor(propKey(r.label)) ?? r.label) : r.label;
-    const k = `${from}|${to}|${r.kind}|${r.predicate ?? ''}|${propKey(label)}`;
+    const used = propOf(ext, r);
+    const prop = used ? propFor(used.id) : undefined;
+    const label = prop?.name ?? r.label;
+    const k = said({ ...r, from, to, label }, prop?.id);
     if (stated.has(k)) continue;
     stated.add(k);
-    const { id: _id, ...rest } = r;
-    relations.push(newRelation({ ...(rest as Relation), from, to, label }));
+    const { id: _id, prop: _prop, ...rest } = r;
+    relations.push(newRelation({ ...(rest as Relation), from, to, label, ...(prop ? { prop: prop.id } : {}) }));
   }
   for (const id of speaking) {
     const t = extTerm.get(id)!;
@@ -258,8 +252,8 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
     const values = t.values?.map((v) => ({ ...v, prop: termFor(v.prop) ?? '' })).filter((v) => v.prop);
     if (domain?.length || values?.length) terms[mine] = { ...terms[mine], ...(domain?.length ? { domain } : {}), ...(values?.length ? { values } : {}) };
   }
-  for (const key of speakingProps) {
-    const p = extProp.get(key)!;
+  for (const id of speakingProps) {
+    const p = extProp.get(id)!;
     const at = props.findIndex((x) => x.iri === p.iri);
     if (at < 0) continue;
     const next: ObjProp = { ...props[at] };
@@ -268,8 +262,8 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
     if (ids(p.range)?.length) next.range = ids(p.range);
     if (attach && next.external !== undefined) next.chars = [...new Set([...next.chars, ...p.chars])];
     for (const link of PROP_LINKS) {
-      const keys = p[link]?.map(propFor).filter((x): x is string => !!x).map(propKey);
-      if (keys?.length) next[link] = [...new Set([...(next[link] ?? []), ...keys])];
+      const linked = p[link]?.map((x) => propFor(x)?.id).filter((x): x is string => !!x && x !== next.id);
+      if (linked?.length) next[link] = [...new Set([...(next[link] ?? []), ...linked])];
     }
     props[at] = next;
   }
@@ -279,7 +273,7 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
   return { model: { ...model, vocab, terms, props, relations }, copied, skipped, referenced };
 }
 
-const everything = (ext: Model) => ({ terms: ext.terms.map((t) => t.id), props: ext.props.map((p) => propKey(p.name)) });
+const everything = (ext: Model) => ({ terms: ext.terms.map((t) => t.id), props: ext.props.map((p) => p.id) });
 
 /**
  * The model together with the content of the ontologies it imports: what a reasoner has to

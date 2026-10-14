@@ -1,0 +1,89 @@
+@prefix : <http://example.org/film-knowledge-graph#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/film-knowledge-graph> a owl:Ontology ;
+    rdfs:label "Film knowledge graph" ;
+    rdfs:comment "Example model. Edit it freely, or start from scratch with File → New." .
+
+:Person a owl:Class ;
+    rdfs:label "Person" ;
+    skos:definition "A human being involved in making films." .
+
+:Actor a owl:Class ;
+    rdfs:label "Actor" ;
+    skos:definition "A person who performs a role in a film." ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty :actsIn ; owl:someValuesFrom :Film ] .
+
+:Director a owl:Class ;
+    rdfs:label "Director" ;
+    skos:definition "A person who controls the artistic and dramatic aspects of a film." ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty :directs ; owl:someValuesFrom :Film ] .
+
+:Film a owl:Class ;
+    rdfs:label "Film" ;
+    skos:definition "A story recorded as moving images, shown in cinemas or on streaming platforms." ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :belongsTo ; owl:someValuesFrom :Genre ] , [ a owl:Restriction ; owl:onProperty :wins ; owl:someValuesFrom :Award ] , [ a owl:Restriction ; owl:onProperty :releaseDate ; owl:someValuesFrom xsd:date ] , [ a owl:Restriction ; owl:onProperty :runningTime ; owl:someValuesFrom xsd:integer ] .
+
+:Documentary a owl:Class ;
+    rdfs:label "Documentary" ;
+    skos:definition "A non-fiction film that documents reality." ;
+    rdfs:subClassOf :Film .
+
+:Studio a owl:Class ;
+    rdfs:label "Studio" ;
+    skos:definition "A company that produces and distributes films." ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :produces ; owl:someValuesFrom :Film ] .
+
+:Genre a owl:Class ;
+    rdfs:label "Genre" ;
+    skos:definition "A category of films sharing style or subject matter." .
+
+:Award a owl:Class ;
+    rdfs:label "Award" .
+
+:actsIn a owl:ObjectProperty ;
+    rdfs:label "acts in" ;
+    skos:definition "Performs a role in a film." ;
+    rdfs:domain :Actor ;
+    rdfs:range :Film .
+
+:belongsTo a owl:ObjectProperty ;
+    rdfs:label "belongs to" ;
+    rdfs:domain :Film ;
+    rdfs:range :Genre .
+
+:directs a owl:ObjectProperty ;
+    rdfs:label "directs" ;
+    skos:definition "Is the director of a film." ;
+    rdfs:domain :Director ;
+    rdfs:range :Film .
+
+:produces a owl:ObjectProperty ;
+    rdfs:label "produces" ;
+    rdfs:domain :Studio ;
+    rdfs:range :Film .
+
+:wins a owl:ObjectProperty ;
+    rdfs:label "wins" ;
+    rdfs:domain :Film ;
+    rdfs:range :Award .
+
+:releaseDate a owl:DatatypeProperty ;
+    rdfs:label "Release date" ;
+    skos:definition "The day a film first became available to the public." ;
+    rdfs:domain :Film ;
+    rdfs:range xsd:date .
+
+:runningTime a owl:DatatypeProperty ;
+    rdfs:label "Running time" ;
+    skos:definition "Length of the film in minutes." ;
+    rdfs:domain :Film ;
+    rdfs:range xsd:integer .
+
+:Parasite a owl:NamedIndividual , :Film ;
+    rdfs:label "Parasite" ;
+    skos:definition "South Korean film from 2019, directed by Bong Joon-ho." .

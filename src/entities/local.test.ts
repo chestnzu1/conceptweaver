@@ -5,7 +5,7 @@ import type { ReasoningResult } from '../model/reasoning';
 import { skosSample } from '../model/sample';
 import { stressModel } from '../model/stress';
 import { useStore } from '../model/store';
-import { emptyModel, newTerm, type Model } from '../model/types';
+import { newProp, emptyModel, newTerm, type Model } from '../model/types';
 import { ontologyRef } from '../structure/local';
 import { EntityQueryError, ON, type ListKind, type EntityQuery, type EntityQueryService } from './contracts';
 import { createLocalEntityService } from './local';
@@ -46,9 +46,10 @@ function office(): Model {
     newTerm({ id: 'nobody', name: 'Nobody', type: 'instance' }),
   ];
   m.props = [
-    { name: 'works for', description: 'Whom someone is employed by.', chars: ['functional'] },
-    { name: 'employs', description: '', chars: ['inverseFunctional', 'asymmetric'], inverses: ['works for'] },
-    { name: 'knows', description: '', chars: ['symmetric', 'transitive'] },
+    // Each property's id is its name, for reading.
+    newProp({ id: 'works for', name: 'works for', description: 'Whom someone is employed by.', chars: ['functional'] }),
+    newProp({ id: 'employs', name: 'employs', description: '', chars: ['inverseFunctional', 'asymmetric'], inverses: ['works for'] }),
+    newProp({ id: 'knows', name: 'knows', description: '', chars: ['symmetric', 'transitive'] }),
   ];
   return withIris(m);
 }

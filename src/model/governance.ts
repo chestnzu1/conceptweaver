@@ -1,6 +1,6 @@
 import { standardAnnotation } from './annotations';
 import { expandIri, isAbsoluteIri } from './prefixes';
-import { objectProperties, propKey } from './props';
+import { objectProperties } from './props';
 import { DATATYPES, ENUM_RANGE, META_GROUPS, uid, type EntityKind, type ExtraField, type GovernanceConfig, type MetaField, type Model, type Term, type ValueType } from './types';
 
 /**
@@ -129,6 +129,7 @@ export function keyIri(m: Model, key: string): string | undefined {
 
 // ---------------------------------------------------------------- which entity, which kind
 
+/** Whose metadata: a term by id, or an object property by id. */
 export type MetaOwner = { term: string } | { prop: string };
 
 /** The metadata profile an entity is given: stated as its dcterms:type. */
@@ -173,7 +174,7 @@ export interface MetaEntity {
 export function metaEntities(model: Model): MetaEntity[] {
   const terms = model.terms.map((t): MetaEntity => ({ owner: { term: t.id }, id: t.id, name: t.name, description: t.description, synonyms: t.synonyms, iri: t.iri, kind: termKind(model, t), structural: structuralKind(model, t), fields: t.fields, range: t.range, external: t.external !== undefined }));
   if (model.mode === 'skos') return terms;
-  const props = objectProperties(model).map((p): MetaEntity => ({ owner: { prop: p.key }, id: 'prop:' + p.key, name: p.name, description: p.description, synonyms: '', iri: p.iri, kind: 'objectProperty', structural: 'objectProperty', fields: p.fields ?? [], external: p.external !== undefined }));
+  const props = objectProperties(model).map((p): MetaEntity => ({ owner: { prop: p.id }, id: 'prop:' + p.id, name: p.name, description: p.description, synonyms: '', iri: p.iri, kind: 'objectProperty', structural: 'objectProperty', fields: p.fields ?? [], external: p.external !== undefined }));
   return [...terms, ...props];
 }
 
@@ -182,7 +183,7 @@ export function metaEntity(model: Model, owner: MetaOwner): MetaEntity | undefin
     const t = model.terms.find((x) => x.id === owner.term);
     return t && { owner, id: t.id, name: t.name, description: t.description, synonyms: t.synonyms, iri: t.iri, kind: termKind(model, t), structural: structuralKind(model, t), fields: t.fields, range: t.range, external: t.external !== undefined };
   }
-  return metaEntities(model).find((e) => 'prop' in e.owner && e.owner.prop === propKey(owner.prop));
+  return metaEntities(model).find((e) => 'prop' in e.owner && e.owner.prop === owner.prop);
 }
 
 /** The fields that apply to a kind of entity, in the order they are shown. */

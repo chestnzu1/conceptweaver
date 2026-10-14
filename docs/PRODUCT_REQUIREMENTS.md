@@ -201,7 +201,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 
 | Module | Status | Strongest evidence | Largest gap |
 | --- | --- | --- | --- |
-| M1 Modelling and entity management | **Existing** | `src/components/Entities.tsx`, `EntityEditor.tsx`, `src/model/iri.ts` | Lossless round trip; property identity |
+| M1 Modelling and entity management | **Existing** | `src/components/Entities.tsx`, `EntityEditor.tsx`, `src/model/iri.ts`, `src/model/identity.ts` | Lossless round trip (property identity done 2026-10-14) |
 | M2 Axiom and restriction editing | **Partially Implemented** | `src/model/axioms.ts`, `props.ts` | Class expressions are text |
 | M3 Reasoning | **Existing**, job handling partial | `src/model/reasoner.ts`, `reasoning.ts`, `reasoner/ReasonerService.java` | Blocks the page; no ELK; no jobs |
 | M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shapes.ts`, `quality.ts` | Main thread; no cancel |
@@ -274,8 +274,8 @@ per model. Refactoring is limited to moving a namespace.
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
 | FR-M1-1 | Create, rename and delete classes, object properties, data properties and individuals from the canvas, the tables and the editor. | Existing | P0 |
-| FR-M1-2 | Every entity has an IRI from the moment it is created; name and IRI are independent; renaming never changes an IRI. | Partially Implemented (unnamed terms have none; TD-18) | P0 |
-| FR-M1-3 | Object properties have a stable identity independent of their name; two properties may share a label. | Recommended (TD-03) | P0 |
+| FR-M1-2 | Every entity has an IRI from the moment it is created; name and IRI are independent; renaming never changes an IRI. | Implemented 2026-10-14 (a stand-in IRI until the first name; `src/model/iri.ts`) | P0 |
+| FR-M1-3 | Object properties have a stable identity independent of their name; two properties may share a label. | Implemented 2026-10-14 (model format 2; `src/model/identity.ts`) | P0 |
 | FR-M1-4 | Annotation properties are entities: declared, listed, arranged in a hierarchy, with domain and range. | Recommended | P1 |
 | FR-M1-5 | Labels, definitions and notes in several languages per entity; a display language for the whole interface. | Partially Implemented (annotation fields carry a language tag; one display language) | P1 |
 | FR-M1-6 | Refactoring: merge two entities, move entities to another namespace, replace one entity by another everywhere, deprecate with a successor. | Partially Implemented (`moveNamespace`) | P2 |

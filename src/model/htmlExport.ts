@@ -245,7 +245,7 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
     model.mode === 'skos'
       ? []
       : objectProperties(model).map((p) => ({
-          id: 'prop:' + p.key,
+          id: 'prop:' + p.id,
           name: p.name,
           ...(p.iri ? { iri: p.iri, curie: compactIri(model, p.iri) ?? p.iri } : {}),
           description: p.description,
@@ -253,7 +253,7 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
           range: p.range.map(name),
           characteristics: CHARACTERISTICS.filter((c) => p.chars.includes(c.id)).map((c) => c.label),
           uses: p.rels.map((r) => r.id),
-          meta: metaOf(metaEntity(model, { prop: p.key })),
+          meta: metaOf(metaEntity(model, { prop: p.id })),
         }));
 
   // The hierarchy: every class or concept under what it is a kind of. Ones that are each other's

@@ -1,0 +1,328 @@
+{
+  "format": "conceptweaver",
+  "version": 1,
+  "name": "Film knowledge graph",
+  "description": "Example model. Edit it freely, or start from scratch with File → New.",
+  "baseIri": "http://example.org/film-knowledge-graph#",
+  "ontologyIri": "",
+  "prefixes": [],
+  "mode": "ontology",
+  "lang": "",
+  "vocab": {
+    "enabled": false,
+    "map": {}
+  },
+  "props": [
+    {
+      "name": "acts in",
+      "description": "Performs a role in a film.",
+      "chars": [],
+      "iri": "http://example.org/film-knowledge-graph#actsIn"
+    },
+    {
+      "name": "directs",
+      "description": "Is the director of a film.",
+      "chars": [],
+      "iri": "http://example.org/film-knowledge-graph#directs"
+    },
+    {
+      "name": "produces",
+      "description": "",
+      "chars": [],
+      "iri": "http://example.org/film-knowledge-graph#produces"
+    },
+    {
+      "name": "belongs to",
+      "description": "",
+      "chars": [],
+      "iri": "http://example.org/film-knowledge-graph#belongsTo"
+    },
+    {
+      "name": "wins",
+      "description": "",
+      "chars": [],
+      "iri": "http://example.org/film-knowledge-graph#wins"
+    }
+  ],
+  "terms": [
+    {
+      "id": "ww21zbssqo1",
+      "name": "Person",
+      "description": "A human being involved in making films.",
+      "type": "concept",
+      "color": "blue",
+      "x": 0,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Person"
+    },
+    {
+      "id": "3d7qpvs8qo1",
+      "name": "Actor",
+      "description": "A person who performs a role in a film.",
+      "type": "concept",
+      "color": "blue",
+      "x": -124,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Actor"
+    },
+    {
+      "id": "d307lyo4qo1",
+      "name": "Director",
+      "description": "A person who controls the artistic and dramatic aspects of a film.",
+      "type": "concept",
+      "color": "blue",
+      "x": 0,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Director"
+    },
+    {
+      "id": "nr0hdgqeqo1",
+      "name": "Film",
+      "description": "A story recorded as moving images, shown in cinemas or on streaming platforms.",
+      "type": "concept",
+      "color": "amber",
+      "x": 0,
+      "y": 220,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Film"
+    },
+    {
+      "id": "ehgtcw14qo1",
+      "name": "Documentary",
+      "description": "A non-fiction film that documents reality.",
+      "type": "concept",
+      "color": "amber",
+      "x": -406,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Documentary"
+    },
+    {
+      "id": "1ichztl2qo1",
+      "name": "Studio",
+      "description": "A company that produces and distributes films.",
+      "type": "concept",
+      "color": "green",
+      "x": 124,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Studio"
+    },
+    {
+      "id": "db2hwqdhqo1",
+      "name": "Genre",
+      "description": "A category of films sharing style or subject matter.",
+      "type": "concept",
+      "color": "purple",
+      "x": -270,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Genre"
+    },
+    {
+      "id": "vhe985jaqo1",
+      "name": "Award",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": -150,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Award"
+    },
+    {
+      "id": "kvkn0gcvqo1",
+      "name": "Release date",
+      "description": "The day a film first became available to the public.",
+      "type": "property",
+      "color": "",
+      "x": 15,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:date",
+      "iri": "http://example.org/film-knowledge-graph#releaseDate"
+    },
+    {
+      "id": "54460iv9qo1",
+      "name": "Running time",
+      "description": "Length of the film in minutes.",
+      "type": "property",
+      "color": "",
+      "x": 237,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:integer",
+      "iri": "http://example.org/film-knowledge-graph#runningTime"
+    },
+    {
+      "id": "4fpe2yetqo1",
+      "name": "Parasite",
+      "description": "South Korean film from 2019, directed by Bong Joon-ho.",
+      "type": "instance",
+      "color": "",
+      "x": 418,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/film-knowledge-graph#Parasite"
+    }
+  ],
+  "relations": [
+    {
+      "id": "17eb51udqo1",
+      "from": "3d7qpvs8qo1",
+      "to": "ww21zbssqo1",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "wutcr50cqo1",
+      "from": "d307lyo4qo1",
+      "to": "ww21zbssqo1",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "s9fx21l3qo1",
+      "from": "ehgtcw14qo1",
+      "to": "nr0hdgqeqo1",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "szm2grrbqo1",
+      "from": "4fpe2yetqo1",
+      "to": "nr0hdgqeqo1",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2stx7cuvqo1",
+      "from": "3d7qpvs8qo1",
+      "to": "nr0hdgqeqo1",
+      "label": "acts in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "jws97h1aqo1",
+      "from": "d307lyo4qo1",
+      "to": "nr0hdgqeqo1",
+      "label": "directs",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "vxrjqq7hqo1",
+      "from": "1ichztl2qo1",
+      "to": "nr0hdgqeqo1",
+      "label": "produces",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "46j74mwdqo1",
+      "from": "nr0hdgqeqo1",
+      "to": "db2hwqdhqo1",
+      "label": "belongs to",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "1yt5p0rzqo1",
+      "from": "nr0hdgqeqo1",
+      "to": "vhe985jaqo1",
+      "label": "wins",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "30rhzjl8qo1",
+      "from": "nr0hdgqeqo1",
+      "to": "kvkn0gcvqo1",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "5uobl76sqo1",
+      "from": "nr0hdgqeqo1",
+      "to": "54460iv9qo1",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    }
+  ],
+  "shapes": {
+    "nodes": [],
+    "extra": ""
+  },
+  "externals": [],
+  "mappings": [],
+  "rejected": [],
+  "governance": {
+    "custom": [],
+    "overrides": {}
+  },
+  "style": {
+    "theme": "standard",
+    "nodeTypes": {},
+    "edgeTypes": {},
+    "nodes": {},
+    "edges": {},
+    "anchors": {}
+  },
+  "layout": {
+    "kind": "hierarchy",
+    "direction": "TB",
+    "nodeSpacing": 36,
+    "layerSpacing": 70,
+    "repulsion": 1,
+    "routing": "auto",
+    "root": ""
+  },
+  "datatypes": [],
+  "quality": {
+    "off": [],
+    "on": []
+  }
+}

@@ -2,7 +2,8 @@ import { Parser, Writer } from 'n3';
 import { characteristicIssues } from './axioms';
 import { inferredRestrictions } from './inferred';
 import { compactIri, ontologyIriOf } from './prefixes';
-import { objectProperties, propKey, restrictionsOf, type Restriction } from './props';
+import { nameKey } from './identity';
+import { objectProperties, restrictionsOf, type Restriction } from './props';
 import { QUALITY_RULES, qualityDiagnostics, ruleById, ruleEnabled, type QuickFix } from './quality';
 import { termIris, toTurtle } from './rdf';
 import { reason } from './reasoner';
@@ -185,9 +186,9 @@ function entityIndex(model: Model) {
     const t = byId.get(id);
     return t ? { kind: 'term', id, name: t.name || 'Unnamed', type: typeOf(t), iri: t.iri } : undefined;
   };
-  const prop = (key: string): EntityRef | undefined => {
-    const p = model.props.find((x) => propKey(x.name) === key);
-    return p ? { kind: 'prop', id: key, name: p.name, type: 'object property', iri: p.iri } : undefined;
+  const prop = (id: string): EntityRef | undefined => {
+    const p = model.props.find((x) => x.id === id);
+    return p ? { kind: 'prop', id, name: p.name, type: 'object property', iri: p.iri } : undefined;
   };
   const rel = (id: string): EntityRef | undefined => {
     const r = model.relations.find((x) => x.id === id);
@@ -268,7 +269,7 @@ function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings:
       const inherited = own.length || reasoning.superclasses(t.id).length ? inferredRestrictions(model, t.id).restrictions.map((x) => ({ r: x.restriction, from: x.sources[0]?.name ?? '' })) : [];
       const groups = new Map<string, { r: Restriction; from: string }[]>();
       for (const x of [...own, ...inherited]) {
-        const k = `${x.r.data}|${x.r.data ? x.r.rel.to : propKey(x.r.rel.label)}|${x.r.rel.to}`;
+        const k = `${x.r.data}|${x.r.data ? x.r.rel.to : (x.r.rel.prop ?? nameKey(x.r.rel.label))}|${x.r.rel.to}`;
         groups.set(k, [...(groups.get(k) ?? []), x]);
       }
       for (const list of groups.values()) {
@@ -306,14 +307,14 @@ function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings:
     characteristicIssues(p.chars).forEach((issue, n) => {
       const profile = issue.includes('OWL 2 DL');
       findings.push({
-        id: `owl:c:${p.key}:${n}`,
+        id: `owl:c:${p.id}:${n}`,
         category: 'owl',
         severity: 'warning',
         rule: profile ? 'Outside OWL 2 DL' : 'Conflicting property characteristics',
         ruleId: profile ? 'owl-profile' : 'owl-characteristics',
         message: `${q(p.name)}: ${issue}`,
         explanation: profile ? 'This does not make the ontology inconsistent; it puts it outside the OWL 2 DL profile.' : 'This is not a contradiction by itself: it becomes one as soon as the property is used in a way the characteristics exclude.',
-        entity: ix.prop(p.key),
+        entity: ix.prop(p.id),
         property: p.name,
         terms: [],
         rels: p.rels.map((r) => r.id).slice(0, 50),
@@ -558,7 +559,7 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
     const report = await validator.validate(rdf.dataset(dataQuads as never));
 
     const iriToTerm = termIris(model);
-    const iriToProp = new Map(model.props.filter((p) => p.iri).map((p) => [p.iri!, propKey(p.name)]));
+    const iriToProp = new Map(model.props.filter((p) => p.iri).map((p) => [p.iri!, p.id]));
     const shapeByIri = new Map(model.shapes.nodes.map((s) => [s.iri, s]));
     // A property shape is usually a blank node; the node shape that holds it says where it is from.
     const parent = new Map<string, string>();
@@ -570,8 +571,8 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
       const focus = r.focusNode;
       const focusIri = focus?.termType === 'NamedNode' ? focus.value : undefined;
       const termId = focusIri ? iriToTerm.get(focusIri) : undefined;
-      const propKeyOf = focusIri ? iriToProp.get(focusIri) : undefined;
-      const entity: EntityRef | undefined = termId ? ix.term(termId) : propKeyOf ? ix.prop(propKeyOf) : focus ? { kind: 'external', id: focus.value, name: show(focus), type: 'data', iri: focusIri } : undefined;
+      const propId = focusIri ? iriToProp.get(focusIri) : undefined;
+      const entity: EntityRef | undefined = termId ? ix.term(termId) : propId ? ix.prop(propId) : focus ? { kind: 'external', id: focus.value, name: show(focus), type: 'data', iri: focusIri } : undefined;
       const level = SEVERITY[r.severity?.value.slice(SH.length) ?? 'Violation'] ?? 'error';
       const component = r.sourceConstraintComponent?.value ?? '';
       const source = r.sourceShape;

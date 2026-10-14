@@ -5,7 +5,7 @@ import { withIris } from './iri';
 import { assertedSuperclasses, objectProperties, propLinks, restrictionsOf } from './props';
 import { fromTurtle, toTurtle } from './rdf';
 import { reason } from './reasoner';
-import { emptyModel, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
+import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
 
 /** A small ontology: classes, object and data properties, individuals. Every edit below gives a new model. */
 function build() {
@@ -24,7 +24,8 @@ function build() {
   const rel = (from: string, to: string, p: Parameters<typeof newRelation>[0] extends infer R ? Partial<R> : never = {}) => {
     m = { ...m, relations: [...m.relations, newRelation({ from: id[from], to: id[to], ...p })] };
   };
-  m = { ...m, props: [{ name: 'directs', description: '', chars: [] }, { name: 'directed by', description: '', chars: [] }, { name: 'makes', description: '', chars: [] }, { name: 'acts in', description: '', chars: [] }] };
+  // Each property's id is its name, for reading: an id is any string the model does not use twice.
+  m = { ...m, props: ['directs', 'directed by', 'makes', 'acts in'].map((name) => newProp({ id: name, name })) };
   rel('Film', 'Work', { kind: 'generalization' });
   rel('Documentary', 'Film', { kind: 'generalization' });
   rel('Actor', 'Person', { kind: 'generalization' });
@@ -183,9 +184,12 @@ describe('property characteristics and relations', () => {
     expect(block(ttl, ':directs')).toContain('rdfs:subPropertyOf :makes , :actsIn');
     expect(block(ttl, ':directs')).toContain('owl:inverseOf :directedBy');
     expect(block(ttl, ':makes')).toContain('owl:propertyDisjointWith :actsIn');
+    // Read back, the properties have ids of their own: they are looked up, and their links shown, by name.
     const back = fromTurtle(ttl);
-    expect(propLinks(back, 'directs', 'parents').sort()).toEqual(['acts in', 'makes']);
-    expect(propLinks(back, 'acts in', 'disjoints')).toEqual(['makes']);
+    const named = (name: string) => back.props.find((p) => p.name === name)!.id;
+    const names = (ids: string[]) => ids.map((x) => back.props.find((p) => p.id === x)!.name);
+    expect(names(propLinks(back, named('directs'), 'parents')).sort()).toEqual(['acts in', 'makes']);
+    expect(names(propLinks(back, named('acts in'), 'disjoints'))).toEqual(['makes']);
     expect(addPropLink(n, 'acts in', 'makes', 'equivalents').error).toMatch(/Both cannot hold/);
     expect(addPropLink(n, 'directs', 'directs', 'inverses').error).toMatch(/Symmetric/);
     expect(addPropLink(n, 'directed by', 'directs', 'inverses').error).toMatch(/already stated/);
@@ -197,7 +201,9 @@ describe('property characteristics and relations', () => {
 
   it('reads a model saved when a property had one parent and one inverse', () => {
     const old = { format: 'conceptweaver', version: 1, terms: [], relations: [], props: [{ name: 'has part', chars: [], parent: 'Relates', inverseOf: 'part of' }, { name: 'part of', chars: [] }, { name: 'relates', chars: [] }] };
-    expect(normalizeModel(old).props[0]).toMatchObject({ parents: ['relates'], inverses: ['part of'] });
+    const read = normalizeModel(old);
+    const idOf = (name: string) => read.props.find((p) => p.name === name)!.id;
+    expect(read.props[0]).toMatchObject({ parents: [idOf('relates')], inverses: [idOf('part of')] });
   });
 
   it('reasons with them: sub-properties, equivalence, and disjoint properties as a contradiction', () => {

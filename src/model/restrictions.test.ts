@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runChecks } from './checks';
 import { hasCardinality, nextSpec, restrictionByRelation, restrictionSpecs, restrictionsOf, specsPatch } from './props';
 import { fromTurtle, toTurtle } from './rdf';
-import { emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
+import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
 
 /** Director -directs-> Film (an object property), Film has Running time (a data property), Film -wins-> Award (plain). */
 function films() {
@@ -11,7 +11,7 @@ function films() {
   const [director, film, award] = ['Director', 'Film', 'Award'].map((name) => newTerm({ name }));
   const time = newTerm({ name: 'Running time', type: 'property', range: 'xsd:integer' });
   m.terms.push(director, film, award, time);
-  m.props.push({ name: 'directs', description: '', chars: [] });
+  m.props.push(newProp({ name: 'directs', description: '', chars: [] }));
   const directs = newRelation({ from: director.id, to: film.id, label: 'directs' });
   const has = newRelation({ from: film.id, to: time.id, kind: 'property' });
   const wins = newRelation({ from: film.id, to: award.id, label: 'wins' });

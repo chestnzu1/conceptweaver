@@ -1,4 +1,5 @@
-import { objectProperties, propKey, restrictionsOf, type Restriction } from './props';
+import { nameKey } from './identity';
+import { objectProperties, restrictionsOf, type Restriction } from './props';
 import { reason, type SuperLink } from './reasoner';
 import { creditOf, type ReasoningResult } from './reasoning';
 import type { Model, Relation } from './types';
@@ -46,7 +47,7 @@ export interface InferredRestrictions {
 
 /** What makes two restrictions the same restriction: property, kind, number and filler. */
 export function restrictionKey(r: Restriction): string {
-  return r.data ? `d|${r.rel.to}|${r.quantifier}|${r.n ?? ''}` : `o|${propKey(r.rel.label)}|${r.quantifier}|${r.n ?? ''}|${r.rel.to}`;
+  return r.data ? `d|${r.rel.to}|${r.quantifier}|${r.n ?? ''}` : `o|${r.rel.prop ?? nameKey(r.rel.label)}|${r.quantifier}|${r.n ?? ''}|${r.rel.to}`;
 }
 
 /** The class expression of a kept axiom, whether it was stated as a superclass or as an equivalent class. */
@@ -155,7 +156,7 @@ export function inferredFacts(model: Model): { consistent: boolean; truncated: b
   const reasoning = reason(model);
   if (!reasoning.consistent) return { consistent: false, truncated: reasoning.truncated, facts: [] };
   const individuals = new Set(m.terms.filter((t) => t.type === 'instance').map((t) => t.id));
-  const names = new Map(objectProperties(model).map((p) => [p.key, p.name]));
+  const names = new Map(objectProperties(model).map((p) => [p.id, p.name]));
   const facts: InferredFact[] = [];
   for (const i of reasoning.inferences) {
     const [a, b] = [i.key.indexOf('|'), i.key.lastIndexOf('|')];
@@ -198,7 +199,7 @@ export function entailed(model: Model, dl?: ReasoningResult): Entailed {
   const haveTypes = new Set(out.memberships.map((x) => `${x.from}|${x.to}`));
   for (const x of dl.types) if (!x.asserted && !haveTypes.has(`${x.individual}|${x.class}`)) out.memberships.push({ id: `inferred:${x.individual}|${x.class}`, from: x.individual, to: x.class, because: credit });
   const haveFacts = new Set(out.facts.map((x) => x.id));
-  const names = new Map(objectProperties(model).map((p) => [p.key, p.name]));
+  const names = new Map(objectProperties(model).map((p) => [p.id, p.name]));
   for (const x of dl.relations) {
     const id = `fact:${x.subject}|${x.property}|${x.object}`;
     if (x.asserted || haveFacts.has(id) || !names.has(x.property)) continue;

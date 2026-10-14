@@ -1,0 +1,108 @@
+{
+  "relations": {
+    "17eb51udqo1": "generalization",
+    "wutcr50cqo1": "generalization",
+    "s9fx21l3qo1": "generalization",
+    "szm2grrbqo1": "instanceOf",
+    "2stx7cuvqo1": "object",
+    "jws97h1aqo1": "object",
+    "vxrjqq7hqo1": "object",
+    "46j74mwdqo1": "object",
+    "1yt5p0rzqo1": "object",
+    "30rhzjl8qo1": "property",
+    "5uobl76sqo1": "property"
+  },
+  "props": [
+    {
+      "name": "acts in",
+      "iri": "http://example.org/film-knowledge-graph#actsIn",
+      "chars": [],
+      "domain": [
+        "3d7qpvs8qo1"
+      ],
+      "range": [
+        "nr0hdgqeqo1"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "2stx7cuvqo1"
+      ]
+    },
+    {
+      "name": "belongs to",
+      "iri": "http://example.org/film-knowledge-graph#belongsTo",
+      "chars": [],
+      "domain": [
+        "nr0hdgqeqo1"
+      ],
+      "range": [
+        "db2hwqdhqo1"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "46j74mwdqo1"
+      ]
+    },
+    {
+      "name": "directs",
+      "iri": "http://example.org/film-knowledge-graph#directs",
+      "chars": [],
+      "domain": [
+        "d307lyo4qo1"
+      ],
+      "range": [
+        "nr0hdgqeqo1"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "jws97h1aqo1"
+      ]
+    },
+    {
+      "name": "produces",
+      "iri": "http://example.org/film-knowledge-graph#produces",
+      "chars": [],
+      "domain": [
+        "1ichztl2qo1"
+      ],
+      "range": [
+        "nr0hdgqeqo1"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "vxrjqq7hqo1"
+      ]
+    },
+    {
+      "name": "wins",
+      "iri": "http://example.org/film-knowledge-graph#wins",
+      "chars": [],
+      "domain": [
+        "nr0hdgqeqo1"
+      ],
+      "range": [
+        "vhe985jaqo1"
+      ],
+      "parents": [],
+      "inverses": [],
+      "equivalents": [],
+      "disjoints": [],
+      "uses": [
+        "1yt5p0rzqo1"
+      ]
+    }
+  ],
+  "plain": []
+}

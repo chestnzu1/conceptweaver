@@ -2,9 +2,9 @@ FOAF (foaf.rdf, read as RDF/XML), opened in ConceptWeaver and saved as Turtle
 unchanged, then compared with the original by the OWL API: axioms by structure, and the
 ontology's IRI, annotations and imports.
 
-Original: 551 axioms. Saved: 472 axioms.
-Lost: 239 (AnnotationAssertion 157, DataPropertyRange 22, Declaration 15, ObjectPropertyDomain 15, ObjectPropertyRange 14, InverseFunctionalObjectProperty 7, SubObjectPropertyOf 3, Annotation 2, DataPropertyDomain 1, InverseObjectProperties 1, SubAnnotationPropertyOf 1, SubClassOf 1).
-Added: 159 (AnnotationAssertion 145, Declaration 7, DataPropertyDomain 6, Annotation 1).
+Original: 551 axioms. Saved: 479 axioms.
+Lost: 234 (AnnotationAssertion 155, DataPropertyRange 22, Declaration 14, ObjectPropertyDomain 14, ObjectPropertyRange 13, InverseFunctionalObjectProperty 7, SubObjectPropertyOf 3, Annotation 2, DataPropertyDomain 1, InverseObjectProperties 1, SubAnnotationPropertyOf 1, SubClassOf 1).
+Added: 161 (AnnotationAssertion 147, Declaration 7, DataPropertyDomain 6, Annotation 1).
 Said to be left out when it was opened: nothing.
 
 Lost: in the original, not in what was saved
@@ -85,11 +85,9 @@ Lost: in the original, not in what was saved
   AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/workInfoHomepage> "A work info homepage of some person; a page about their work for some organization.")
   AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/workplaceHomepage> "A workplace homepage of some person; the homepage of an organization they work for.")
   AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/yahooChatID> "A Yahoo chat ID")
-  AnnotationAssertion(rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/holdsAccount> <http://xmlns.com/foaf/0.1/>)
   AnnotationAssertion(rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/isPrimaryTopicOf> <http://xmlns.com/foaf/0.1/>)
   AnnotationAssertion(rdfs:isDefinedBy <http://xmlns.com/foaf/0.1/membershipClass> <http://xmlns.com/foaf/0.1/>)
   AnnotationAssertion(rdfs:label <http://www.w3.org/2002/07/owl#Thing> "Thing")
-  AnnotationAssertion(rdfs:label <http://xmlns.com/foaf/0.1/holdsAccount> "account")
   AnnotationAssertion(rdfs:label <http://xmlns.com/foaf/0.1/isPrimaryTopicOf> "is primary topic of")
   AnnotationAssertion(rdfs:label <http://xmlns.com/foaf/0.1/membershipClass> "membershipClass")
   AnnotationAssertion(vs:term_status <http://xmlns.com/foaf/0.1/Agent> "stable")
@@ -198,7 +196,6 @@ Lost: in the original, not in what was saved
   Declaration(AnnotationProperty(wot:assurance))
   Declaration(AnnotationProperty(wot:src_assurance))
   Declaration(ObjectProperty(foaf:aimChatID))
-  Declaration(ObjectProperty(foaf:holdsAccount))
   Declaration(ObjectProperty(foaf:icqChatID))
   Declaration(ObjectProperty(foaf:isPrimaryTopicOf))
   Declaration(ObjectProperty(foaf:jabberID))
@@ -216,7 +213,6 @@ Lost: in the original, not in what was saved
   ObjectPropertyDomain(foaf:aimChatID foaf:Agent)
   ObjectPropertyDomain(foaf:depiction owl:Thing)
   ObjectPropertyDomain(foaf:fundedBy owl:Thing)
-  ObjectPropertyDomain(foaf:holdsAccount foaf:Agent)
   ObjectPropertyDomain(foaf:homepage owl:Thing)
   ObjectPropertyDomain(foaf:icqChatID foaf:Agent)
   ObjectPropertyDomain(foaf:isPrimaryTopicOf owl:Thing)
@@ -232,7 +228,6 @@ Lost: in the original, not in what was saved
   ObjectPropertyRange(foaf:depicts owl:Thing)
   ObjectPropertyRange(foaf:focus owl:Thing)
   ObjectPropertyRange(foaf:fundedBy owl:Thing)
-  ObjectPropertyRange(foaf:holdsAccount foaf:OnlineAccount)
   ObjectPropertyRange(foaf:isPrimaryTopicOf foaf:Document)
   ObjectPropertyRange(foaf:logo owl:Thing)
   ObjectPropertyRange(foaf:made owl:Thing)
@@ -283,6 +278,7 @@ Added: in what was saved, not in the original
   AnnotationAssertion(<http://www.w3.org/2004/02/skos/core#definition> <http://xmlns.com/foaf/0.1/gender> "The gender of this Agent (typically but not necessarily 'male' or 'female')."^^xsd:string)
   AnnotationAssertion(<http://www.w3.org/2004/02/skos/core#definition> <http://xmlns.com/foaf/0.1/givenName> "The given name of some person."^^xsd:string)
   AnnotationAssertion(<http://www.w3.org/2004/02/skos/core#definition> <http://xmlns.com/foaf/0.1/givenname> "The given name of some person."^^xsd:string)
+  AnnotationAssertion(<http://www.w3.org/2004/02/skos/core#definition> <http://xmlns.com/foaf/0.1/holdsAccount> "Indicates an account held by this agent."^^xsd:string)
   AnnotationAssertion(<http://www.w3.org/2004/02/skos/core#definition> <http://xmlns.com/foaf/0.1/homepage> "A homepage for some thing."^^xsd:string)
   AnnotationAssertion(<http://www.w3.org/2004/02/skos/core#definition> <http://xmlns.com/foaf/0.1/icqChatID> "An ICQ chat ID"^^xsd:string)
   AnnotationAssertion(<http://www.w3.org/2004/02/skos/core#definition> <http://xmlns.com/foaf/0.1/img> "An image that can be used to represent some thing (ie. those depictions which are particularly representative of something, eg. one's photo on a homepage)."^^xsd:string)
@@ -355,6 +351,7 @@ Added: in what was saved, not in the original
   AnnotationAssertion(foaf:termStatus <http://xmlns.com/foaf/0.1/gender> "testing"^^xsd:string)
   AnnotationAssertion(foaf:termStatus <http://xmlns.com/foaf/0.1/givenName> "testing"^^xsd:string)
   AnnotationAssertion(foaf:termStatus <http://xmlns.com/foaf/0.1/givenname> "archaic"^^xsd:string)
+  AnnotationAssertion(foaf:termStatus <http://xmlns.com/foaf/0.1/holdsAccount> "archaic"^^xsd:string)
   AnnotationAssertion(foaf:termStatus <http://xmlns.com/foaf/0.1/homepage> "stable"^^xsd:string)
   AnnotationAssertion(foaf:termStatus <http://xmlns.com/foaf/0.1/icqChatID> "testing"^^xsd:string)
   AnnotationAssertion(foaf:termStatus <http://xmlns.com/foaf/0.1/img> "testing"^^xsd:string)

@@ -1,0 +1,3928 @@
+{
+  "format": "conceptweaver",
+  "version": 1,
+  "name": "University ontology",
+  "description": "A larger example ontology about a university: people, organisation, teaching and research.",
+  "baseIri": "http://example.org/university-ontology#",
+  "ontologyIri": "",
+  "prefixes": [],
+  "mode": "ontology",
+  "lang": "en",
+  "vocab": {
+    "enabled": true,
+    "map": {}
+  },
+  "props": [
+    {
+      "name": "member of",
+      "description": "Belongs to an organisation in any capacity.",
+      "chars": [],
+      "domain": [
+        "p8on39zgqob"
+      ],
+      "range": [
+        "63xb479wqob"
+      ],
+      "iri": "http://example.org/university-ontology#memberOf"
+    },
+    {
+      "name": "employed by",
+      "description": "Has a contract of employment with.",
+      "chars": [],
+      "parents": [
+        "member of"
+      ],
+      "iri": "http://example.org/university-ontology#employedBy"
+    },
+    {
+      "name": "enrolled in",
+      "description": "Is registered as a student of a programme.",
+      "chars": [],
+      "domain": [
+        "rj9d4kxjqob"
+      ],
+      "range": [
+        "umqqp1hhqoc"
+      ],
+      "iri": "http://example.org/university-ontology#enrolledIn"
+    },
+    {
+      "name": "takes",
+      "description": "Attends an edition of a course.",
+      "chars": [],
+      "domain": [
+        "rj9d4kxjqob"
+      ],
+      "range": [
+        "hgyhk3rfqoc"
+      ],
+      "iri": "http://example.org/university-ontology#takes"
+    },
+    {
+      "name": "teaches",
+      "description": "Gives an edition of a course.",
+      "chars": [],
+      "domain": [
+        "vyk74ct8qob"
+      ],
+      "range": [
+        "hgyhk3rfqoc"
+      ],
+      "inverses": [
+        "taught by"
+      ],
+      "iri": "http://example.org/university-ontology#teaches"
+    },
+    {
+      "name": "taught by",
+      "description": "",
+      "chars": [],
+      "inverses": [
+        "teaches"
+      ],
+      "iri": "http://example.org/university-ontology#taughtBy"
+    },
+    {
+      "name": "edition of",
+      "description": "The course this edition is a run of.",
+      "chars": [
+        "functional"
+      ],
+      "domain": [
+        "hgyhk3rfqoc"
+      ],
+      "range": [
+        "v8i0skksqoc"
+      ],
+      "iri": "http://example.org/university-ontology#editionOf"
+    },
+    {
+      "name": "part of",
+      "description": "Is a component of a larger whole.",
+      "chars": [
+        "transitive"
+      ],
+      "inverses": [
+        "has part"
+      ],
+      "iri": "http://example.org/university-ontology#partOf"
+    },
+    {
+      "name": "has part",
+      "description": "",
+      "chars": [
+        "transitive"
+      ],
+      "inverses": [
+        "part of"
+      ],
+      "iri": "http://example.org/university-ontology#hasPart"
+    },
+    {
+      "name": "located in",
+      "description": "Is physically inside.",
+      "chars": [
+        "transitive"
+      ],
+      "domain": [
+        "nmlmsmn6qoc"
+      ],
+      "range": [
+        "nmlmsmn6qoc"
+      ],
+      "iri": "http://example.org/university-ontology#locatedIn"
+    },
+    {
+      "name": "supervises",
+      "description": "Guides the research or thesis work of.",
+      "chars": [
+        "asymmetric",
+        "irreflexive"
+      ],
+      "domain": [
+        "vyk74ct8qob"
+      ],
+      "range": [
+        "rj9d4kxjqob"
+      ],
+      "inverses": [
+        "supervised by"
+      ],
+      "iri": "http://example.org/university-ontology#supervises"
+    },
+    {
+      "name": "supervised by",
+      "description": "",
+      "chars": [],
+      "inverses": [
+        "supervises"
+      ],
+      "iri": "http://example.org/university-ontology#supervisedBy"
+    },
+    {
+      "name": "authored by",
+      "description": "Was written or created by.",
+      "chars": [],
+      "domain": [
+        "g8vwr04dqoc"
+      ],
+      "range": [
+        "p8on39zgqob"
+      ],
+      "inverses": [
+        "author of"
+      ],
+      "iri": "http://example.org/university-ontology#authoredBy"
+    },
+    {
+      "name": "author of",
+      "description": "",
+      "chars": [],
+      "inverses": [
+        "authored by"
+      ],
+      "iri": "http://example.org/university-ontology#authorOf"
+    },
+    {
+      "name": "published by",
+      "description": "",
+      "chars": [
+        "functional"
+      ],
+      "domain": [
+        "98d8029vqoc"
+      ],
+      "range": [
+        "sap8h20eqob"
+      ],
+      "iri": "http://example.org/university-ontology#publishedBy"
+    },
+    {
+      "name": "cites",
+      "description": "Refers to another publication.",
+      "chars": [],
+      "domain": [
+        "98d8029vqoc"
+      ],
+      "range": [
+        "98d8029vqoc"
+      ],
+      "iri": "http://example.org/university-ontology#cites"
+    },
+    {
+      "name": "funded by",
+      "description": "",
+      "chars": [],
+      "domain": [
+        "mjv49yd1qoc"
+      ],
+      "range": [
+        "j1vpx315qob"
+      ],
+      "iri": "http://example.org/university-ontology#fundedBy"
+    },
+    {
+      "name": "participates in",
+      "description": "Takes part in a research project.",
+      "chars": [],
+      "domain": [
+        "p8on39zgqob"
+      ],
+      "range": [
+        "mjv49yd1qoc"
+      ],
+      "iri": "http://example.org/university-ontology#participatesIn"
+    },
+    {
+      "name": "leads",
+      "description": "Is the principal investigator of.",
+      "chars": [],
+      "parents": [
+        "participates in"
+      ],
+      "iri": "http://example.org/university-ontology#leads"
+    },
+    {
+      "name": "collaborates with",
+      "description": "Works together with.",
+      "chars": [
+        "symmetric"
+      ],
+      "domain": [
+        "p8on39zgqob"
+      ],
+      "range": [
+        "p8on39zgqob"
+      ],
+      "iri": "http://example.org/university-ontology#collaboratesWith"
+    },
+    {
+      "name": "has prerequisite",
+      "description": "Must be completed first.",
+      "chars": [
+        "transitive",
+        "asymmetric"
+      ],
+      "domain": [
+        "v8i0skksqoc"
+      ],
+      "range": [
+        "v8i0skksqoc"
+      ],
+      "iri": "http://example.org/university-ontology#hasPrerequisite"
+    },
+    {
+      "name": "awards",
+      "description": "The degree a programme leads to.",
+      "chars": [],
+      "domain": [
+        "umqqp1hhqoc"
+      ],
+      "range": [
+        "btvg9rc1qoc"
+      ],
+      "iri": "http://example.org/university-ontology#awards"
+    },
+    {
+      "name": "has field",
+      "description": "The research field something is about.",
+      "chars": [],
+      "iri": "http://example.org/university-ontology#hasField"
+    },
+    {
+      "name": "takes place in",
+      "description": "",
+      "chars": [],
+      "domain": [
+        "hgyhk3rfqoc"
+      ],
+      "range": [
+        "924fka9yqoc"
+      ],
+      "iri": "http://example.org/university-ontology#takesPlaceIn"
+    },
+    {
+      "name": "held during",
+      "description": "",
+      "chars": [
+        "functional"
+      ],
+      "domain": [
+        "hgyhk3rfqoc"
+      ],
+      "range": [
+        "8il0u0eoqoc"
+      ],
+      "iri": "http://example.org/university-ontology#heldDuring"
+    },
+    {
+      "name": "assessed by",
+      "description": "",
+      "chars": [],
+      "domain": [
+        "v8i0skksqoc"
+      ],
+      "range": [
+        "8hu9czeuqoc"
+      ],
+      "iri": "http://example.org/university-ontology#assessedBy"
+    }
+  ],
+  "terms": [
+    {
+      "id": "oiabkt7mqob",
+      "name": "Agent",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 343,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Agent"
+    },
+    {
+      "id": "p8on39zgqob",
+      "name": "Person",
+      "description": "A human being with a role at or around the university.",
+      "type": "concept",
+      "color": "blue",
+      "x": 497,
+      "y": 220,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Person"
+    },
+    {
+      "id": "rj9d4kxjqob",
+      "name": "Student",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 151,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Student"
+    },
+    {
+      "id": "brtljg6nqob",
+      "name": "Undergraduate student",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": -534,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#UndergraduateStudent"
+    },
+    {
+      "id": "5grmyow3qob",
+      "name": "Graduate student",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 166,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#GraduateStudent"
+    },
+    {
+      "id": "sb4rn3soqob",
+      "name": "MSc student",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": -338,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#MScStudent"
+    },
+    {
+      "id": "zut4mj8dqob",
+      "name": "PhD candidate",
+      "description": "A doctoral researcher, who is both a student and a member of academic staff.",
+      "type": "concept",
+      "color": "blue",
+      "x": 572,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#PhDCandidate"
+    },
+    {
+      "id": "2duix0h2qob",
+      "name": "Exchange student",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": -922,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ExchangeStudent"
+    },
+    {
+      "id": "dyhr7vu7qob",
+      "name": "Employee",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 463,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Employee"
+    },
+    {
+      "id": "vyk74ct8qob",
+      "name": "Academic staff",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 539,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AcademicStaff"
+    },
+    {
+      "id": "7hh6fzi5qob",
+      "name": "Professor",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 441,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Professor"
+    },
+    {
+      "id": "gtzwj2qvqob",
+      "name": "Full professor",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 287,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#FullProfessor"
+    },
+    {
+      "id": "1kdggl57qob",
+      "name": "Associate professor",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 479,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AssociateProfessor"
+    },
+    {
+      "id": "8gmtjj7iqob",
+      "name": "Assistant professor",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": -25,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AssistantProfessor"
+    },
+    {
+      "id": "x2fdgb4bqob",
+      "name": "Lecturer",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 678,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Lecturer"
+    },
+    {
+      "id": "pdtifmkeqob",
+      "name": "Postdoctoral researcher",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 948,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#PostdoctoralResearcher"
+    },
+    {
+      "id": "0sseyag5qob",
+      "name": "Teaching assistant",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 388,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#TeachingAssistant"
+    },
+    {
+      "id": "chtticgjqob",
+      "name": "Support staff",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 708,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#SupportStaff"
+    },
+    {
+      "id": "oovnw1q7qob",
+      "name": "Administrator",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 825,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Administrator"
+    },
+    {
+      "id": "nkbkofr7qob",
+      "name": "Librarian",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 42,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Librarian"
+    },
+    {
+      "id": "oc9jsgvbqob",
+      "name": "Technician",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 980,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Technician"
+    },
+    {
+      "id": "wordoje7qob",
+      "name": "Alumnus",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 238,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Alumnus"
+    },
+    {
+      "id": "z3by71p5qob",
+      "name": "Visiting scholar",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 749,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#VisitingScholar"
+    },
+    {
+      "id": "63xb479wqob",
+      "name": "Organisation",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 125,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Organisation"
+    },
+    {
+      "id": "rl90ha75qob",
+      "name": "University",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 265,
+      "y": 1210,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#University"
+    },
+    {
+      "id": "afhveidvqob",
+      "name": "Academic unit",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 810,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AcademicUnit"
+    },
+    {
+      "id": "lk4qif92qob",
+      "name": "Faculty",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 495,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Faculty"
+    },
+    {
+      "id": "7fx60brqqob",
+      "name": "Department",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 380,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Department"
+    },
+    {
+      "id": "chtqbc93qob",
+      "name": "Institute",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 367,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Institute"
+    },
+    {
+      "id": "e1v995nzqob",
+      "name": "Research group",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 671,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ResearchGroup"
+    },
+    {
+      "id": "j1vpx315qob",
+      "name": "Funding body",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": -52,
+      "y": 1210,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#FundingBody"
+    },
+    {
+      "id": "9ahso4agqob",
+      "name": "Company",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": 1156,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Company"
+    },
+    {
+      "id": "sap8h20eqob",
+      "name": "Publisher",
+      "description": "",
+      "type": "concept",
+      "color": "blue",
+      "x": -531,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Publisher"
+    },
+    {
+      "id": "zfvgo9xfqoc",
+      "name": "Educational offering",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -19,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#EducationalOffering"
+    },
+    {
+      "id": "umqqp1hhqoc",
+      "name": "Programme",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -1204,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Programme"
+    },
+    {
+      "id": "adarjo97qoc",
+      "name": "BSc programme",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -802,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#BScProgramme"
+    },
+    {
+      "id": "vlkfi3rvqoc",
+      "name": "MSc programme",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -968,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#MScProgramme"
+    },
+    {
+      "id": "cxh9sm40qoc",
+      "name": "PhD programme",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -380,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#PhDProgramme"
+    },
+    {
+      "id": "v8i0skksqoc",
+      "name": "Course",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": 106,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Course"
+    },
+    {
+      "id": "2d2e9dvnqoc",
+      "name": "Lecture course",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -1524,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#LectureCourse"
+    },
+    {
+      "id": "cu6z49r7qoc",
+      "name": "Seminar",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -793,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Seminar"
+    },
+    {
+      "id": "atgmoynnqoc",
+      "name": "Laboratory course",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -658,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#LaboratoryCourse"
+    },
+    {
+      "id": "rwtdqczkqoc",
+      "name": "Thesis project",
+      "description": "",
+      "type": "concept",
+      "color": "green",
+      "x": -474,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ThesisProject"
+    },
+    {
+      "id": "hgyhk3rfqoc",
+      "name": "Course edition",
+      "description": "One run of a course in a particular academic period.",
+      "type": "concept",
+      "color": "green",
+      "x": -210,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#CourseEdition"
+    },
+    {
+      "id": "8hu9czeuqoc",
+      "name": "Assessment",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -98,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Assessment"
+    },
+    {
+      "id": "hal4wd8qqoc",
+      "name": "Exam",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": 140,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Exam"
+    },
+    {
+      "id": "6x6ij0s8qoc",
+      "name": "Written exam",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -485,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#WrittenExam"
+    },
+    {
+      "id": "sh4958tbqoc",
+      "name": "Oral exam",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -26,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#OralExam"
+    },
+    {
+      "id": "39a3f071qoc",
+      "name": "Assignment",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -323,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Assignment"
+    },
+    {
+      "id": "fwzjvxhaqoc",
+      "name": "Thesis",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -455,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Thesis"
+    },
+    {
+      "id": "bj52nwh1qoc",
+      "name": "BSc thesis",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -1140,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#BScThesis"
+    },
+    {
+      "id": "mev3yojoqoc",
+      "name": "MSc thesis",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -839,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#MScThesis"
+    },
+    {
+      "id": "wquz6w8xqoc",
+      "name": "Doctoral dissertation",
+      "description": "",
+      "type": "concept",
+      "color": "amber",
+      "x": -1324,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#DoctoralDissertation"
+    },
+    {
+      "id": "g8vwr04dqoc",
+      "name": "Research output",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -150,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ResearchOutput"
+    },
+    {
+      "id": "98d8029vqoc",
+      "name": "Publication",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -79,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Publication"
+    },
+    {
+      "id": "xc5rhdbhqoc",
+      "name": "Journal article",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -737,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#JournalArticle"
+    },
+    {
+      "id": "9u41ljepqoc",
+      "name": "Conference paper",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": 305,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ConferencePaper"
+    },
+    {
+      "id": "1ac4ghrsqoc",
+      "name": "Book",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -1076,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Book"
+    },
+    {
+      "id": "1v0wtobaqoc",
+      "name": "Book chapter",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -477,
+      "y": 220,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#BookChapter"
+    },
+    {
+      "id": "yboqtrlgqoc",
+      "name": "Technical report",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -304,
+      "y": 220,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#TechnicalReport"
+    },
+    {
+      "id": "icfn9t2gqoc",
+      "name": "Dataset",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": 57,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Dataset"
+    },
+    {
+      "id": "q9gpyzwlqoc",
+      "name": "Software",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -339,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Software"
+    },
+    {
+      "id": "ust7yjeyqoc",
+      "name": "Patent",
+      "description": "",
+      "type": "concept",
+      "color": "purple",
+      "x": -215,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Patent"
+    },
+    {
+      "id": "mjv49yd1qoc",
+      "name": "Research project",
+      "description": "",
+      "type": "concept",
+      "color": "teal",
+      "x": 851,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ResearchProject"
+    },
+    {
+      "id": "0d3e19pkqoc",
+      "name": "Funded project",
+      "description": "",
+      "type": "concept",
+      "color": "teal",
+      "x": -181,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#FundedProject"
+    },
+    {
+      "id": "gxuplz6jqoc",
+      "name": "Internal project",
+      "description": "",
+      "type": "concept",
+      "color": "teal",
+      "x": 1359,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#InternalProject"
+    },
+    {
+      "id": "xdsq7xylqoc",
+      "name": "Grant",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 1005,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Grant"
+    },
+    {
+      "id": "nmlmsmn6qoc",
+      "name": "Place",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": 181,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Place"
+    },
+    {
+      "id": "dcrjdan6qoc",
+      "name": "Campus",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": -320,
+      "y": 1320,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Campus"
+    },
+    {
+      "id": "n51yypntqoc",
+      "name": "Building",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": -956,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Building"
+    },
+    {
+      "id": "qk7ss8bhqoc",
+      "name": "Library",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": -191,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Library"
+    },
+    {
+      "id": "ot450tk3qoc",
+      "name": "Laboratory building",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": -959,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#LaboratoryBuilding"
+    },
+    {
+      "id": "924fka9yqoc",
+      "name": "Room",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": 226,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Room"
+    },
+    {
+      "id": "tujnitb6qoc",
+      "name": "Lecture hall",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": -346,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#LectureHall"
+    },
+    {
+      "id": "31hbj6lhqoc",
+      "name": "Office",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": 170,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Office"
+    },
+    {
+      "id": "d5g469lrqoc",
+      "name": "Laboratory",
+      "description": "",
+      "type": "concept",
+      "color": "pink",
+      "x": 301,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Laboratory"
+    },
+    {
+      "id": "8il0u0eoqoc",
+      "name": "Academic period",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 31,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AcademicPeriod"
+    },
+    {
+      "id": "htao0xe1qoc",
+      "name": "Academic year",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 200,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AcademicYear"
+    },
+    {
+      "id": "9o11bu28qoc",
+      "name": "Semester",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -715,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Semester"
+    },
+    {
+      "id": "v1hhfv8kqoc",
+      "name": "Research field",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 741,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ResearchField"
+    },
+    {
+      "id": "btvg9rc1qoc",
+      "name": "Degree",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -659,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Degree"
+    },
+    {
+      "id": "e1qv1pdgqoc",
+      "name": "BSc degree",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -485,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#BScDegree"
+    },
+    {
+      "id": "7752li5iqoc",
+      "name": "MSc degree",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -771,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#MScDegree"
+    },
+    {
+      "id": "su37izweqoc",
+      "name": "Doctorate",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -22,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Doctorate"
+    },
+    {
+      "id": "sfwzaczpqoc",
+      "name": "Full name",
+      "description": "The name a person is formally known by.",
+      "type": "property",
+      "color": "",
+      "x": -425,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:string",
+      "iri": "http://example.org/university-ontology#fullName"
+    },
+    {
+      "id": "taytg7spqoc",
+      "name": "Birth date",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": -226,
+      "y": 330,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:date",
+      "iri": "http://example.org/university-ontology#birthDate"
+    },
+    {
+      "id": "g12n2zdqqoc",
+      "name": "Email",
+      "description": "Contact address.",
+      "type": "property",
+      "color": "",
+      "x": 347,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:string",
+      "domain": [
+        "oiabkt7mqob"
+      ],
+      "iri": "http://example.org/university-ontology#email"
+    },
+    {
+      "id": "bz26v6q8qoc",
+      "name": "Student number",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": -300,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:string",
+      "iri": "http://example.org/university-ontology#studentNumber"
+    },
+    {
+      "id": "hrxhff3wqoc",
+      "name": "Enrolment date",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": -67,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:date",
+      "iri": "http://example.org/university-ontology#enrolmentDate"
+    },
+    {
+      "id": "z9e31nl2qoc",
+      "name": "Employee number",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 915,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:string",
+      "iri": "http://example.org/university-ontology#employeeNumber"
+    },
+    {
+      "id": "d20rndxcqoc",
+      "name": "Salary scale",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 1156,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:integer",
+      "iri": "http://example.org/university-ontology#salaryScale"
+    },
+    {
+      "id": "e3fmowwuqoc",
+      "name": "Start date",
+      "description": "When an appointment or project begins.",
+      "type": "property",
+      "color": "",
+      "x": 1167,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:date",
+      "iri": "http://example.org/university-ontology#startDate"
+    },
+    {
+      "id": "1d1nrtabqoc",
+      "name": "End date",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 1543,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:date",
+      "iri": "http://example.org/university-ontology#endDate"
+    },
+    {
+      "id": "mu082bgyqoc",
+      "name": "Budget",
+      "description": "Total budget in euros.",
+      "type": "property",
+      "color": "",
+      "x": 1728,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:decimal",
+      "iri": "http://example.org/university-ontology#budget"
+    },
+    {
+      "id": "q7ub2lhoqoc",
+      "name": "Course code",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": -278,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:string",
+      "iri": "http://example.org/university-ontology#courseCode"
+    },
+    {
+      "id": "7rlksqorqoc",
+      "name": "Credits",
+      "description": "Study load in ECTS.",
+      "type": "property",
+      "color": "",
+      "x": -1118,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:integer",
+      "iri": "http://example.org/university-ontology#credits"
+    },
+    {
+      "id": "iqc5wfc8qoc",
+      "name": "Title",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": -666,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "range": "rdf:langString",
+      "iri": "http://example.org/university-ontology#title"
+    },
+    {
+      "id": "t9jknyggqoc",
+      "name": "Capacity",
+      "description": "Maximum number of participants or seats.",
+      "type": "property",
+      "color": "",
+      "x": 994,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:integer",
+      "iri": "http://example.org/university-ontology#capacity"
+    },
+    {
+      "id": "wbwamg0qqoc",
+      "name": "Publication year",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": -86,
+      "y": 220,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:gYear",
+      "iri": "http://example.org/university-ontology#publicationYear"
+    },
+    {
+      "id": "43iz90dqqoc",
+      "name": "DOI",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 358,
+      "y": 220,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:anyURI",
+      "iri": "http://example.org/university-ontology#dOI"
+    },
+    {
+      "id": "v0mvrtmpqoc",
+      "name": "Room number",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 618,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:string",
+      "iri": "http://example.org/university-ontology#roomNumber"
+    },
+    {
+      "id": "tjltwhh4qoc",
+      "name": "Exam date",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": -11,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:dateTime",
+      "iri": "http://example.org/university-ontology#examDate"
+    },
+    {
+      "id": "f1eqfutqqoc",
+      "name": "Duration",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 203,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:duration",
+      "iri": "http://example.org/university-ontology#duration"
+    },
+    {
+      "id": "syx34eecqoc",
+      "name": "Founded",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 524,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:gYear",
+      "iri": "http://example.org/university-ontology#founded"
+    },
+    {
+      "id": "ee2t56csqoc",
+      "name": "Peer reviewed",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 158,
+      "y": 220,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:boolean",
+      "iri": "http://example.org/university-ontology#peerReviewed"
+    },
+    {
+      "id": "iqzt5dbrqoc",
+      "name": "Northfield University",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 267,
+      "y": 1320,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#NorthfieldUniversity"
+    },
+    {
+      "id": "fvm0iwqcqoc",
+      "name": "Faculty of Science",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 438,
+      "y": 1210,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#FacultyOfScience"
+    },
+    {
+      "id": "8mc98q25qoc",
+      "name": "Department of Computer Science",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 694,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#DepartmentOfComputerScience"
+    },
+    {
+      "id": "pqvhqc1xqoc",
+      "name": "Data Systems Group",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 553,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#DataSystemsGroup"
+    },
+    {
+      "id": "jiti32nfqoc",
+      "name": "National Science Fund",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 41,
+      "y": 1320,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#NationalScienceFund"
+    },
+    {
+      "id": "l3dy8czsqoc",
+      "name": "Meridian Press",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -176,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#MeridianPress"
+    },
+    {
+      "id": "6g7vzmhnqoc",
+      "name": "Ada Moreno",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -192,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AdaMoreno"
+    },
+    {
+      "id": "d9n38se4qoc",
+      "name": "Ben Okafor",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -335,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#BenOkafor"
+    },
+    {
+      "id": "2ozwtjvsqoc",
+      "name": "Chloe Tan",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 110,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ChloeTan"
+    },
+    {
+      "id": "eqnuborkqoc",
+      "name": "David Kim",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -824,
+      "y": 770,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#DavidKim"
+    },
+    {
+      "id": "sx9sepx6qoc",
+      "name": "Elena Rossi",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 907,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ElenaRossi"
+    },
+    {
+      "id": "3zstawb2qoc",
+      "name": "Farid Haddad",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -989,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#FaridHaddad"
+    },
+    {
+      "id": "2jbg702iqoc",
+      "name": "Gita Novak",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -628,
+      "y": 660,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#GitaNovak"
+    },
+    {
+      "id": "gkkm094wqoc",
+      "name": "MSc Computer Science",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -624,
+      "y": 880,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#MScComputerScience"
+    },
+    {
+      "id": "2rtihudvqoc",
+      "name": "Databases",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -471,
+      "y": 1210,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Databases"
+    },
+    {
+      "id": "ueko71deqoc",
+      "name": "Advanced Databases",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -881,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#AdvancedDatabases"
+    },
+    {
+      "id": "zaq1kuaqqoc",
+      "name": "Distributed Systems",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -1716,
+      "y": 990,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#DistributedSystems"
+    },
+    {
+      "id": "rtlr74luqoc",
+      "name": "Databases autumn 2026",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -538,
+      "y": 1100,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#DatabasesAutumn2026"
+    },
+    {
+      "id": "3ahdcmnhqoc",
+      "name": "Autumn 2026",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -327,
+      "y": 1210,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#Autumn2026"
+    },
+    {
+      "id": "1t5pqkp1qoc",
+      "name": "Hall A1",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -191,
+      "y": 1210,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#HallA1"
+    },
+    {
+      "id": "kfsnqpevqoc",
+      "name": "Science Building",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -166,
+      "y": 1320,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ScienceBuilding"
+    },
+    {
+      "id": "fbk2l4h8qoc",
+      "name": "North Campus",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 0,
+      "y": 1430,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#NorthCampus"
+    },
+    {
+      "id": "j00vc1atqoc",
+      "name": "Project Atlas",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 110,
+      "y": 1210,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#ProjectAtlas"
+    },
+    {
+      "id": "qagip8ubqoc",
+      "name": "Indexing at Scale",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": -26,
+      "y": 550,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#IndexingAtScale"
+    },
+    {
+      "id": "eb9t3pvqqoc",
+      "name": "Query Planning Revisited",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 328,
+      "y": 440,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/university-ontology#QueryPlanningRevisited"
+    }
+  ],
+  "relations": [
+    {
+      "id": "9tly108zqoc",
+      "from": "p8on39zgqob",
+      "to": "oiabkt7mqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "8ygihnh7qoc",
+      "from": "rj9d4kxjqob",
+      "to": "p8on39zgqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "fnfn05y9qoc",
+      "from": "brtljg6nqob",
+      "to": "rj9d4kxjqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "q1uyogecqoc",
+      "from": "5grmyow3qob",
+      "to": "rj9d4kxjqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "u6br44phqoc",
+      "from": "sb4rn3soqob",
+      "to": "5grmyow3qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "sjy1i7vaqoc",
+      "from": "zut4mj8dqob",
+      "to": "5grmyow3qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2vlu93chqoc",
+      "from": "2duix0h2qob",
+      "to": "rj9d4kxjqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "c019fbwkqoc",
+      "from": "dyhr7vu7qob",
+      "to": "p8on39zgqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "9i7g0k4dqoc",
+      "from": "vyk74ct8qob",
+      "to": "dyhr7vu7qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "8vgvlxpsqoc",
+      "from": "7hh6fzi5qob",
+      "to": "vyk74ct8qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "aodoi38bqoc",
+      "from": "gtzwj2qvqob",
+      "to": "7hh6fzi5qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "blxqqo6dqoc",
+      "from": "1kdggl57qob",
+      "to": "7hh6fzi5qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "xq0fqydqqoc",
+      "from": "8gmtjj7iqob",
+      "to": "7hh6fzi5qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "f0a2ie5vqoc",
+      "from": "x2fdgb4bqob",
+      "to": "vyk74ct8qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "lisxdhfwqoc",
+      "from": "pdtifmkeqob",
+      "to": "vyk74ct8qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ib0czd6wqoc",
+      "from": "0sseyag5qob",
+      "to": "vyk74ct8qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "xnaqkvpyqoc",
+      "from": "chtticgjqob",
+      "to": "dyhr7vu7qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "tmtyd9pdqoc",
+      "from": "oovnw1q7qob",
+      "to": "chtticgjqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "z80k90f8qoc",
+      "from": "nkbkofr7qob",
+      "to": "chtticgjqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "6dpxzrr7qoc",
+      "from": "oc9jsgvbqob",
+      "to": "chtticgjqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "vkkwtdieqoc",
+      "from": "wordoje7qob",
+      "to": "p8on39zgqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "h6oivya7qoc",
+      "from": "z3by71p5qob",
+      "to": "p8on39zgqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "97eveobnqoc",
+      "from": "63xb479wqob",
+      "to": "oiabkt7mqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "gvtu4snnqoc",
+      "from": "rl90ha75qob",
+      "to": "63xb479wqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "g9hdh3k8qoc",
+      "from": "afhveidvqob",
+      "to": "63xb479wqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "0bxxv4vyqoc",
+      "from": "lk4qif92qob",
+      "to": "afhveidvqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "w9evzjilqoc",
+      "from": "7fx60brqqob",
+      "to": "afhveidvqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "hjs5eygrqoc",
+      "from": "chtqbc93qob",
+      "to": "afhveidvqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "lh4boxhcqoc",
+      "from": "e1v995nzqob",
+      "to": "afhveidvqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "hf2qjf9iqoc",
+      "from": "j1vpx315qob",
+      "to": "63xb479wqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mli5z4n3qoc",
+      "from": "9ahso4agqob",
+      "to": "63xb479wqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "kfgzx2cvqoc",
+      "from": "sap8h20eqob",
+      "to": "63xb479wqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "jp2d2fbmqoc",
+      "from": "umqqp1hhqoc",
+      "to": "zfvgo9xfqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "hym8hvgyqoc",
+      "from": "adarjo97qoc",
+      "to": "umqqp1hhqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "49a3u9k3qoc",
+      "from": "vlkfi3rvqoc",
+      "to": "umqqp1hhqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "tag824v1qoc",
+      "from": "cxh9sm40qoc",
+      "to": "umqqp1hhqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "w5a42ahhqoc",
+      "from": "v8i0skksqoc",
+      "to": "zfvgo9xfqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "gbtthurrqoc",
+      "from": "2d2e9dvnqoc",
+      "to": "v8i0skksqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "bu91m7xpqoc",
+      "from": "cu6z49r7qoc",
+      "to": "v8i0skksqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "j5lgxmf2qoc",
+      "from": "atgmoynnqoc",
+      "to": "v8i0skksqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "5ompwm8rqoc",
+      "from": "rwtdqczkqoc",
+      "to": "v8i0skksqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "wbyjnauvqoc",
+      "from": "hgyhk3rfqoc",
+      "to": "zfvgo9xfqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "5kvt7xifqoc",
+      "from": "hal4wd8qqoc",
+      "to": "8hu9czeuqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "hwcc01zjqoc",
+      "from": "6x6ij0s8qoc",
+      "to": "hal4wd8qqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "x08y1aizqoc",
+      "from": "sh4958tbqoc",
+      "to": "hal4wd8qqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mdmrmh11qoc",
+      "from": "39a3f071qoc",
+      "to": "8hu9czeuqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "u6rch3isqoc",
+      "from": "fwzjvxhaqoc",
+      "to": "8hu9czeuqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "nttwhoj1qoc",
+      "from": "bj52nwh1qoc",
+      "to": "fwzjvxhaqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "qyju8d94qoc",
+      "from": "mev3yojoqoc",
+      "to": "fwzjvxhaqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "voizc1hyqoc",
+      "from": "wquz6w8xqoc",
+      "to": "fwzjvxhaqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "zy7fpd2uqoc",
+      "from": "98d8029vqoc",
+      "to": "g8vwr04dqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "vqgrz2weqoc",
+      "from": "xc5rhdbhqoc",
+      "to": "98d8029vqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "a3ykvqqdqoc",
+      "from": "9u41ljepqoc",
+      "to": "98d8029vqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mbez7xw1qoc",
+      "from": "1ac4ghrsqoc",
+      "to": "98d8029vqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "nn84y72yqoc",
+      "from": "1v0wtobaqoc",
+      "to": "98d8029vqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "o5v5mocqqoc",
+      "from": "yboqtrlgqoc",
+      "to": "98d8029vqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ait4dfajqoc",
+      "from": "icfn9t2gqoc",
+      "to": "g8vwr04dqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "7x0gzc1aqoc",
+      "from": "q9gpyzwlqoc",
+      "to": "g8vwr04dqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "coceom65qoc",
+      "from": "ust7yjeyqoc",
+      "to": "g8vwr04dqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "86blory1qoc",
+      "from": "0d3e19pkqoc",
+      "to": "mjv49yd1qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "i9ic2r6jqoc",
+      "from": "gxuplz6jqoc",
+      "to": "mjv49yd1qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "selq9abcqoc",
+      "from": "dcrjdan6qoc",
+      "to": "nmlmsmn6qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "k6qffz81qoc",
+      "from": "n51yypntqoc",
+      "to": "nmlmsmn6qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "jfx51x2gqoc",
+      "from": "qk7ss8bhqoc",
+      "to": "n51yypntqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mdg8gz3uqoc",
+      "from": "ot450tk3qoc",
+      "to": "n51yypntqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "pdmkstmtqoc",
+      "from": "924fka9yqoc",
+      "to": "nmlmsmn6qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "j7mh3f41qoc",
+      "from": "tujnitb6qoc",
+      "to": "924fka9yqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "j6xahh51qoc",
+      "from": "31hbj6lhqoc",
+      "to": "924fka9yqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "spbv09b3qoc",
+      "from": "d5g469lrqoc",
+      "to": "924fka9yqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "jzagd5iuqoc",
+      "from": "htao0xe1qoc",
+      "to": "8il0u0eoqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "uv5gbkqsqoc",
+      "from": "9o11bu28qoc",
+      "to": "8il0u0eoqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "x34519k1qoc",
+      "from": "e1qv1pdgqoc",
+      "to": "btvg9rc1qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "kyv2qfc2qoc",
+      "from": "7752li5iqoc",
+      "to": "btvg9rc1qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "496js9xaqoc",
+      "from": "su37izweqoc",
+      "to": "btvg9rc1qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "qo0iitxlqoc",
+      "from": "zut4mj8dqob",
+      "to": "vyk74ct8qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "5xw0yfajqoc",
+      "from": "0sseyag5qob",
+      "to": "5grmyow3qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "kch43319qoc",
+      "from": "wquz6w8xqoc",
+      "to": "98d8029vqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "7rdy3kj0qoc",
+      "from": "rj9d4kxjqob",
+      "to": "umqqp1hhqoc",
+      "label": "enrolled in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "bgwiqt90qoc",
+      "from": "rj9d4kxjqob",
+      "to": "hgyhk3rfqoc",
+      "label": "takes",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "gsj42nu4qoc",
+      "from": "vyk74ct8qob",
+      "to": "hgyhk3rfqoc",
+      "label": "teaches",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ses6eyn4qoc",
+      "from": "hgyhk3rfqoc",
+      "to": "v8i0skksqoc",
+      "label": "edition of",
+      "kind": "association",
+      "restriction": "exactly",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "361zuoowqoc",
+      "from": "hgyhk3rfqoc",
+      "to": "924fka9yqoc",
+      "label": "takes place in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "tr8wvuqmqoc",
+      "from": "hgyhk3rfqoc",
+      "to": "9o11bu28qoc",
+      "label": "held during",
+      "kind": "association",
+      "restriction": "exactly",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "u68hzwomqoc",
+      "from": "dyhr7vu7qob",
+      "to": "63xb479wqob",
+      "label": "employed by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2q0lhofiqoc",
+      "from": "7fx60brqqob",
+      "to": "lk4qif92qob",
+      "label": "part of",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "sr87tvu7qoc",
+      "from": "lk4qif92qob",
+      "to": "rl90ha75qob",
+      "label": "part of",
+      "kind": "association",
+      "restriction": "exactly",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "khbq14e5qoc",
+      "from": "e1v995nzqob",
+      "to": "7fx60brqqob",
+      "label": "part of",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "fcingwpaqoc",
+      "from": "chtqbc93qob",
+      "to": "rl90ha75qob",
+      "label": "part of",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "92gjjjgnqoc",
+      "from": "924fka9yqoc",
+      "to": "n51yypntqoc",
+      "label": "located in",
+      "kind": "association",
+      "restriction": "exactly",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "1c9o6n1vqoc",
+      "from": "n51yypntqoc",
+      "to": "dcrjdan6qoc",
+      "label": "located in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "8pqoalzsqoc",
+      "from": "zut4mj8dqob",
+      "to": "7hh6fzi5qob",
+      "label": "supervised by",
+      "kind": "association",
+      "restriction": "min",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ba62zj8uqoc",
+      "from": "7hh6fzi5qob",
+      "to": "zut4mj8dqob",
+      "label": "supervises",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "rtdcnvyjqoc",
+      "from": "98d8029vqoc",
+      "to": "p8on39zgqob",
+      "label": "authored by",
+      "kind": "association",
+      "restriction": "min",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "47cuy6hfqoc",
+      "from": "xc5rhdbhqoc",
+      "to": "sap8h20eqob",
+      "label": "published by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "dyzcrpfkqoc",
+      "from": "1ac4ghrsqoc",
+      "to": "sap8h20eqob",
+      "label": "published by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "m3q13x0eqoc",
+      "from": "98d8029vqoc",
+      "to": "98d8029vqoc",
+      "label": "cites",
+      "kind": "association",
+      "restriction": "only",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "5ha88twoqoc",
+      "from": "0d3e19pkqoc",
+      "to": "j1vpx315qob",
+      "label": "funded by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "vrw5ph9cqoc",
+      "from": "mjv49yd1qoc",
+      "to": "v1hhfv8kqoc",
+      "label": "has field",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "h1yksim9qoc",
+      "from": "v8i0skksqoc",
+      "to": "v1hhfv8kqoc",
+      "label": "has field",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "a58m8rw4qoc",
+      "from": "7hh6fzi5qob",
+      "to": "mjv49yd1qoc",
+      "label": "leads",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "jg74n8npqoc",
+      "from": "zut4mj8dqob",
+      "to": "mjv49yd1qoc",
+      "label": "participates in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "g8gvvfuzqoc",
+      "from": "adarjo97qoc",
+      "to": "e1qv1pdgqoc",
+      "label": "awards",
+      "kind": "association",
+      "restriction": "only",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "avj595dfqoc",
+      "from": "vlkfi3rvqoc",
+      "to": "7752li5iqoc",
+      "label": "awards",
+      "kind": "association",
+      "restriction": "only",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "fh3lsi3sqoc",
+      "from": "cxh9sm40qoc",
+      "to": "su37izweqoc",
+      "label": "awards",
+      "kind": "association",
+      "restriction": "only",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "n47n69kcqoc",
+      "from": "v8i0skksqoc",
+      "to": "v8i0skksqoc",
+      "label": "has prerequisite",
+      "kind": "association",
+      "restriction": "only",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "64mjveqyqoc",
+      "from": "v8i0skksqoc",
+      "to": "8hu9czeuqoc",
+      "label": "assessed by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "d7zp4uacqoc",
+      "from": "rwtdqczkqoc",
+      "to": "fwzjvxhaqoc",
+      "label": "assessed by",
+      "kind": "association",
+      "restriction": "only",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "djgajga3qoc",
+      "from": "wordoje7qob",
+      "to": "rl90ha75qob",
+      "label": "graduated from",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "vswfwn4zqoc",
+      "from": "9ahso4agqob",
+      "to": "mjv49yd1qoc",
+      "label": "sponsors",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "elg4n3nkqoc",
+      "from": "nkbkofr7qob",
+      "to": "qk7ss8bhqoc",
+      "label": "works at",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "oczeqrvlqoc",
+      "from": "z3by71p5qob",
+      "to": "afhveidvqob",
+      "label": "hosted by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "rtnworkoqoc",
+      "from": "p8on39zgqob",
+      "to": "sfwzaczpqoc",
+      "label": "",
+      "kind": "property",
+      "restriction": "min",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "f2sj43vkqoc",
+      "from": "p8on39zgqob",
+      "to": "taytg7spqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "r9r284chqoc",
+      "from": "p8on39zgqob",
+      "to": "g12n2zdqqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "a6w4agwbqoc",
+      "from": "63xb479wqob",
+      "to": "g12n2zdqqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "7d43k17oqoc",
+      "from": "rj9d4kxjqob",
+      "to": "bz26v6q8qoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "6vsuiicrqoc",
+      "from": "rj9d4kxjqob",
+      "to": "hrxhff3wqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mqcm390sqoc",
+      "from": "dyhr7vu7qob",
+      "to": "z9e31nl2qoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ypmn0z58qoc",
+      "from": "dyhr7vu7qob",
+      "to": "d20rndxcqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "3e7ly4zdqoc",
+      "from": "dyhr7vu7qob",
+      "to": "e3fmowwuqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "gobhpmm6qoc",
+      "from": "mjv49yd1qoc",
+      "to": "e3fmowwuqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "820hry3bqoc",
+      "from": "mjv49yd1qoc",
+      "to": "1d1nrtabqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ncbr6f2tqoc",
+      "from": "mjv49yd1qoc",
+      "to": "mu082bgyqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "7qji6uvjqoc",
+      "from": "xdsq7xylqoc",
+      "to": "mu082bgyqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "1vduljg3qoc",
+      "from": "v8i0skksqoc",
+      "to": "q7ub2lhoqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "eh051dy0qoc",
+      "from": "v8i0skksqoc",
+      "to": "7rlksqorqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "vqlyq1m7qoc",
+      "from": "umqqp1hhqoc",
+      "to": "7rlksqorqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "u1k0voacqoc",
+      "from": "v8i0skksqoc",
+      "to": "iqc5wfc8qoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "qg9eby27qoc",
+      "from": "98d8029vqoc",
+      "to": "iqc5wfc8qoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "7nv4ii17qoc",
+      "from": "fwzjvxhaqoc",
+      "to": "iqc5wfc8qoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "0ylj5ckdqoc",
+      "from": "hgyhk3rfqoc",
+      "to": "t9jknyggqoc",
+      "label": "",
+      "kind": "property",
+      "restriction": "exactly",
+      "restrictionN": 1,
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "hv3g5wlbqoc",
+      "from": "924fka9yqoc",
+      "to": "t9jknyggqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "zzk1mpwyqoc",
+      "from": "98d8029vqoc",
+      "to": "wbwamg0qqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "csw2uc61qoc",
+      "from": "98d8029vqoc",
+      "to": "43iz90dqqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "98ag4gmyqoc",
+      "from": "icfn9t2gqoc",
+      "to": "43iz90dqqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "xvcamr3bqoc",
+      "from": "924fka9yqoc",
+      "to": "v0mvrtmpqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "injhc9naqoc",
+      "from": "hal4wd8qqoc",
+      "to": "tjltwhh4qoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "xc02ogxeqoc",
+      "from": "hal4wd8qqoc",
+      "to": "f1eqfutqqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "xgpobphhqoc",
+      "from": "63xb479wqob",
+      "to": "syx34eecqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "fv8o916yqoc",
+      "from": "98d8029vqoc",
+      "to": "ee2t56csqoc",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "rjhjm8aaqoc",
+      "from": "p8on39zgqob",
+      "to": "63xb479wqob",
+      "label": "",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "predicate": "owl:disjointWith"
+    },
+    {
+      "id": "35pxcv24qoc",
+      "from": "brtljg6nqob",
+      "to": "5grmyow3qob",
+      "label": "",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "predicate": "owl:disjointWith"
+    },
+    {
+      "id": "k0lt79o5qoc",
+      "from": "6x6ij0s8qoc",
+      "to": "sh4958tbqoc",
+      "label": "",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "predicate": "owl:disjointWith"
+    },
+    {
+      "id": "gxzm0hx6qoc",
+      "from": "nmlmsmn6qoc",
+      "to": "oiabkt7mqob",
+      "label": "",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "predicate": "owl:disjointWith"
+    },
+    {
+      "id": "3lsuigmiqoc",
+      "from": "iqzt5dbrqoc",
+      "to": "rl90ha75qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "9z6jgoi7qoc",
+      "from": "fvm0iwqcqoc",
+      "to": "lk4qif92qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "zhyrjm4eqoc",
+      "from": "8mc98q25qoc",
+      "to": "7fx60brqqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "yycii3viqoc",
+      "from": "pqvhqc1xqoc",
+      "to": "e1v995nzqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "1u2h2nxmqoc",
+      "from": "jiti32nfqoc",
+      "to": "j1vpx315qob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "0urcvvisqoc",
+      "from": "l3dy8czsqoc",
+      "to": "sap8h20eqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "8g066vi2qoc",
+      "from": "6g7vzmhnqoc",
+      "to": "gtzwj2qvqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "dtti2ro2qoc",
+      "from": "d9n38se4qoc",
+      "to": "8gmtjj7iqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "a51unfjkqoc",
+      "from": "2ozwtjvsqoc",
+      "to": "zut4mj8dqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "el775lkqqoc",
+      "from": "eqnuborkqoc",
+      "to": "sb4rn3soqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "c7tgw58kqoc",
+      "from": "sx9sepx6qoc",
+      "to": "pdtifmkeqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "i8j918bqqoc",
+      "from": "3zstawb2qoc",
+      "to": "brtljg6nqob",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "j5ih9o63qoc",
+      "from": "gkkm094wqoc",
+      "to": "vlkfi3rvqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "x60gt6cgqoc",
+      "from": "2rtihudvqoc",
+      "to": "2d2e9dvnqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "if5bhadeqoc",
+      "from": "ueko71deqoc",
+      "to": "2d2e9dvnqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "mqsntr7fqoc",
+      "from": "zaq1kuaqqoc",
+      "to": "cu6z49r7qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "404nkkymqoc",
+      "from": "rtlr74luqoc",
+      "to": "hgyhk3rfqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "e0sdcewbqoc",
+      "from": "3ahdcmnhqoc",
+      "to": "9o11bu28qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "kvrqa31mqoc",
+      "from": "1t5pqkp1qoc",
+      "to": "tujnitb6qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "6zu7k7rhqoc",
+      "from": "kfsnqpevqoc",
+      "to": "n51yypntqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "jcyjj59kqoc",
+      "from": "fbk2l4h8qoc",
+      "to": "dcrjdan6qoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2brdgiajqoc",
+      "from": "j00vc1atqoc",
+      "to": "0d3e19pkqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "aphy9vidqoc",
+      "from": "qagip8ubqoc",
+      "to": "xc5rhdbhqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "r43bribaqoc",
+      "from": "eb9t3pvqqoc",
+      "to": "9u41ljepqoc",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "gfkd9t4oqoc",
+      "from": "fvm0iwqcqoc",
+      "to": "iqzt5dbrqoc",
+      "label": "part of",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "kxavjr6zqoc",
+      "from": "8mc98q25qoc",
+      "to": "fvm0iwqcqoc",
+      "label": "part of",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "xlpfvh15qoc",
+      "from": "pqvhqc1xqoc",
+      "to": "8mc98q25qoc",
+      "label": "part of",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "1r5klvd6qoc",
+      "from": "6g7vzmhnqoc",
+      "to": "8mc98q25qoc",
+      "label": "employed by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "5abhr0riqoc",
+      "from": "d9n38se4qoc",
+      "to": "8mc98q25qoc",
+      "label": "employed by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "x673qrvhqoc",
+      "from": "6g7vzmhnqoc",
+      "to": "2ozwtjvsqoc",
+      "label": "supervises",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "db33en4iqoc",
+      "from": "2jbg702iqoc",
+      "to": "eqnuborkqoc",
+      "label": "supervises",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "gdxs2wyjqoc",
+      "from": "6g7vzmhnqoc",
+      "to": "sx9sepx6qoc",
+      "label": "collaborates with",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "icaxbdbiqoc",
+      "from": "6g7vzmhnqoc",
+      "to": "j00vc1atqoc",
+      "label": "leads",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "zi5z516nqoc",
+      "from": "2ozwtjvsqoc",
+      "to": "j00vc1atqoc",
+      "label": "participates in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2abzpacdqoc",
+      "from": "j00vc1atqoc",
+      "to": "jiti32nfqoc",
+      "label": "funded by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "l1vfcov8qoc",
+      "from": "ueko71deqoc",
+      "to": "2rtihudvqoc",
+      "label": "has prerequisite",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "vkiyrtmrqoc",
+      "from": "zaq1kuaqqoc",
+      "to": "ueko71deqoc",
+      "label": "has prerequisite",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "n55rtfqjqoc",
+      "from": "rtlr74luqoc",
+      "to": "2rtihudvqoc",
+      "label": "edition of",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "og89mzzeqoc",
+      "from": "rtlr74luqoc",
+      "to": "3ahdcmnhqoc",
+      "label": "held during",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "1qdb66ecqoc",
+      "from": "rtlr74luqoc",
+      "to": "1t5pqkp1qoc",
+      "label": "takes place in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "4s3uo9jyqoc",
+      "from": "d9n38se4qoc",
+      "to": "rtlr74luqoc",
+      "label": "teaches",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "gy9jwpplqoc",
+      "from": "eqnuborkqoc",
+      "to": "rtlr74luqoc",
+      "label": "takes",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ur6jauz0qoc",
+      "from": "3zstawb2qoc",
+      "to": "rtlr74luqoc",
+      "label": "takes",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "4u2b4uoeqoc",
+      "from": "eqnuborkqoc",
+      "to": "gkkm094wqoc",
+      "label": "enrolled in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "2n7ecidnqoc",
+      "from": "1t5pqkp1qoc",
+      "to": "kfsnqpevqoc",
+      "label": "located in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "ubww27vlqoc",
+      "from": "kfsnqpevqoc",
+      "to": "fbk2l4h8qoc",
+      "label": "located in",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "flqvgdhrqoc",
+      "from": "qagip8ubqoc",
+      "to": "6g7vzmhnqoc",
+      "label": "authored by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "c0cvz303qoc",
+      "from": "qagip8ubqoc",
+      "to": "2ozwtjvsqoc",
+      "label": "authored by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "4zeqgte2qoc",
+      "from": "qagip8ubqoc",
+      "to": "l3dy8czsqoc",
+      "label": "published by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "pmt7neekqoc",
+      "from": "eb9t3pvqqoc",
+      "to": "sx9sepx6qoc",
+      "label": "authored by",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "8vrmcg21qoc",
+      "from": "eb9t3pvqqoc",
+      "to": "qagip8ubqoc",
+      "label": "cites",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    }
+  ],
+  "shapes": {
+    "nodes": [],
+    "extra": ""
+  },
+  "externals": [],
+  "mappings": [],
+  "rejected": [],
+  "governance": {
+    "custom": [],
+    "overrides": {}
+  },
+  "style": {
+    "theme": "standard",
+    "nodeTypes": {},
+    "edgeTypes": {},
+    "nodes": {},
+    "edges": {},
+    "anchors": {}
+  },
+  "layout": {
+    "kind": "hierarchy",
+    "direction": "TB",
+    "nodeSpacing": 36,
+    "layerSpacing": 70,
+    "repulsion": 1,
+    "routing": "auto",
+    "root": ""
+  },
+  "datatypes": [],
+  "quality": {
+    "off": [],
+    "on": []
+  }
+}

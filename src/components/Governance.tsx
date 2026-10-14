@@ -141,7 +141,7 @@ function FieldControl({ model, entity, field, values, names }: { model: Model; e
           const term = model.terms.find((t) => iri && t.iri === iri);
           const prop = model.props.find((p) => iri && p.iri === iri);
           if (term) st().select([term.id]);
-          else if (prop) st().selectProp(prop.name.trim().toLowerCase());
+          else if (prop) st().selectProp(prop.id);
         }}
       />
     );

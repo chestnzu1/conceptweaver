@@ -1068,7 +1068,7 @@ function InlineEditor({ byId }: { byId: Map<string, Term> }) {
           {canBeIsA && <option value="is a" />}
           {/* The object properties already in the model come first: reusing one is the common case. */}
           {own.map((p) => (
-            <option key={p.key} value={p.name} />
+            <option key={p.id} value={p.name} />
           ))}
           {props.map((p) => (
             <option key={p.id} value={p.id} />

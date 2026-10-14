@@ -251,7 +251,7 @@ export interface ReasoningResult {
 export function entityLinks(model: Model): (e: AxiomEntity) => EntityLink {
   const { terms, props } = entityIris(model);
   const byId = new Map(model.terms.map((t) => [t.id, t]));
-  const byKey = new Map(objectProperties(model).map((p) => [p.key, p]));
+  const byKey = new Map(objectProperties(model).map((p) => [p.id, p]));
   return (e) => {
     const term = terms.get(e.iri);
     if (term !== undefined && byId.has(term)) return { kind: 'term', id: term, name: byId.get(term)!.name || 'Unnamed', iri: e.iri, role: e.kind, token: e.name };
@@ -325,7 +325,7 @@ export function dlResult(model: Model, report: DlReport): ReasoningResult {
 
   // Which individuals are related by which object property. What the model states of two of its
   // own individuals with one of its own properties is marked as stated; the rest is inferred.
-  const stated = new Set(objectProperties(model).flatMap((p) => p.rels.filter((r) => individuals.has(r.from) && individuals.has(r.to)).map((r) => `${r.from}|${p.key}|${r.to}`)));
+  const stated = new Set(objectProperties(model).flatMap((p) => p.rels.filter((r) => individuals.has(r.from) && individuals.has(r.to)).map((r) => `${r.from}|${p.id}|${r.to}`)));
   const relations: ReasoningResult['relations'] = [];
   if (ok) {
     const seen = new Set<string>();
@@ -384,7 +384,7 @@ export const creditOf = (result: ReasoningResult) => `Entailed, according to ${r
 export function readable(model: Model, message: string): string {
   const { terms, props } = entityIris(model);
   const byId = new Map(model.terms.map((t) => [t.id, t.name]));
-  const byKey = new Map(objectProperties(model).map((p) => [p.key, p.name]));
+  const byKey = new Map(objectProperties(model).map((p) => [p.id, p.name]));
   return message.replace(/'?<([^<>\s]+)>'?/g, (whole, iri: string) => {
     const name = terms.has(iri) ? byId.get(terms.get(iri)!) : props.has(iri) ? byKey.get(props.get(iri)!) : undefined;
     return name ? `“${name}”` : whole;

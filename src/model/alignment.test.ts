@@ -9,7 +9,7 @@ import { suggestMappings } from './matcher';
 import { assertedSuperclasses, objectProperties, restrictionsOf } from './props';
 import { fromTurtle, toTurtle } from './rdf';
 import { reason } from './reasoner';
-import { emptyModel, newRelation, newTerm, normalizeModel, type Model, type TermType } from './types';
+import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model, type TermType } from './types';
 import { owlFindings } from './validation';
 
 const ORG = `@prefix org: <http://example.org/org#> .
@@ -44,7 +44,7 @@ function build() {
   term('Freelancer');
   term('title', 'property');
   term('Pat', 'instance');
-  m = { ...m, props: [{ name: 'works for', description: '', chars: [] }] };
+  m = { ...m, props: [newProp({ name: 'works for', description: '', chars: [] })] };
   m = { ...m, relations: [newRelation({ from: id.Employee, to: id.Person, kind: 'generalization' }), newRelation({ from: id.Employee, to: id.Company, label: 'works for' })] };
   m = withIris(m);
   const org = readExternal(ORG, 'org.ttl', 'file');
@@ -61,7 +61,7 @@ function withOrg(imports = false) {
   let model = added.model;
   const use = (name: string) => {
     const t = org.model.terms.find((x) => x.name === name);
-    const r = reuseEntity(model, added.ref, org.model, t ? { term: t.id } : { prop: name });
+    const r = reuseEntity(model, added.ref, org.model, t ? { term: t.id } : { prop: org.model.props.find((x) => x.name === name)?.id ?? name });
     model = r.model;
     return r.entity;
   };
@@ -164,7 +164,7 @@ describe('phase 2: reusing external entities', () => {
     const w = withOrg();
     const organization = w.use('Organization');
     const memberOf = w.use('member of');
-    expect(objectProperties(w.get()).find((p) => p.key === memberOf.id)).toMatchObject({ iri: 'http://example.org/org#memberOf', external: w.ref.id });
+    expect(objectProperties(w.get()).find((p) => p.id === memberOf.id)).toMatchObject({ iri: 'http://example.org/org#memberOf', external: w.ref.id });
     let n = { ...w.get(), relations: [...w.get().relations, newRelation({ from: w.id.Employee, to: organization.id, label: 'member of' }), newRelation({ from: w.id.Freelancer, to: organization.id, label: 'works for' })] };
     n = { ...n, props: n.props.map((p) => (p.name === 'works for' ? { ...p, range: [organization.id] } : p)) };
     const ttl = toTurtle(n);
@@ -251,7 +251,7 @@ describe('phase 3: mappings', () => {
     expect(mp(w, w.local('Person'), '', w.use('Person')).error).toBe('Choose how the two are related.');
     // Individuals and properties have their own.
     w.set(ok(mp(w, w.local('Pat'), 'owl:differentFrom', w.use('Acme'))));
-    w.set(ok(mp(w, { kind: 'prop', id: 'works for' }, 'rdfs:subPropertyOf', w.use('member of'))));
+    w.set(ok(mp(w, { kind: 'prop', id: w.get().props.find((p) => p.name === 'works for')!.id }, 'rdfs:subPropertyOf', w.use('member of'))));
     w.set(ok(mp(w, w.local('title'), 'owl:equivalentProperty', w.use('name'))));
     const ttl = toTurtle(w.get());
     expect(block(ttl, ':Pat')).toContain('owl:differentFrom org:acme');

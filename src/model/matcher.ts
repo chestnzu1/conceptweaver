@@ -1,4 +1,4 @@
-import { assertedSuperclasses, propKey } from './props';
+import { assertedSuperclasses } from './props';
 import type { Model, Term } from './types';
 
 /**
@@ -68,7 +68,7 @@ export function matchables(model: Model, externalToo = true): Matchable[] {
   }
   for (const p of model.props) {
     if (!p.iri || (!externalToo && p.external !== undefined)) continue;
-    out.push({ id: propKey(p.name), prop: true, iri: p.iri, kind: 'object property', name: p.name, alt: (p.fields ?? []).filter((f) => /label$/i.test(f.key)).map((f) => f.value), definition: p.description, parents: p.parents ?? [], values: [] });
+    out.push({ id: p.id, prop: true, iri: p.iri, kind: 'object property', name: p.name, alt: (p.fields ?? []).filter((f) => /label$/i.test(f.key)).map((f) => f.value), definition: p.description, parents: p.parents ?? [], values: [] });
   }
   return out;
 }

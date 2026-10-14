@@ -833,7 +833,7 @@ function DlInferences({ result }: { result: ReasoningResult }) {
   const names = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
   const facts = useMemo(() => {
     const q = (id: string) => `“${names.get(id) ?? 'Unnamed'}”`;
-    const props = new Map(objectProperties(model).map((p) => [p.key, p.name]));
+    const props = new Map(objectProperties(model).map((p) => [p.id, p.name]));
     const out: { key: string; from: string; to: string; direct: boolean; text: string; label?: string }[] = [
       ...result.types.filter((x) => !x.asserted).map((x) => ({ key: `t|${x.individual}|${x.class}`, from: x.individual, to: x.class, direct: x.direct, text: `${q(x.individual)} is an instance of ${q(x.class)}` })),
       // What holds between two individuals through an inverse, a symmetric or transitive property, a sub-property or an equivalent one.

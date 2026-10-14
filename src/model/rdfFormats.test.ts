@@ -85,6 +85,9 @@ const term = (m: Model, name: string) => m.terms.find((t) => t.name === name)!;
 /** What a model says, apart from the order it says it in and from where its terms sit. */
 function shape(m: Model) {
   const name = new Map(m.terms.map((t) => [t.id, t.iri ?? t.name]));
+  // A property links to others by id, which each reading makes afresh: they are compared by IRI.
+  const propName = new Map(m.props.map((p) => [p.id, p.iri ?? p.name]));
+  const props = (ids: string[] = []) => ids.map((id) => propName.get(id) ?? id).sort();
   const named = (ids: string[] = []) => ids.map((id) => name.get(id) ?? id).sort();
   return {
     mode: m.mode,
@@ -93,7 +96,7 @@ function shape(m: Model) {
       .map((t) => ({ iri: t.iri, name: t.name, type: t.type, description: t.description, synonyms: t.synonyms.split(',').map((x) => x.trim()).sort(), range: t.range, functional: !!t.functional, domain: named(t.domain), fields: [...t.fields].map((f) => JSON.stringify(f)).sort(), axioms: (t.axioms ?? []).length, values: (t.values ?? []).map((v) => `${name.get(v.prop)}=${v.value}`).sort(), oneOf: t.oneOf ? named(t.oneOf) : null }))
       .sort((a, b) => (a.iri ?? '').localeCompare(b.iri ?? '')),
     relations: m.relations.map((r) => [name.get(r.from), r.kind, r.label, r.predicate ?? '', r.restriction ?? '', r.restrictionN ?? '', JSON.stringify(r.more ?? []), name.get(r.to)].join(' | ')).sort(),
-    props: m.props.map((p) => ({ name: p.name, iri: p.iri, chars: [...p.chars].sort(), domain: named(p.domain), range: named(p.range), parents: [...(p.parents ?? [])].sort(), inverses: [...(p.inverses ?? [])].sort() })).sort((a, b) => a.name.localeCompare(b.name)),
+    props: m.props.map((p) => ({ name: p.name, iri: p.iri, chars: [...p.chars].sort(), domain: named(p.domain), range: named(p.range), parents: props(p.parents), inverses: props(p.inverses) })).sort((a, b) => a.name.localeCompare(b.name)),
     externals: m.externals.map((e) => e.iri).sort(),
   };
 }

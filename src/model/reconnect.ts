@@ -2,7 +2,8 @@ import { listMappings } from './alignment';
 import { addIsA, addLink, LINKS, linkedTerms, makeInstanceOf, type Edit, type LinkKind } from './axioms';
 import { withAnchor } from './graphStyle';
 import { configOf } from './modelTypes';
-import { isInstanceOf, kindsBetween, propKey, relChoice, restrictionSpecs, type RelChoice } from './props';
+import { propOf } from './identity';
+import { isInstanceOf, kindsBetween, relChoice, restrictionSpecs, type RelChoice } from './props';
 import type { Model, Relation, Term, TermType } from './types';
 import { resolveModel, stdProp } from './vocab';
 
@@ -68,7 +69,7 @@ function statement(model: Model, r: Relation): string | undefined {
   if (r.kind === 'generalization' && (!r.predicate || stdProp(r.predicate)?.hierarchical)) return 'is a';
   if (r.predicate) return 'std ' + r.predicate.toLowerCase();
   if (r.kind === 'property') return 'has ' + JSON.stringify(restrictionSpecs(r));
-  return relChoice(model, r) === 'object' ? `uses ${propKey(r.label)} ${JSON.stringify(restrictionSpecs(r))}` : undefined;
+  return relChoice(model, r) === 'object' ? `uses ${propOf(model, r)?.id} ${JSON.stringify(restrictionSpecs(r))}` : undefined;
 }
 
 /**

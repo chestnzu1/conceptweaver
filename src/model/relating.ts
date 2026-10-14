@@ -1,8 +1,9 @@
 import { makeInstanceOf, type Edit } from './axioms';
 import { baseIriOf, localName } from './iri';
 import { supports } from './modelTypes';
-import { DEFAULT_PROP, kindsBetween, propKey, relChoice } from './props';
-import { INSTANCE_OF, newRelation, PROP_LINKS, type Model, type ObjProp, type Relation, type Term, type TermType } from './types';
+import { DEFAULT_PROP, nameKey, propNamed, propOf } from './identity';
+import { kindsBetween } from './props';
+import { INSTANCE_OF, newProp, newRelation, PROP_LINKS, type Model, type ObjProp, type Relation, type Term, type TermType } from './types';
 import { resolveModel } from './vocab';
 
 /**
@@ -49,13 +50,12 @@ export function cannotRelate(model: Model, fromId: string, toId: string): string
 function pristine(model: Model, p: ObjProp): boolean {
   if (p.description.trim() || p.chars.length || p.domain || p.range || p.fields?.length || p.external !== undefined) return false;
   if (PROP_LINKS.some((l) => p[l]?.length)) return false;
-  const key = propKey(p.name);
-  if (model.props.some((other) => other !== p && PROP_LINKS.some((l) => other[l]?.includes(key)))) return false;
+  if (model.props.some((other) => other !== p && PROP_LINKS.some((l) => other[l]?.includes(p.id)))) return false;
   // An IRI of its own choosing would be something said about it; the one made from its name is not.
   return !p.iri || p.iri.toLowerCase().startsWith((baseIriOf(model) + localName(p.name, true)).toLowerCase());
 }
 
-const uses = (model: Model, key: string) => model.relations.some((r) => r.kind === 'association' && !r.predicate && !r.plain && propKey(r.label) === key);
+const uses = (model: Model, id: string) => model.relations.some((r) => propOf(model, r)?.id === id);
 
 /**
  * Gives a relationship the kind that follows from its ends and its name, once it has been added
@@ -86,7 +86,7 @@ export function settleRelation(model: Model, id: string, before?: Model): Edit {
   // A name typed on a line whose meaning leaves no room for one is not kept, and that is said.
   const unnamed = (what: string) => (name && !IS_A.test(name) && !/^((is )?(an? )?instance of|has)$/i.test(name) ? { note: `${what}, so it has no name of its own: “${name}” was not kept.` } : {});
   const put = (m: Model, next: Relation): Model => ({ ...m, relations: m.relations.map((r) => (r.id === id ? next : r)) });
-  const { plain: _plain, predicate: _predicate, ...kept } = rel;
+  const { plain: _plain, predicate: _predicate, prop: _prop, ...kept } = rel;
   const bare = (() => {
     const { restriction: _restriction, restrictionN: _n, more: _more, ...rest } = kept;
     return { ...rest, fromCard: '', toCard: '' };
@@ -104,19 +104,21 @@ export function settleRelation(model: Model, id: string, before?: Model): Edit {
     const what = a.type === 'property' ? `${q(a)} is a sub-property of ${q(b)}` : `${q(a)} is a kind of ${q(b)}`;
     out = { model: put(model, { ...bare, label: '', kind: 'generalization' }), ...unnamed(what) };
   } else {
-    // A use of an object property: the one of that name, declared here if there is none yet.
-    const declared = model.props.find((p) => propKey(p.name) === propKey(name || DEFAULT_PROP));
-    const label = declared?.name ?? (name || DEFAULT_PROP);
-    const key = propKey(label);
+    // A use of an object property: the one of that name, declared here if there is none yet. The
+    // one it used already, while the name is still its name, before another of the same name.
+    const current = rel.prop !== undefined ? model.props.find((p) => p.id === rel.prop) : undefined;
+    const declared = current && nameKey(current.name) === nameKey(name) ? current : propNamed(model, name);
+    const used = declared ?? newProp({ name: name || DEFAULT_PROP });
+    const key = nameKey(used.name);
     out = {
       model: {
         ...model,
-        props: declared ? model.props : [...model.props, { name: label, description: '', chars: [] }],
+        props: declared ? model.props : [...model.props, used],
         relations: model.relations.map((r) =>
           r.id === id
-            ? { ...kept, kind: 'association', label, fromCard: '', toCard: '' }
+            ? { ...kept, kind: 'association', label: used.name, prop: used.id, fromCard: '', toCard: '' }
             : // Relationships from before that merely share the name do not become uses of the property behind anyone's back.
-              !declared && r.kind === 'association' && !r.predicate && !r.plain && propKey(r.label) === key
+              !declared && r.kind === 'association' && !r.predicate && !r.plain && r.prop === undefined && nameKey(r.label) === key
               ? { ...r, plain: true }
               : r,
         ),
@@ -128,10 +130,10 @@ export function settleRelation(model: Model, id: string, before?: Model): Edit {
   // The property the relationship used before, if it existed for this relationship alone and nothing
   // was ever said about it, goes with the name: a name typed and then corrected leaves nothing behind.
   const was = before?.relations.find((r) => r.id === id);
-  const old = was && before && relChoice(before, was) === 'object' ? propKey(was.label) : undefined;
-  if (old !== undefined) {
-    const entry = out.model.props.find((p) => propKey(p.name) === old);
-    if (entry && !uses(out.model, old) && pristine(out.model, entry)) out = { ...out, model: { ...out.model, props: out.model.props.filter((p) => p !== entry) } };
+  const old = was && before ? propOf(before, was) : undefined;
+  if (old) {
+    const entry = out.model.props.find((p) => p.id === old.id);
+    if (entry && !uses(out.model, entry.id) && pristine(out.model, entry)) out = { ...out, model: { ...out.model, props: out.model.props.filter((p) => p !== entry) } };
   }
   return out;
 }

@@ -7,7 +7,7 @@ import { fixedBecause, meaningOf, reconnect, reconnection, type End } from './re
 import { skosSample } from './sample';
 import { stable } from './stable';
 import { useStore } from './store';
-import { emptyModel, newRelation, newTerm, type Model, type Relation } from './types';
+import { newProp, emptyModel, newRelation, newTerm, type Model, type Relation } from './types';
 
 /**
  * A small ontology with one relationship of every kind an ontology has: a superclass, a use of an
@@ -27,7 +27,7 @@ const studio = (): Model => {
     newTerm({ id: 'parasite', name: 'Parasite', type: 'instance' }),
     newTerm({ id: 'bong', name: 'Bong', type: 'instance' }),
   ];
-  m.props = [{ name: 'directed by', description: 'Who directed it.', chars: [] }];
+  m.props = [newProp({ name: 'directed by', description: 'Who directed it.', chars: [] })];
   m.relations = [
     newRelation({ id: 'isa', from: 'film', to: 'work', kind: 'generalization' }),
     newRelation({ id: 'uses', from: 'film', to: 'person', label: 'directed by', restriction: 'only', more: [{ restriction: 'min', restrictionN: 1 }] }),

@@ -9,7 +9,8 @@ import { LayoutCancelled, runLayout } from '../layout/run';
 import { LAYOUTS, noLayout, type GraphLayout, type LayoutKind, type Places } from '../layout/types';
 import { sampleModel } from './sample';
 import { convertModel } from './convert';
-import { declaredProp, findProp, propKey, relChoices, type RelChoice } from './props';
+import { DEFAULT_PROP, linkProps, nameKey, propNamed } from './identity';
+import { declaredProp, relChoices, type RelChoice } from './props';
 import { cannotRelate, settleRelation, typed } from './relating';
 import { reconnect, type End } from './reconnect';
 import { labelKey, resolveModel, suggestFor } from './vocab';
@@ -32,7 +33,7 @@ import { assertedSuperclasses, isInstanceOf, wouldCycle } from './props';
 import { classIriOf } from '../structure/local';
 import type { HierarchyMode, Iri } from '../structure/contracts';
 import { LIST_KINDS, type EntitySort, type FilterValues, type ListKind } from '../entities/contracts';
-import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term, type TermType } from './types';
+import { emptyModel, INSTANCE_OF, PROP_LINKS, type EntityKind, type ModelMode, type Shapes, type ObjProp, newProp, newRelation, newTerm, normalizeModel, type Model, type Relation, type Term, type TermType } from './types';
 
 export type { View } from './modelTypes';
 export type Theme = 'light' | 'dark';
@@ -204,14 +205,30 @@ function loadSavedStyles(): SavedStyle[] {
 let lastStyleEdit = { key: '', at: 0 };
 const HISTORY = 100;
 
+/** A model as the editor holds it: every named entity with its IRI, every relationship joined to the object property it uses. */
+const prepared = (m: Model): Model => linkProps(withIris(m));
+
+/**
+ * A relationship with a change made to it. A new label that is not the name of the property the
+ * relationship used leaves that property: the label decides again (see settleRelation).
+ */
+function retitled(m: Model, r: Relation, patch: Partial<Relation>): Relation {
+  const next = { ...r, ...patch };
+  if (!('label' in patch) || 'prop' in patch || next.prop === undefined) return next;
+  const used = m.props.find((p) => p.id === next.prop);
+  if (used && nameKey(used.name) === nameKey(next.label)) return next;
+  const { prop: _left, ...rest } = next;
+  return rest;
+}
+
 function loadModel(): Model {
   try {
     const raw = stored(MODEL_KEY);
-    if (raw) return withIris(normalizeModel(JSON.parse(raw)));
+    if (raw) return prepared(normalizeModel(JSON.parse(raw)));
   } catch {
     // Unreadable autosave: fall through to the example.
   }
-  return withIris(sampleModel());
+  return prepared(sampleModel());
 }
 
 function loadTheme(): Theme {
@@ -422,7 +439,8 @@ interface State {
   bulkAddOutline: (outline: Outline) => { terms: number; rels: number };
   /** Turns the model into the other type, translating what its relations mean. */
   convertTo: (mode: ModelMode) => void;
-  selectProp: (key: string | null) => void;
+  /** Opens an object property, by id. */
+  selectProp: (id: string | null) => void;
   /** Declares a new object property and opens it. */
   addProp: () => string;
   /** Makes a relationship label an object property: every relationship carrying it becomes a use. */
@@ -433,12 +451,12 @@ interface State {
    * refused, with a notice saying why.
    */
   setRelChoice: (id: string, choice: RelChoice, history?: boolean) => boolean;
-  /** Changes what is declared about an object property, declaring it first if it only existed through use. */
-  updateProp: (key: string, patch: Partial<ObjProp>) => void;
-  /** Renames an object property everywhere: its declaration, the relationships that use it, and references to it. */
-  renameProp: (key: string, name: string) => boolean;
-  /** Removes an object property together with the relationships that use it. */
-  deleteProp: (key: string) => void;
+  /** Changes what is declared about an object property, by id. */
+  updateProp: (id: string, patch: Partial<Omit<ObjProp, 'id'>>) => void;
+  /** Renames an object property (by id), and with it the label of the relationships that use it: no others, whatever their label. */
+  renameProp: (id: string, name: string) => boolean;
+  /** Removes an object property (by id) together with the relationships that use it. */
+  deleteProp: (id: string) => void;
   /**
    * Saves the ontology IRI, default namespace and prefixes. Existing IRIs are left exactly as they
    * are, except that the entities of each namespace in `moveFrom` are moved into the default namespace.
@@ -838,8 +856,9 @@ export const useStore = create<State>((set, get) => ({
 
   apply: (fn, history = true) =>
     set((s) => {
-      // Whatever the edit, every named entity ends up with an IRI, made once and then left alone.
-      const model = withIris(fn(s.model));
+      // Whatever the edit, every named entity ends up with an IRI, made once and then left alone,
+      // and every relationship joined to the object property it uses, by id.
+      const model = prepared(fn(s.model));
       if (model === s.model) return s;
       return history ? { model, ...pushHistory(s) } : { model };
     }),
@@ -864,7 +883,7 @@ export const useStore = create<State>((set, get) => ({
       return { model, past: [...s.past, s.model], future: s.future.slice(1), sel: prune(s.sel, model), editing: null, highlight: [] };
     }),
   replaceModel: (m, docId = null) => {
-    const model = withIris(m);
+    const model = prepared(m);
     get().cancelLayout();
     stopGlide();
     // A different document: its history starts afresh, and it counts as unchanged until edited.
@@ -979,7 +998,7 @@ export const useStore = create<State>((set, get) => ({
     const patch = { ...given };
     if (!supports(m, 'restrictions')) for (const k of ['restriction', 'restrictionN', 'more'] as const) delete patch[k];
     if (patch.kind === 'property' && !allowsKind(m, 'property')) delete patch.kind;
-    let next = { ...m, relations: m.relations.map((r) => (r.id === id ? { ...r, ...patch } : r)) };
+    let next = { ...m, relations: m.relations.map((r) => (r.id === id ? retitled(m, r, patch) : r)) };
     // In an ontology a new name or a new end can make it something else: "is a" between two classes
     // is a superclass, another name an object property. Ends that cannot be related are refused.
     let note: string | undefined;
@@ -1209,25 +1228,27 @@ export const useStore = create<State>((set, get) => ({
   selectProp: (selProp) => set({ selProp, sel: { terms: [], rels: [] } }),
   addProp: () => {
     if (!supports(get().model, 'objectProperties')) return '';
-    const taken = new Set(get().model.props.map((p) => propKey(p.name)));
+    const taken = new Set(get().model.props.map((p) => nameKey(p.name)));
     let name = 'new property';
-    for (let i = 2; taken.has(propKey(name)) || findProp(get().model, propKey(name)); i++) name = `new property ${i}`;
-    get().apply((m) => ({ ...m, props: [...m.props, { name, description: '', chars: [] }] }));
-    set({ selProp: propKey(name), sel: { terms: [], rels: [] } });
-    return propKey(name);
+    for (let i = 2; taken.has(nameKey(name)); i++) name = `new property ${i}`;
+    const p = newProp({ name });
+    get().apply((m) => ({ ...m, props: [...m.props, p] }));
+    set({ selProp: p.id, sel: { terms: [], rels: [] } });
+    return p.id;
   },
   declareProp: (name) => {
-    const clean = name.trim() || 'related to';
-    if (findProp(get().model, propKey(clean))) return;
+    const clean = name.trim() || DEFAULT_PROP;
+    if (propNamed(get().model, clean)) return;
+    const p = newProp({ name: clean });
     get().apply((m) => ({
       ...m,
-      props: [...m.props, { name: clean, description: '', chars: [] }],
-      // Every relationship with the label becomes a use. Unlabelled ones get the name, so that
-      // they keep pointing at the property if it is renamed.
+      props: [...m.props, p],
+      // Every relationship with the label becomes a use, one kept plain included. An unlabelled one
+      // gets the name, which is what it stood for.
       relations: m.relations.map((r) => {
-        if (r.kind !== 'association' || r.predicate || propKey(r.label) !== propKey(clean)) return r;
+        if (r.kind !== 'association' || r.predicate || r.prop !== undefined || nameKey(r.label) !== nameKey(clean)) return r;
         const { plain: _plain, ...rest } = r;
-        return { ...rest, label: r.label.trim() || clean };
+        return { ...rest, label: r.label.trim() || clean, prop: p.id };
       }),
     }));
   },
@@ -1257,7 +1278,7 @@ export const useStore = create<State>((set, get) => ({
     get().apply((m) => {
       const rel = m.relations.find((r) => r.id === id);
       if (!rel) return m;
-      const { plain: _plain, predicate: _predicate, ...kept } = rel;
+      const { plain: _plain, predicate: _predicate, prop: _prop, ...kept } = rel;
       // Only a plain relationship has cardinalities at its ends.
       const base = choice === 'plain' ? kept : { ...kept, fromCard: '', toCard: '' };
       if (choice === 'property') {
@@ -1272,21 +1293,23 @@ export const useStore = create<State>((set, get) => ({
         // Where the name decides the kind, a superclass has none: any other name would make it an object property again.
         return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...bare, kind: choice, ...(typed(m) ? { label: '' } : {}) } : r)) };
       }
-      const key = propKey(rel.label);
-      const declared = m.props.some((p) => propKey(p.name) === key);
+      const named = propNamed(m, rel.label);
       if (choice === 'plain') {
         // The flag is only needed where the label would otherwise make it a use of a property.
-        return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...base, kind: 'association', ...(declared ? { plain: true } : {}) } : r)) };
+        return { ...m, relations: m.relations.map((r) => (r.id === id ? { ...base, kind: 'association', ...(named ? { plain: true } : {}) } : r)) };
       }
-      const name = rel.label.trim() || 'related to';
+      // The property it used already, or the one its label names: declared on the spot if there is none.
+      const declared = (rel.prop !== undefined ? m.props.find((p) => p.id === rel.prop) : undefined) ?? named;
+      const used = declared ?? newProp({ name: rel.label.trim() || DEFAULT_PROP });
+      const key = nameKey(used.name);
       return {
         ...m,
-        // Declared on the spot if need be. Other relationships that merely share the label stay plain.
-        props: declared ? m.props : [...m.props, { name, description: '', chars: [] }],
+        props: declared ? m.props : [...m.props, used],
+        // Other relationships that merely share the label stay plain.
         relations: m.relations.map((r) =>
           r.id === id
-            ? { ...base, kind: 'association', label: name }
-            : !declared && r.kind === 'association' && !r.predicate && propKey(r.label) === key
+            ? { ...base, kind: 'association', label: rel.label.trim() || used.name, prop: used.id }
+            : !declared && r.kind === 'association' && !r.predicate && r.prop === undefined && nameKey(r.label) === key
               ? { ...r, plain: true }
               : r,
         ),
@@ -1294,58 +1317,55 @@ export const useStore = create<State>((set, get) => ({
     }, history);
     return true;
   },
-  updateProp: (key, patch) =>
+  updateProp: (id, patch) =>
     get().apply((m) => {
-      const next = { ...declaredProp(m, key), ...patch };
+      const entry = declaredProp(m, id);
+      if (!entry) return m;
+      const next: ObjProp = { ...entry, ...patch, id };
       // An emptied optional field means "not set", so it isn't stored.
       for (const k of ['domain', 'range', 'fields', ...PROP_LINKS] as const) if (next[k] === undefined || (k !== 'domain' && k !== 'range' && !next[k]!.length)) delete next[k];
-      const exists = m.props.some((p) => propKey(p.name) === key);
-      return { ...m, props: exists ? m.props.map((p) => (propKey(p.name) === key ? next : p)) : [...m.props, next] };
+      return { ...m, props: m.props.map((p) => (p.id === id ? next : p)) };
     }),
-  renameProp: (key, name) => {
-    const to = propKey(name);
+  renameProp: (id, name) => {
     const clean = name.trim();
-    if (!clean) return false;
-    if (to !== key && findProp(get().model, to)) {
+    const entry = declaredProp(get().model, id);
+    if (!clean || !entry) return false;
+    // Two properties of this model's own with one name would be easy to mix up; one may share its
+    // name with a property of another ontology, from which it is told apart by its IRI.
+    const twin = get().model.props.find((p) => p.id !== id && nameKey(p.name) === nameKey(clean) && p.external === undefined);
+    if (twin && entry.external === undefined) {
       get().notify(`There is already a property called “${clean}”.`);
       return false;
     }
-    get().apply((m) => {
-      const entry = { ...declaredProp(m, key), name: clean };
-      // Every mention of the property by another one follows the new name.
-      const follow = (p: ObjProp): ObjProp => {
-        let out = p;
-        for (const link of PROP_LINKS) if (p[link]?.includes(key)) out = { ...out, [link]: p[link]!.map((k) => (k === key ? to : k)) };
-        return out;
-      };
-      const others = m.props.filter((p) => propKey(p.name) !== key).map(follow);
-      return {
-        ...m,
-        props: [...others, entry],
-        relations: m.relations.map((r) => (r.kind === 'association' && !r.predicate && propKey(r.label) === key ? { ...r, label: clean } : r)),
-      };
-    });
-    set((s) => (s.selProp === key ? { selProp: to } : s));
-    return true;
-  },
-  deleteProp: (key) => {
+    // The property and its uses, and nothing else: references to it are by id, and so is every use.
     get().apply((m) => ({
       ...m,
-      props: m.props
-        .filter((p) => propKey(p.name) !== key)
-        .map((p) => {
-          let out = p;
-          for (const link of PROP_LINKS) {
-            if (!p[link]?.includes(key)) continue;
-            const { [link]: list, ...rest } = out;
-            const left = list!.filter((k) => k !== key);
-            out = left.length ? { ...rest, [link]: left } : rest;
-          }
-          return out;
-        }),
-      relations: m.relations.filter((r) => !(r.kind === 'association' && !r.predicate && propKey(r.label) === key)),
+      props: m.props.map((p) => (p.id === id ? { ...p, name: clean } : p)),
+      relations: m.relations.map((r) => (r.prop === id ? { ...r, label: clean } : r)),
     }));
-    set((s) => ({ selProp: s.selProp === key ? null : s.selProp, sel: prune(s.sel, s.model), highlight: [] }));
+    return true;
+  },
+  deleteProp: (id) => {
+    get().apply((m) => {
+      const linked = linkProps(m);
+      return {
+        ...linked,
+        props: linked.props
+          .filter((p) => p.id !== id)
+          .map((p) => {
+            let out = p;
+            for (const link of PROP_LINKS) {
+              if (!p[link]?.includes(id)) continue;
+              const { [link]: list, ...rest } = out;
+              const left = list!.filter((k) => k !== id);
+              out = left.length ? { ...rest, [link]: left } : rest;
+            }
+            return out;
+          }),
+        relations: linked.relations.filter((r) => r.prop !== id),
+      };
+    });
+    set((s) => ({ selProp: s.selProp === id ? null : s.selProp, sel: prune(s.sel, s.model), highlight: [] }));
   },
   setOntologySettings: (d, moveFrom = []) =>
     get().apply((m) => {

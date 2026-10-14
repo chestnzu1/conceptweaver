@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { compactIri } from '../model/prefixes';
 import { useStore } from '../model/store';
 
-/** Something that can be chosen: a term (by id) or an object property (by key), known to people by name and to the ontology by IRI. */
+/** Something that can be chosen: a term or an object property, by id, known to people by name and to the ontology by IRI. */
 export interface Choice {
   id: string;
   name: string;
