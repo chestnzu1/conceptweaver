@@ -3,7 +3,8 @@ import { readExternal } from './external';
 import { readModelFile } from './files';
 import { loadOxigraph } from './oxigraph';
 import { relChoice, restrictionsOf } from './props';
-import { fromTurtle, leftOut, toJsonLd, toTurtle } from './rdf';
+import { fromTurtle, toJsonLd, toTurtle } from './rdf';
+import { keptSummary } from './unmapped';
 import { ACCEPT, asTurtle, convertWithService, decodeDocument, detectFormat, fetchDocument, fileText } from './rdfFormats';
 import { sampleModel, skosSample } from './sample';
 import { universitySample } from './sampleUniversity';
@@ -325,21 +326,29 @@ describe('what a file states that the model has no place for', () => {
 [] a owl:AllDisjointClasses ; owl:members ( :A :C ) .
 `;
 
-  it('is counted, so that whoever opens the file is told what was left out', async () => {
-    expect(leftOut(EXTRAS)).toEqual(['1 key', '2 property chains', '1 annotation on an axiom', '1 SWRL rule']);
-    const { model, leftOut: said } = await readModelFile(EXTRAS, 'extras.ttl');
-    expect(said).toEqual(['1 key', '2 property chains', '1 annotation on an axiom', '1 SWRL rule']);
-    // And they are indeed not in what the model writes, while what it does have a place for is.
+  it('is kept as it was, written back with the ontology, and counted for whoever opens the file', async () => {
+    const { model, kept } = await readModelFile(EXTRAS, 'extras.ttl');
+    expect(kept).toEqual(['2 property chains', '1 key', '1 annotation on an axiom', '1 SWRL rule']);
+    // Written back, beside what the model does have a place for.
     const written = toTurtle(model);
-    expect(written).not.toMatch(/hasKey|propertyChainAxiom|"because"|swrl:Imp/);
+    expect(written).toMatch(/owl#propertyChainAxiom/);
+    expect(written).toMatch(/owl#hasKey/);
+    expect(written).toContain('"because"');
+    expect(written).toMatch(/swrl#Imp/);
     expect(written).toContain('owl:disjointWith');
     expect(written).toContain('rdfs:subClassOf :A');
+    // What the model took (the disjointness, read as pairs) is not said a second time.
+    expect(written).not.toMatch(/AllDisjointClasses/);
+    // Read again, the same is kept, and the same written.
+    const again = fromTurtle(written);
+    expect(again.unmapped).toBe(model.unmapped);
+    expect(toTurtle(again)).toBe(written);
   });
 
   it('is nothing for an ontology the model holds all of', async () => {
-    expect(leftOut(toTurtle(withIris(universitySample())))).toEqual([]);
-    expect((await readModelFile(PIZZA, 'pizza.owl')).leftOut).toEqual([]);
-    expect(leftOut('this is not Turtle {')).toEqual([]);
+    expect(fromTurtle(toTurtle(withIris(universitySample()))).unmapped).toBeUndefined();
+    expect((await readModelFile(PIZZA, 'pizza.owl')).kept).toEqual([]);
+    expect(keptSummary('this is not Turtle {')).toEqual([]);
   });
 });
 

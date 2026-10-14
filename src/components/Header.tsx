@@ -20,14 +20,15 @@ import { Icon } from './Icon';
 export async function openDocument(text: string, name: string, source: { contentType?: string; url?: string } = {}): Promise<string | undefined> {
   const st = useStore.getState();
   try {
-    const { model, format, leftOut } = await readModelFile(text, name, { ...source, serviceUrl: st.validation.reasonerUrl });
+    const { model, format, kept } = await readModelFile(text, name, { ...source, serviceUrl: st.validation.reasonerUrl });
     st.replaceModel(model);
     st.setView('graph');
     const opened = `Opened “${model.name}”${format === 'model' ? '' : ` from ${FORMAT_LABEL[format]}`}: ${model.terms.length.toLocaleString('en')} terms, ${model.relations.length.toLocaleString('en')} relations.`;
     st.notify(opened);
-    // What the model has no place for is not passed over in silence: it would be missing from whatever is exported, and nobody the wiser.
-    if (leftOut.length) {
-      st.showMessage('Opened, with some statements left out', `${opened} The file also has ${leftOut.join(', ').replace(/, ([^,]*)$/, ' and $1')}, which the model has no place for: ${leftOut.length === 1 && /^1 /.test(leftOut[0]) ? 'it is' : 'they are'} not shown, not reasoned with, and not in anything exported from here. The file itself is untouched.`);
+    // What the model has no place for is kept as it was and written back, and that is said: it is there, but not to be edited here.
+    if (kept.length) {
+      const one = kept.length === 1 && /^1 /.test(kept[0]);
+      st.showMessage('Opened, with statements kept that cannot be edited here', `${opened} The file also has ${kept.join(', ').replace(/, ([^,]*)$/, ' and $1')}, which the editor has no place for. ${one ? 'It is' : 'They are'} kept as ${one ? 'it was' : 'they were'} and written back whenever the ontology is saved or exported, but ${one ? 'it is' : 'they are'} not shown or edited here. The OWL 2 DL reasoner takes ${one ? 'it' : 'them'} into account; the app's own reasoner does not.`);
     }
     return undefined;
   } catch (e) {

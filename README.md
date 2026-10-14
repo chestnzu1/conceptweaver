@@ -585,7 +585,8 @@ that *Layered* says so and uses the built-in hierarchical layout.
   from an end that was put somewhere by hand; where those ends are is kept in `graphStyle.ts`.
   Which object property a relationship uses, by id, is `identity.ts`; every entity's IRI is
   `iri.ts`; a model of an older format is brought up to date in `normalizeModel` (`types.ts`),
-  checked against the files in `fixtures/v1`.
+  checked against the files in `fixtures/v1`. What an ontology says that the model has no place for
+  is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in `rdf.ts`) tells what it took.
 - `src/components` – the SVG canvas, side panels, views and menus.
 - `src/entities` – the search, the sorting and the filters of the Entities page, apart from the
   page. `contracts.ts` is all the page knows: three questions (`EntityQueryService`: which sorts
@@ -992,30 +993,37 @@ it, and nothing was replaced):
   the model; `rdfs:subClassOf`, `rdf:type`, restrictions by one property, domains, ranges and
   property characteristics are drawn or listed; any other class expression (an intersection, a
   union, a nested restriction) is kept on its class as text and written back as it was. It is
-  shown, exported and sent to the reasoner, but not edited piece by piece. Not so an
-  `owl:intersectionOf` stated on the named class itself, the short form in which older RDF/XML
-  files define a class: that is lost, without notice (see *What a round trip loses* below).
-- **Not read**: SWRL rules, property chains (`owl:propertyChainAxiom`), keys (`owl:hasKey`),
-  negative property assertions, annotations on axioms (as opposed to on entities) and statements
-  about anonymous individuals. The model has no place for them, so an ontology that has them
-  opens without them and what is exported from the app does not have them. All but the last are
-  counted when the file is opened and said in a message that stays ("2 property chains and 1
-  SWRL rule"), so that a round trip through the app is not taken for a faithful copy of such an
-  ontology. `owl:AllDisjointClasses` is read, as pairwise disjointness.
+  shown, exported and sent to the reasoner, but not edited piece by piece.
+- **What the model has no place for is kept, not editable here**: SWRL rules, property chains
+  (`owl:propertyChainAxiom`), keys (`owl:hasKey`), negative property assertions, annotations on
+  axioms, an ontology's version IRI and its annotations beyond name and description, a class
+  defined by an `owl:intersectionOf` stated on itself (as older RDF/XML files write it), datatype
+  definitions, statements about annotation properties, and whatever else the reader takes
+  nothing from. Each such statement is kept whole, as it was read (`src/model/unmapped.ts`), saved
+  with the model, and written back at the end of every Turtle and JSON-LD export; the OWL 2 DL
+  reasoner gets it too, the app's own reasoner does not. It is not shown or edited. The message
+  on opening says what was kept ("2 property chains, 1 key and 12 other statements"). A
+  statement the reader took into the model is never kept a second time: deleting a class
+  deletes it, without a copy left behind; and a kept statement that mentions a deleted entity
+  goes with it, as it would in any other editor, while one that mentions an entity given a new
+  IRI follows it. `owl:AllDisjointClasses` and `owl:AllDifferent` are read, as pairs, and
+  written as pairs.
+- **Written back as read**: a description with the property it came from (`rdfs:comment`,
+  `skos:definition` or `dcterms:description`), a name or description in the language it had (or
+  none), an annotation of another vocabulary by its own IRI, a value with its own XML Schema
+  datatype.
 - **What a round trip loses, measured.** `src/model/corpus.test.ts` opens each ontology of a
   fixed corpus (`corpus/corpus.mjs`: the seven above, the OWL 2 Primer's example and the core of
   the Relation Ontology), saves it as Turtle unchanged, and has the OWL API compare the two
-  statement by statement. On 2026-10-14 the nine lost 790 statements between them and gained
-  2,058 (795 and 2,056 before object properties had ids of their own, when FOAF's second
-  "account" property was dropped); the message on opening names at most 36 of the lost. Besides what it names: version IRIs
-  and most annotations of the ontology itself; every `rdfs:comment` comes back as
-  `skos:definition`; a class defined by an `owl:intersectionOf` stated on the class itself, as
-  Wine writes 61 of its classes; datatype definitions, `owl:sameAs`, class assertions of a class
-  expression; and a property typed only by a characteristic (`owl:TransitiveProperty` and the
-  like, without `owl:ObjectProperty`), with all that is said of it. Disjointness and difference
-  among more than two come back pair by pair, and every entity is given an `rdfs:label`. The
-  lists are in `corpus/expected/`, one file for each ontology, and the test fails when one
-  changes: a fix shows there as statements no longer lost. `pnpm corpus` fetches the corpus once.
+  statement by statement. Over the nine, 28 statements are lost (790 before what is not
+  understood was kept, and the above written back as read): disjointness and difference among
+  more than two, which come back pair by pair (16); two `rdfs:domain` statements of one
+  property, read as one union (PROV-O, 4); a restriction to a datatype the editor does not offer
+  (OWL-Time, 3); text that looks like a link, written as a link (RO, 3); and white space in two
+  comments, read differently by the browser and by the OWL API (FOAF, 2). SKOS comes back
+  exactly. What is added is mostly an `rdfs:label` for each entity that had none. The lists are
+  in `corpus/expected/`, one file for each ontology, and the test fails when one changes: a fix
+  shows there as statements no longer lost. `pnpm corpus` fetches the corpus once.
 - **Imports are not followed.** What an ontology imports is listed under *Align* by its IRI;
   add it there (from a file or a URL) for its entities to be reused and its axioms reasoned
   with.

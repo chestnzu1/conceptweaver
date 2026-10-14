@@ -49,6 +49,13 @@ export const typeChoice = (t: Pick<Term, 'type'>): TermType => t.type;
  * An object property of an ontology: a named, reusable kind of relationship. A relationship on
  * the canvas is a use of it by naming it in `Relation.prop`, and carries its name as its label.
  */
+/** The properties a description is read from, and written back with. */
+export const DESCRIPTION_PROPERTIES = ['skos:definition', 'rdfs:comment', 'dcterms:description'] as const;
+export type DescriptionProperty = (typeof DESCRIPTION_PROPERTIES)[number];
+/** The properties the ontology's own name is read from, and written back with. */
+export const NAME_PROPERTIES = ['rdfs:label', 'skos:prefLabel', 'dcterms:title'] as const;
+export type NameProperty = (typeof NAME_PROPERTIES)[number];
+
 export interface ObjProp {
   /**
    * What the property is known by inside the model: relationships and other properties refer to
@@ -58,6 +65,17 @@ export interface ObjProp {
   id: string;
   name: string;
   description: string;
+  /**
+   * The property the description was read from, where it is not the one this app writes
+   * (skos:definition; for the ontology itself rdfs:comment): it is written back with that one.
+   */
+  describedBy?: DescriptionProperty;
+  /**
+   * The language the name and the description were written in, where it is not the model's
+   * (`lang`): '' for none. They are written back in it.
+   */
+  nameLang?: string;
+  descriptionLang?: string;
   /** Term ids. Left out, the domain (or range) follows the relationships that use the property. */
   domain?: string[];
   range?: string[];
@@ -117,6 +135,17 @@ export interface EnumDatatype {
   id: string;
   name: string;
   description: string;
+  /**
+   * The property the description was read from, where it is not the one this app writes
+   * (skos:definition; for the ontology itself rdfs:comment): it is written back with that one.
+   */
+  describedBy?: DescriptionProperty;
+  /**
+   * The language the name and the description were written in, where it is not the model's
+   * (`lang`): '' for none. They are written back in it.
+   */
+  nameLang?: string;
+  descriptionLang?: string;
   values: EnumLiteral[];
   /** Full IRI: kept from an import, or made once from the name. */
   iri?: string;
@@ -154,6 +183,17 @@ export interface Term {
   id: string;
   name: string;
   description: string;
+  /**
+   * The property the description was read from, where it is not the one this app writes
+   * (skos:definition; for the ontology itself rdfs:comment): it is written back with that one.
+   */
+  describedBy?: DescriptionProperty;
+  /**
+   * The language the name and the description were written in, where it is not the model's
+   * (`lang`): '' for none. They are written back in it.
+   */
+  nameLang?: string;
+  descriptionLang?: string;
   type: TermType;
   color: string;
   x: number;
@@ -269,6 +309,19 @@ export interface Model {
   version: typeof MODEL_VERSION;
   name: string;
   description: string;
+  /**
+   * The property the description was read from, where it is not the one this app writes
+   * (skos:definition; for the ontology itself rdfs:comment): it is written back with that one.
+   */
+  describedBy?: DescriptionProperty;
+  /**
+   * For the ontology's own name: the property it was read from where it is not the one written
+   * (rdfs:label; skos:prefLabel for a vocabulary), and the language of the name and description
+   * where it is not the model's ('' for none). They are written back so.
+   */
+  namedBy?: NameProperty;
+  nameLang?: string;
+  descriptionLang?: string;
   /** The default namespace: where the IRIs of new entities are made. */
   baseIri: string;
   /** The IRI of the ontology itself. Empty: the default namespace without its final # or /. */
@@ -298,6 +351,13 @@ export interface Model {
   layout: GraphLayout;
   /** The enumerated datatypes of the model: datatypes defined by listing their values. */
   datatypes: EnumDatatype[];
+  /**
+   * Statements of an ontology that was read which the model has no place for (property chains,
+   * keys, axiom annotations, an ontology's version IRI, …), kept as they were and written back
+   * with it: Turtle, one statement at a time, with full IRIs (see unmapped.ts). Not shown or
+   * edited here. Left out when there are none.
+   */
+  unmapped?: string;
 }
 
 /** The kinds of entity a metadata field can apply to. The last two are metadata profiles an entity is given. */
@@ -577,6 +637,12 @@ export function normalizeGovernance(raw: unknown): GovernanceConfig {
 }
 
 /** Validates untrusted JSON and returns a well-formed model. Throws on anything unusable. */
+const langs = (x: Record<string, unknown>): { nameLang?: string; descriptionLang?: string } => ({
+  ...(typeof x.nameLang === 'string' && (x.nameLang === '' || LANG.test(x.nameLang)) ? { nameLang: x.nameLang.toLowerCase() } : {}),
+  ...(typeof x.descriptionLang === 'string' && (x.descriptionLang === '' || LANG.test(x.descriptionLang)) ? { descriptionLang: x.descriptionLang.toLowerCase() } : {}),
+});
+const describedBy = (v: unknown): { describedBy?: DescriptionProperty } => ((DESCRIPTION_PROPERTIES as readonly string[]).includes(v as string) ? { describedBy: v as DescriptionProperty } : {});
+
 export function normalizeModel(raw: unknown): Model {
   if (!raw || typeof raw !== 'object') throw new Error('Not a model file.');
   const o = raw as Record<string, unknown>;
@@ -596,7 +662,7 @@ export function normalizeModel(raw: unknown): Model {
       const lit: EnumLiteral = { value: v.value, ...(str(v.dt) ? { dt: str(v.dt) } : {}), ...(LANG.test(str(v.lang)) ? { lang: str(v.lang).toLowerCase() } : {}) };
       if (!values.some((x) => x.value === lit.value && (x.dt ?? '') === (lit.dt ?? '') && (x.lang ?? '') === (lit.lang ?? ''))) values.push(lit);
     }
-    datatypes.push({ id: str(d.id), name: str(d.name), description: str(d.description), values, ...(str(d.iri) ? { iri: str(d.iri), ...(d.pendingIri === true ? { pendingIri: true as const } : {}) } : {}), ...(d.anonymous === true ? { anonymous: true } : {}) });
+    datatypes.push({ id: str(d.id), name: str(d.name), description: str(d.description), ...describedBy(d.describedBy), ...langs(d), values, ...(str(d.iri) ? { iri: str(d.iri), ...(d.pendingIri === true ? { pendingIri: true as const } : {}) } : {}), ...(d.anonymous === true ? { anonymous: true } : {}) });
   }
   const knownRange = (range: string) => DATATYPES.some((x) => x.id === range) || (range.startsWith(ENUM_RANGE) && datatypes.some((x) => x.id === range.slice(ENUM_RANGE.length)));
   const ids = new Set<string>();
@@ -612,6 +678,8 @@ export function normalizeModel(raw: unknown): Model {
       id,
       name: str(t.name),
       description: str(t.description),
+      ...describedBy(t.describedBy),
+      ...langs(t),
       type: type === 'property' || type === 'instance' ? type : 'concept',
       color: (COLORS as readonly string[]).includes(color) ? color : '',
       x: num(t.x),
@@ -631,7 +699,7 @@ export function normalizeModel(raw: unknown): Model {
     const term = terms.find((x) => x.id === str(t.id));
     const values = (t.values as Record<string, unknown>[])
       .filter((v) => v && typeof v === 'object' && ids.has(str(v.prop)) && str(v.value) !== '')
-      .map((v): DataValue => ({ prop: str(v.prop), value: str(v.value), ...(LANG.test(str(v.lang)) ? { lang: str(v.lang).toLowerCase() } : {}), ...(DATATYPES.some((d) => d.id === str(v.dt)) ? { dt: str(v.dt) } : {}) }));
+      .map((v): DataValue => ({ prop: str(v.prop), value: str(v.value), ...(LANG.test(str(v.lang)) ? { lang: str(v.lang).toLowerCase() } : {}), ...(DATATYPES.some((d) => d.id === str(v.dt)) || /^xsd:[A-Za-z]+$/.test(str(v.dt)) ? { dt: str(v.dt) } : {}) }));
     if (term && values.length) term.values = values;
   }
   // An enumeration can only list terms that exist, each once, and not the class itself.
@@ -697,6 +765,8 @@ export function normalizeModel(raw: unknown): Model {
       id,
       name: str(p.name).trim(),
       description: str(p.description),
+      ...describedBy(p.describedBy),
+      ...langs(p),
       chars: Array.isArray(p.chars) ? [...new Set(p.chars.map((c) => str(c)).filter(Boolean))] : [],
       ...(domain ? { domain: domain.list } : {}),
       ...(range ? { range: range.list } : {}),
@@ -740,6 +810,9 @@ export function normalizeModel(raw: unknown): Model {
     version: MODEL_VERSION,
     name: str(o.name, 'Untitled model') || 'Untitled model',
     description: str(o.description),
+    ...describedBy(o.describedBy),
+    ...langs(o),
+    ...((NAME_PROPERTIES as readonly string[]).includes(str(o.namedBy)) ? { namedBy: str(o.namedBy) as NameProperty } : {}),
     baseIri: str(o.baseIri),
     ontologyIri: str(o.ontologyIri),
     prefixes: (Array.isArray(o.prefixes) ? (o.prefixes as Record<string, unknown>[]) : [])
@@ -792,6 +865,7 @@ export function normalizeModel(raw: unknown): Model {
     style: normalizeGraphStyle(o.style, new Set(terms.map((t) => t.id)), new Set(relations.map((r) => r.id))),
     layout: normalizeLayout(o.layout, new Set(terms.map((t) => t.id))),
     datatypes,
+    ...(typeof o.unmapped === 'string' && o.unmapped.trim() ? { unmapped: o.unmapped } : {}),
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],
       on: Array.isArray((o.quality as QualityConfig | undefined)?.on) ? [...new Set((o.quality as QualityConfig).on.map((x) => str(x)).filter(Boolean))] : [],

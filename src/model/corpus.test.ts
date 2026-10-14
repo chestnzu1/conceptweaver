@@ -42,7 +42,7 @@ const kinds = (lines: string[]) => {
 // One statement to a line: a literal may hold line breaks.
 const oneLine = (s: string) => '  ' + s.replace(/\\/g, '\\\\').replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
 
-function report(entry: CorpusEntry, format: DocumentFormat, leftOut: string[], c: Comparison): string {
+function report(entry: CorpusEntry, format: DocumentFormat, kept: string[], c: Comparison): string {
   return [
     `${entry.name} (${entry.file}, read as ${FORMAT_LABEL[format]}), opened in ConceptWeaver and saved as Turtle`,
     'unchanged, then compared with the original by the OWL API: axioms by structure, and the',
@@ -51,7 +51,7 @@ function report(entry: CorpusEntry, format: DocumentFormat, leftOut: string[], c
     `Original: ${c.original.axioms} axioms. Saved: ${c.exported.axioms} axioms.`,
     `Lost: ${c.removed.length}${c.removed.length ? ` (${kinds(c.removed)})` : ''}.`,
     `Added: ${c.added.length}${c.added.length ? ` (${kinds(c.added)})` : ''}.`,
-    `Said to be left out when it was opened: ${leftOut.length ? leftOut.join(', ') : 'nothing'}.`,
+    `Kept as it was, not editable here: ${kept.length ? kept.join(', ') : 'nothing'}.`,
     '',
     'Lost: in the original, not in what was saved',
     ...c.removed.map(oneLine),
@@ -72,14 +72,14 @@ describe.skipIf(why)('round trip of the corpus', () => {
   for (const entry of CORPUS) {
     it.skipIf(!fs.existsSync(corpusFile(entry)))(`${entry.name}: what is lost or added on a round trip is what was recorded`, async () => {
       const original = decodeDocument(new Uint8Array(fs.readFileSync(corpusFile(entry))));
-      const { model, format, leftOut } = await readModelFile(original, entry.file, { serviceUrl: service.url });
+      const { model, format, kept } = await readModelFile(original, entry.file, { serviceUrl: service.url });
       // As the editor holds an opened model, and as Download as Turtle writes it.
       const saved = toTurtle(withIris(model));
       if (process.env.CORPUS_SAVED) fs.writeFileSync(`${process.env.CORPUS_SAVED}/${entry.id}.ttl`, saved);
       const response = await fetch(`${service.url}/compare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original, exported: saved }) });
       const comparison = (await response.json()) as Comparison;
       expect(comparison.errors).toEqual([]);
-      await expect(report(entry, format, leftOut, comparison)).toMatchFileSnapshot(`../../corpus/expected/${entry.id}.txt`);
+      await expect(report(entry, format, kept, comparison)).toMatchFileSnapshot(`../../corpus/expected/${entry.id}.txt`);
     }, 120_000);
   }
 });

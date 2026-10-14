@@ -10,6 +10,7 @@ import { LAYOUTS, noLayout, type GraphLayout, type LayoutKind, type Places } fro
 import { sampleModel } from './sample';
 import { convertModel } from './convert';
 import { DEFAULT_PROP, linkProps, nameKey, propNamed } from './identity';
+import { withoutIris } from './unmapped';
 import { declaredProp, relChoices, type RelChoice } from './props';
 import { cannotRelate, settleRelation, typed } from './relating';
 import { reconnect, type End } from './reconnect';
@@ -205,8 +206,25 @@ function loadSavedStyles(): SavedStyle[] {
 let lastStyleEdit = { key: '', at: 0 };
 const HISTORY = 100;
 
-/** A model as the editor holds it: every named entity with its IRI, every relationship joined to the object property it uses. */
-const prepared = (m: Model): Model => linkProps(withIris(m));
+/** The IRIs of a model's own entities: its terms, object properties and named datatypes. */
+const entityIris = (m: Model) => new Set([...m.terms, ...m.props, ...m.datatypes].map((x) => x.iri).filter((x): x is string => !!x));
+
+/**
+ * A model as the editor holds it: every named entity with its IRI, every relationship joined to
+ * the object property it uses. After an edit (`before` is the model it was made to), the
+ * statements kept as they were read that mention an entity no longer there go with it.
+ */
+const prepared = (m: Model, before?: Model): Model => {
+  const next = linkProps(withIris(m));
+  if (!before || !next.unmapped) return next;
+  const now = entityIris(next);
+  const gone = new Set([...entityIris(before)].filter((iri) => !now.has(iri)));
+  if (!gone.size) return next;
+  const unmapped = withoutIris(next.unmapped, gone);
+  if (unmapped === next.unmapped) return next;
+  const { unmapped: _was, ...rest } = next;
+  return unmapped ? { ...rest, unmapped } : rest;
+};
 
 /**
  * A relationship with a change made to it. A new label that is not the name of the property the
@@ -858,7 +876,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => {
       // Whatever the edit, every named entity ends up with an IRI, made once and then left alone,
       // and every relationship joined to the object property it uses, by id.
-      const model = prepared(fn(s.model));
+      const model = prepared(fn(s.model), s.model);
       if (model === s.model) return s;
       return history ? { model, ...pushHistory(s) } : { model };
     }),

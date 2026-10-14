@@ -91,6 +91,31 @@ properties labelled "account" (`foaf:account`, `foaf:holdsAccount`), and the rea
 first. Both are kept now, and FOAF loses 234 statements and gains 161 (551 → 479 axioms); over
 the nine, 790 are lost and 2,058 added. `corpus/expected/foaf.txt` shows the difference.
 
+**Since then: task 1.5** (keep what is not understood, the same day). What the reader has no
+place for is kept whole and written back, and what it maps is written back with the property
+and the language it was read in. Over the nine, 28 statements are lost and 1,767 added:
+
+| Ontology | Axioms, original → saved | Lost | Added | Kept as it was, not editable here |
+| --- | ---: | ---: | ---: | --- |
+| Pizza (2016) | 801 → 1,208 | 10 | 417 | 24 statements |
+| Wine | 747 → 1,984 | 5 | 1,242 | 137 statements |
+| Koala | 70 → 107 | 0 | 38 | nothing |
+| PROV-O | 973 → 971 | 4 | 3 | 13 property chains, 8 annotations on axioms, 61 other statements |
+| SKOS | 205 → 205 | 0 | 0 | 93 statements |
+| OWL-Time | 1,064 → 1,078 | 3 | 17 | 63 statements |
+| FOAF | 551 → 557 | 2 | 9 | 138 statements |
+| OWL 2 Primer example | 93 → 128 | 1 | 37 | 2 property chains, 1 key, 1 annotation on an axiom, 3 negative property assertions, 27 other statements |
+| Relation Ontology, core | 372 → 372 | 3 | 4 | 2 property chains, 2 annotations on axioms, 4 SWRL rules, 14 other statements |
+
+What is still lost: disjointness and difference among more than two, which the model holds as
+pairs (16: Pizza 10, Wine 5, the Primer 1); two `rdfs:domain` statements of one property, read
+as one union (PROV-O, 4; which also changes what they mean); a restriction to a datatype the
+editor does not offer, written with `rdfs:Literal` (OWL-Time, 3); text that looks like a link,
+written as a link (RO, 3); white space in two comments, which the browser's RDF/XML reader and
+the OWL API's read differently (FOAF, 2). What is added is an `rdfs:label` for each entity that
+had none, a declaration where OWL 1 used an entity without one, and those same n-ary axioms as
+pairs. The rest of this section describes the baseline as it was before these tasks.
+
 Only Koala comes back with nothing lost. What is lost, by cause, from the lists:
 
 - **Changed, not dropped.** Every `rdfs:comment` on an entity comes back as `skos:definition`,

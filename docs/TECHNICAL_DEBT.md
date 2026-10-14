@@ -113,6 +113,14 @@ constructs listed above, it drops classes defined by an `owl:intersectionOf` sta
 it writes `rdfs:comment` back as `skos:definition`; and it restates n-ary disjointness and
 difference pair by pair. Details in [BASELINES.md](BASELINES.md); the lists in `corpus/expected/`.
 
+**Status, 2026-10-14.** Step 1 done (roadmap task 1.5). Every statement the reader takes
+nothing from is kept whole in `Model.unmapped` (`src/model/unmapped.ts`) and written back with
+every Turtle and JSON-LD export; the reader records what it maps, so a statement is never both
+held by the model and kept. Kept statements follow an entity's new IRI and go with a deleted
+entity. Descriptions, names and annotations are written back with the property and language
+they were read in. The corpus now loses 28 statements of nine ontologies, not 790; what remains
+is listed in BASELINES.md. Step 2 (the OWL API as the canonical form) is Phase 3.
+
 ### TD-02 Class expressions are kept as raw Turtle text — High
 
 **Where.** `Term.axioms` in `src/model/types.ts`; written back at `src/model/rdf.ts:293`.

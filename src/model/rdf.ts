@@ -2,12 +2,13 @@ import { Parser } from 'n3';
 import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
 import { baseIriOf, localName } from './iri';
 import { arrangeAsHierarchy } from './layout';
-import { DATATYPES, ENUM_RANGE, emptyModel, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
+import { DATATYPES, ENUM_RANGE, emptyModel, type DescriptionProperty, type NameProperty, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
 import { enumOf, isEnumRange } from './datatypes';
 import { keyIri } from './governance';
 import { linkProps } from './identity';
 import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, restrictionSpecs, specsPatch } from './props';
+import { jsonLdNodes, statements } from './unmapped';
 import { resolveModel, STD_PROPS } from './vocab';
 
 const NS = {
@@ -62,7 +63,8 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   const byId = new Map(m.terms.map((t) => [t.id, t]));
 
   /** A literal in the model's language (names, definitions and synonyms are written in it). */
-  const text = (value: string): Val => (m.lang ? { lit: value, lang: m.lang } : { lit: value });
+  // In the model's language, or in the one a name or description was read in where that was another ('' for none).
+  const text = (value: string, lang = m.lang): Val => (lang ? { lit: value, lang } : { lit: value });
   const modelIri = `<${ontologyIriOf(m)}>`;
   const custom = new Map<string, string>();
   const annProps: RdfNode[] = [];
@@ -111,23 +113,24 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       if (f.iri && isAbsoluteIri(value)) n.props.push([pred, { id: short(value) }]);
       else if (pred === 'owl:deprecated' && /^(true|false)$/i.test(value)) n.props.push([pred, { lit: value.toLowerCase(), bool: true }]);
       else if (LINKS.has(pred) && /^https?:\/\/[^\s<>"]+$/.test(value)) n.props.push([pred, { id: `<${value}>` }]);
-      else n.props.push([pred, literalOf(f, value)]);
+      // Text is written as it was given, spaces and all: only an empty one is left out.
+      else n.props.push([pred, literalOf(f, f.value)]);
     }
   };
   const nodes = new Map<string, RdfNode>();
 
   if (m.mode === 'skos') {
     // A SKOS concept scheme: every term is a concept in it, "is a" is skos:broader.
-    const scheme: RdfNode = { id: modelIri, props: [['rdf:type', { id: 'skos:ConceptScheme' }], ['skos:prefLabel', text(m.name)]] };
-    if (m.description) scheme.props.push(['dcterms:description', text(m.description)]);
+    const scheme: RdfNode = { id: modelIri, props: [['rdf:type', { id: 'skos:ConceptScheme' }], [m.namedBy ?? 'skos:prefLabel', text(m.name, m.nameLang)]] };
+    if (m.description) scheme.props.push([m.describedBy ?? 'dcterms:description', text(m.description, m.descriptionLang)]);
     for (const t of m.terms) {
       // A concept of another scheme is referred to, not described: it is not in this scheme.
       if (t.external !== undefined) {
         nodes.set(t.id, { id: ref.get(t.id)!, props: [['rdf:type', { id: 'skos:Concept' }]] });
         continue;
       }
-      const n: RdfNode = { id: ref.get(t.id)!, props: [['rdf:type', { id: 'skos:Concept' }], ['skos:prefLabel', text(t.name)]] };
-      if (t.description) n.props.push(['skos:definition', text(t.description)]);
+      const n: RdfNode = { id: ref.get(t.id)!, props: [['rdf:type', { id: 'skos:Concept' }], ['skos:prefLabel', text(t.name, t.nameLang)]] };
+      if (t.description) n.props.push([t.describedBy ?? 'skos:definition', text(t.description, t.descriptionLang)]);
       for (const syn of t.synonyms.split(',')) if (syn.trim()) n.props.push(['skos:altLabel', text(syn.trim())]);
       annotate(n, t);
       n.props.push(['skos:inScheme', { id: scheme.id }]);
@@ -161,20 +164,20 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     return { base, nodes: [scheme, ...annProps, ...own.values(), ...m.terms.map((t) => nodes.get(t.id)!)], ref, propRef: new Map() };
   }
 
-  const ontology: RdfNode = { id: modelIri, props: [['rdf:type', { id: 'owl:Ontology' }], ['rdfs:label', text(m.name)]] };
-  if (m.description) ontology.props.push(['rdfs:comment', text(m.description)]);
+  const ontology: RdfNode = { id: modelIri, props: [['rdf:type', { id: 'owl:Ontology' }], [m.namedBy ?? 'rdfs:label', text(m.name, m.nameLang)]] };
+  if (m.description) ontology.props.push([m.describedBy ?? 'rdfs:comment', text(m.description, m.descriptionLang)]);
   // Dependencies: the ontologies whose axioms this one takes over. Their content is not written here.
   for (const e of m.externals) if (e.imports && e.iri) ontology.props.push(['owl:imports', { id: `<${e.iri}>` }]);
 
   for (const t of m.terms) {
     const type = t.type === 'concept' ? 'owl:Class' : t.type === 'property' ? 'owl:DatatypeProperty' : 'owl:NamedIndividual';
-    const n: RdfNode = { id: ref.get(t.id)!, props: [['rdf:type', { id: type }], ['rdfs:label', text(t.name)]] };
+    const n: RdfNode = { id: ref.get(t.id)!, props: [['rdf:type', { id: type }], ['rdfs:label', text(t.name, t.nameLang)]] };
     // An entity of another ontology is only declared: its label and definition are that ontology's to state.
     if (t.external !== undefined) {
       nodes.set(t.id, { id: n.id, props: [n.props[0]] });
       continue;
     }
-    if (t.description) n.props.push(['skos:definition', text(t.description)]);
+    if (t.description) n.props.push([t.describedBy ?? 'skos:definition', text(t.description, t.descriptionLang)]);
     for (const syn of t.synonyms.split(',')) if (syn.trim()) n.props.push(['skos:altLabel', text(syn.trim())]);
     annotate(n, t);
     nodes.set(t.id, n);
@@ -191,7 +194,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     .filter((d) => !d.anonymous)
     .map((d) => ({
       id: datatypeRef.get(d.id)!,
-      props: [['rdf:type', { id: 'rdfs:Datatype' }], ['rdfs:label', text(d.name)], ...(d.description ? [['skos:definition', text(d.description)] as [string, Val]] : []), ...(d.values.length ? [['owl:equivalentClass', literalList(d)] as [string, Val]] : [])],
+      props: [['rdf:type', { id: 'rdfs:Datatype' }], ['rdfs:label', text(d.name, d.nameLang)], ...(d.description ? [[d.describedBy ?? 'skos:definition', text(d.description, d.descriptionLang)] as [string, Val]] : []), ...(d.values.length ? [['owl:equivalentClass', literalList(d)] as [string, Val]] : [])],
     }));
   /** A range as it is written: a standard datatype or a named one by name, a nameless enumeration as its list. */
   const rangeVal = (range: string | undefined): Val | undefined => {
@@ -219,8 +222,8 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     const n: RdfNode = { id: propRef.get(v.id)!, props: [['rdf:type', { id: 'owl:ObjectProperty' }]] };
     for (const c of CHARACTERISTICS) if (v.chars.includes(c.id)) n.props.push(['rdf:type', { id: c.owl }]);
     if (v.external === undefined) {
-      n.props.push(['rdfs:label', text(v.name)]);
-      if (v.description) n.props.push(['skos:definition', text(v.description)]);
+      n.props.push(['rdfs:label', text(v.name, v.nameLang)]);
+      if (v.description) n.props.push([v.describedBy ?? 'skos:definition', text(v.description, v.descriptionLang)]);
       annotate(n, v);
     }
     for (const link of PROP_LINKS) for (const k of v[link]) if (propRef.has(k)) n.props.push([LINK_PREDICATE[link], { id: propRef.get(k)! }]);
@@ -359,7 +362,9 @@ export function toTurtle(m: Model): string {
       .filter((p) => always.has(p.prefix) || new RegExp(`(^|[\\s^(\\[])${p.prefix}:`, 'm').test(body))
       .map((p) => `@prefix ${p.prefix}: <${p.iri}> .`),
   ];
-  return head.join('\n') + '\n\n' + body + '\n';
+  // Statements kept as they were read, which the model has no place for (Model.unmapped).
+  const kept = m.unmapped?.trim() ? `\n# Kept as they were read: statements this editor has no place for.\n${m.unmapped.trim()}\n` : '';
+  return head.join('\n') + '\n\n' + body + '\n' + kept;
 }
 
 export function toJsonLd(m: Model): string {
@@ -397,7 +402,7 @@ export function toJsonLd(m: Model): string {
     for (const [k, vs] of Object.entries(o)) flat[k] = vs.length === 1 ? vs[0] : vs;
     return flat;
   };
-  return JSON.stringify({ '@context': context, '@graph': nodes.map(conv) }, null, 2);
+  return JSON.stringify({ '@context': context, '@graph': [...nodes.map(conv), ...(m.unmapped?.trim() ? jsonLdNodes(m.unmapped) : [])] }, null, 2);
 }
 
 // ---------------------------------------------------------------- import
@@ -415,35 +420,6 @@ const humanize = (iri: string, lower: boolean): string => {
   return lower ? words.toLowerCase() : words;
 };
 
-/**
- * What an ontology states that the model has no place for, counted: it is opened without these,
- * and what is exported from the model does not have them. Whoever opens a file is told, so that
- * a round trip through the app is not taken for a faithful copy when it is not one.
- */
-export function leftOut(text: string): string[] {
-  const OWL_NS = 'http://www.w3.org/2002/07/owl#';
-  const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
-  const typed: Record<string, string> = {
-    'http://www.w3.org/2003/11/swrl#Imp': 'SWRL rule',
-    [OWL_NS + 'Axiom']: 'annotation on an axiom',
-    [OWL_NS + 'Annotation']: 'annotation on an annotation',
-    [OWL_NS + 'NegativePropertyAssertion']: 'negative property assertion',
-  };
-  const stated: Record<string, string> = { [OWL_NS + 'propertyChainAxiom']: 'property chain', [OWL_NS + 'hasKey']: 'key' };
-  const counts = new Map<string, number>();
-  let quads: { predicate: N3Term; object: N3Term }[];
-  try {
-    quads = new Parser().parse(text) as unknown as typeof quads;
-  } catch {
-    return [];
-  }
-  for (const q of quads) {
-    const what = q.predicate.value === RDF_TYPE ? typed[q.object.value] : stated[q.predicate.value];
-    if (what) counts.set(what, (counts.get(what) ?? 0) + 1);
-  }
-  return [...counts].map(([what, n]) => `${n.toLocaleString('en')} ${n === 1 ? what : what.replace(/^(\S+)/, (w) => (w === 'key' ? 'keys' : w === 'annotation' ? 'annotations' : w)).replace(/(rule|assertion|chain)$/, '$1s')}`);
-}
-
 /** Builds a model from Turtle / N-Triples text, reading the common OWL, RDFS and SKOS patterns. */
 export function fromTurtle(text: string, fallbackName = 'Imported model'): Model {
   // The file's own prefix declarations are kept: they are how its author abbreviates its IRIs.
@@ -456,6 +432,31 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     s.set(q.predicate.value, [...(s.get(q.predicate.value) ?? []), q.object]);
   }
   const objs = (s: string, p: string) => spo.get(s)?.get(p) ?? [];
+  // What the reader takes into the model, statement by statement. A statement it takes nothing
+  // from is kept as it was, and written back (see unmapped.ts and Model.unmapped).
+  const termKey = (t: N3Term) => (t.termType === 'Literal' ? JSON.stringify([t.value, t.language ?? '', t.datatype?.value ?? '']) : key(t));
+  const quadKey = (s: string, p: string, o: N3Term) => `${s}\u0001${p}\u0001${termKey(o)}`;
+  const used = new Set<string>();
+  const iriTerm = (value: string): N3Term => ({ termType: 'NamedNode', value });
+  /** Marks a statement as taken: one object, or every object of the subject and predicate. */
+  const mark = (s: string, p: string, o?: N3Term | string) => {
+    for (const x of o === undefined ? objs(s, p) : [typeof o === 'string' ? iriTerm(o) : o]) used.add(quadKey(s, p, x));
+  };
+  /** Marks a blank node and everything below it as taken: a restriction, a list, an expression kept as text. */
+  const markTree = (t: N3Term, seen = new Set<string>()) => {
+    if (t.termType !== 'BlankNode' || seen.has(key(t))) return;
+    seen.add(key(t));
+    for (const [p, os] of spo.get(key(t)) ?? []) {
+      for (const o of os) {
+        used.add(quadKey(key(t), p, o));
+        markTree(o, seen);
+      }
+    }
+  };
+  const markWith = (s: string, p: string, o: N3Term) => {
+    mark(s, p, o);
+    markTree(o);
+  };
   // The language most names are written in becomes the model's language; labels in other
   // languages are kept as metadata fields.
   const langs = new Map<string, number>();
@@ -473,6 +474,32 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       if (best) return best.value;
     }
     return '';
+  };
+  /** The same, for a value the model takes (a name, a description): the statement it came from is marked as taken. */
+  const take = (s: string, ...preds: string[]): string => takeFrom(s, ...preds)?.value ?? '';
+  /** The value taken, the property it was taken from, and its language ('' for none). */
+  const takeFrom = (s: string, ...preds: string[]): { value: string; pred: string; lang: string } | undefined => {
+    for (const p of preds) {
+      const ls = objs(s, p).filter((o) => o.termType === 'Literal');
+      const best = ls.find((l) => (l.language ?? '') === pref) ?? ls.find((l) => !l.language) ?? ls[0];
+      if (best) {
+        mark(s, p, best);
+        return { value: best.value, pred: p, lang: best.language ?? '' };
+      }
+    }
+    return undefined;
+  };
+  /** A name taken, with the language it was written in where that is not the model's. */
+  const nameOf = (s: string, preds: string[], otherwise: string): { name: string; nameLang?: string } => {
+    const got = takeFrom(s, ...preds);
+    return got ? { name: got.value, ...(got.lang !== pref ? { nameLang: got.lang } : {}) } : { name: otherwise };
+  };
+  // A description is written back with the property it was read from, where that is not the one written by default.
+  const DESCRIBED: Record<string, DescriptionProperty> = { [NS.skos + 'definition']: 'skos:definition', [NS.rdfs + 'comment']: 'rdfs:comment', [NS.dct + 'description']: 'dcterms:description' };
+  const describe = (s: string, preds: string[], usual: DescriptionProperty): { description: string; describedBy?: DescriptionProperty; descriptionLang?: string } => {
+    const got = takeFrom(s, ...preds);
+    const by = got && DESCRIBED[got.pred];
+    return { description: got?.value ?? '', ...(by && by !== usual ? { describedBy: by } : {}), ...(got && got.lang !== pref ? { descriptionLang: got.lang } : {}) };
   };
   const typed = (type: string) => [...spo.keys()].filter((s) => !s.startsWith('_:') && objs(s, NS.rdf + 'type').some((o) => o.value === type));
   const builtin = (iri: string) => iri.startsWith(NS.owl) || iri.startsWith(NS.rdfs) || iri.startsWith(NS.rdf);
@@ -498,10 +525,11 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       t = newTerm({
         iri,
         type,
-        name: literal(iri, NS.rdfs + 'label', NS.skos + 'prefLabel', NS.dct + 'title') || humanize(iri, false),
-        description: literal(iri, NS.skos + 'definition', NS.rdfs + 'comment', NS.dct + 'description'),
+        ...nameOf(iri, [NS.rdfs + 'label', NS.skos + 'prefLabel', NS.dct + 'title'], humanize(iri, false)),
+        ...describe(iri, [NS.skos + 'definition', NS.rdfs + 'comment', NS.dct + 'description'], 'skos:definition'),
         synonyms: objs(iri, NS.skos + 'altLabel').filter(inPref).map((o) => o.value).join(', '),
       });
+      for (const o of objs(iri, NS.skos + 'altLabel').filter(inPref)) mark(iri, NS.skos + 'altLabel', o);
       terms.set(iri, t);
       m.terms.push(t);
     }
@@ -546,7 +574,12 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   const propIdOf = new Map([...objProps].map((p) => [p, uid()]));
 
   // Classes: declared ones first, then anything used in a class position.
-  for (const type of [NS.owl + 'Class', NS.rdfs + 'Class', NS.skos + 'Concept']) for (const c of typed(type)) ensure(c, 'concept');
+  for (const type of [NS.owl + 'Class', NS.rdfs + 'Class', NS.skos + 'Concept']) {
+    for (const c of typed(type)) {
+      ensure(c, 'concept');
+      mark(c, NS.rdf + 'type', type);
+    }
+  }
   for (const [s, preds] of spo) {
     for (const p of [NS.rdfs + 'subClassOf', NS.skos + 'broader', NS.skos + 'narrower', NS.owl + 'equivalentClass', NS.owl + 'disjointWith', NS.owl + 'complementOf']) {
       const os = named(preds.get(p) ?? []);
@@ -655,12 +688,13 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   for (const c of classes) {
     for (const o of objs(c, NS.rdfs + 'subClassOf')) {
       if (o.termType === 'NamedNode') {
-        relate(c, o.value, 'generalization');
+        if (relate(c, o.value, 'generalization')) mark(c, NS.rdfs + 'subClassOf', o);
         continue;
       }
       // An anonymous superclass. The restrictions the app can draw become relationships; any
       // other class expression is kept word for word, so that nothing asserted is lost.
       if (!drawRestriction(c, o)) keep(c, 'rdfs:subClassOf', o);
+      markWith(c, NS.rdfs + 'subClassOf', o);
     }
     for (const o of objs(c, NS.owl + 'equivalentClass')) {
       if (o.termType !== 'BlankNode') continue;
@@ -669,28 +703,42 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       const listed = enumerations.has(c) ? undefined : enumerationOf(o);
       if (listed) enumerations.set(c, listed);
       else keep(c, 'owl:equivalentClass', o);
+      markWith(c, NS.owl + 'equivalentClass', o);
     }
-    named(objs(c, NS.skos + 'broader')).forEach((o) => relate(c, o, 'generalization'));
-    named(objs(c, NS.skos + 'narrower')).forEach((o) => relate(o, c, 'generalization'));
+    for (const o of objs(c, NS.skos + 'broader')) if (o.termType === 'NamedNode' && relate(c, o.value, 'generalization')) mark(c, NS.skos + 'broader', o);
+    for (const o of objs(c, NS.skos + 'narrower')) if (o.termType === 'NamedNode' && relate(o.value, c, 'generalization')) mark(c, NS.skos + 'narrower', o);
   }
   // Each object property is declared with what the file says about it. Only restrictions put
   // it between particular classes; a domain and range alone do not, so nothing is drawn for them.
   const propEntries = new Map<string, ObjProp>();
   const expandCurie = (curie: string) => (curie.startsWith('owl:') ? NS.owl : NS.rdfs) + curie.split(':')[1];
   const charOf = new Map(CHARACTERISTICS.map((c) => [NS.owl + c.owl.slice(4), c.id]));
-  const others = (p: string, pred: string) => [...new Set(named(objs(p, pred)).filter((x) => objProps.has(x) && x !== p).map((x) => propIdOf.get(x)!))];
+  const others = (p: string, pred: string) => {
+    const to = named(objs(p, pred)).filter((x) => objProps.has(x) && x !== p);
+    for (const x of to) mark(p, pred, x);
+    return [...new Set(to.map((x) => propIdOf.get(x)!))];
+  };
+  /** The classes a domain or range names, the statements it came from marked as taken where it names any. */
+  const classesOf = (p: string, pred: string) =>
+    objs(p, pred).flatMap((o) => {
+      const cs = expand(o).filter((c) => terms.has(c));
+      if (cs.length) markWith(p, pred, o);
+      return cs;
+    });
   /** The same terms, whatever the order. */
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
   for (const p of objProps) {
-    const domain = [...new Set(objs(p, NS.rdfs + 'domain').flatMap(expand))].filter((c) => terms.has(c)).map((c) => terms.get(c)!.id);
-    const range = [...new Set(objs(p, NS.rdfs + 'range').flatMap(expand))].filter((c) => terms.has(c)).map((c) => terms.get(c)!.id);
+    const domain = [...new Set(classesOf(p, NS.rdfs + 'domain'))].map((c) => terms.get(c)!.id);
+    const range = [...new Set(classesOf(p, NS.rdfs + 'range'))].map((c) => terms.get(c)!.id);
     const entry: ObjProp = {
       id: propIdOf.get(p)!,
-      name: propLabel(p),
+      ...nameOf(p, [NS.rdfs + 'label', NS.skos + 'prefLabel'], humanize(p, true)),
       iri: p,
-      description: literal(p, NS.skos + 'definition', NS.rdfs + 'comment'),
+      ...describe(p, [NS.skos + 'definition', NS.rdfs + 'comment'], 'skos:definition'),
       chars: objs(p, NS.rdf + 'type').map((o) => charOf.get(o.value)).filter((c): c is string => !!c),
     };
+    mark(p, NS.rdf + 'type', NS.owl + 'ObjectProperty');
+    for (const o of objs(p, NS.rdf + 'type')) if (charOf.has(o.value)) mark(p, NS.rdf + 'type', o);
     // A domain or range that only repeats where the property is used is left to follow its use.
     const uses = m.relations.filter((r) => r.prop === entry.id);
     if (domain.length && !same(domain, [...new Set(uses.map((r) => r.from))])) entry.domain = domain;
@@ -737,18 +785,25 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   // any other way (by facets, say) is not something the app has an editor for, and is not taken in.
   const datatypeOfIri = new Map<string, EnumDatatype>();
   for (const iri of datatypeIris) {
-    const values = objs(iri, NS.owl + 'equivalentClass').map(literalsOf).find(Boolean);
-    if (!values) continue;
-    const d: EnumDatatype = { id: 'd' + m.datatypes.length + '-' + iri.replace(/[^A-Za-z0-9]+/g, '').slice(-24), name: literal(iri, NS.rdfs + 'label', NS.skos + 'prefLabel') || humanize(iri, false), description: literal(iri, NS.skos + 'definition', NS.rdfs + 'comment'), values, iri };
+    const listing = objs(iri, NS.owl + 'equivalentClass').find((o) => literalsOf(o));
+    const values = listing && literalsOf(listing);
+    if (!listing || !values) continue;
+    mark(iri, NS.rdf + 'type', NS.rdfs + 'Datatype');
+    markWith(iri, NS.owl + 'equivalentClass', listing);
+    const d: EnumDatatype = { id: 'd' + m.datatypes.length + '-' + iri.replace(/[^A-Za-z0-9]+/g, '').slice(-24), ...nameOf(iri, [NS.rdfs + 'label', NS.skos + 'prefLabel'], humanize(iri, false)), ...describe(iri, [NS.skos + 'definition', NS.rdfs + 'comment'], 'skos:definition'), values, iri };
     m.datatypes.push(d);
     datatypeOfIri.set(iri, d);
   }
   for (const p of dataProps) {
     const t = ensure(p, 'property');
+    mark(p, NS.rdf + 'type', NS.owl + 'DatatypeProperty');
     const ranges = objs(p, NS.rdfs + 'range');
     const datatype = ranges.map((o) => (o.value.startsWith(XSD) ? 'xsd:' + o.value.slice(XSD.length) : o.value === NS.rdf + 'langString' ? 'rdf:langString' : ''));
     const known = datatype.find((d) => DATATYPES.some((x) => x.id === d));
-    if (known) t.range = known;
+    if (known) {
+      t.range = known;
+      mark(p, NS.rdfs + 'range', ranges[datatype.indexOf(known)]);
+    }
     // A range that is an enumerated datatype: one with a name, or a list of literals written in place.
     let taken: N3Term | undefined;
     for (const o of known ? [] : ranges) {
@@ -761,18 +816,26 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       if (d) {
         t.range = ENUM_RANGE + d.id;
         taken = o;
+        markWith(p, NS.rdfs + 'range', o);
         break;
       }
     }
     // A data range written in place that is none of those (a datatype narrowed by facets, a union,
     // a list that is not one of literals) is kept word for word, as an anonymous class expression is.
-    for (const o of ranges) if (o.termType === 'BlankNode' && o !== taken) keep(p, 'rdfs:range', o);
-    if (objs(p, NS.rdf + 'type').some((o) => o.value === NS.owl + 'FunctionalProperty')) t.functional = true;
-    const domain = [...new Set(objs(p, NS.rdfs + 'domain').flatMap(expand))].filter((c) => terms.has(c)).map((c) => terms.get(c)!.id);
+    for (const o of ranges) {
+      if (o.termType !== 'BlankNode' || o === taken) continue;
+      keep(p, 'rdfs:range', o);
+      markWith(p, NS.rdfs + 'range', o);
+    }
+    if (objs(p, NS.rdf + 'type').some((o) => o.value === NS.owl + 'FunctionalProperty')) {
+      t.functional = true;
+      mark(p, NS.rdf + 'type', NS.owl + 'FunctionalProperty');
+    }
+    const domain = [...new Set(classesOf(p, NS.rdfs + 'domain'))].map((c) => terms.get(c)!.id);
     const owners = [...new Set(m.relations.filter((r) => r.kind === 'property' && r.to === t.id).map((r) => r.from))];
     if (domain.length && !same(domain, owners)) t.domain = domain;
   }
-  for (const p of dataProps) named(objs(p, NS.rdfs + 'subPropertyOf')).forEach((o) => relate(p, o, 'generalization'));
+  for (const p of dataProps) for (const o of objs(p, NS.rdfs + 'subPropertyOf')) if (o.termType === 'NamedNode' && relate(p, o.value, 'generalization')) mark(p, NS.rdfs + 'subPropertyOf', o);
 
   // Individuals and the facts stated about them.
   for (const [s, preds] of spo) {
@@ -781,6 +844,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     const isIndividual = (preds.get(NS.rdf + 'type') ?? []).some((o) => o.value === NS.owl + 'NamedIndividual');
     if (!isIndividual && !types.some((t) => classes.has(t))) continue;
     ensure(s, 'instance');
+    if (isIndividual) mark(s, NS.rdf + 'type', NS.owl + 'NamedIndividual');
     for (const t of types) {
       // What a declared individual is an instance of is a class, even if the file says nothing else about it.
       if (isIndividual && !terms.has(t) && !objProps.has(t) && !dataProps.has(t) && !annotationProps.has(t)) {
@@ -788,7 +852,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
         classes.add(t);
       }
       // Only membership of a class is one: owl:NamedIndividual and the like are declarations, not memberships.
-      if (classes.has(t)) relate(s, t, 'generalization');
+      if (classes.has(t) && relate(s, t, 'generalization')) mark(s, NS.rdf + 'type', t);
     }
   }
   // The members of an enumeration are individuals, whether or not the file declares them as such.
@@ -803,16 +867,18 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     const subject = terms.get(s);
     if (!subject) continue;
     for (const [p, os] of preds) {
-      if (objProps.has(p)) named(os).forEach((o) => relate(s, o, 'association', propLabel(p), undefined, { prop: propIdOf.get(p)! }));
+      if (objProps.has(p)) for (const o of os) if (o.termType === 'NamedNode' && !builtin(o.value) && relate(s, o.value, 'association', propLabel(p), undefined, { prop: propIdOf.get(p)! })) mark(s, p, o);
       // The literal values an individual has for a data property.
       const prop = dataProps.has(p) ? terms.get(p) : undefined;
       if (!prop || subject.type !== 'instance') continue;
       for (const o of os) {
         if (o.termType !== 'Literal') continue;
         const dt = datatypeId(o.datatype?.value);
-        const own = dt && dt !== 'xsd:string' && dt !== 'rdf:langString' && dt !== prop.range && DATATYPES.some((d) => d.id === dt) ? dt : undefined;
+        // Its own datatype, where it is not the property's: one the editor offers, or any other of XML Schema's, kept as it is.
+        const own = dt && dt !== 'xsd:string' && dt !== 'rdf:langString' && dt !== prop.range && (DATATYPES.some((d) => d.id === dt) || dt.startsWith('xsd:')) ? dt : undefined;
         const value: DataValue = { prop: prop.id, value: o.value, ...(o.language ? { lang: o.language } : {}), ...(own ? { dt: own } : {}) };
         subject.values = [...(subject.values ?? []), value];
+        mark(s, p, o);
       }
     }
   }
@@ -832,6 +898,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       const all = members(node, ...lists.map((l) => NS.owl + l));
       // "All different" said of exactly the members of an enumeration belongs to that enumeration:
       // it is kept as one statement there, not as a relationship between every two members.
+      // Read as one statement or as pairs, it is taken.
+      markTree({ termType: node.startsWith('_:') ? 'BlankNode' : 'NamedNode', value: node.startsWith('_:') ? node.slice(2) : node });
       if (type === 'AllDifferent') {
         const set = new Set(all.map((iri) => terms.get(iri)?.id));
         const owner = m.terms.find((t) => t.oneOf && t.oneOf.length === set.size && t.oneOf.length > 1 && t.oneOf.every((id) => set.has(id)));
@@ -857,11 +925,24 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   pairwise('AllDisjointProperties', 'owl:propertyDisjointWith', 'members');
 
   // Statements made with a plain rdf:Property are relationships nobody has classified yet.
+  const plainProps: string[] = [];
   for (const p of typed(NS.rdf + 'Property')) {
     if (objProps.has(p) || dataProps.has(p) || annotationProps.has(p)) continue;
+    let drawnAny = false;
     for (const [sub, preds] of spo) {
       // Marked plain, so that it stays one even if an object property has the same name.
-      if (terms.has(sub)) named(preds.get(p) ?? []).forEach((o) => relate(sub, o, 'association', propLabel(p), undefined, { plain: true }));
+      if (!terms.has(sub)) continue;
+      for (const o of preds.get(p) ?? []) {
+        if (o.termType !== 'NamedNode' || builtin(o.value) || !relate(sub, o.value, 'association', propLabel(p), undefined, { plain: true })) continue;
+        mark(sub, p, o);
+        drawnAny = true;
+      }
+    }
+    // The property is then the relationships' label, and declared again when they are written.
+    if (drawnAny) {
+      mark(p, NS.rdf + 'type', NS.rdf + 'Property');
+      take(p, NS.rdfs + 'label', NS.skos + 'prefLabel');
+      plainProps.push(p);
     }
   }
 
@@ -873,10 +954,17 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     for (const [s, preds] of spo) {
       if (!terms.has(s)) continue;
       for (const o of named(preds.get(full(sp.id)) ?? [])) {
-        if (sp.id === 'rdfs:subPropertyOf' && relKeys.has(`${s}|${o}|generalization|||`)) continue;
+        // Said already as a sub-property, or the other way round for a symmetric one: taken, once.
+        if (sp.id === 'rdfs:subPropertyOf' && relKeys.has(`${s}|${o}|generalization|||`)) {
+          mark(s, full(sp.id), o);
+          continue;
+        }
         // A symmetric statement is often written in both directions; one relation is enough.
-        if (sp.symmetric && relKeys.has(`${o}|${s}|association||${sp.id}|`)) continue;
-        relate(s, o, 'association', '', sp.id);
+        if (sp.symmetric && relKeys.has(`${o}|${s}|association||${sp.id}|`)) {
+          mark(s, full(sp.id), o);
+          continue;
+        }
+        if (relate(s, o, 'association', '', sp.id)) mark(s, full(sp.id), o);
         if (sp.vocab === 'owl' || sp.id.endsWith('Match')) m.vocab.enabled = true;
       }
     }
@@ -893,8 +981,13 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   const plainRel = new Set(typed(NS.rdf + 'Property').filter((p) => !objProps.has(p) && !dataProps.has(p) && !annotationProps.has(p)));
   const stdRel = new Set(STD_PROPS.map((sp) => full(sp.id)));
   const drawn = (pred: string) => stdRel.has(pred) || objProps.has(pred) || plainRel.has(pred);
-  const defaultNs = declared.get('');
-  /** Whether a property is one of the file's own: in its default namespace, or anywhere if it has none. */
+  // The file's own namespace: its default prefix, or failing that (RDF/XML has none) the one most
+  // of its terms are in, which becomes the model's base IRI below.
+  const nsOf = (iri: string) => iri.slice(0, Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1);
+  const nsCount = new Map<string, number>();
+  for (const iri of terms.keys()) nsCount.set(nsOf(iri), (nsCount.get(nsOf(iri)) ?? 0) + 1);
+  const defaultNs = declared.get('') ?? [...nsCount].sort((a, b) => b[1] - a[1])[0]?.[0];
+  /** Whether a property is one of the file's own: in its namespace, or anywhere if it has none. */
   const own = (iri: string) => defaultNs === undefined || iri.startsWith(defaultNs);
   /** A property of another vocabulary keeps its identity: its prefixed name where the file has a prefix for it, or else its IRI. */
   const byIri = (iri: string): string => {
@@ -910,9 +1003,9 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     const ns = objProps.has(pred) || dataProps.has(pred) ? undefined : META_NS.find((p) => pred.startsWith(p.iri) && /^[A-Za-z][\w-]*$/.test(pred.slice(p.iri.length)));
     if (ns) return `${ns.prefix}:${pred.slice(ns.iri.length)}`;
     if (!annotationProps.has(pred)) return undefined;
-    // A property of the file's own namespace, or one it names, goes by that name. Any other keeps
-    // its IRI, so that it is written back as the property it is.
-    return own(pred) || literal(pred, NS.rdfs + 'label', NS.skos + 'prefLabel') ? propLabel(pred) : byIri(pred);
+    // A property of the file's own namespace goes by its name. Any other keeps its IRI, label or
+    // not, so that it is written back as the property it is and not as one of this ontology's.
+    return own(pred) ? propLabel(pred) : byIri(pred);
   };
   const typedValue = (o: N3Term): Pick<ExtraField, 'lang' | 'dt' | 'iri'> => {
     if (o.termType === 'NamedNode') return { iri: true };
@@ -920,10 +1013,17 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     const dt = o.datatype?.value.startsWith(XSD) ? 'xsd:' + o.datatype.value.slice(XSD.length) : undefined;
     return dt && dt !== 'xsd:string' ? { dt } : {};
   };
-  const names = new Set([NS.rdfs + 'label', NS.skos + 'prefLabel', NS.dct + 'title']);
-  const descriptions = new Set([NS.skos + 'definition', NS.rdfs + 'comment', NS.dct + 'description']);
-  const annotated: [string, { name: string; description: string; fields?: ExtraField[] }, boolean][] = [...[...terms].map(([iri, t]): [string, Term, boolean] => [iri, t, true]), ...[...propEntries].map(([iri, p]): [string, ObjProp, boolean] => [iri, p, false])];
-  for (const [iri, t, hasSynonyms] of annotated) {
+  /**
+   * A property a field was read with: its declaration is taken, and so is its label where the
+   * field is filed under it. That is how they are written back.
+   */
+  const declaredAs = (pred: string, key_: string, type = NS.owl + 'AnnotationProperty') => {
+    // The standard vocabularies' own are not declared again when written, so a declaration of one is kept as it was.
+    if (![NS.rdfs, NS.owl, NS.skos, NS.dct].some((ns) => pred.startsWith(ns))) mark(pred, NS.rdf + 'type', type);
+    if (key_ === literal(pred, NS.rdfs + 'label', NS.skos + 'prefLabel')) take(pred, NS.rdfs + 'label', NS.skos + 'prefLabel');
+  };
+  const annotated: [string, { name: string; description: string; fields?: ExtraField[] }][] = [...terms, ...propEntries];
+  for (const [iri, t] of annotated) {
     for (const [pred, os] of spo.get(iri) ?? []) {
       if (pred === QM + 'hasQualityMeasurement') {
         // Quality measurements (DQV): each is filed under the metric it measures.
@@ -931,7 +1031,11 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
           const metric = objs(key(o), QM + 'isMeasurementOf').find((x) => x.termType === 'NamedNode');
           const value = objs(key(o), QM + 'value')[0];
           if (!metric || !value || value.termType === 'BlankNode') continue;
-          (t.fields ??= []).push({ key: annotationKey(metric.value) ?? (own(metric.value) ? propLabel(metric.value) : byIri(metric.value)), value: value.value, ...typedValue(value), measure: true });
+          const metricKey = annotationKey(metric.value) ?? (own(metric.value) ? propLabel(metric.value) : byIri(metric.value));
+          (t.fields ??= []).push({ key: metricKey, value: value.value, ...typedValue(value), measure: true });
+          markWith(iri, pred, o);
+          declaredAs(pred, '');
+          declaredAs(metric.value, metricKey, QM + 'Metric');
         }
         continue;
       }
@@ -940,10 +1044,12 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       for (const o of os) {
         // A statement between two terms of the model that is a relationship was drawn as one.
         if (o.termType === 'BlankNode' || (o.termType === 'NamedNode' && terms.has(o.value) && drawn(pred))) continue;
-        // Whatever already became the name, the description or a synonym isn't repeated.
-        // The same words in another language are another annotation, and are kept.
-        if (inPref(o) && ((names.has(pred) && o.value === t.name) || (descriptions.has(pred) && o.value === t.description))) continue;
-        if (hasSynonyms && pred === NS.skos + 'altLabel' && inPref(o)) continue;
+        // The statement that became the name, the description or a synonym isn't repeated. The same
+        // words said again with another property, or in another language, are another statement,
+        // and are kept as an annotation.
+        if (used.has(quadKey(iri, pred, o))) continue;
+        mark(iri, pred, o);
+        declaredAs(pred, key_);
         const typed_ = typedValue(o);
         // A link given for one of the linking properties is written back as a link in any case.
         const plainLink = typed_.iri && LINKS.has(key_) && /^https?:\/\//.test(o.value) && !terms.has(o.value);
@@ -957,8 +1063,19 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   if (typed(NS.skos + 'Concept').length > typed(NS.owl + 'Class').length) m.mode = 'skos';
   const header = m.mode === 'skos' ? (typed(NS.skos + 'ConceptScheme')[0] ?? typed(NS.owl + 'Ontology')[0]) : typed(NS.owl + 'Ontology')[0];
   if (header) {
-    m.name = literal(header, NS.skos + 'prefLabel', NS.rdfs + 'label', NS.dct + 'title') || m.name;
-    m.description = literal(header, NS.dct + 'description', NS.rdfs + 'comment', NS.skos + 'definition');
+    // The ontology's own name and description, with the property and the language they were written with.
+    const NAMED: Record<string, NameProperty> = { [NS.skos + 'prefLabel']: 'skos:prefLabel', [NS.rdfs + 'label']: 'rdfs:label', [NS.dct + 'title']: 'dcterms:title' };
+    const title = takeFrom(header, NS.skos + 'prefLabel', NS.rdfs + 'label', NS.dct + 'title');
+    if (title) {
+      m.name = title.value;
+      if (NAMED[title.pred] !== (m.mode === 'skos' ? 'skos:prefLabel' : 'rdfs:label')) m.namedBy = NAMED[title.pred];
+      if (title.lang !== pref) m.nameLang = title.lang;
+    }
+    const said = describe(header, [NS.dct + 'description', NS.rdfs + 'comment', NS.skos + 'definition'], m.mode === 'skos' ? 'dcterms:description' : 'rdfs:comment');
+    m.description = said.description;
+    if (said.describedBy) m.describedBy = said.describedBy;
+    if (said.descriptionLang !== undefined) m.descriptionLang = said.descriptionLang;
+    for (const type of [NS.owl + 'Ontology', NS.skos + 'ConceptScheme']) mark(header, NS.rdf + 'type', type);
   }
   // Most common namespace among the terms becomes the model's base IRI.
   const counts = new Map<string, number>();
@@ -976,6 +1093,17 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   if (header && !header.startsWith('_:')) m.ontologyIri = header;
   // Ontologies this one imports are dependencies. Their content is not in the file, so they are
   // recorded as known by IRI only until the user supplies them.
+  if (header) mark(header, NS.owl + 'imports');
+  // In a vocabulary a relationship of its own is a kind of skos:related, and written so.
+  if (m.mode === 'skos') for (const p of plainProps) mark(p, NS.rdfs + 'subPropertyOf', NS.skos + 'related');
+  // In a concept scheme, which concepts are in it and which are at its top follow from the
+  // hierarchy, and are written so: taken, as the hierarchy is.
+  if (header && m.mode === 'skos') {
+    mark(header, NS.skos + 'hasTopConcept');
+    for (const c of terms.keys()) {
+      for (const p of ['inScheme', 'topConceptOf']) for (const o of objs(c, NS.skos + p)) if (o.value === header) mark(c, NS.skos + p, o);
+    }
+  }
   for (const o of header ? named(objs(header, NS.owl + 'imports')) : []) {
     m.externals.push({ id: 'x' + m.externals.length + '-' + o.replace(/[^A-Za-z0-9]+/g, '').slice(-24), name: humanize(o.replace(/[#/]$/, ''), false), iri: o, namespace: /[#/]$/.test(o) ? o : o + '#', source: '', sourceKind: 'unknown', addedAt: 0, classes: 0, objectProperties: 0, dataProperties: 0, individuals: 0, imports: true });
   }
@@ -987,6 +1115,11 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     for (const [iri, t] of terms) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri)) t.external = ownedBy(iri);
     for (const [iri, p] of propEntries) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri) && !p.domain && !p.range) p.external = ownedBy(iri);
   }
+
+  // What it took nothing from is kept, a whole statement at a time: one taken in part already has
+  // its place in the model, and is not said a second time.
+  const kept = statements(quads).filter((st) => st.quads.every((q) => !used.has(quadKey(key(q.subject), q.predicate.value, q.object))));
+  if (kept.length) m.unmapped = kept.map((st) => st.text).sort().join('\n') + '\n';
 
   arrangeAsHierarchy(m);
   return m;

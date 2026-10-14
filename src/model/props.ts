@@ -1,6 +1,6 @@
 import { DEFAULT_PROP, linkProps, nameKey, propOf } from './identity';
 import { allowsKind, configOf, type RelKindId } from './modelTypes';
-import { ENUM_RANGE, PROP_LINKS, QUANTIFIERS, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
+import { ENUM_RANGE, PROP_LINKS, QUANTIFIERS, type DescriptionProperty, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
 import { resolveModel } from './vocab';
 
 /** The characteristics an object property can have, as in OWL. */
@@ -22,6 +22,9 @@ export interface PropView {
   id: string;
   name: string;
   description: string;
+  describedBy?: DescriptionProperty;
+  nameLang?: string;
+  descriptionLang?: string;
   /** Term ids. When not set by hand these follow the classes the property is used between. */
   domain: string[];
   range: string[];
@@ -69,6 +72,9 @@ function analyse(model: Model): Analysis {
       id: p.id,
       name: p.name,
       description: p.description,
+      ...(p.describedBy ? { describedBy: p.describedBy } : {}),
+      ...(p.nameLang !== undefined ? { nameLang: p.nameLang } : {}),
+      ...(p.descriptionLang !== undefined ? { descriptionLang: p.descriptionLang } : {}),
       chars: p.chars,
       domain: p.domain?.filter((id) => types.has(id)) ?? [],
       range: p.range?.filter((id) => types.has(id)) ?? [],

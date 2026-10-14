@@ -6,7 +6,8 @@ import { htmlPage, LIGHT_TOKENS, viewerData, type Tokens } from './htmlExport';
 import { entailed as entailedBy } from './inferred';
 import { supports } from './modelTypes';
 import { hasCardinality } from './props';
-import { fromTurtle, leftOut, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
+import { fromTurtle, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
+import { keptSummary } from './unmapped';
 import { asTurtle, detectFormat, FORMAT_LABEL, type DocumentFormat, type DocumentSource } from './rdfFormats';
 import { stable } from './stable';
 import { routeOf } from '../layout/types';
@@ -46,10 +47,10 @@ export function relationsCsv(m: Model): string {
  * not done at once: the engine for them is fetched when first needed, or the local OWL service
  * is asked.
  */
-export async function readModelFile(text: string, fileName: string, source: Omit<DocumentSource, 'name'> = {}): Promise<{ model: Model; format: DocumentFormat; /** What the file states that the model has no place for, counted. */ leftOut: string[] }> {
+export async function readModelFile(text: string, fileName: string, source: Omit<DocumentSource, 'name'> = {}): Promise<{ model: Model; format: DocumentFormat; /** What the file states that the model has no place for, kept as it was: counted by kind. */ kept: string[] }> {
   const title = fileName.replace(/[?#].*$/, '').replace(/^.*\//, '').replace(/\.[^.]+$/, '') || 'Imported model';
   const format = detectFormat(text, fileName, source.contentType);
-  if (format === 'model') return { model: normalizeModel(JSON.parse(text)), format, leftOut: [] };
+  if (format === 'model') return { model: normalizeModel(JSON.parse(text)), format, kept: [] };
   const { turtle } = await asTurtle(text, { ...source, name: fileName });
   let m: Model;
   try {
@@ -59,7 +60,7 @@ export async function readModelFile(text: string, fileName: string, source: Omit
     throw new Error(format === 'turtle' ? `It is not well-formed Turtle: ${e instanceof Error ? e.message : String(e)}` : `It was read as ${FORMAT_LABEL[format]}, but what it holds could not be made a model: ${e instanceof Error ? e.message : String(e)}`);
   }
   if (!m.terms.length && !m.props.length) throw new Error(`No classes, concepts, properties or individuals were found in it (it was read as ${FORMAT_LABEL[format]}).`);
-  return { model: m, format, leftOut: leftOut(turtle) };
+  return { model: m, format, kept: keptSummary(m.unmapped) };
 }
 
 const STYLE_PROPS = [

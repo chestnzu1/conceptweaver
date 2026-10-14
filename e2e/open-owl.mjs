@@ -206,8 +206,10 @@ else {
 await openFile('kin.owl');
 await message.waitFor();
 const left = flat(await message.locator('p').innerText());
-ok(/^opened, with some statements left out$/i.test(flat(await message.locator('h2').innerText())) && left.startsWith('Opened “Kinship” from RDF/XML: 1 terms, 0 relations. The file also has 1 property chain, which the model has no place for: it is not shown, not reasoned with, and not in anything exported from here.') && (await name()) === 'Kinship', 'an ontology with something the model has no place for is opened, and what was left out is said in a message that stays: ' + left.slice(0, 110));
+ok(/^opened, with statements kept that cannot be edited here$/i.test(flat(await message.locator('h2').innerText())) && left.startsWith('Opened “Kinship” from RDF/XML: 1 terms, 0 relations. The file also has 1 property chain, which the editor has no place for. It is kept as it was and written back whenever the ontology is saved or exported, but it is not shown or edited here.') && (await name()) === 'Kinship', 'an ontology with something the model has no place for opens, saying that it is kept: ' + left.slice(0, 160));
 await message.getByRole('button', { name: 'OK' }).click();
+ttl = await turtle();
+ok(/#propertyChainAxiom> \( <http:\/\/example\.org\/kin#hasParent> <http:\/\/example\.org\/kin#hasParent> \)/.test(ttl), 'and it is written back with the ontology, as it was read');
 
 // ---------------------------------------------------------------- the formats there were
 await openFile('people.ttl');

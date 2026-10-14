@@ -1,4 +1,5 @@
 import type { ExtraField, Model } from './types';
+import { renameIris } from './unmapped';
 
 /** A name that only stands in until the user types a real one; no IRI is made from it. */
 const PLACEHOLDER = /^new (class|concept|data property|individual|term|property( \d+)?|datatype( \d+)?)$/i;
@@ -73,8 +74,9 @@ export function withIris(m: Model): Model {
 
 /**
  * Makes whatever refers to entities by IRI follow when their IRIs change (old → new): class
- * expressions kept as text, annotations that point at them, SHACL shapes, and the records of
- * mappings and of suggestions turned down. The entities themselves are not touched.
+ * expressions kept as text, annotations that point at them, SHACL shapes, the records of
+ * mappings and of suggestions turned down, and the statements kept as they were read. The
+ * entities themselves are not touched.
  */
 export function followIris(m: Model, changed: Map<string, string>): Model {
   if (!changed.size) return m;
@@ -108,6 +110,7 @@ export function followIris(m: Model, changed: Map<string, string>): Model {
     },
     mappings: m.mappings.map((x) => (changed.has(x.source) || changed.has(x.target) ? { ...x, source: swap(x.source), target: swap(x.target) } : x)),
     rejected: m.rejected.map((r) => r.split('|').map(swap).join('|')),
+    ...(m.unmapped ? { unmapped: renameIris(m.unmapped, changed) } : {}),
   };
 }
 
@@ -140,7 +143,9 @@ export function moveNamespace(m: Model, from: string, to: string): Model {
   const inText = (axiom: string) => axiom.replace(/<([^>]*)>/g, (all, iri: string) => (renamed.has(iri) ? `<${renamed.get(iri)}>` : all));
   // So do annotations that point at a moved entity.
   const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && renamed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && renamed.has(f.value) ? { ...f, value: renamed.get(f.value)! } : f)) } : x);
-  return { ...m, props: props.map(refs), terms: terms.map((t) => refs(t.axioms?.some((a) => inText(a) !== a) ? { ...t, axioms: t.axioms.map(inText) } : t)) };
+  // And so do the statements kept as they were read.
+  const unmapped = renameIris(m.unmapped, renamed);
+  return { ...m, props: props.map(refs), terms: terms.map((t) => refs(t.axioms?.some((a) => inText(a) !== a) ? { ...t, axioms: t.axioms.map(inText) } : t)), ...(unmapped ? { unmapped } : {}) };
 }
 
 /** Where the last part of an IRI starts: after its final # or /. */
