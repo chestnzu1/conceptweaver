@@ -1,4 +1,6 @@
 import type { Edit } from './axioms';
+import { withoutEntities } from './domains';
+import { enumsOf } from './expressions';
 import { validateLiteral } from './literals';
 import { compactIri } from './prefixes';
 import { DATATYPES, ENUM_RANGE, isLang, uid, type EnumDatatype, type EnumLiteral, type Model } from './types';
@@ -23,8 +25,8 @@ export function rangeLabel(model: Pick<Model, 'datatypes'>, range: string | unde
   return long ? range : (range.split(':')[1] ?? range);
 }
 
-/** The data properties that have a datatype as their range. */
-export const usersOf = (model: Model, id: string) => model.terms.filter((t) => t.type === 'property' && t.range === enumRange(id));
+/** The data properties whose range names a datatype: as the range, or in an expression that is. */
+export const usersOf = (model: Model, id: string) => model.terms.filter((t) => t.type === 'property' && t.ranges?.some((a) => enumsOf(a.range).includes(id)));
 
 const sameLiteral = (a: EnumLiteral, b: EnumLiteral) => a.value === b.value && (a.dt ?? '') === (b.dt ?? '') && (a.lang ?? '') === (b.lang ?? '');
 const q = (s: string) => `“${s}”`;
@@ -67,13 +69,13 @@ export function updateDatatype(model: Model, id: string, patch: Partial<Pick<Enu
   return { model: { ...model, datatypes: model.datatypes.map((x) => (x.id === id ? { ...x, ...patch, ...(name ? { name } : {}) } : x)) } };
 }
 
-/** Takes a datatype out of the model. The properties that had it as their range are left without one. */
+/** Takes a datatype out of the model, and out of the ranges that name it: a property that had it alone as its range is left without one. */
 export function removeDatatype(model: Model, id: string): Edit {
   const d = model.datatypes.find((x) => x.id === id);
   if (!d) return { model };
   const users = usersOf(model, id);
   return {
-    model: { ...model, datatypes: model.datatypes.filter((x) => x.id !== id), terms: model.terms.map((t) => (users.includes(t) ? (({ range: _, ...rest }) => rest)(t) : t)) },
+    model: withoutEntities({ ...model, datatypes: model.datatypes.filter((x) => x.id !== id) }, new Set(d.iri ? [d.iri] : []), new Set([id])),
     ...(users.length ? { note: `${q(d.name)} is gone. ${users.map((t) => q(t.name)).join(', ')} ${users.length === 1 ? 'has' : 'have'} no range now.` } : {}),
   };
 }

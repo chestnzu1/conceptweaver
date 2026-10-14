@@ -1,0 +1,71 @@
+@prefix : <http://example.org/domains#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/domains> a owl:Ontology ;
+    rdfs:label "Domains fixture"@en .
+
+:Agent a owl:Class ;
+    rdfs:label "Agent"@en .
+
+:Person a owl:Class ;
+    rdfs:label "Person"@en ;
+    rdfs:subClassOf :Agent , [ a owl:Restriction ; owl:onProperty :knows ; owl:someValuesFrom :Person ] .
+
+:Organisation a owl:Class ;
+    rdfs:label "Organisation"@en ;
+    rdfs:subClassOf :Agent .
+
+:Event a owl:Class ;
+    rdfs:label "Event"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :age ; owl:someValuesFrom xsd:integer ] .
+
+:Place a owl:Class ;
+    rdfs:label "Place"@en .
+
+:knows a owl:ObjectProperty ;
+    rdfs:label "knows"@en ;
+    rdfs:domain :Person ;
+    rdfs:range :Person .
+
+:locatedIn a owl:ObjectProperty ;
+    rdfs:label "located in"@en ;
+    rdfs:range :Place .
+
+:memberOf a owl:ObjectProperty ;
+    rdfs:label "member of"@en ;
+    rdfs:domain :Person ;
+    rdfs:range :Organisation .
+
+:tookPartIn a owl:ObjectProperty ;
+    rdfs:label "took part in"@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Organisation :Person ) ] ;
+    rdfs:range :Event .
+
+:Size a rdfs:Datatype ;
+    rdfs:label "Size"@en ;
+    owl:equivalentClass [ a rdfs:Datatype ; owl:oneOf ( "small" "large" ) ] .
+
+:age a owl:DatatypeProperty ;
+    rdfs:label "age"@en ;
+    rdfs:domain :Person ;
+    rdfs:range xsd:integer .
+
+:size_2 a owl:DatatypeProperty ;
+    rdfs:label "size"@en ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( :Organisation :Person ) ] ;
+    rdfs:range :Size .
+
+:colour a owl:DatatypeProperty ;
+    rdfs:label "colour"@en ;
+    rdfs:range [ a rdfs:Datatype ; owl:oneOf ( "red" "blue" ) ] .
+
+:note a owl:DatatypeProperty ;
+    rdfs:label "note"@en .
+
+:code a owl:DatatypeProperty ;
+    rdfs:label "code"@en ;
+    rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:string ; owl:withRestrictions ( [ xsd:length "4"^^xsd:integer ] ) ] , xsd:string .

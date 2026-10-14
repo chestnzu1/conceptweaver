@@ -2,10 +2,10 @@ Wine (wine.rdf, read as RDF/XML), opened in ConceptWeaver and saved as Turtle
 unchanged, then compared with the original by the OWL API: axioms by structure, and the
 ontology's IRI, annotations and imports.
 
-Original: 747 axioms. Saved: 1984 axioms.
+Original: 747 axioms. Saved: 1983 axioms.
 Lost: 5 (DifferentIndividuals 5).
-Added: 1242 (DifferentIndividuals 829, AnnotationAssertion 247, Declaration 163, ObjectPropertyDomain 2, ObjectPropertyRange 1).
-Kept as it was, not editable here: 137 statements.
+Added: 1241 (DifferentIndividuals 829, AnnotationAssertion 247, Declaration 163, ObjectPropertyDomain 1, ObjectPropertyRange 1).
+Kept as it was, not editable here: 135 statements.
 
 Lost: in the original, not in what was saved
   DifferentIndividuals(vin:Bancroft vin:ChateauChevalBlanc vin:ChateauDYchem vin:ChateauDeMeursault vin:ChateauLafiteRothschild vin:ChateauMargauxWinery vin:ChateauMorgon vin:ClosDeLaPoussie vin:ClosDeVougeot vin:CongressSprings vin:Corbans vin:CortonMontrachet vin:Cotturi vin:DAnjou vin:Elyse vin:Forman vin:Foxen vin:GaryFarrell vin:KalinCellars vin:KathrynKennedy vin:LaneTanner vin:Longridge vin:Marietta vin:McGuinnesso vin:MountEdenVineyard vin:Mountadam vin:PageMillWinery vin:PeterMccoy vin:PulignyMontrachet vin:SantaCruzMountainVineyard vin:SaucelitoCanyon vin:SchlossRothermel vin:SchlossVolrad vin:SeanThackrey vin:Selaks vin:SevreEtMaine vin:StGenevieve vin:Stonleigh vin:Taylor vin:Ventana vin:WhitehallLane)
@@ -1255,5 +1255,4 @@ Added: in what was saved, not in the original
   DifferentIndividuals(vin:Taylor vin:WhitehallLane)
   DifferentIndividuals(vin:Ventana vin:WhitehallLane)
   ObjectPropertyDomain(vin:hasMaker vin:Wine)
-  ObjectPropertyDomain(vin:locatedIn vin:Wine)
   ObjectPropertyRange(vin:hasMaker vin:Winery)

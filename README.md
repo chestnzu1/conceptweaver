@@ -97,7 +97,7 @@ More on what the advanced reasoner does and does not cover is under
   The syntax is told from how the file starts, not from its name. Everything is read into the
   same model the same way: classes, object and data properties, individuals, the hierarchy,
   restrictions, memberships and values become what the editor shows; a class expression there
-  is no drawing for is kept word for word; labels in other languages and other annotations are
+  is no drawing for is an axiom of its class, edited as one; labels in other languages and other annotations are
   kept as annotations; the file's prefixes stay its prefixes; what it imports is recorded by its
   IRI and not fetched. A file in an encoding other than UTF-8 is read in the one it declares.
   What cannot be read is refused in a message that stays on screen and says why: a file that is
@@ -145,13 +145,13 @@ More on what the advanced reasoner does and does not cover is under
   in tables, Turtle, SPARQL and search); they are kept on import and written on export.
 - **IRIs and labels are separate** – the entity editor has an *IRI suffix* field: the last part
   of the IRI can be anything (`C0001`, `Film_v2`) whatever the name (`rdfs:label`) is, and renaming
-  never changes it. A suffix that is taken or cannot be part of an IRI is refused; shapes, kept
-  class expressions and mapping records that mention the IRI follow the change.
+  never changes it. A suffix that is taken or cannot be part of an IRI is refused; shapes, class
+  expressions and mapping records that mention the IRI follow the change.
 - **IRIs** – every entity has a full IRI, made once in the model's base namespace when it is first
   named (or kept from an import) and unchanged by renaming. Shown read-only with a copy button.
 - **Asserted superclasses** – a class lists every superclass explicitly stated for it (not the
-  inferred ones) and they can be added and removed one at a time. Anonymous class expressions from
-  an imported ontology that the app cannot draw are kept word for word and exported again.
+  inferred ones) and they can be added and removed one at a time. A superclass that is an
+  expression is a class axiom (see *Class expressions*).
 - **Entities view** – classes, object properties, data properties and individuals each in their
   own tab, with the side panel as the editor, in the manner of Protégé.
   Under the tabs each of the five lists (classes, object properties, data properties,
@@ -195,6 +195,66 @@ More on what the advanced reasoner does and does not cover is under
   restriction on the class (`some`, `only`, `min`/`max`/`exactly` N), between individuals a fact.
   In an ontology, naming a line between two classes or two individuals is enough: the property
   of that name is used, and declared on the spot if it is new.
+- **Class expressions** (model format 4, from 2026-10-14). A class's superclasses, definitions and
+  disjoint classes that are expressions are axioms of the class, each of one kind, chosen when
+  it is made and never assumed: *SubClass Of* (every member is in the expression), *Equivalent
+  To* (being in it is enough to be a member, and a reasoner classifies by it) and *Disjoint With*.
+  Several of a kind are several axioms, never merged into one union or intersection. They are
+  listed under *Class expressions* in the class's editor, each in Manchester syntax, and made and
+  changed in the expression editor, a dialog with two ways of editing one expression:
+  - *Blocks*: the expression as nested blocks, each an AND, OR, NOT, a class, a restriction
+    (SOME, ONLY, VALUE, MIN, MAX, EXACTLY, SELF, on a property or its inverse), a list of
+    individuals, or for a data property a datatype, one narrowed by facets, an enumerated
+    datatype, a list of values. Classes, properties, individuals and datatypes are chosen with
+    the searchable pickers of the rest of the editor. A block's operator can be changed without
+    losing what it holds (SOME to ONLY keeps the property and filler, AND to OR the operands, and
+    back again), a block can be put into an AND, an OR or a NOT, unwrapped, folded away to its
+    text, or removed. What a block may hold follows from where it is: the filler of a data
+    property is a data range, and a class is not offered there. What is still to be chosen is
+    said at its block, and the Manchester syntax of the whole is shown beneath.
+  - *Manchester syntax*: a text editor (CodeMirror, loaded when first opened) that highlights
+    classes, properties, individuals, datatypes and keywords each as what they are, suggests
+    the names and keywords that fit where the cursor is (Ctrl+Space), closes and matches
+    brackets, lays a long expression out over lines (*Format*), and marks at its place what does
+    not read: a syntax error, a name that is nothing in the ontology, or a name of the wrong kind
+    (“xsd:integer” is a datatype; hasChild is an object property, whose values are individuals of
+    a class). Prefixed names and full IRIs are read too.
+
+  Both edit one structured expression (`src/model/expressions.ts`), so switching between them
+  changes how it is shown and never what it says; a text that does not read yet is not turned
+  into blocks until it does. An expression is saved only when it is finished and OWL 2 DL allows
+  it (an object property used as a data property, a datatype where a class has to be, a facet a
+  datatype does not have and a literal not of its datatype are refused; a class the model has
+  only as an individual is warned about, since OWL allows the two to share an IRI). Whether it
+  can have members at all is the reasoner's to say: HermiT gets every axiom, finds a class that
+  can have none, and classifies by a definition. What is read is the W3C Manchester syntax for
+  class expressions and data ranges (`src/model/manchester.ts`); `src/model/expressionConformance.test.ts`
+  has the OWL API's own Manchester parser read the same texts, and they agree but for one thing
+  where the OWL API departs from the grammar (it types the 4 of `xsd:string[length 4]` as a
+  string). Frames (`Class: … SubClassOf: …`), annotations and property chains are not
+  expressions and are not read there. An expression with something in it OWL has no class
+  expression for (a restriction with two quantifiers, an empty list) is kept as it was read,
+  shown, written back, and can be removed but not changed. What the editor does not do yet is
+  listed in [docs/EXPRESSION_EDITOR_LIMITATIONS.md](docs/EXPRESSION_EDITOR_LIMITATIONS.md).
+- **Domains and ranges are axioms** (model format 3, from 2026-10-14; `src/model/expressions.ts`).
+  Each `rdfs:domain` or `rdfs:range` statement is one axiom, with a class expression of its own
+  (for a data property's range, a data range): a class, or a union, intersection or complement of
+  expressions, a list of individuals, a restriction; a datatype, one narrowed by facets
+  (`xsd:integer[>= 0]`), a union of datatypes, a list of literals. Several axioms all hold, so two
+  domains mean "both" (their intersection); "either" is one axiom that is a union. They are read
+  each as it is stated, never merged, and written back the same: PROV-O's `prov:hadActivity`, with
+  the domain `prov:Influence` and a union of four classes, keeps both. The property editor lists
+  the axioms one by one, joined by *and*, each to be changed or taken away on its own and new ones
+  added in the expression editor (as blocks, or in Manchester syntax as Protégé shows them:
+  `Person or Organisation`, `'took part in' some Event`, names in quotes where they have spaces).
+  A data property's datatype is still chosen in its list; any other range axiom is listed under
+  it. An expression with something in it the editor has no structure for is shown as it was read
+  and written back so, and can be taken away but not changed. A
+  domain or range that nobody stated follows the uses, as it always did. Validation holds a use
+  between classes to every axiom (a union is met by any of its classes, an intersection by all),
+  and the rule reasoner infers each class an axiom is, or is an intersection of. Deleting a class
+  takes it out of the unions and intersections that name it, and an axiom that is nothing else
+  goes; giving it another IRI, the axioms follow.
 - **Inferred restrictions** – a class also shows, read-only, the restrictions it inherits from
   the superclasses and equivalent classes the reasoner entails for it, each with its source.
 - **Class restrictions** – a class lists what its object and data properties require of it,
@@ -240,10 +300,17 @@ More on what the advanced reasoner does and does not cover is under
   each keeps its own uses, its own IRI and its own links to other properties. A name typed on a
   line still chooses the property of that name, the model's own before one of another ontology;
   two of the model's own cannot be given one name, which would only invite mistakes.
-- **A model saved before** (format 1, which knew a property by its name in lower case) opens as
-  it was: the same Turtle, the same relationships, the same properties and the same picture.
-  `src/model/migration.test.ts` checks that on three models saved in format 1. It is saved in
-  format 2 from then on, which a version of the app from before cannot read in full.
+- **A model saved before** (format 1, which knew a property by its name in lower case; format
+  2, whose domains and ranges were lists of classes; format 3, which kept class expressions as
+  Turtle text) opens as it was: the same ontology, the same relationships, the same properties
+  and the same picture. What a list meant is what those formats wrote: one class is that class,
+  several are their union in one axiom (it was always written so), an empty list no domain, and
+  none at all one that follows the uses; a data property's datatype is one axiom, and a range
+  kept as text the axiom it states; a superclass or definition kept as text is the class axiom
+  of that kind it states. `src/model/migration.test.ts` checks that on three models saved in
+  format 1, one in format 2 and one in format 3 (their Turtle byte for byte for formats 1 and 2,
+  statement for statement for 3). It is saved in format 4 from then on, which a version of the
+  app from before cannot read in full.
 - **Every entity has an IRI from the moment it exists**: one made from its name or, while it has
   none (a new class is "New class"), one that stands in, in the default namespace. The first real
   name replaces that one, once, and whatever referred to it follows; after that a rename never
@@ -415,9 +482,11 @@ More on what the advanced reasoner does and does not cover is under
   - *Class*: asserted superclasses (any number), equivalent and disjoint classes, restrictions,
     and the properties that name it as their domain. Anonymous class expressions from an import
     are listed apart from named classes and kept word for word.
-  - *Object property*: domain, range, the seven characteristics, and any number of
-    superproperties, inverses, equivalent and disjoint properties.
-  - *Data property*: domain, datatype, functional, superproperties, equivalent and disjoint properties.
+  - *Object property*: domain and range, each as its axioms (see *Domains and ranges are
+    axioms*), the seven characteristics, and any number of superproperties, inverses,
+    equivalent and disjoint properties.
+  - *Data property*: domain as its axioms, datatype and further range axioms, functional,
+    superproperties, equivalent and disjoint properties.
   - *Individual*: types, object property assertions, data property assertions (checked against
     the property's datatype), same and different individuals.
   - Every entity: its IRI in full, prefixed name and namespace, and annotations, several per
@@ -585,9 +654,18 @@ that *Layered* says so and uses the built-in hierarchical layout.
   from an end that was put somewhere by hand; where those ends are is kept in `graphStyle.ts`.
   Which object property a relationship uses, by id, is `identity.ts`; every entity's IRI is
   `iri.ts`; a model of an older format is brought up to date in `normalizeModel` (`types.ts`),
-  checked against the files in `fixtures/v1`. What an ontology says that the model has no place for
-  is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in `rdf.ts`) tells what it took.
-- `src/components` – the SVG canvas, side panels, views and menus.
+  checked against the files in `fixtures/v1`, `v2` and `v3`. What an ontology says that the
+  model has no place for is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in
+  `rdf.ts`) tells what it took. Class expressions and data ranges are one structure,
+  `expressions.ts` (read from RDF, written in OWL functional syntax as the OWL API has them,
+  followed through renames and deletions), with nothing of React in it: `manchester.ts` reads and
+  writes them as Manchester syntax and says what to complete and highlight, `expressionDraft.ts`
+  is an expression as the visual editor builds it, `expressionCheck.ts` what OWL 2 DL allows of
+  it, and `domains.ts` the edits of domains and ranges.
+- `src/components` – the SVG canvas, side panels, views and menus. The expression editor is
+  `ExpressionEditor.tsx` (the blocks, and the dialog), over `manchesterEditor.ts` (the text
+  editor, on CodeMirror, loaded when first opened); `ClassAxioms.tsx` and `AxiomList.tsx` use it
+  for a class's axioms and a property's domain and range.
 - `src/entities` – the search, the sorting and the filters of the Entities page, apart from the
   page. `contracts.ts` is all the page knows: three questions (`EntityQueryService`: which sorts
   and filters a list has, a page of a list for a search, an order and some filters, and the
@@ -628,22 +706,27 @@ that *Layered* says so and uses the built-in hierarchical layout.
 
 ## OWL constructs without an editor
 
-Kept as text on the class and written back unchanged, but not editable piece by piece: unions,
-intersections, complements, `owl:hasValue`, `owl:hasSelf`, unqualified cardinalities and nested
-restrictions, where they are stated as a superclass or an equivalent class.
+Unions, intersections, complements, restrictions of every kind (on a property or its inverse,
+qualified or not, nested to any depth), lists of individuals and data ranges have an editor
+wherever they are a domain, a range, a superclass, an equivalent class or a disjoint class (see
+*Class expressions*). What has none: an expression OWL does not have (kept as it was read, and
+removable), a general class axiom (an expression on the left of SubClassOf), `owl:disjointUnionOf`,
+property chains and keys (kept as they were read, see *Reading ontologies*).
 
-An `owl:oneOf` has an editor in two places only: as the whole of a class's definition
-(`owl:equivalentClass` to a list of named individuals) and as the whole of a datatype (a named
-datatype equivalent to a list of literals, or such a list written in place as the range of a
-data property). Anywhere else it is kept as text with the entity and is neither shown as an
-enumeration nor reasoned with: a class that is a *subclass* of a list, a list inside a union,
-an intersection or a restriction (`hasColor some { Red, Green }`, `status some { "a", "b" }`),
-a second list on a class that has one already, a list with an anonymous individual or with
-both individuals and literals in it, and a list of nothing. An RDF list that is not well formed
-(it forks, stops short, or comes back on itself) is never taken for an enumeration; it is kept
-cell by cell, as broken as it was. A data range written in place that is not a list of
-literals (a datatype narrowed by facets, a union of datatypes) is kept as text with its
-property. Validation points each of these out.
+An `owl:oneOf` is an enumeration, with an editor of its own, in two places: as the whole of a
+class's definition (`owl:equivalentClass` to a list of named individuals) and as the whole of a
+datatype (a named datatype equivalent to a list of literals, or such a list written in place as
+the range of a data property). Anywhere else it is part of the class expression it is in, and
+edited with it (`{Ann, Bob}`, `hasColor some {Red, Green}`, `xsd:date or {"unknown"}`), but not
+shown as an enumeration nor read by the app's own reasoner (HermiT reads it): a class that is a
+*subclass* of a list, a list inside a union, an intersection or a restriction, a second list on
+a class that has one already. A list with an anonymous individual or with both individuals and
+literals in it, and a list of nothing, are no OWL class expression: kept as they were read. An
+RDF list that is not well formed (it forks, stops short, or comes back on itself) is never taken
+for an enumeration; it is kept cell by cell, as broken as it was. A data range written in place
+that is not a list of literals (a datatype narrowed by facets, a union of datatypes) is the
+property's range axiom, edited as such. Validation points out each list that is not taken as an
+enumeration.
 
 Read as the pairs they stand for: `owl:AllDisjointClasses`, `owl:AllDifferent`,
 `owl:AllDisjointProperties` (named members only). An `owl:AllDifferent` over exactly the
@@ -651,11 +734,10 @@ members of an enumeration is kept as one statement on that enumeration instead.
 
 Not read at all, so lost on import: property chains, keys (`owl:hasKey`), negative property
 assertions, `owl:disjointUnionOf`, a *named* datatype defined by anything but a list of
-literals (facets, unions; a property that has one as its range comes in without a range),
+literals (facets, unions; a property that has one as its range names it there),
 annotations on axioms,
 domains, ranges and hierarchies of annotation properties, `owl:imports` and the ontology's own
-annotations other than its name and description, and a domain or range that is a class
-expression other than a union of named classes. A value whose datatype is not one of the twelve
+annotations other than its name and description. A value whose datatype is not one of the twelve
 the app offers is kept as plain text.
 
 ## Moving the Structure Explorer to a semantic backend
@@ -954,8 +1036,7 @@ rest of the app relates terms by, not a second set:
   to another ontology is kept under *Align* with its status and notes: both show their handles,
   so that where the line meets its terms can still be changed, but no term will take their ends,
   and the reason is said. A plain relationship left over in an ontology is given a kind first.
-  Class expressions the app has no drawing for (kept word for word from an import) are not lines
-  at all.
+  Class expressions the app has no drawing for (axioms of a class) are not lines at all.
 - The end that moved is drawn where the layout puts it again: where it had been dragged to was a
   place on the term it left. The other end stays where it was put.
 
@@ -990,10 +1071,12 @@ it, and nothing was replaced):
   each opens in under 50 ms (Wine: 238 terms, 1,257 relationships), and written out and read
   again gives the same terms and relationships.
 - **What becomes what.** As for Turtle: a named class, property or individual is an entity of
-  the model; `rdfs:subClassOf`, `rdf:type`, restrictions by one property, domains, ranges and
-  property characteristics are drawn or listed; any other class expression (an intersection, a
-  union, a nested restriction) is kept on its class as text and written back as it was. It is
-  shown, exported and sent to the reasoner, but not edited piece by piece.
+  the model; `rdfs:subClassOf`, `rdf:type`, restrictions by one property and property
+  characteristics are drawn or listed; every domain and range statement is an axiom with its
+  expression (see *Domains and ranges are axioms*); any other class expression stated as a
+  superclass, an equivalent class or a disjoint class (an intersection, a union, a nested
+  restriction) is an axiom of its class, of that kind, with its structure (see *Class
+  expressions*): shown, edited, exported and sent to the reasoner.
 - **What the model has no place for is kept, not editable here**: SWRL rules, property chains
   (`owl:propertyChainAxiom`), keys (`owl:hasKey`), negative property assertions, annotations on
   axioms, an ontology's version IRI and its annotations beyond name and description, a class
@@ -1015,13 +1098,13 @@ it, and nothing was replaced):
 - **What a round trip loses, measured.** `src/model/corpus.test.ts` opens each ontology of a
   fixed corpus (`corpus/corpus.mjs`: the seven above, the OWL 2 Primer's example and the core of
   the Relation Ontology), saves it as Turtle unchanged, and has the OWL API compare the two
-  statement by statement. Over the nine, 28 statements are lost (790 before what is not
-  understood was kept, and the above written back as read): disjointness and difference among
-  more than two, which come back pair by pair (16); two `rdfs:domain` statements of one
-  property, read as one union (PROV-O, 4); a restriction to a datatype the editor does not offer
-  (OWL-Time, 3); text that looks like a link, written as a link (RO, 3); and white space in two
-  comments, read differently by the browser and by the OWL API (FOAF, 2). SKOS comes back
-  exactly. What is added is mostly an `rdfs:label` for each entity that had none. The lists are
+  statement by statement. Over the nine, 24 statements are lost (790 before what is not
+  understood was kept, and the above written back as read; 28 before domains and ranges were
+  axioms): disjointness and difference among more than two, which come back pair by pair (16);
+  a restriction to a datatype the editor does not offer (OWL-Time, 3); text that looks like a
+  link, written as a link (RO, 3); and white space in two comments, read differently by the
+  browser and by the OWL API (FOAF, 2). SKOS comes back exactly, and nothing of Koala or PROV-O
+  is lost. What is added is mostly an `rdfs:label` for each entity that had none. The lists are
   in `corpus/expected/`, one file for each ontology, and the test fails when one changes: a fix
   shows there as statements no longer lost. `pnpm corpus` fetches the corpus once.
 - **Imports are not followed.** What an ontology imports is listed under *Align* by its IRI;

@@ -2020,6 +2020,422 @@ fieldset.checks legend {
   color: var(--accent);
 }
 
+/* ----------------------------------------------------------- domain and range axioms */
+
+.axioms {
+  display: grid;
+  gap: 4px;
+}
+
+.axiom-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.axiom-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* Several axioms all hold: they are joined by "and", which is said where they meet. */
+.axiom-and {
+  flex-basis: 100%;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+code.axiom {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+code.axiom.auto {
+  border-style: dashed;
+  color: var(--ink-2);
+  justify-self: start;
+}
+
+.axiom-list li.kept code.axiom {
+  border-style: dotted;
+}
+
+.axiom-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 1 1 100%;
+}
+
+.axiom-edit input {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.axiom-edit small.bad {
+  flex-basis: 100%;
+}
+
+/* Buttons on a line of their own, not in a sentence: a full-size target. */
+.axioms > .link,
+.axiom-list li > .link {
+  min-height: 24px;
+  color: var(--accent);
+}
+
+.axioms > .link {
+  justify-self: start;
+}
+
+/* ----------------------------------------------------------- the expression editor */
+
+:root {
+  --mx-keyword: #0f766e;
+  --mx-class: #1d4ed8;
+  --mx-object: #6d28d9;
+  --mx-data: #047857;
+  --mx-individual: #9a3412;
+  --mx-datatype: #0e7490;
+  --mx-literal: #be185d;
+}
+
+:root[data-theme='dark'] {
+  --mx-keyword: #2dd4bf;
+  --mx-class: #93c5fd;
+  --mx-object: #c4b5fd;
+  --mx-data: #6ee7b7;
+  --mx-individual: #fdba74;
+  --mx-datatype: #67e8f9;
+  --mx-literal: #f9a8d4;
+}
+
+.xe-dialog {
+  width: min(860px, 100%);
+}
+
+.xe-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.xe {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Inside the editor a control is as wide as it needs, not the width of a field. */
+.xe select,
+.xe input:not([type='checkbox']):not([type='radio']) {
+  width: auto;
+  max-width: 100%;
+}
+
+.xe-modes {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.xe-modes button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.xe-modes button.on {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.xe-kind {
+  display: grid;
+  gap: 4px;
+}
+
+.xe-preview {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.xe-preview code,
+.xb-summary,
+pre.axiom {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.xe small.warn {
+  color: var(--warn);
+}
+
+/* A block of the visual editor: its operator and choices on one line, the blocks under it indented. */
+.xb {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.xb[data-kind='and'],
+.xb[data-kind='or'],
+.xb[data-kind='not'] {
+  border-left-color: var(--mx-keyword);
+}
+
+.xb[data-kind='some'],
+.xb[data-kind='only'],
+.xb[data-kind='value'],
+.xb[data-kind='self'],
+.xb[data-kind='min'],
+.xb[data-kind='max'],
+.xb[data-kind='exactly'] {
+  border-left-color: var(--mx-object);
+}
+
+.xb.wrong {
+  border-left-color: var(--danger);
+}
+
+.xb.kept {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  border-style: dotted;
+}
+
+.xb-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.xb-head > select,
+.xb-row > select {
+  min-height: 24px;
+}
+
+.xb-head .picker {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.xb-fold {
+  min-width: 24px;
+  min-height: 24px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.xb-n {
+  width: 64px;
+  min-height: 24px;
+}
+
+.xb-actions {
+  margin-left: auto;
+  width: 52px !important;
+  min-height: 24px;
+}
+
+.xb-body {
+  display: grid;
+  gap: 4px;
+  margin-left: 10px;
+}
+
+.xb-child {
+  display: grid;
+  gap: 2px;
+}
+
+.xb-joint {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mx-keyword);
+}
+
+.xb-row,
+.xb-facets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.xb-literal {
+  display: inline-grid;
+  gap: 2px;
+  flex: 1 1 160px;
+}
+
+.xb-literal input,
+.xb-row input {
+  width: 100% !important;
+  min-height: 24px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.xb .link,
+.xe .row .link,
+.class-axioms .link {
+  min-height: 24px;
+  color: var(--accent);
+}
+
+/* The Manchester-syntax editor (CodeMirror) and how it colours what it reads. */
+.mx-editor .cm-editor {
+  min-height: 72px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+
+.mx-editor .cm-editor.cm-focused {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mx-editor .cm-content {
+  caret-color: var(--ink);
+}
+
+.mx-editor .cm-placeholder {
+  color: var(--ink-3);
+}
+
+.mx-editor .cm-tooltip {
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.mx-editor .cm-tooltip-autocomplete ul li[aria-selected] {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.mx-editor .cm-completionDetail {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-style: normal;
+}
+
+.mx-editor .cm-matchingBracket {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
+}
+
+.mx-editor .cm-diagnostic-error {
+  border-left-color: var(--danger);
+}
+
+.mx-keyword {
+  color: var(--mx-keyword);
+  font-weight: 600;
+}
+
+.mx-class {
+  color: var(--mx-class);
+}
+
+.mx-object {
+  color: var(--mx-object);
+}
+
+.mx-data {
+  color: var(--mx-data);
+}
+
+.mx-individual {
+  color: var(--mx-individual);
+  font-style: italic;
+}
+
+.mx-datatype {
+  color: var(--mx-datatype);
+}
+
+.mx-literal {
+  color: var(--mx-literal);
+}
+
+.mx-punct {
+  color: var(--ink-2);
+}
+
+.mx-unknown {
+  text-decoration: wavy underline var(--danger);
+}
+
+/* A class's axioms that are expressions. */
+.class-axioms {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.class-axioms li {
+  display: grid;
+  gap: 2px;
+}
+
+.class-axioms pre.axiom {
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.class-axioms li.kept pre.axiom {
+  border-style: dotted;
+}
+
+.class-axiom-line em {
+  font-style: normal;
+  font-weight: 600;
+}
+
 /* ----------------------------------------------------------- restrictions */
 
 .edge.plain {

@@ -1,4 +1,5 @@
-import type { ExtraField, Model } from './types';
+import { renamed, type ClassAxiom, type DataRangeAxiom } from './expressions';
+import type { ExtraField, Model, ObjProp, Term } from './types';
 import { renameIris } from './unmapped';
 
 /** A name that only stands in until the user types a real one; no IRI is made from it. */
@@ -72,11 +73,29 @@ export function withIris(m: Model): Model {
   return replaced.size ? followIris(out, replaced) : out;
 }
 
+/** Domains, ranges and class axioms with IRIs changed (old → new): the same objects where nothing in them changed. */
+function axiomsFollow<T extends Pick<Term, 'domains' | 'ranges'> | Pick<ObjProp, 'domains' | 'ranges'>>(x: T, changed: Map<string, string>): T {
+  const classes = (list: ClassAxiom[] | undefined) => {
+    const out = list?.map((a) => (renamed(a.expression, changed) === a.expression ? a : { ...a, expression: renamed(a.expression, changed) }));
+    return out?.some((a, i) => a !== list![i]) ? out : list;
+  };
+  const ranges = (list: (ClassAxiom | DataRangeAxiom)[] | undefined) => {
+    const out = list?.map((a) => ('expression' in a ? (renamed(a.expression, changed) === a.expression ? a : { ...a, expression: renamed(a.expression, changed) }) : renamed(a.range, changed) === a.range ? a : { ...a, range: renamed(a.range, changed) }));
+    return out?.some((a, i) => a !== list![i]) ? out : list;
+  };
+  const domains = classes(x.domains);
+  const rangesNow = ranges(x.ranges);
+  const own = (x as Pick<Term, 'classAxioms'>).classAxioms;
+  const stated = own?.map((a) => (renamed(a.expression, changed) === a.expression ? a : { ...a, expression: renamed(a.expression, changed) }));
+  const classAxioms = stated?.some((a, i) => a !== own![i]) ? stated : own;
+  return domains === x.domains && rangesNow === x.ranges && classAxioms === own ? x : ({ ...x, ...(domains ? { domains } : {}), ...(rangesNow ? { ranges: rangesNow } : {}), ...(classAxioms ? { classAxioms } : {}) } as T);
+}
+
 /**
- * Makes whatever refers to entities by IRI follow when their IRIs change (old → new): class
- * expressions kept as text, annotations that point at them, SHACL shapes, the records of
- * mappings and of suggestions turned down, and the statements kept as they were read. The
- * entities themselves are not touched.
+ * Makes whatever refers to entities by IRI follow when their IRIs change (old → new): domains
+ * and ranges, class expressions kept as text, annotations that point at them, SHACL shapes, the
+ * records of mappings and of suggestions turned down, and the statements kept as they were
+ * read. The entities themselves are not touched.
  */
 export function followIris(m: Model, changed: Map<string, string>): Model {
   if (!changed.size) return m;
@@ -86,11 +105,8 @@ export function followIris(m: Model, changed: Map<string, string>): Model {
   const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && changed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && changed.has(f.value) ? { ...f, value: swap(f.value) } : f)) } : x);
   return {
     ...m,
-    terms: m.terms.map((t) => {
-      const out = refs(t);
-      return out.axioms?.some((a) => inText(a) !== a) ? { ...out, axioms: out.axioms.map(inText) } : out;
-    }),
-    props: m.props.map(refs),
+    terms: m.terms.map((t) => axiomsFollow(refs(t), changed)),
+    props: m.props.map((p) => axiomsFollow(refs(p), changed)),
     shapes: {
       extra: inText(m.shapes.extra),
       nodes: m.shapes.nodes.map((n) => ({
@@ -139,13 +155,12 @@ export function moveNamespace(m: Model, from: string, to: string): Model {
   };
   const terms = m.terms.map(term);
   const props = m.props.map(term);
-  // Class expressions kept as text mention IRIs in full; those follow too.
-  const inText = (axiom: string) => axiom.replace(/<([^>]*)>/g, (all, iri: string) => (renamed.has(iri) ? `<${renamed.get(iri)}>` : all));
-  // So do annotations that point at a moved entity.
+  // Annotations that point at a moved entity follow too.
   const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && renamed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && renamed.has(f.value) ? { ...f, value: renamed.get(f.value)! } : f)) } : x);
   // And so do the statements kept as they were read.
   const unmapped = renameIris(m.unmapped, renamed);
-  return { ...m, props: props.map(refs), terms: terms.map((t) => refs(t.axioms?.some((a) => inText(a) !== a) ? { ...t, axioms: t.axioms.map(inText) } : t)), ...(unmapped ? { unmapped } : {}) };
+  // And so do domains, ranges and class axioms.
+  return { ...m, props: props.map((p) => axiomsFollow(refs(p), renamed)), terms: terms.map((t) => axiomsFollow(refs(t), renamed)), ...(unmapped ? { unmapped } : {}) };
 }
 
 /** Where the last part of an IRI starts: after its final # or /. */

@@ -1,3 +1,4 @@
+import { propDatatype, withDatatype } from './domains';
 import { describe, expect, it } from 'vitest';
 import { addFact, addIsA, addLink, addPropLink, addToDomain, addValue, characteristicIssues, inheritedPropertiesOfClass, linkedTerms, propertiesOfClass, removeFromDomain, removeIsA, removeLink, removePropLink, removeValue, validateLiteral, type Edit } from './axioms';
 import { inferredRestrictions } from './inferred';
@@ -17,9 +18,9 @@ function build() {
     m = { ...m, terms: [...m.terms, t] };
   };
   for (const c of ['Work', 'Film', 'Documentary', 'Person', 'Actor', 'Employee', 'Working actor', 'Studio']) term(c);
-  term('Release date', 'property', { range: 'xsd:date' });
-  term('Title', 'property', { range: 'xsd:string' });
-  term('Running time', 'property', { range: 'xsd:integer' });
+  term('Release date', 'property', { ranges: withDatatype({}, 'xsd:date') });
+  term('Title', 'property', { ranges: withDatatype({}, 'xsd:string') });
+  term('Running time', 'property', { ranges: withDatatype({}, 'xsd:integer') });
   for (const i of ['Parasite', 'Bong', 'Song']) term(i, 'instance');
   const rel = (from: string, to: string, p: Parameters<typeof newRelation>[0] extends infer R ? Partial<R> : never = {}) => {
     m = { ...m, relations: [...m.relations, newRelation({ from: id[from], to: id[to], ...p })] };
@@ -116,17 +117,17 @@ describe('class axioms', () => {
     expect(addLink(n, id.Documentary, id.Film, 'disjointWith').note).toMatch(/can now have no members/);
   });
 
-  it('keeps anonymous class expressions apart from named classes, word for word', () => {
+  it('keeps class expressions as axioms of their own, apart from named classes', () => {
     const ttl = `@prefix : <http://example.org/x#> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 :A a owl:Class ; rdfs:subClassOf :B , [ a owl:Class ; owl:unionOf ( :B :C ) ] ; owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( :B :C ) ] .
 :B a owl:Class . :C a owl:Class .`;
     const m = fromTurtle(ttl);
     const a = m.terms.find((t) => t.name === 'A')!;
     expect(names(m, assertedSuperclasses(m, a.id))).toEqual(['B']);
-    expect(a.axioms!.map((x) => x.split(' ')[0]).sort()).toEqual(['owl:equivalentClass', 'rdfs:subClassOf']);
+    expect(a.classAxioms!.map((x) => x.kind).sort()).toEqual(['EquivalentClasses', 'SubClassOf']);
     // Editing named classes leaves the expressions alone, and they are written back as they came.
     const edited = removeIsA(ok(addIsA(m, a.id, m.terms.find((t) => t.name === 'C')!.id)), a.id, m.terms.find((t) => t.name === 'B')!.id);
-    expect(edited.terms.find((t) => t.id === a.id)!.axioms).toEqual(a.axioms);
+    expect(edited.terms.find((t) => t.id === a.id)!.classAxioms).toEqual(a.classAxioms);
     const out = block(toTurtle(edited), ':A');
     expect(out).toContain('owl:unionOf');
     expect(out).toContain('owl:intersectionOf');
@@ -229,7 +230,8 @@ describe('property characteristics and relations', () => {
     expect(block(ttl, ':title')).toContain('owl:equivalentProperty :runningTime');
     const back = fromTurtle(ttl);
     const date = back.terms.find((t) => t.name === 'Release date')!;
-    expect(date).toMatchObject({ type: 'property', functional: true, range: 'xsd:date' });
+    expect(date).toMatchObject({ type: 'property', functional: true });
+    expect(propDatatype(date)).toBe('xsd:date');
     expect(names(back, assertedSuperclasses(back, date.id))).toEqual(['Title']);
     expect(names(back, linkedTerms(back, date.id, 'propertyDisjointWith').map((x) => x.id))).toEqual(['Running time']);
     expect(back.terms.find((t) => t.name === 'Title')!.functional).toBeUndefined();

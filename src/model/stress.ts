@@ -1,5 +1,6 @@
 import { arrangeAsHierarchy } from './layout';
-import { emptyModel, newProp, newRelation, newTerm, DATATYPES, type Model, type Quantifier } from './types';
+import { withDatatype } from './domains';
+import { emptyModel, newProp, newRelation, newTerm, withClassLists, DATATYPES, type ClassLists, type Model, type Quantifier } from './types';
 
 /**
  * A synthetic ontology for testing at scale: `classes` classes in a deep hierarchy, plus
@@ -11,6 +12,8 @@ export function stressModel(classes = 650): Model {
   const rand = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
   const pick = <T>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
   const m = emptyModel(`Stress test (${classes} classes)`);
+  // Domains and ranges, by the ids of the classes: made axioms of once every class has its IRI.
+  const lists: ClassLists = new Map();
   m.description = 'Generated to test the app with a large model.';
   m.vocab.enabled = true;
   const rel = (from: string, to: string, patch: Partial<ReturnType<typeof newRelation>> = {}) => m.relations.push(newRelation({ from, to, ...patch }));
@@ -39,10 +42,7 @@ export function stressModel(classes = 650): Model {
   const nProps = Math.round(classes / 9);
   for (let i = 0; i < nProps; i++) {
     const p = newProp({ name: `relates ${i + 1}`, chars: i % 4 === 0 ? [chars[(i / 4) % chars.length]] : [] });
-    if (i % 2 === 0) {
-      p.domain = [cls[Math.floor(rand() * roots * 3)].id];
-      p.range = [cls[Math.floor(rand() * roots * 3)].id];
-    }
+    if (i % 2 === 0) lists.set(p.id, { domain: [cls[Math.floor(rand() * roots * 3)].id], range: [cls[Math.floor(rand() * roots * 3)].id] });
     // Only a property with no domain and no characteristic (an odd-numbered one) is used as a
     // parent or an inverse, so that facts passed on to it cannot contradict anything.
     if (i % 7 === 3 && i % 2 === 0) p.parents = [m.props[i - 1].id];
@@ -59,7 +59,7 @@ export function stressModel(classes = 650): Model {
 
   // Data properties, each had by one to three classes.
   for (let i = 0; i < classes / 7; i++) {
-    const t = newTerm({ name: `Attribute ${i + 1}`, type: 'property', range: DATATYPES[i % DATATYPES.length].id });
+    const t = newTerm({ name: `Attribute ${i + 1}`, type: 'property', ranges: withDatatype({}, DATATYPES[i % DATATYPES.length].id) });
     m.terms.push(t);
     for (let k = 0; k <= i % 3; k++) rel(pick(cls).id, t.id, { kind: 'property' });
   }
@@ -73,9 +73,9 @@ export function stressModel(classes = 650): Model {
     rel(t.id, pick(cls).id, { kind: 'generalization' });
   }
   // Facts use the properties without a domain, so that the random data stays consistent.
-  const free = m.props.filter((p) => !p.domain && !p.chars.some((c) => c === 'functional' || c === 'inverseFunctional' || c === 'asymmetric' || c === 'irreflexive'));
+  const free = m.props.filter((p) => !lists.has(p.id) && !p.chars.some((c) => c === 'functional' || c === 'inverseFunctional' || c === 'asymmetric' || c === 'irreflexive'));
   for (let i = 0; i < classes * 0.8; i++) rel(pick(individuals), pick(individuals), { label: pick(free).name });
 
   arrangeAsHierarchy(m);
-  return m;
+  return withClassLists(m, lists);
 }

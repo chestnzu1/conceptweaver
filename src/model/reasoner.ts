@@ -1,4 +1,6 @@
-import type { DataValue, Model, Relation } from './types';
+import { ENUM_RANGE, type DataValue, type Model, type Relation } from './types';
+import { termOfIri } from './domains';
+import { impliedClasses, type ClassAxiom } from './expressions';
 import { denotes, enumOf, literalText } from './datatypes';
 import { linkProps, nameKey } from './identity';
 import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties } from './props';
@@ -106,7 +108,7 @@ export function reason(model: Model, fresh = false): Reasoning {
     (m.vocab.enabled ? '1' : '0') +
     m.mode +
     m.terms
-      .map((t) => `${t.id}:${t.type}:${t.name}${t.functional ? ':f' : ''}${t.domain ? ':' + t.domain.join(',') : ''}${t.values ? ':' + JSON.stringify(t.values) : ''}${t.oneOf ? ':o' + t.oneOf.join(',') : ''}${t.allDifferent ? ':ad' : ''}${t.range ? ':r' + t.range : ''}`)
+      .map((t) => `${t.id}:${t.type}:${t.name}${t.functional ? ':f' : ''}${t.domains ? ':' + JSON.stringify(t.domains) : ''}${t.values ? ':' + JSON.stringify(t.values) : ''}${t.oneOf ? ':o' + t.oneOf.join(',') : ''}${t.allDifferent ? ':ad' : ''}${t.ranges ? ':r' + JSON.stringify(t.ranges) : ''}`)
       .join('|');
   if (!fresh && last && last.relations === m.relations && last.props === m.props && last.datatypes === m.datatypes && last.sig === sig) return last.result;
   const result = run(m);
@@ -144,6 +146,8 @@ function run(m: Model): Reasoning {
   };
 
   // ---- what the model states
+  /** The classes of the model (by id) that whatever has a domain or range stated as these axioms belongs to. */
+  const implied = (axioms: ClassAxiom[]) => [...new Set(axioms.flatMap((a) => impliedClasses(a.expression)))].map((iri) => termOfIri(m, iri)).filter((t) => t?.type === 'concept').map((t) => t!.id);
   // Object properties first: their domain, range, characteristics, inverse and parent.
   const chars = new Map<string, Fact[]>();
   if (m.mode !== 'skos') {
@@ -151,9 +155,12 @@ function run(m: Model): Reasoning {
       const key: Pred = `p:${v.id}`;
       propLabel.set(key, v.name);
       const classLevel = v.rels.find((r) => byId.get(r.from)?.type === 'concept' && byId.get(r.to)?.type === 'concept');
-      // A single class can be reasoned with; "any of several" cannot be turned into one type.
-      if (v.domain.length === 1) add(key, 'dom', v.domain[0], undefined, v.domainAuto ? classLevel?.id : undefined);
-      if (v.range.length === 1) add(key, 'rng', v.range[0], undefined, v.rangeAuto ? classLevel?.id : undefined);
+      // A single class can be reasoned with; "any of several" cannot be turned into one type. Each
+      // axiom stated holds, so each class one of them is (or is an intersection of) is a type.
+      if (v.domainAuto && v.usedFrom.length === 1) add(key, 'dom', v.usedFrom[0], undefined, classLevel?.id);
+      if (v.rangeAuto && v.usedTo.length === 1) add(key, 'rng', v.usedTo[0], undefined, classLevel?.id);
+      if (!v.domainAuto) for (const id of implied(v.domains)) add(key, 'dom', id);
+      if (!v.rangeAuto) for (const id of implied(v.ranges)) add(key, 'rng', id);
       for (const c of v.chars) add(key, 'is', c);
       chars.set(key, sp('is', key));
       for (const k of v.parents) add(key, 'subp', `p:${k}`);
@@ -181,11 +188,12 @@ function run(m: Model): Reasoning {
   for (const t of m.terms) {
     if (t.type !== 'property' || m.mode === 'skos') continue;
     const d = dataDomain(m, t);
-    const ids = d.ids.filter((id) => byId.get(id)?.type === 'concept');
-    if (ids.length === 1) add(t.id, 'dom', ids[0], undefined, d.auto ? m.relations.find((r) => r.kind === 'property' && r.to === t.id && r.from === ids[0])?.id : undefined);
+    if (d.auto && d.attached.length === 1) add(t.id, 'dom', d.attached[0], undefined, m.relations.find((r) => r.kind === 'property' && r.to === t.id && r.from === d.attached[0])?.id);
+    if (!d.auto) for (const id of implied(d.axioms)) add(t.id, 'dom', id);
     // A range that lists its values. One with no values yet says nothing, as nothing is written for it.
-    const listed = enumOf(m, t.range);
-    if (listed?.values.length) {
+    for (const a of t.ranges ?? []) {
+      const listed = a.range.type === 'Enumeration' ? enumOf(m, ENUM_RANGE + a.range.datatype) : undefined;
+      if (!listed?.values.length) continue;
       propLabel.set(`dt:${listed.id}`, listed.name || 'Unnamed');
       add(t.id, 'drange', `dt:${listed.id}`);
     }

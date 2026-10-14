@@ -5,7 +5,7 @@ ontology's IRI, annotations and imports.
 Original: 551 axioms. Saved: 557 axioms.
 Lost: 2 (AnnotationAssertion 2).
 Added: 9 (Declaration 6, AnnotationAssertion 2, Annotation 1).
-Kept as it was, not editable here: 138 statements.
+Kept as it was, not editable here: 95 statements.
 
 Lost: in the original, not in what was saved
   AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/maker> "An agent that  made this thing.")

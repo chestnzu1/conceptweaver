@@ -5,6 +5,8 @@ import { arrangeAsHierarchy } from './layout';
 import { DATATYPES, ENUM_RANGE, emptyModel, type DescriptionProperty, type NameProperty, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
 import { enumOf, isEnumRange } from './datatypes';
+import { propDatatype } from './domains';
+import { classesOfUnion, graphOf, readClass, readDataRange, withIrisIn, type ClassAxiom, type ClassExpression, type DataProperty, type DataRange, type DataRangeAxiom, type Graph, type Literal, type ObjectPropertyExpression, type ClassAxiomKind } from './expressions';
 import { keyIri } from './governance';
 import { linkProps } from './identity';
 import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, restrictionSpecs, specsPatch } from './props';
@@ -30,7 +32,7 @@ const LINKS = new Set(['skos:exactMatch', 'skos:closeMatch', 'skos:broadMatch', 
 // ---------------------------------------------------------------- export
 
 /** `raw` is Turtle kept word for word: a class expression the app has no structure for. */
-type Val = { id: string } | { lit: string; bool?: boolean; lang?: string; dt?: string } | { bnode: RdfNode } | { list: Val[] } | { raw: string };
+type Val = { id: string } | { lit: string; bool?: boolean; lang?: string; dt?: string } | { bnode: RdfNode } | { list: Val[] } | { raw: string; ttl?: string };
 /** `id` is a CURIE (":Movie", "owl:Class") or a full IRI in angle brackets. */
 interface RdfNode {
   id: string;
@@ -205,12 +207,83 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     return d.anonymous ? (d.values.length ? literalList(d) : undefined) : { id: datatypeRef.get(d.id)! };
   };
 
-  // Associations become object properties, one per distinct label.
-  // Several domains (or ranges) mean "any of these", which OWL writes as a union; listing them
-  // one by one would mean "all of these at once".
+  // A domain or range that follows the uses is the class they start from (point to), or "any of
+  // these", which OWL writes as a union; listing them one by one would mean "all of these at once".
   const classes = (refs: string[]): Val =>
     // Sorted, so that the same set always reads the same whatever order it was built in.
     refs.length === 1 ? { id: refs[0] } : { bnode: { id: '', props: [['rdf:type', { id: 'owl:Class' }], ['owl:unionOf', { list: [...refs].sort().map((id) => ({ id })) }]] } };
+  // A domain or range stated as axioms: each is one statement, its expression written as OWL
+  // writes it in RDF, operands in the order they are held (as they were read).
+  const blank = (type: string, props: [string, Val][]): Val => ({ bnode: { id: '', props: [['rdf:type', { id: type }], ...props] } });
+  const iriVal = (iri: string): Val => ({ id: short(iri) });
+  const literal = (l: Literal): Val => (l.lang ? { lit: l.value, lang: l.lang } : l.datatype === XSD + 'boolean' && /^(true|false)$/.test(l.value) ? { lit: l.value, bool: true } : l.datatype ? { lit: l.value, dt: short(l.datatype) } : { lit: l.value });
+  const count = (n: number): Val => ({ lit: String(n), dt: 'xsd:nonNegativeInteger' });
+  // An expression kept as read has its IRIs in full; in Turtle they are shortened as everywhere else.
+  const kept = (turtle: string): Val => ({ raw: turtle, ttl: withIrisIn(turtle, (iri) => (short(iri).startsWith('<') ? undefined : short(iri)), false) });
+  // A restriction on the inverse of a property names it in place: [ owl:inverseOf :p ].
+  const propertyVal = (p: ObjectPropertyExpression | DataProperty): Val => (p.type === 'ObjectInverseOf' ? { bnode: { id: '', props: [['owl:inverseOf', iriVal(p.property.iri)]] } } : iriVal(p.iri));
+  const restriction = (property: ObjectPropertyExpression | DataProperty, props: [string, Val][]): Val => blank('owl:Restriction', [['owl:onProperty', propertyVal(property)], ...props]);
+  const CARD: Record<string, [string, string]> = { Min: ['owl:minCardinality', 'owl:minQualifiedCardinality'], Max: ['owl:maxCardinality', 'owl:maxQualifiedCardinality'], Exact: ['owl:cardinality', 'owl:qualifiedCardinality'] };
+  const classVal = (e: ClassExpression): Val => {
+    switch (e.type) {
+      case 'Class':
+        return iriVal(e.iri);
+      case 'ObjectUnionOf':
+      case 'ObjectIntersectionOf':
+        return blank('owl:Class', [[e.type === 'ObjectUnionOf' ? 'owl:unionOf' : 'owl:intersectionOf', { list: e.operands.map(classVal) }]]);
+      case 'ObjectComplementOf':
+        return blank('owl:Class', [['owl:complementOf', classVal(e.operand)]]);
+      case 'ObjectOneOf':
+        return blank('owl:Class', [['owl:oneOf', { list: e.individuals.map((i) => iriVal(i.iri)) }]]);
+      case 'ObjectSomeValuesFrom':
+      case 'ObjectAllValuesFrom':
+        return restriction(e.property, [[e.type === 'ObjectSomeValuesFrom' ? 'owl:someValuesFrom' : 'owl:allValuesFrom', classVal(e.filler)]]);
+      case 'DataSomeValuesFrom':
+      case 'DataAllValuesFrom':
+        return restriction(e.property, [[e.type === 'DataSomeValuesFrom' ? 'owl:someValuesFrom' : 'owl:allValuesFrom', dataVal(e.filler) ?? { id: 'rdfs:Literal' }]]);
+      case 'ObjectHasValue':
+        return restriction(e.property, [['owl:hasValue', iriVal(e.individual.iri)]]);
+      case 'DataHasValue':
+        return restriction(e.property, [['owl:hasValue', literal(e.value)]]);
+      case 'ObjectHasSelf':
+        return restriction(e.property, [['owl:hasSelf', { lit: 'true', bool: true }]]);
+      case 'ObjectMinCardinality':
+      case 'ObjectMaxCardinality':
+      case 'ObjectExactCardinality': {
+        const [plainCard, qualified] = CARD[e.type.slice('Object'.length, -'Cardinality'.length)];
+        return restriction(e.property, e.filler ? [[qualified, count(e.n)], ['owl:onClass', classVal(e.filler)]] : [[plainCard, count(e.n)]]);
+      }
+      case 'DataMinCardinality':
+      case 'DataMaxCardinality':
+      case 'DataExactCardinality': {
+        const [plainCard, qualified] = CARD[e.type.slice('Data'.length, -'Cardinality'.length)];
+        return restriction(e.property, e.filler ? [[qualified, count(e.n)], ['owl:onDataRange', dataVal(e.filler) ?? { id: 'rdfs:Literal' }]] : [[plainCard, count(e.n)]]);
+      }
+      case 'Unparsed':
+        return kept(e.turtle);
+    }
+  };
+  function dataVal(r: DataRange): Val | undefined {
+    switch (r.type) {
+      case 'Datatype':
+        return iriVal(r.iri);
+      case 'Enumeration':
+        return rangeVal(ENUM_RANGE + r.datatype);
+      case 'DataUnionOf':
+      case 'DataIntersectionOf':
+        return blank('rdfs:Datatype', [[r.type === 'DataUnionOf' ? 'owl:unionOf' : 'owl:intersectionOf', { list: r.operands.map(dataVal).filter((x): x is Val => !!x) }]]);
+      case 'DataComplementOf': {
+        const operand = dataVal(r.operand);
+        return operand && blank('rdfs:Datatype', [['owl:datatypeComplementOf', operand]]);
+      }
+      case 'DataOneOf':
+        return blank('rdfs:Datatype', [['owl:oneOf', { list: r.literals.map(literal) }]]);
+      case 'DatatypeRestriction':
+        return blank('rdfs:Datatype', [['owl:onDatatype', iriVal(r.datatype)], ['owl:withRestrictions', { list: r.facets.map((f): Val => ({ bnode: { id: '', props: [[short(f.facet), literal(f.value)]] } })) }]]);
+      case 'Unparsed':
+        return kept(r.turtle);
+    }
+  }
 
   // Object properties: each is declared once, with its domain, range and characteristics, and
   // the relationships between terms are uses of it.
@@ -227,9 +300,11 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       annotate(n, v);
     }
     for (const link of PROP_LINKS) for (const k of v[link]) if (propRef.has(k)) n.props.push([LINK_PREDICATE[link], { id: propRef.get(k)! }]);
-    // Where an external property is used here says nothing about its domain or range; only one set by hand is stated.
-    if (v.domain.length && !(v.external !== undefined && v.domainAuto)) n.props.push(['rdfs:domain', classes(v.domain.map((id) => ref.get(id)!))]);
-    if (v.range.length && !(v.external !== undefined && v.rangeAuto)) n.props.push(['rdfs:range', classes(v.range.map((id) => ref.get(id)!))]);
+    // Where an external property is used here says nothing about its domain or range; only what is stated by hand is written.
+    if (!v.domainAuto) for (const a of v.domains) n.props.push(['rdfs:domain', classVal(a.expression)]);
+    else if (v.usedFrom.length && v.external === undefined) n.props.push(['rdfs:domain', classes(v.usedFrom.map((id) => ref.get(id)!))]);
+    if (!v.rangeAuto) for (const a of v.ranges) n.props.push(['rdfs:range', classVal(a.expression)]);
+    else if (v.usedTo.length && v.external === undefined) n.props.push(['rdfs:range', classes(v.usedTo.map((id) => ref.get(id)!))]);
     return n;
   });
   // A class restricted by a property: "every member has it to some / only / N members of the target".
@@ -268,7 +343,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       // A class that has a data property is restricted by it: its members have such a value.
       // The property's own domain and datatype are written on the property below.
       // One superclass for each restriction the relationship states.
-      if (a.type === 'concept') for (const spec of restrictionSpecs(r)) A.props.push(['rdfs:subClassOf', restrict(spec, bRef.id, rangeVal(b.range) ?? 'rdfs:Literal', true)]);
+      if (a.type === 'concept') for (const spec of restrictionSpecs(r)) A.props.push(['rdfs:subClassOf', restrict(spec, bRef.id, rangeVal(propDatatype(b)) ?? 'rdfs:Literal', true)]);
     } else {
       const declared = r.kind === 'association' && r.prop !== undefined ? propRef.get(r.prop) : undefined;
       if (declared && a.type === 'concept' && b.type === 'concept') {
@@ -290,23 +365,24 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     }
   }
   objProps.push(...plainProps);
-  // Asserted class expressions the app has no drawing for are written back exactly as they came.
+  // A class's axioms that are expressions, each written as the statement of its kind.
+  const AXIOM_PREDICATE: Record<ClassAxiomKind, string> = { SubClassOf: 'rdfs:subClassOf', EquivalentClasses: 'owl:equivalentClass', DisjointClasses: 'owl:disjointWith' };
   for (const t of m.terms) {
     if (t.external !== undefined) continue;
-    for (const axiom of t.axioms ?? []) {
-      const at = axiom.indexOf(' ');
-      if (at > 0) nodes.get(t.id)!.props.push([axiom.slice(0, at), { raw: axiom.slice(at + 1) }]);
-    }
+    for (const a of t.classAxioms ?? []) nodes.get(t.id)!.props.push([AXIOM_PREDICATE[a.kind], classVal(a.expression)]);
   }
   for (const t of m.terms) {
     if (t.type !== 'property' || t.external !== undefined) continue;
     const n = nodes.get(t.id)!;
     // The second type goes right after the first, as it does for an object property's characteristics.
     if (t.functional) n.props.splice(1, 0, ['rdf:type', { id: 'owl:FunctionalProperty' }]);
-    const dom = dataDomain(m, t).ids.filter((id) => byId.get(id)?.type === 'concept');
-    if (dom.length) n.props.push(['rdfs:domain', classes(dom.map((id) => ref.get(id)!))]);
-    const range = rangeVal(t.range);
-    if (range) n.props.push(['rdfs:range', range]);
+    const dom = dataDomain(m, t);
+    if (!dom.auto) for (const a of dom.axioms) n.props.push(['rdfs:domain', classVal(a.expression)]);
+    else if (dom.attached.length) n.props.push(['rdfs:domain', classes(dom.attached.map((id) => ref.get(id)!))]);
+    for (const a of t.ranges ?? []) {
+      const range = dataVal(a.range);
+      if (range) n.props.push(['rdfs:range', range]);
+    }
   }
   // What individuals are stated to have as values of data properties.
   for (const t of m.terms) {
@@ -315,8 +391,9 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       const prop = byId.get(v.prop);
       if (prop?.type !== 'property') continue;
       // A value of an enumerated datatype is written the way that datatype lists it.
-      const listed = enumOf(m, prop.range);
-      const dt = v.dt ?? (listed ? listed.values.find((x) => x.value === v.value && (x.lang ?? '') === (v.lang ?? ''))?.dt : prop.range);
+      const range = propDatatype(prop);
+      const listed = enumOf(m, range);
+      const dt = v.dt ?? (listed ? listed.values.find((x) => x.value === v.value && (x.lang ?? '') === (v.lang ?? ''))?.dt : range);
       const plain = !dt || dt === 'xsd:string' || dt === 'rdf:langString';
       nodes.get(t.id)!.props.push([ref.get(prop.id)!, v.lang ? { lit: v.value, lang: v.lang } : plain ? { lit: v.value } : { lit: v.value, dt }]);
     }
@@ -340,7 +417,7 @@ function ttlBody(n: RdfNode, indent: string): string {
   const grouped = new Map<string, Val[]>();
   for (const [p, v] of n.props) grouped.set(p, [...(grouped.get(p) ?? []), v]);
   const val = (v: Val): string =>
-    'raw' in v ? v.raw : 'list' in v ? `( ${v.list.map(val).join(' ')} )` : 'id' in v ? v.id : 'lit' in v ? (v.bool ? v.lit : JSON.stringify(v.lit) + (v.lang ? '@' + v.lang : v.dt ? '^^' + v.dt : '')) : `[ ${ttlBody(v.bnode, indent + '    ').replace(/\s*\n\s*/g, ' ')} ]`;
+    'raw' in v ? (v.ttl ?? v.raw) : 'list' in v ? `( ${v.list.map(val).join(' ')} )` : 'id' in v ? v.id : 'lit' in v ? (v.bool ? v.lit : JSON.stringify(v.lit) + (v.lang ? '@' + v.lang : v.dt ? '^^' + v.dt : '')) : `[ ${ttlBody(v.bnode, indent + '    ').replace(/\s*\n\s*/g, ' ')} ]`;
   return [...grouped]
     .map(([p, vs]) => `${p === 'rdf:type' ? 'a' : p} ${vs.map(val).join(' , ')}`)
     .join(` ;\n${indent}`);
@@ -371,9 +448,41 @@ export function toJsonLd(m: Model): string {
   const { base, nodes } = toRdf(m);
   const iri = (id: string) => (id.startsWith('<') ? id.slice(1, -1) : id.startsWith(':') ? base + id.slice(1) : id);
   const context = Object.fromEntries([...STANDARD, ...m.prefixes].map((p) => [p.prefix, p.iri]).sort((a, b) => a[0].localeCompare(b[0])));
+  // An expression kept as Turtle (full IRIs) is written as the nodes it is made of.
+  const rawNodes = (turtle: string): unknown => {
+    let quads: { subject: N3Term; predicate: N3Term; object: N3Term }[];
+    try {
+      quads = new Parser().parse(`<urn:x:s> <urn:x:p> ${turtle} .`) as unknown as typeof quads;
+    } catch {
+      return undefined;
+    }
+    const g = graphOf(quads);
+    const node = (t: N3Term, seen: Set<string>): unknown => {
+      if (t.termType === 'NamedNode') return { '@id': t.value };
+      if (t.termType === 'Literal') return t.language ? { '@value': t.value, '@language': t.language } : t.datatype && t.datatype.value !== XSD + 'string' ? { '@value': t.value, '@type': t.datatype.value } : t.value;
+      if (seen.has(t.value)) return {};
+      seen.add(t.value);
+      const items: unknown[] = [];
+      for (let cell: N3Term | undefined = t; cell && cell.termType === 'BlankNode'; ) {
+        const own = g.predicates(cell);
+        if (own.size !== 2 || own.get(NS.rdf + 'first')?.length !== 1 || own.get(NS.rdf + 'rest')?.length !== 1) break;
+        items.push(node(own.get(NS.rdf + 'first')![0], seen));
+        cell = own.get(NS.rdf + 'rest')![0];
+        if (cell.termType === 'NamedNode' && cell.value === NS.rdf + 'nil') return { '@list': items };
+      }
+      const out: Record<string, unknown[]> = {};
+      for (const [p, os] of g.predicates(t)) {
+        if (p === NS.rdf + 'type') out['@type'] = os.map((o) => o.value);
+        else out[p] = os.map((o) => node(o, seen));
+      }
+      return out;
+    };
+    const top = quads.find((q) => q.subject.value === 'urn:x:s' && q.predicate.value === 'urn:x:p');
+    return top && node(top.object, new Set());
+  };
   const one = (v: Val, isType = false): unknown =>
     'raw' in v
-      ? undefined
+      ? rawNodes(v.raw)
       : 'list' in v
       ? { '@list': v.list.map((x) => one(x)) }
       : 'id' in v
@@ -386,7 +495,7 @@ export function toJsonLd(m: Model): string {
             : v.lang
               ? { '@value': v.lit, '@language': v.lang }
               : v.dt
-                ? { '@value': v.lit, '@type': v.dt }
+                ? { '@value': v.lit, '@type': iri(v.dt) }
                 : v.lit
           : conv(v.bnode);
   const conv = (n: RdfNode): Record<string, unknown> => {
@@ -394,7 +503,7 @@ export function toJsonLd(m: Model): string {
     for (const [p, v] of n.props) {
       const key = p === 'rdf:type' ? '@type' : iri(p);
       const value = one(v, key === '@type');
-      // Class expressions kept as Turtle text have no JSON-LD form here.
+      // Text kept that does not read as Turtle has no JSON-LD form.
       if (value === undefined) continue;
       (o[key] ??= []).push(value);
     }
@@ -595,44 +704,16 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   }
   const classes = new Set(terms.keys());
 
-  /** A class expression as Turtle, with the well-known namespaces shortened. */
-  const PREFIXES: [string, string][] = [['owl:', NS.owl], ['rdfs:', NS.rdfs], ['rdf:', NS.rdf], ['xsd:', XSD], ['skos:', NS.skos]];
-  const shortIri = (iri: string) => {
-    const hit = PREFIXES.find(([, ns]) => iri.startsWith(ns) && /^[A-Za-z][\w-]*$/.test(iri.slice(ns.length)));
-    return hit ? hit[0] + iri.slice(hit[1].length) : `<${iri}>`;
+  // Class expressions and data ranges are read as the structures they are (expressions.ts).
+  const graph: Graph = {
+    objects: (t, p) => objs(key(t), p),
+    predicates: (t) => spo.get(key(t)) ?? new Map<string, N3Term[]>(),
+    kind: (p) => (objProps.has(p) ? 'object' : dataProps.has(p) ? 'data' : undefined),
   };
-  const expression = (t: N3Term, seen = new Set<string>()): string => {
-    if (t.termType === 'NamedNode') return t.value === NS.rdf + 'nil' ? '()' : shortIri(t.value);
-    if (t.termType === 'Literal') {
-      const dt = t.datatype?.value;
-      return JSON.stringify(t.value) + (t.language ? '@' + t.language : dt && dt !== XSD + 'string' && dt !== NS.rdf + 'langString' ? '^^' + shortIri(dt) : '');
-    }
-    const id = key(t);
-    if (seen.has(id) || seen.size > 200) return '[]';
-    seen.add(id);
-    const preds = spo.get(id) ?? new Map<string, N3Term[]>();
-    if (preds.has(NS.rdf + 'first')) {
-      // A list is written as one if it is one: every cell with one item and one rest, ending in nil.
-      // One that forks, stops short or comes back on itself is written cell by cell below, so that
-      // it reads back as the same broken list and is not mended into something its author never wrote.
-      const cells: string[] = [];
-      let proper = true;
-      for (let list: N3Term = t; list.value !== NS.rdf + 'nil'; list = objs(key(list), NS.rdf + 'rest')[0]) {
-        const cell = key(list);
-        if (cells.includes(cell) || objs(cell, NS.rdf + 'first').length !== 1 || objs(cell, NS.rdf + 'rest').length !== 1) {
-          proper = false;
-          break;
-        }
-        cells.push(cell);
-      }
-      if (proper) return `( ${cells.map((cell) => expression(objs(cell, NS.rdf + 'first')[0], seen)).join(' ')} )`;
-    }
-    const parts = [...preds].flatMap(([p, os]) => os.map((o) => `${p === NS.rdf + 'type' ? 'a' : shortIri(p)} ${expression(o, seen)}`));
-    return parts.length ? `[ ${parts.join(' ; ')} ]` : '[]';
-  };
-  const keep = (c: string, predicate: string, o: N3Term) => {
+  /** A class axiom with an expression: kept with the class, of the kind it was stated as, never merged with another. */
+  const state = (c: string, kind: ClassAxiomKind, o: N3Term) => {
     const t = terms.get(c);
-    if (t) t.axioms = [...(t.axioms ?? []), `${predicate} ${expression(o)}`];
+    if (t) t.classAxioms = [...(t.classAxioms ?? []), { id: uid(), kind, expression: readClass(graph, o) }];
   };
   /** Turns a restriction into a relationship if it is one of the kinds the app draws; says whether it did. */
   const drawRestriction = (c: string, o: N3Term): boolean => {
@@ -687,22 +768,30 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   // Hierarchy and class-level relations.
   for (const c of classes) {
     for (const o of objs(c, NS.rdfs + 'subClassOf')) {
+      // A named superclass is drawn; one that is no class of the model (owl:Thing) is an axiom.
       if (o.termType === 'NamedNode') {
-        if (relate(c, o.value, 'generalization')) mark(c, NS.rdfs + 'subClassOf', o);
+        if (!relate(c, o.value, 'generalization')) state(c, 'SubClassOf', o);
+        mark(c, NS.rdfs + 'subClassOf', o);
         continue;
       }
       // An anonymous superclass. The restrictions the app can draw become relationships; any
-      // other class expression is kept word for word, so that nothing asserted is lost.
-      if (!drawRestriction(c, o)) keep(c, 'rdfs:subClassOf', o);
+      // other class expression is an axiom of the class, so that nothing asserted is lost.
+      if (!drawRestriction(c, o)) state(c, 'SubClassOf', o);
       markWith(c, NS.rdfs + 'subClassOf', o);
+    }
+    // A class disjoint with an expression (a named one is a relationship, below).
+    for (const o of objs(c, NS.owl + 'disjointWith')) {
+      if (o.termType !== 'BlankNode') continue;
+      state(c, 'DisjointClasses', o);
+      markWith(c, NS.owl + 'disjointWith', o);
     }
     for (const o of objs(c, NS.owl + 'equivalentClass')) {
       if (o.termType !== 'BlankNode') continue;
       // A class equivalent to a list of named individuals is an enumeration, which the app can edit.
-      // The first such list is taken; any other expression is kept word for word.
+      // The first such list is taken; any other expression is an axiom of the class.
       const listed = enumerations.has(c) ? undefined : enumerationOf(o);
       if (listed) enumerations.set(c, listed);
-      else keep(c, 'owl:equivalentClass', o);
+      else state(c, 'EquivalentClasses', o);
       markWith(c, NS.owl + 'equivalentClass', o);
     }
     for (const o of objs(c, NS.skos + 'broader')) if (o.termType === 'NamedNode' && relate(c, o.value, 'generalization')) mark(c, NS.skos + 'broader', o);
@@ -718,18 +807,28 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     for (const x of to) mark(p, pred, x);
     return [...new Set(to.map((x) => propIdOf.get(x)!))];
   };
-  /** The classes a domain or range names, the statements it came from marked as taken where it names any. */
-  const classesOf = (p: string, pred: string) =>
-    objs(p, pred).flatMap((o) => {
-      const cs = expand(o).filter((c) => terms.has(c));
-      if (cs.length) markWith(p, pred, o);
-      return cs;
+  /**
+   * A domain or range: an axiom for each statement of it, each read as it is stated and taken.
+   * Two statements are two axioms, which hold together; they are never merged into one.
+   */
+  const axiomsOf = (p: string, pred: string): ClassAxiom[] =>
+    objs(p, pred).map((o) => {
+      markWith(p, pred, o);
+      return { id: uid(), expression: readClass(graph, o) };
     });
-  /** The same terms, whatever the order. */
-  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+  /**
+   * Whether a domain or range says no more than where the property is used: one axiom, that is
+   * the class the uses start from (point to), or the union of exactly those. It is then left to
+   * follow its use, and written as it was for as long as the uses stay as they are.
+   */
+  const followsUse = (axioms: ClassAxiom[], usedIds: string[]) => {
+    const named = axioms.length === 1 ? classesOfUnion(axioms[0].expression) : undefined;
+    const used = new Set(usedIds.map((id) => m.terms.find((t) => t.id === id)?.iri));
+    return !!named && named.length === used.size && named.every((iri) => used.has(iri));
+  };
   for (const p of objProps) {
-    const domain = [...new Set(classesOf(p, NS.rdfs + 'domain'))].map((c) => terms.get(c)!.id);
-    const range = [...new Set(classesOf(p, NS.rdfs + 'range'))].map((c) => terms.get(c)!.id);
+    const domains = axiomsOf(p, NS.rdfs + 'domain');
+    const ranges = axiomsOf(p, NS.rdfs + 'range');
     const entry: ObjProp = {
       id: propIdOf.get(p)!,
       ...nameOf(p, [NS.rdfs + 'label', NS.skos + 'prefLabel'], humanize(p, true)),
@@ -741,8 +840,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     for (const o of objs(p, NS.rdf + 'type')) if (charOf.has(o.value)) mark(p, NS.rdf + 'type', o);
     // A domain or range that only repeats where the property is used is left to follow its use.
     const uses = m.relations.filter((r) => r.prop === entry.id);
-    if (domain.length && !same(domain, [...new Set(uses.map((r) => r.from))])) entry.domain = domain;
-    if (range.length && !same(range, [...new Set(uses.map((r) => r.to))])) entry.range = range;
+    if (domains.length && !followsUse(domains, uses.map((r) => r.from))) entry.domains = domains;
+    if (ranges.length && !followsUse(ranges, uses.map((r) => r.to))) entry.ranges = ranges;
     for (const link of PROP_LINKS) {
       const ids = others(p, expandCurie(LINK_PREDICATE[link]));
       // Kept on whichever property the file states it, even where both do: nothing stated is dropped.
@@ -797,43 +896,28 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   for (const p of dataProps) {
     const t = ensure(p, 'property');
     mark(p, NS.rdf + 'type', NS.owl + 'DatatypeProperty');
-    const ranges = objs(p, NS.rdfs + 'range');
-    const datatype = ranges.map((o) => (o.value.startsWith(XSD) ? 'xsd:' + o.value.slice(XSD.length) : o.value === NS.rdf + 'langString' ? 'rdf:langString' : ''));
-    const known = datatype.find((d) => DATATYPES.some((x) => x.id === d));
-    if (known) {
-      t.range = known;
-      mark(p, NS.rdfs + 'range', ranges[datatype.indexOf(known)]);
-    }
-    // A range that is an enumerated datatype: one with a name, or a list of literals written in place.
-    let taken: N3Term | undefined;
-    for (const o of known ? [] : ranges) {
+    // Its range: an axiom for each statement, as for an object property. One that is an
+    // enumerated datatype (one with a name, or a list of literals written in place) names it.
+    const ranges: DataRangeAxiom[] = [];
+    for (const o of objs(p, NS.rdfs + 'range')) {
+      markWith(p, NS.rdfs + 'range', o);
       let d = o.termType === 'NamedNode' ? datatypeOfIri.get(o.value) : undefined;
       const inline = d ? undefined : literalsOf(o);
       if (inline) {
-        d = { id: 'd' + m.datatypes.length + '-' + t.id, name: `${t.name} values`, description: '', values: inline, anonymous: true };
+        const nth = m.datatypes.filter((x) => x.id.endsWith('-' + t.id)).length;
+        d = { id: 'd' + m.datatypes.length + '-' + t.id, name: `${t.name} values${nth ? ' ' + (nth + 1) : ''}`, description: '', values: inline, anonymous: true };
         m.datatypes.push(d);
       }
-      if (d) {
-        t.range = ENUM_RANGE + d.id;
-        taken = o;
-        markWith(p, NS.rdfs + 'range', o);
-        break;
-      }
+      ranges.push({ id: uid(), range: d ? { type: 'Enumeration', datatype: d.id } : readDataRange(graph, o) });
     }
-    // A data range written in place that is none of those (a datatype narrowed by facets, a union,
-    // a list that is not one of literals) is kept word for word, as an anonymous class expression is.
-    for (const o of ranges) {
-      if (o.termType !== 'BlankNode' || o === taken) continue;
-      keep(p, 'rdfs:range', o);
-      markWith(p, NS.rdfs + 'range', o);
-    }
+    if (ranges.length) t.ranges = ranges;
     if (objs(p, NS.rdf + 'type').some((o) => o.value === NS.owl + 'FunctionalProperty')) {
       t.functional = true;
       mark(p, NS.rdf + 'type', NS.owl + 'FunctionalProperty');
     }
-    const domain = [...new Set(classesOf(p, NS.rdfs + 'domain'))].map((c) => terms.get(c)!.id);
+    const domains = axiomsOf(p, NS.rdfs + 'domain');
     const owners = [...new Set(m.relations.filter((r) => r.kind === 'property' && r.to === t.id).map((r) => r.from))];
-    if (domain.length && !same(domain, owners)) t.domain = domain;
+    if (domains.length && !followsUse(domains, owners)) t.domains = domains;
   }
   for (const p of dataProps) for (const o of objs(p, NS.rdfs + 'subPropertyOf')) if (o.termType === 'NamedNode' && relate(p, o.value, 'generalization')) mark(p, NS.rdfs + 'subPropertyOf', o);
 
@@ -875,7 +959,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
         if (o.termType !== 'Literal') continue;
         const dt = datatypeId(o.datatype?.value);
         // Its own datatype, where it is not the property's: one the editor offers, or any other of XML Schema's, kept as it is.
-        const own = dt && dt !== 'xsd:string' && dt !== 'rdf:langString' && dt !== prop.range && (DATATYPES.some((d) => d.id === dt) || dt.startsWith('xsd:')) ? dt : undefined;
+        const own = dt && dt !== 'xsd:string' && dt !== 'rdf:langString' && dt !== propDatatype(prop) && (DATATYPES.some((d) => d.id === dt) || dt.startsWith('xsd:')) ? dt : undefined;
         const value: DataValue = { prop: prop.id, value: o.value, ...(o.language ? { lang: o.language } : {}), ...(own ? { dt: own } : {}) };
         subject.values = [...(subject.values ?? []), value];
         mark(s, p, o);
@@ -1113,7 +1197,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   const onlyDeclared = (iri: string) => [...(spo.get(iri)?.keys() ?? [])].every((p) => p === NS.rdf + 'type');
   if (m.baseIri) {
     for (const [iri, t] of terms) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri)) t.external = ownedBy(iri);
-    for (const [iri, p] of propEntries) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri) && !p.domain && !p.range) p.external = ownedBy(iri);
+    for (const [iri, p] of propEntries) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri) && !p.domains && !p.ranges) p.external = ownedBy(iri);
   }
 
   // What it took nothing from is kept, a whole statement at a time: one taken in part already has

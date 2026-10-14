@@ -11,6 +11,7 @@ import { sampleModel } from './sample';
 import { convertModel } from './convert';
 import { DEFAULT_PROP, linkProps, nameKey, propNamed } from './identity';
 import { withoutIris } from './unmapped';
+import { propDatatype, withDatatype, withoutEntities } from './domains';
 import { declaredProp, relChoices, type RelChoice } from './props';
 import { cannotRelate, settleRelation, typed } from './relating';
 import { reconnect, type End } from './reconnect';
@@ -211,15 +212,22 @@ const entityIris = (m: Model) => new Set([...m.terms, ...m.props, ...m.datatypes
 
 /**
  * A model as the editor holds it: every named entity with its IRI, every relationship joined to
- * the object property it uses. After an edit (`before` is the model it was made to), the
- * statements kept as they were read that mention an entity no longer there go with it.
+ * the object property it uses. After an edit (`before` is the model it was made to), what the
+ * domains and ranges say of an entity no longer there, and the statements kept as they were read
+ * that mention one, go with it.
  */
 const prepared = (m: Model, before?: Model): Model => {
-  const next = linkProps(withIris(m));
-  if (!before || !next.unmapped) return next;
+  let next = linkProps(withIris(m));
+  // Only an edit that leaves fewer entities than there were can have deleted one.
+  const shrunk = !!before && (next.terms.length < before.terms.length || next.props.length < before.props.length || next.datatypes.length < before.datatypes.length);
+  if (!before || (!next.unmapped && !shrunk)) return next;
   const now = entityIris(next);
   const gone = new Set([...entityIris(before)].filter((iri) => !now.has(iri)));
-  if (!gone.size) return next;
+  if (shrunk) {
+    const enums = new Set(next.datatypes.map((d) => d.id));
+    next = withoutEntities(next, gone, new Set(before.datatypes.filter((d) => !enums.has(d.id)).map((d) => d.id)));
+  }
+  if (!gone.size || !next.unmapped) return next;
   const unmapped = withoutIris(next.unmapped, gone);
   if (unmapped === next.unmapped) return next;
   const { unmapped: _was, ...rest } = next;
@@ -1066,21 +1074,14 @@ export const useStore = create<State>((set, get) => ({
     const r = new Set(rels);
     get().apply((m) => ({
       ...m,
+      // What the domains and ranges say of a term that is gone goes with it (see prepared).
       terms: m.terms
         .filter((x) => !t.has(x.id))
-        .map((x) => (x.domain && x.domain.some((id) => t.has(id)) ? { ...x, domain: x.domain.filter((id) => !t.has(id)) } : x))
         // A value goes with the data property it is a value of.
         .map((x) => (x.values?.some((v) => t.has(v.prop)) ? { ...x, values: x.values.filter((v) => !t.has(v.prop)) } : x))
         // An individual that is gone is no longer listed by the enumerations it was a member of.
         .map((x) => (x.oneOf?.some((id) => t.has(id)) ? { ...x, oneOf: x.oneOf.filter((id) => !t.has(id)) } : x)),
       relations: m.relations.filter((x) => !r.has(x.id) && !t.has(x.from) && !t.has(x.to)),
-      props: !t.size
-        ? m.props
-        : m.props.map((p) => ({
-            ...p,
-            ...(p.domain ? { domain: p.domain.filter((id) => !t.has(id)) } : {}),
-            ...(p.range ? { range: p.range.filter((id) => !t.has(id)) } : {}),
-          })),
     }));
     set((s) => ({ sel: prune(s.sel, s.model), highlight: [] }));
   },
@@ -1099,7 +1100,7 @@ export const useStore = create<State>((set, get) => ({
           newTerm({
             name: p.name,
             type: p.type ?? (p.range ? 'property' : 'concept'),
-            ...(p.range ? { range: p.range } : {}),
+            ...(p.range ? { ranges: withDatatype({}, p.range) } : {}),
             description: p.description,
             synonyms: p.synonyms,
             color: p.color ?? '',
@@ -1113,7 +1114,7 @@ export const useStore = create<State>((set, get) => ({
       // Metadata given for a term that already exists fills in or replaces what is there.
       const patch: Partial<Term> = {};
       if (p.type && p.type !== existing.type) patch.type = p.type;
-      if (p.range && p.range !== existing.range) patch.range = p.range;
+      if (p.range && p.range !== propDatatype(existing)) patch.ranges = withDatatype(existing, p.range);
       if (p.description && p.description !== existing.description) patch.description = p.description;
       if (p.synonyms && p.synonyms !== existing.synonyms) patch.synonyms = p.synonyms;
       if (p.color !== undefined && p.color !== existing.color) patch.color = p.color;
@@ -1341,7 +1342,8 @@ export const useStore = create<State>((set, get) => ({
       if (!entry) return m;
       const next: ObjProp = { ...entry, ...patch, id };
       // An emptied optional field means "not set", so it isn't stored.
-      for (const k of ['domain', 'range', 'fields', ...PROP_LINKS] as const) if (next[k] === undefined || (k !== 'domain' && k !== 'range' && !next[k]!.length)) delete next[k];
+      // Domains and ranges are the exception: empty, they say there is none; left out, they follow the uses.
+      for (const k of ['domains', 'ranges', 'fields', ...PROP_LINKS] as const) if (next[k] === undefined || (k !== 'domains' && k !== 'ranges' && !next[k]!.length)) delete next[k];
       return { ...m, props: m.props.map((p) => (p.id === id ? next : p)) };
     }),
   renameProp: (id, name) => {
@@ -1401,7 +1403,7 @@ export const useStore = create<State>((set, get) => ({
     const first = values[0]?.value.trim() ?? '';
     if ('term' in owner) {
       const patch: Partial<Term> =
-        f.bind === 'name' ? { name: first } : f.bind === 'description' ? { description: first } : f.bind === 'synonyms' ? { synonyms: values.map((v) => v.value.trim()).filter(Boolean).join(', ') } : f.bind === 'range' ? { range: first || undefined } : { fields: writeValues(e.fields, f, values) };
+        f.bind === 'name' ? { name: first } : f.bind === 'description' ? { description: first } : f.bind === 'synonyms' ? { synonyms: values.map((v) => v.value.trim()).filter(Boolean).join(', ') } : f.bind === 'range' ? { ranges: withDatatype(model.terms.find((t) => t.id === owner.term) ?? {}, first || undefined) } : { fields: writeValues(e.fields, f, values) };
       get().updateTerm(owner.term, patch);
     } else if (f.bind === 'name') {
       if (!get().renameProp(owner.prop, first)) return 'That name could not be given to the property.';

@@ -1,0 +1,45 @@
+@prefix : <http://example.org/expressions#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+<http://example.org/expressions> a owl:Ontology ; rdfs:label "Expressions fixture"@en .
+:Person a owl:Class ; rdfs:label "Person"@en .
+:Organisation a owl:Class ; rdfs:label "Organisation"@en .
+:Place a owl:Class ; rdfs:label "Place"@en .
+:Pizza a owl:Class ; rdfs:label "Pizza"@en .
+:MeatTopping a owl:Class ; rdfs:label "Meat topping"@en .
+:Colour a owl:Class ; rdfs:label "Colour"@en .
+:hasTopping a owl:ObjectProperty ; rdfs:label "has topping"@en .
+:hasChild a owl:ObjectProperty ; rdfs:label "has child"@en .
+:hasMember a owl:ObjectProperty ; rdfs:label "has member"@en .
+:hasSibling a owl:ObjectProperty ; rdfs:label "has sibling"@en .
+:madeIn a owl:ObjectProperty ; rdfs:label "made in"@en .
+:loves a owl:ObjectProperty ; rdfs:label "loves"@en .
+:hasAge a owl:DatatypeProperty ; rdfs:label "has age"@en ; rdfs:range xsd:integer .
+:italy a owl:NamedIndividual ; rdfs:label "Italy"@en .
+:red a owl:NamedIndividual , :Colour ; rdfs:label "red"@en .
+:amber a owl:NamedIndividual , :Colour ; rdfs:label "amber"@en .
+:green a owl:NamedIndividual , :Colour ; rdfs:label "green"@en .
+:VegetarianPizza a owl:Class ; rdfs:label "Vegetarian pizza"@en ;
+    owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( :Pizza [ a owl:Class ; owl:complementOf [ a owl:Restriction ; owl:onProperty :hasTopping ; owl:someValuesFrom :MeatTopping ] ] ) ] .
+:AdultPerson a owl:Class ; rdfs:label "Adult person"@en ;
+    rdfs:subClassOf [ a owl:Class ; owl:intersectionOf ( :Person [ a owl:Restriction ; owl:onProperty :hasAge ; owl:someValuesFrom [ a rdfs:Datatype ; owl:onDatatype xsd:integer ; owl:withRestrictions ( [ xsd:minInclusive 18 ] ) ] ] ) ] .
+:Agent a owl:Class ; rdfs:label "Agent"@en ;
+    rdfs:subClassOf [ a owl:Class ; owl:unionOf ( :Person :Organisation ) ] .
+:ItalianThing a owl:Class ; rdfs:label "Italian thing"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :madeIn ; owl:hasValue :italy ] .
+:Parent a owl:Class ; rdfs:label "Parent"@en ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty :hasChild ; owl:minCardinality "1"^^xsd:nonNegativeInteger ] .
+:Grandparent a owl:Class ; rdfs:label "Grandparent"@en ;
+    owl:equivalentClass [ a owl:Restriction ; owl:onProperty :hasChild ; owl:someValuesFrom [ a owl:Restriction ; owl:onProperty :hasChild ; owl:someValuesFrom :Person ] ] .
+:Member a owl:Class ; rdfs:label "Member"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty [ owl:inverseOf :hasMember ] ; owl:someValuesFrom :Organisation ] .
+:TrafficColour a owl:Class ; rdfs:label "Traffic colour"@en ;
+    rdfs:subClassOf [ a owl:Class ; owl:oneOf ( :red :amber :green ) ] .
+:Narcissist a owl:Class ; rdfs:label "Narcissist"@en ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty :loves ; owl:hasSelf true ] .
+:Twin a owl:Class ; rdfs:label "Twin"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :hasSibling ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass [ a owl:Class ; owl:intersectionOf ( :Person [ a owl:Class ; owl:complementOf :Organisation ] ) ] ] ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :hasChild ; owl:allValuesFrom [ a owl:Class ; owl:unionOf ( :Person :Place ) ] ] .
+:Hermit a owl:Class ; rdfs:label "Hermit"@en ;
+    owl:disjointWith [ a owl:Restriction ; owl:onProperty :loves ; owl:someValuesFrom :Person ] .

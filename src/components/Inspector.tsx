@@ -9,14 +9,19 @@ import { QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoic
 import { allowsView, configOf, MODEL_TYPE_LIST, supports, type EditorSection } from '../model/modelTypes';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
 import { propOf } from '../model/identity';
-import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, findProp, fitsIn, objectProperties, restrictionsOf, type PropView } from '../model/props';
+import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, expressionsOf, findProp, fitsAxioms, objectProperties, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { CommitInput, CommitTextarea } from './fields';
 import { SuperclassEditor } from './Iri';
-import { AnonymousExpressions, CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
+import { CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
+import { AxiomList } from './AxiomList';
+import { ClassAxioms } from './ClassAxioms';
+import { datatypeAxiom } from '../model/domains';
+import { classesOfUnion, type ClassAxiom, type ClassExpression, type DataRangeAxiom } from '../model/expressions';
+import { allOf, classText, namingFor, type Naming } from '../model/manchester';
 import { RangeEnumeration, RangeSelect } from './Datatypes';
 import { ClassDefinition } from './Enumeration';
 import { Disclosure, Icon } from './Icon';
@@ -186,7 +191,6 @@ function TermPanel({ term }: { term: Term }) {
   const related = resolveModel(model).relations.filter((r) => r.from === term.id || r.to === term.id);
 
   const kind = config.termType[term.type].label;
-  const other = (term.axioms ?? []).filter((x) => !x.startsWith('rdfs:subClassOf ') && !x.startsWith('owl:equivalentClass '));
   const annotations = (
     <Section id="annotations" title="Annotations" count={term.fields.length + (term.description ? 1 : 0) + term.synonyms.split(',').filter((x) => x.trim()).length}>
       <label className="field">
@@ -247,12 +251,11 @@ function TermPanel({ term }: { term: Term }) {
                 Asserted superclasses <code className="pred">rdfs:subClassOf</code>
               </span>
               <SuperclassEditor term={term} />
-              <AnonymousExpressions term={term} predicate="rdfs:subClassOf" />
             </div>
             <LinkEditor term={term} kind="equivalentClass" noun="equivalent class" label="Equivalent classes" hint="both classes have exactly the same members" />
-            <AnonymousExpressions term={term} predicate="owl:equivalentClass" />
             <LinkEditor term={term} kind="disjointWith" noun="disjoint class" label="Disjoint classes" hint="nothing can belong to both" />
           </Section>
+          <ClassAxioms term={term} />
           {has('restrictions') && <ClassRestrictions term={term} />}
           <ClassProperties term={term} />
           {has('inferred') && <InferredSupers term={term} />}
@@ -297,20 +300,6 @@ function TermPanel({ term }: { term: Term }) {
           <InferredSupers term={term} />
         </>
       )}
-
-      {has('axioms') && other.length ? (
-        <>
-          <h3>Other asserted expressions ({other.length})</h3>
-          <p className="muted">Kept exactly as written and exported with the entity.</p>
-          <ul className="axioms">
-            {other.map((a, i) => (
-              <li key={i}>
-                <code>{a}</code>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
 
       {has('annotations') && annotations}
       {has('colour') && (
@@ -369,14 +358,31 @@ function TermPanel({ term }: { term: Term }) {
   );
 }
 
+/** Why a class is outside an axiom of a domain or range: "is not a kind of A or B", or "is not" the expression. */
+const notIn = (e: ClassExpression, naming: Naming, name: (iri: string) => string) => {
+  const named = classesOfUnion(e);
+  return named ? `is not a kind of ${named.map(name).join(' or ')}` : `is not ${classText(e, naming)}`;
+};
+
 /** A data property: the classes that have it, its domain, and the type of its values. */
 function PropertyFields({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
   const st = useStore.getState;
+  const naming = useMemo(() => namingFor(model), [model]);
   const attached = model.relations.filter((r) => r.kind === 'property' && r.to === term.id);
   const domain = dataDomain(model, term);
   const name = (id: string) => model.terms.find((t) => t.id === id)?.name || 'Unnamed';
-  const outside = domain.auto ? [] : attached.filter((r) => model.terms.find((t) => t.id === r.from)?.type === 'concept' && !fitsIn(model, r.from, domain.ids));
+  const nameOfIri = (iri: string) => model.terms.find((t) => t.iri === iri)?.name || iri;
+  const outside = domain.auto ? [] : attached.flatMap((r) => (model.terms.find((t) => t.id === r.from)?.type === 'concept' ? [{ r, out: fitsAxioms(model, r.from, domain.axioms).outside }] : [])).filter((x) => x.out);
+  // The datatype is chosen in a list; whatever else the range states is listed under it.
+  const chosen = datatypeAxiom(term);
+  const others = (term.ranges ?? []).filter((a) => a !== chosen);
+  const withOthers = (next: DataRangeAxiom[]) => {
+    const all = term.ranges ?? [];
+    const out = [...next];
+    if (chosen) out.splice(Math.min(all.indexOf(chosen), out.length), 0, chosen);
+    st().updateTerm(term.id, { ranges: out.length ? out : undefined });
+  };
   return (
     <>
       <div className="field">
@@ -394,30 +400,22 @@ function PropertyFields({ term }: { term: Term }) {
         <span>
           Domain <code className="pred">rdfs:domain</code>
         </span>
-        <TermChips
-          ids={domain.ids}
-          placeholder="Add a class to the domain"
+        <AxiomList
+          kind="class"
+          which="domain"
           of={term.name}
-          empty="not set: anything"
-          add={(id) => st().updateTerm(term.id, { domain: [...domain.ids, id] })}
-          remove={(id) => st().updateTerm(term.id, { domain: domain.ids.filter((x) => x !== id) })}
+          axioms={domain.auto ? undefined : domain.axioms}
+          follows={{ text: expressionsOf(model, [], true, domain.attached).map((e) => classText(e, naming)).join(''), what: 'the classes it is attached to' }}
+          onChange={(axioms) => st().updateTerm(term.id, { domains: axioms as ClassAxiom[] })}
+          onFollow={{ label: 'Follow the attached classes again', run: () => st().updateTerm(term.id, { domains: undefined }) }}
         />
-        {domain.auto ? (
-          <small>{domain.ids.length ? 'Follows the classes it is attached to. Add a class, for example a more general one, to set it yourself.' : 'Add a class to set it. A domain is not a requirement: it says what anything that has the property is.'}</small>
-        ) : (
-          <small>
-            Set by you.{' '}
-            <button className="link" onClick={() => st().updateTerm(term.id, { domain: undefined })}>
-              Follow the attached classes again
-            </button>
-          </small>
-        )}
-        {outside.map((r) => (
+        {domain.auto && !domain.attached.length && <small>A domain is not a requirement: it says what anything that has the property is.</small>}
+        {outside.map(({ r, out }) => (
           <small key={r.id} className="bad">
-            ✗ {name(r.from)} has this property but is not {domain.ids.map(name).join(' or ')} or a kind of it.
+            ✗ {name(r.from)} has this property but {notIn(out!.expression, naming, nameOfIri)}.
           </small>
         ))}
-        {!domain.auto && attached.length > 0 && !outside.length && <small className="good">✓ Every class that has it is inside the domain.</small>}
+        {!domain.auto && attached.length > 0 && !outside.length && attached.every((r) => fitsAxioms(model, r.from, domain.axioms).fits) && <small className="good">✓ Every class that has it is inside the domain.</small>}
       </div>
       <label className="field">
         <span>
@@ -427,6 +425,10 @@ function PropertyFields({ term }: { term: Term }) {
       </label>
       {/* A range that is a list of values is edited here, where it is chosen. */}
       <RangeEnumeration term={term} />
+      <div className="field">
+        <span>Further range axioms: each holds as well</span>
+        <AxiomList kind="data" which="range" of={term.name} axioms={others} empty={chosen ? 'None besides the datatype.' : 'None.'} onChange={(next) => withOthers(next as DataRangeAxiom[])} />
+      </div>
     </>
   );
 }
@@ -645,26 +647,27 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
   const st = useStore.getState;
   const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
+  const naming = useMemo(() => namingFor(model), [model]);
+  const nameOfIri = (iri: string) => model.terms.find((t) => t.iri === iri)?.name || iri;
   const set = (patch: Parameters<ReturnType<typeof useStore.getState>['updateProp']>[1]) => st().updateProp(prop.id, patch);
   const side = (which: 'domain' | 'range') => {
-    const ids = prop[which];
     const auto = which === 'domain' ? prop.domainAuto : prop.rangeAuto;
+    const key = which === 'domain' ? 'domains' : 'ranges';
+    const derived = expressionsOf(model, [], true, which === 'domain' ? prop.usedFrom : prop.usedTo).map((e) => classText(e, naming)).join('');
     return (
       <div className="field">
         <span>
           {which === 'domain' ? 'Domain: what can have it' : 'Range: what it points to'} <code className="pred">rdfs:{which}</code>
         </span>
-        <TermChips ids={ids} placeholder={`Add a class to the ${which}`} of={prop.name} empty="not set: anything" add={(id) => set({ [which]: [...ids, id] })} remove={(id) => set({ [which]: ids.filter((x) => x !== id) })} />
-        {auto ? (
-          <small>{ids.length ? 'Follows the classes it is used between. Add a class, for example a more general one, to set it yourself.' : 'Add a class to set it.'}</small>
-        ) : (
-          <small>
-            Set by you.{' '}
-            <button className="link" onClick={() => set({ [which]: undefined })}>
-              Follow the relationships again
-            </button>
-          </small>
-        )}
+        <AxiomList
+          kind="class"
+          which={which}
+          of={prop.name}
+          axioms={auto ? undefined : prop[key]}
+          follows={{ text: derived, what: 'the classes it is used between' }}
+          onChange={(axioms) => set({ [key]: axioms as ClassAxiom[] })}
+          onFollow={{ label: 'Follow the relationships again', run: () => set({ [key]: undefined }) }}
+        />
       </div>
     );
   };
@@ -715,16 +718,29 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
         {prop.rels.map((r) => {
           // A class is held to a domain or range set by hand: it has to be one of those classes or a kind of one.
           const classLevel = type(r.from) === 'concept' && type(r.to) === 'concept';
-          const badFrom = classLevel && !prop.domainAuto && prop.domain.length > 0 && !fitsIn(model, r.from, prop.domain);
-          const badTo = classLevel && !prop.rangeAuto && prop.range.length > 0 && !fitsIn(model, r.to, prop.range);
-          const judged = classLevel && (!prop.domainAuto || !prop.rangeAuto);
+          // Each axiom stated holds: a use is outside where it is outside any one of them, and judged where all can be told.
+          const from = classLevel && !prop.domainAuto ? fitsAxioms(model, r.from, prop.domains) : undefined;
+          const to = classLevel && !prop.rangeAuto ? fitsAxioms(model, r.to, prop.ranges) : undefined;
+          const badFrom = from?.outside;
+          const badTo = to?.outside;
+          const judged = (!!from || !!to) && (badFrom || badTo || ((from?.fits ?? true) && (to?.fits ?? true)));
           return (
             <li key={r.id}>
               <button onClick={() => st().focusRelation(r.id)} title="Show on the canvas">
                 {judged && <span className={badFrom || badTo ? 'bad' : 'good'}>{badFrom || badTo ? '✗ ' : '✓ '}</span>}
                 {name.get(r.from)} <em>{classLevel ? restrictionSpecs(r).map((s) => s.restriction + (s.restrictionN !== undefined ? ' ' + s.restrictionN : '')).join(', ') : '→'}</em> {name.get(r.to)}
-                {badFrom && <small className="bad"> {name.get(r.from)} is not a kind of {prop.domain.map((id) => name.get(id)).join(' or ')}</small>}
-                {badTo && <small className="bad"> {name.get(r.to)} is not a kind of {prop.range.map((id) => name.get(id)).join(' or ')}</small>}
+                {badFrom && (
+                  <small className="bad">
+                    {' '}
+                    {name.get(r.from)} {notIn(badFrom.expression, naming, nameOfIri)}
+                  </small>
+                )}
+                {badTo && (
+                  <small className="bad">
+                    {' '}
+                    {name.get(r.to)} {notIn(badTo.expression, naming, nameOfIri)}
+                  </small>
+                )}
               </button>
             </li>
           );
@@ -809,7 +825,7 @@ function RelationPanel({ rel }: { rel: Relation }) {
         )}
         {prop && (
           <small>
-            Domain: {names(prop.domain)}. Range: {names(prop.range)}.{' '}
+            Domain: {allOf(expressionsOf(model, prop.domains, prop.domainAuto, prop.usedFrom).map((e) => classText(e, namingFor(model)))) || 'anything'}. Range: {allOf(expressionsOf(model, prop.ranges, prop.rangeAuto, prop.usedTo).map((e) => classText(e, namingFor(model)))) || 'anything'}.{' '}
             <button className="link" onClick={() => st().selectProp(prop.id)}>
               Edit the property
             </button>

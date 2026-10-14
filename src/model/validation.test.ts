@@ -1,3 +1,4 @@
+import { withDatatype } from './domains';
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { addIsA, addLink, addValue } from './axioms';
@@ -18,8 +19,8 @@ function build() {
     m = { ...m, terms: [...m.terms, t] };
   };
   for (const c of ['Agent', 'Person', 'Employee', 'Actor', 'Organisation']) term(c);
-  term('has name', 'property', { range: 'xsd:string' });
-  term('has age', 'property', { range: 'xsd:integer' });
+  term('has name', 'property', { ranges: withDatatype({}, 'xsd:string') });
+  term('has age', 'property', { ranges: withDatatype({}, 'xsd:integer') });
   for (const i of ['Ann', 'Bob', 'Acme']) term(i, 'instance');
   const rel = (from: string, to: string, p: Partial<ReturnType<typeof newRelation>> = {}) => (m = { ...m, relations: [...m.relations, newRelation({ from: id[from], to: id[to], ...p })] });
   m = { ...m, props: [newProp({ name: 'works for', description: 'Is employed by.', chars: [] })] };

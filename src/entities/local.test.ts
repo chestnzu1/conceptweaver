@@ -1,3 +1,4 @@
+import { withDatatype } from '../model/domains';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { withIris } from '../model/iri';
 import { toTurtle } from '../model/rdf';
@@ -38,9 +39,9 @@ function office(): Model {
     newTerm({ id: 'chimera', name: 'Chimera' }),
     newTerm({ id: 'ghost', name: 'Ghost' }),
     newTerm({ id: 'foaf', name: 'Agent (FOAF)', iri: 'http://xmlns.com/foaf/0.1/Agent' }),
-    newTerm({ id: 'age', name: 'age', type: 'property', range: 'xsd:integer', functional: true }),
+    newTerm({ id: 'age', name: 'age', type: 'property', ranges: withDatatype({}, 'xsd:integer'), functional: true }),
     newTerm({ id: 'nickname', name: 'nickname', type: 'property' }),
-    newTerm({ id: 'since', name: 'since', type: 'property', range: 'xsd:date' }),
+    newTerm({ id: 'since', name: 'since', type: 'property', ranges: withDatatype({}, 'xsd:date') }),
     newTerm({ id: 'alice', name: 'Alice', type: 'instance' }),
     newTerm({ id: 'acme', name: 'Acme', type: 'instance' }),
     newTerm({ id: 'nobody', name: 'Nobody', type: 'instance' }),

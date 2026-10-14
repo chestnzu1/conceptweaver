@@ -13,7 +13,16 @@ import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { sampleModel, skosSample } from './sample';
 import { universitySample } from './sampleUniversity';
 import { stressModel } from './stress';
-import { newProp, emptyModel, newRelation, newTerm, normalizeModel } from './types';
+import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model, type Term } from './types';
+import { propDatatype, withDatatype, withUnionClasses } from './domains';
+import type { ClassAxiom } from './expressions';
+import { localName } from './iri';
+import { classText, namingFor } from './manchester';
+
+/** A domain or range stated by hand: one axiom, the class or the union of the classes (by term id). */
+const stated = (m: Model, ...ids: string[]): ClassAxiom[] => withUnionClasses([], ids.map((id) => m.terms.find((t) => t.id === id)!.iri!));
+/** A domain or range as it is said: each axiom as it is written. */
+const said = (m: Model, axioms: ClassAxiom[] | undefined) => axioms?.map((a) => classText(a.expression, namingFor(m)));
 
 const names = (m: ReturnType<typeof sampleModel>) => new Map(m.terms.map((t) => [t.id, t.name]));
 const triples = (m: ReturnType<typeof sampleModel>) => {
@@ -76,9 +85,8 @@ describe('rdf', () => {
     // The object property is declared with its domain and range; no restriction places it between classes, so none is drawn.
     expect(triples(m)).toEqual(['Dog -[generalization:]-> Animal', 'rex -[generalization:]-> Dog']);
     // The data property keeps its domain, but is not drawn onto Animal: that would restrict the class.
-    expect(m.terms.find((t) => t.name === 'age')!.domain).toEqual([m.terms.find((t) => t.name === 'Animal')!.id]);
-    const name = (id: string) => m.terms.find((t) => t.id === id)!.name;
-    expect(m.props.map((p) => `${p.name}: ${p.domain!.map(name)} -> ${p.range!.map(name)}`)).toEqual(['has owner: Dog -> Person,Shelter']);
+    expect(said(m, m.terms.find((t) => t.name === 'age')!.domains)).toEqual(['Animal']);
+    expect(m.props.map((p) => `${p.name}: ${said(m, p.domains)} -> ${said(m, p.ranges)}`)).toEqual(['has owner: Dog -> Person or Shelter']);
     expect(m.terms.find((t) => t.name === 'rex')!.type).toBe('instance');
     expect(m.baseIri).toBe('http://ex.org/');
     // Imported IRIs survive a re-export.
@@ -516,8 +524,9 @@ describe('data and object properties', () => {
     expect(block(':wins')).toContain('a owl:ObjectProperty');
     expect(ttl).not.toContain('rdf:Property');
     const back = fromTurtle(ttl);
-    expect(back.terms.find((t) => t.name === 'Release date')).toMatchObject({ type: 'property', range: 'xsd:date' });
-    expect(back.terms.find((t) => t.name === 'Release date')!.domain).toBeUndefined();
+    expect(back.terms.find((t) => t.name === 'Release date')).toMatchObject({ type: 'property' });
+    expect(propDatatype(back.terms.find((t) => t.name === 'Release date')!)).toBe('xsd:date');
+    expect(back.terms.find((t) => t.name === 'Release date')!.domains).toBeUndefined();
     expect(triples(back)).toEqual(triples(sampleModel()));
     expect(back.props.map((p) => p.name).sort()).toEqual(['acts in', 'belongs to', 'directs', 'produces', 'wins']);
     expect(toTurtle(back)).toBe(ttl);
@@ -527,7 +536,8 @@ describe('data and object properties', () => {
     const m = emptyModel('Family');
     const t: Record<string, string> = {};
     const term = (name: string, type: 'concept' | 'instance' | 'property' = 'concept') => {
-      const x = newTerm({ name, type });
+      // Every term with its IRI from the start, as the editor gives it one.
+      const x = newTerm({ name, type, iri: 'http://example.org/family#' + localName(name, type === 'property') });
       t[name] = x.id;
       m.terms.push(x);
       return x;
@@ -542,13 +552,13 @@ describe('data and object properties', () => {
 
   it('keeps declared object properties apart from plain relationships', () => {
     const { m, t, rel } = family();
-    m.props.push(newProp({ name: 'works for', description: '', chars: [] }), newProp({ name: 'has ancestor', description: '', chars: ['transitive'], domain: [t.Person], range: [t.Person] }));
+    m.props.push(newProp({ name: 'works for', description: '', chars: [] }), newProp({ name: 'has ancestor', description: '', chars: ['transitive'], domains: stated(m, t.Person), ranges: stated(m, t.Person) }));
     rel('Person', 'Company', { label: 'works for' });
     rel('Parent', 'Company', { label: 'Works for' });
     rel('Person', 'Company', { label: 'likes' });
     rel('Ann', 'Bob');
     expect(objectProperties(m).map((p) => `${p.name}:${p.rels.length}`)).toEqual(['has ancestor:0', 'works for:2']);
-    expect(objectProperties(m)[1]).toMatchObject({ domain: [t.Person, t.Parent], range: [t.Company], domainAuto: true, rangeAuto: true });
+    expect(objectProperties(m)[1]).toMatchObject({ usedFrom: [t.Person, t.Parent], usedTo: [t.Company], domainAuto: true, rangeAuto: true });
     expect(plainRelationships(m).map((p) => `${p.name}:${p.rels.length}`)).toEqual(['likes:1', 'related to:1']);
     expect(runChecks(m).filter((i) => i.rule === 'Undetermined relationship').map((i) => i.message)).toEqual([
       '"likes" is a plain relationship (1 use). Make it an object property to give it a domain, a range and characteristics.',
@@ -558,8 +568,8 @@ describe('data and object properties', () => {
   it('describes a class by its restrictions, on object and on data properties', () => {
     const { m, t, term, rel } = family();
     m.props.push(newProp({ name: 'works for', description: '', chars: [] }));
-    Object.assign(term('Birth date', 'property'), { range: 'xsd:date' });
-    Object.assign(term('Has name', 'property'), { range: 'xsd:string' });
+    Object.assign(term('Birth date', 'property'), { ranges: withDatatype({}, 'xsd:date') });
+    Object.assign(term('Has name', 'property'), { ranges: withDatatype({}, 'xsd:string') });
     term('Nickname', 'property');
     rel('Person', 'Company', { label: 'works for', restriction: 'max', restrictionN: 3 });
     rel('Person', 'Company', { label: 'likes' });
@@ -589,16 +599,16 @@ describe('data and object properties', () => {
       ex:nick a owl:DatatypeProperty ; rdfs:domain ex:Person .`);
     expect(triples(m)).toEqual(['Person -[property:]-> age']);
     expect(m.relations[0]).toMatchObject({ restriction: 'max', restrictionN: 1 });
-    expect(m.terms.find((t) => t.name === 'nick')!.domain).toEqual([m.terms.find((t) => t.name === 'Person')!.id]);
+    expect(said(m, m.terms.find((t) => t.name === 'nick')!.domains)).toEqual(['Person']);
     expect(runChecks(m).map((i) => i.rule)).not.toContain('Isolated term');
     expect(toTurtle(m)).not.toContain('owl:onProperty <http://ex.org/nick>');
   });
 
   it('writes a declared object property with its characteristics, inverse and parent', () => {
     const { m, t } = family();
-    const ancestor = newProp({ name: 'has ancestor', description: 'Any forebear.', chars: ['transitive'], domain: [t.Person], range: [t.Person] });
+    const ancestor = newProp({ name: 'has ancestor', description: 'Any forebear.', chars: ['transitive'], domains: stated(m, t.Person), ranges: stated(m, t.Person) });
     const child = newProp({ name: 'has child', description: '', chars: [] });
-    m.props.push(ancestor, newProp({ name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'], parents: [ancestor.id], inverses: [child.id], domain: [t.Person], range: [t.Parent] }), child);
+    m.props.push(ancestor, newProp({ name: 'has parent', description: '', chars: ['asymmetric', 'irreflexive'], parents: [ancestor.id], inverses: [child.id], domains: stated(m, t.Person), ranges: stated(m, t.Parent) }), child);
     const ttl = toTurtle(m);
     const block = (subject: string) => ttl.split('\n\n').find((b) => b.startsWith(subject + ' '))!;
     expect(block(':hasAncestor')).toBe(':hasAncestor a owl:ObjectProperty , owl:TransitiveProperty ;\n    rdfs:label "has ancestor" ;\n    skos:definition "Any forebear." ;\n    rdfs:domain :Person ;\n    rdfs:range :Person .');
@@ -607,7 +617,8 @@ describe('data and object properties', () => {
     expect(block(':hasParent')).toContain('owl:inverseOf :hasChild');
     const back = fromTurtle(ttl);
     const backId = (name: string) => back.props.find((p) => p.name === name)!.id;
-    expect(back.props.find((p) => p.name === 'has parent')).toMatchObject({ chars: ['asymmetric', 'irreflexive'], parents: [backId('has ancestor')], inverses: [backId('has child')], range: [expect.any(String)] });
+    expect(back.props.find((p) => p.name === 'has parent')).toMatchObject({ chars: ['asymmetric', 'irreflexive'], parents: [backId('has ancestor')], inverses: [backId('has child')] });
+    expect(said(back, back.props.find((p) => p.name === 'has parent')!.ranges)).toEqual(['Parent']);
     // A domain and range alone put the property between no particular classes, so nothing is drawn.
     expect(back.relations.filter((r) => r.kind === 'association')).toEqual([]);
     expect(toTurtle(back)).toBe(ttl);
@@ -618,7 +629,7 @@ describe('data and object properties', () => {
     const ancestor = newProp({ name: 'has ancestor', description: '', chars: ['transitive'] });
     m.props.push(
       ancestor,
-      newProp({ name: 'has parent', description: '', chars: [], parents: [ancestor.id], range: [t.Parent] }),
+      newProp({ name: 'has parent', description: '', chars: [], parents: [ancestor.id], ranges: stated(m, t.Parent) }),
       newProp({ name: 'married to', description: '', chars: ['symmetric'] }),
       newProp({ name: 'has employer', description: '', chars: ['functional'] }),
     );
@@ -664,12 +675,12 @@ describe('data and object properties', () => {
   it('judges each use against a domain or range set by hand, accepting kinds of the class', () => {
     const { m, t, rel, term } = family();
     // Domain widened to the general class: Person and Parent are kinds of Agent, so both uses fit.
-    m.props.push(newProp({ name: 'works for', description: '', chars: [], domain: [t.Agent], range: [t.Company] }));
+    m.props.push(newProp({ name: 'works for', description: '', chars: [], domains: stated(m, t.Agent), ranges: stated(m, t.Company) }));
     rel('Person', 'Company', { label: 'works for' });
     rel('Parent', 'Company', { label: 'works for' });
     expect(runChecks(structuredClone(m)).filter((i) => i.rule.startsWith('Outside'))).toEqual([]);
     // Narrowed to Parent: Person is not a kind of Parent.
-    m.props[0].domain = [t.Parent];
+    m.props[0].domains = stated(m, t.Parent);
     expect(runChecks(structuredClone(m)).filter((i) => i.rule.startsWith('Outside')).map((i) => i.message)).toEqual(['"Person" uses "works for", but is not Parent or a kind of it.']);
     rel('Company', 'Person', { label: 'works for' });
     expect(runChecks(structuredClone(m)).filter((i) => i.rule.startsWith('Outside')).map((i) => i.rule)).toEqual(['Outside domain', 'Outside domain', 'Outside range']);
@@ -680,7 +691,7 @@ describe('data and object properties', () => {
     const age = term('Age', 'property');
     rel('Company', 'Age', { kind: 'property' });
     expect(dataDomainNames(m, age.id)).toEqual(['Company (auto)']);
-    age.domain = [t.Agent];
+    age.domains = stated(m, t.Agent);
     expect(runChecks(structuredClone(m)).map((i) => i.message)).toContain('"Company" has the data property "Age", but is not Agent or a kind of it.');
     expect(runChecks(structuredClone(m)).map((i) => i.message)).toContain('Data property "Age" has no datatype.');
     expect(toTurtle(structuredClone(m)).split('\n\n').find((b) => b.startsWith(':age '))).toContain('rdfs:domain :Agent');
@@ -692,7 +703,9 @@ describe('data and object properties', () => {
       relations: [{ from: 'f', to: 'p', kind: 'property' }, { from: 'p', to: 's', kind: 'range' }],
     });
     expect(m.terms.map((t) => t.name)).toEqual(['Film', 'Studio']);
-    expect(m.props.map(({ id: _id, ...p }) => p)).toEqual([{ name: 'Distributed by', description: 'Who releases it.', chars: [], domain: ['f'], range: ['s'] }]);
+    expect(m.props.map(({ id: _id, iri: _iri, domains: _d, ranges: _r, ...p }) => p)).toEqual([{ name: 'Distributed by', description: 'Who releases it.', chars: [] }]);
+    // What it was drawn between is its domain and range, stated.
+    expect([said(m, m.props[0].domains), said(m, m.props[0].ranges)]).toEqual([['Film'], ['Studio']]);
     expect(m.relations).toMatchObject([{ from: 'f', to: 's', kind: 'association', label: 'Distributed by' }]);
   });
 
@@ -705,7 +718,7 @@ describe('data and object properties', () => {
 
 const dataDomainNames = (m: ReturnType<typeof sampleModel>, id: string) => {
   const d = dataDomain(m, m.terms.find((t) => t.id === id)!);
-  return d.ids.map((x) => m.terms.find((t) => t.id === x)!.name + (d.auto ? ' (auto)' : ''));
+  return d.auto ? d.attached.map((x) => m.terms.find((t) => t.id === x)!.name + ' (auto)') : said(m, d.axioms);
 };
 
 describe('university example', () => {
@@ -752,7 +765,7 @@ describe('university example', () => {
     expect(triples(back)).toEqual(triples(m));
     // "Email" is had by Person and Organisation while its domain is set by hand to Agent; both survive.
     const email = back.terms.find((t) => t.name === 'Email')!;
-    expect(email.domain).toEqual([back.terms.find((t) => t.name === 'Agent')!.id]);
+    expect(said(back, email.domains)).toEqual(['Agent']);
     expect(back.props.map((p) => p.name).sort()).toEqual(m.props.map((p) => p.name).sort());
     // The same statements, though terms may come back in another order.
     const blocks = (text: string) => text.trim().split('\n\n').sort();
@@ -904,7 +917,7 @@ describe('asserted superclasses', () => {
     expect(wouldCycle(m, t.Film, t.Film)).toBe(true);
   });
 
-  it('keeps anonymous superclass expressions it cannot draw, word for word', () => {
+  it('keeps superclass expressions it cannot draw as axioms of the class, each as it was stated', () => {
     const src = `
       @prefix : <http://example.org/o#> . @prefix owl: <http://www.w3.org/2002/07/owl#> .
       @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -922,20 +935,17 @@ describe('asserted superclasses', () => {
     // The named superclass and the one restriction the app can draw are a relation each…
     expect(assertedSuperclasses(m, actor.id).map((x) => m.terms.find((t) => t.id === x)!.name)).toEqual(['Person']);
     expect(restrictionsOf(m, actor.id).map((r) => r.text)).toEqual(['acts in some Film']);
-    // …and the other four expressions are kept as they are, not dropped and not flattened.
-    expect(actor.axioms).toEqual([
-      'rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/o#wins> ; owl:someValuesFrom [ a owl:Class ; owl:unionOf ( <http://example.org/o#Award> <http://example.org/o#Film> ) ] ]',
-      'rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/o#age> ; owl:minCardinality "1"^^xsd:nonNegativeInteger ]',
-      'rdfs:subClassOf [ a owl:Class ; owl:intersectionOf ( <http://example.org/o#Person> [ a owl:Class ; owl:complementOf <http://example.org/o#Film> ] ) ]',
-      'owl:equivalentClass [ a owl:Restriction ; owl:onProperty <http://example.org/o#actsIn> ; owl:hasValue <http://example.org/o#Film> ]',
-    ]);
+    // …and the other four expressions are axioms of the class, each of its kind, not dropped and not flattened.
+    const stated = (t: Term) => (t.classAxioms ?? []).map((a) => `${a.kind}: ${classText(a.expression, namingFor(m))}`);
+    expect(stated(actor)).toEqual(['SubClassOf: wins some (Award or Film)', 'SubClassOf: age min 1', 'SubClassOf: Person and not Film', "EquivalentClasses: 'acts in' value Film"]);
     const ttl = toTurtle(m);
-    expect(ttl).toContain('owl:unionOf ( <http://example.org/o#Award> <http://example.org/o#Film> )');
-    expect(ttl).toContain('owl:hasValue <http://example.org/o#Film>');
+    expect(ttl).toContain('owl:unionOf ( :Award :Film )');
+    expect(ttl).toContain('owl:hasValue :Film');
     // A second round trip changes nothing, and they survive a JSON save.
+    const bodies = (t: Term) => (t.classAxioms ?? []).map((a) => [a.kind, a.expression]);
     const again = fromTurtle(ttl);
-    expect(again.terms.find((t) => t.name === 'Actor')!.axioms).toEqual(actor.axioms);
-    expect(normalizeModel(JSON.parse(JSON.stringify(m))).terms.find((t) => t.name === 'Actor')!.axioms).toEqual(actor.axioms);
+    expect(bodies(again.terms.find((t) => t.name === 'Actor')!)).toEqual(bodies(actor));
+    expect(normalizeModel(JSON.parse(JSON.stringify(m))).terms.find((t) => t.name === 'Actor')!.classAxioms).toEqual(actor.classAxioms);
     expect(triples(again)).toEqual(triples(m));
   });
 });
@@ -1041,14 +1051,14 @@ describe('moving entities to a new namespace', () => {
     const m = withIris({
       ...emptyModel('Cast'),
       baseIri: 'http://old.org/ns#',
-      terms: [newTerm({ name: 'Actor' }), newTerm({ name: 'Person', iri: 'https://schema.org/Person' }), newTerm({ name: 'Film', axioms: ['rdfs:subClassOf [ owl:unionOf ( <http://old.org/ns#Actor> <https://schema.org/Person> ) ]'] })],
+      terms: [newTerm({ name: 'Actor' }), newTerm({ name: 'Person', iri: 'https://schema.org/Person' }), newTerm({ name: 'Film', classAxioms: [{ id: 'x', kind: 'SubClassOf', expression: { type: 'ObjectUnionOf', operands: [{ type: 'Class', iri: 'http://old.org/ns#Actor' }, { type: 'Class', iri: 'https://schema.org/Person' }] } }] })],
       props: [newProp({ name: 'acts in', description: '', chars: [] })],
     });
     const moved = moveNamespace({ ...m, baseIri: 'http://new.org/v2#' }, 'http://old.org/ns#', 'http://new.org/v2#');
     expect(moved.terms.map((t) => t.iri)).toEqual(['http://new.org/v2#Actor', 'https://schema.org/Person', 'http://new.org/v2#Film']);
     expect(moved.props[0].iri).toBe('http://new.org/v2#actsIn');
-    // Kept class expressions mention IRIs in full, so they follow too.
-    expect(moved.terms[2].axioms).toEqual(['rdfs:subClassOf [ owl:unionOf ( <http://new.org/v2#Actor> <https://schema.org/Person> ) ]']);
+    // Class expressions name entities by IRI, so they follow too.
+    expect(moved.terms[2].classAxioms![0].expression).toEqual({ type: 'ObjectUnionOf', operands: [{ type: 'Class', iri: 'http://new.org/v2#Actor' }, { type: 'Class', iri: 'https://schema.org/Person' }] });
     expect(toTurtle(moved)).toContain(':Actor a owl:Class');
     expect(toTurtle(moved)).not.toContain('old.org');
     // Nothing to do when the namespace is the same; and a name already taken in the target is not overwritten.

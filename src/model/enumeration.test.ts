@@ -1,3 +1,4 @@
+import { dataProperty, XSD } from './expressions';
 import { describe, expect, it } from 'vitest';
 import { addEnumMember, createEnumMember, enumerationExpression, enumMembers, isEnumeration, removeEnumMember, setAllDifferent, setEnumeration } from './axioms';
 import { edgeTypes, extractSubgraph } from './subgraph';
@@ -67,7 +68,7 @@ describe('enumeration classes', () => {
 
   it('lets one individual be a member of several enumerations, and changes nothing else about the class', () => {
     let m = enumerated();
-    m = { ...m, terms: m.terms.map((t) => (t.id === 'color' ? { ...t, description: 'The colours a signal shows.', fields: [{ key: 'adms:status', value: 'Approved' }], axioms: ['rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/p> ; owl:hasValue 1 ]'] } : t)) };
+    m = { ...m, terms: m.terms.map((t) => (t.id === 'color' ? { ...t, description: 'The colours a signal shows.', fields: [{ key: 'adms:status', value: 'Approved' }], classAxioms: [{ id: 'x', kind: 'SubClassOf' as const, expression: { type: 'DataHasValue' as const, property: dataProperty('http://example.org/p'), value: { value: '1', datatype: XSD + 'integer' } } }] } : t)) };
     m = ok(setEnumeration(m, 'signal', true));
     m = ok(addEnumMember(m, 'signal', 'red'));
     expect(term(m, 'Signal').oneOf).toEqual(['red']);
@@ -78,7 +79,7 @@ describe('enumeration classes', () => {
     const c = term(off.model!, 'Traffic light color');
     expect(c.oneOf).toBeUndefined();
     expect(c).toMatchObject({ type: 'concept', description: 'The colours a signal shows.', fields: [{ key: 'adms:status', value: 'Approved' }] });
-    expect(c.axioms).toHaveLength(1);
+    expect(c.classAxioms).toHaveLength(1);
     expect(off.model!.terms.filter((t) => t.type === 'instance')).toHaveLength(3);
   });
 
@@ -106,7 +107,7 @@ describe('enumeration classes', () => {
     expect(c.type).toBe('concept');
     expect(enumMembers(back, c).map((t) => [t.name, t.type, t.iri])).toEqual(m.terms.filter((t) => t.type === 'instance').map((t) => [t.name, 'instance', t.iri]));
     expect(c.allDifferent).toBe(true);
-    expect(c.axioms).toBeUndefined();
+    expect(c.classAxioms).toBeUndefined();
     // Kept as one statement on the enumeration, not as a relationship between every two members.
     expect(back.relations).toEqual([]);
     expect(toTurtle(back)).toBe(ttl);
@@ -133,14 +134,16 @@ describe('enumeration classes', () => {
       ['Go', 'instance', 'http://example.org/traffic#Green'],
     ]);
     expect(c.allDifferent).toBeUndefined();
-    // A subclass of a list, and a list with a literal in it, are not this kind of definition: kept as written.
+    // A subclass of a list, and a list with a literal in it, are not this kind of definition: axioms of the class.
+    const T = 'http://example.org/traffic#';
     expect(term(back, 'Phase').oneOf).toBeUndefined();
-    expect(term(back, 'Phase').axioms![0]).toMatch(/^rdfs:subClassOf \[.*owl:oneOf \( <http:\/\/example.org\/traffic#Red> <http:\/\/example.org\/traffic#Green> \)/);
+    expect(term(back, 'Phase').classAxioms).toMatchObject([{ kind: 'SubClassOf', expression: { type: 'ObjectOneOf', individuals: [{ iri: T + 'Red' }, { iri: T + 'Green' }] } }]);
     expect(term(back, 'Odd').oneOf).toBeUndefined();
-    expect(term(back, 'Odd').axioms![0]).toContain('"amber"');
-    // Of two lists the first is the definition and the second is kept.
+    // A list of an individual and a literal is no class expression OWL has: kept as it was read.
+    expect(term(back, 'Odd').classAxioms).toMatchObject([{ kind: 'EquivalentClasses', expression: { type: 'Unparsed', turtle: expect.stringContaining('"amber"') } }]);
+    // Of two lists the first is the definition and the second is an axiom.
     expect(enumMembers(back, term(back, 'Both')).map((t) => t.name)).toEqual(['Red']);
-    expect(term(back, 'Both').axioms).toHaveLength(1);
+    expect(term(back, 'Both').classAxioms).toMatchObject([{ kind: 'EquivalentClasses', expression: { type: 'ObjectOneOf', individuals: [{ iri: T + 'Green' }] } }]);
     // "All different" of two of them is a matter between those two, and stays a relationship.
     expect(back.relations.filter((r) => r.predicate === 'owl:differentFrom')).toHaveLength(1);
     // Written out again, every list is still a list and nothing was flattened into types.

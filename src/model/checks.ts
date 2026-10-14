@@ -1,6 +1,9 @@
 import { linkProps } from './identity';
 import type { Model } from './types';
-import { dataDomain, fitsIn, hasCardinality, objectProperties, plainRelationships } from './props';
+import { dataDomain, fitsAxioms, hasCardinality, objectProperties, plainRelationships } from './props';
+import { termOfIri } from './domains';
+import { classesOfUnion, type ClassAxiom } from './expressions';
+import { classText, namingFor } from './manchester';
 import { resolveModel, stdProp } from './vocab';
 
 export type Severity = 'error' | 'warning' | 'info';
@@ -163,24 +166,31 @@ export function runChecks(model: Model): Issue[] {
   if (m.terms.length > 1) {
     for (const t of m.terms) {
       // A data property with a domain is placed even if no class is drawn as having it.
-      if (!connected.has(t.id) && !(t.type === 'property' && t.domain?.length)) add('Isolated term', 'warning', `"${name(t.id)}" has no relations.`, [t.id]);
+      if (!connected.has(t.id) && !(t.type === 'property' && t.domains?.length)) add('Isolated term', 'warning', `"${name(t.id)}" has no relations.`, [t.id]);
     }
   }
 
   // 12. Properties: a domain and datatype for data properties, uses that fall outside a
   // declared domain or range, and relationships nobody has classified yet
   if (m.mode !== 'skos') {
+    // A use outside a domain or range stated as axioms: outside one of them, since all of them hold.
+    const naming = namingFor(m);
+    const isNot = (outside: ClassAxiom) => {
+      const named = classesOfUnion(outside.expression);
+      return named ? `is not ${named.map((iri) => termOfIri(m, iri)?.name || iri).join(' or ')} or a kind of it` : `is not ${classText(outside.expression, naming)}`;
+    };
     for (const t of m.terms) {
       if (t.type !== 'property') continue;
       const domain = dataDomain(m, t);
-      if (connected.has(t.id) && !domain.ids.length) {
+      if (connected.has(t.id) && !(domain.auto ? domain.attached : domain.axioms).length) {
         add('No domain', 'warning', `Data property "${name(t.id)}" has no domain: attach it to a class, or set its domain.`, [t.id]);
       }
-      if (!t.range) add('No range', 'info', `Data property "${name(t.id)}" has no datatype.`, [t.id]);
+      if (!t.ranges?.length) add('No range', 'info', `Data property "${name(t.id)}" has no datatype.`, [t.id]);
       if (domain.auto) continue;
       for (const r of m.relations) {
-        if (r.kind !== 'property' || r.to !== t.id || byId.get(r.from)?.type !== 'concept' || fitsIn(m, r.from, domain.ids)) continue;
-        add('Outside domain', 'warning', `"${name(r.from)}" has the data property "${name(t.id)}", but is not ${domain.ids.map(name).join(' or ')} or a kind of it.`, [], [r.id]);
+        if (r.kind !== 'property' || r.to !== t.id || byId.get(r.from)?.type !== 'concept') continue;
+        const { outside } = fitsAxioms(m, r.from, domain.axioms);
+        if (outside) add('Outside domain', 'warning', `"${name(r.from)}" has the data property "${name(t.id)}", but ${isNot(outside)}.`, [], [r.id]);
       }
     }
     for (const p of objectProperties(m)) {
@@ -190,12 +200,10 @@ export function runChecks(model: Model): Issue[] {
         // Only a class is held to the domain and range: for an individual they are something to
         // infer its type from, which is the reasoner's business.
         if (a.type !== 'concept' || b.type !== 'concept') continue;
-        if (!p.domainAuto && p.domain.length && !fitsIn(m, a.id, p.domain)) {
-          add('Outside domain', 'warning', `"${name(a.id)}" uses "${p.name}", but is not ${p.domain.map(name).join(' or ')} or a kind of it.`, [], [r.id]);
-        }
-        if (!p.rangeAuto && p.range.length && !fitsIn(m, b.id, p.range)) {
-          add('Outside range', 'warning', `"${p.name}" points to "${name(b.id)}", which is not ${p.range.map(name).join(' or ')} or a kind of it.`, [], [r.id]);
-        }
+        const outsideDomain = p.domainAuto ? undefined : fitsAxioms(m, a.id, p.domains).outside;
+        if (outsideDomain) add('Outside domain', 'warning', `"${name(a.id)}" uses "${p.name}", but ${isNot(outsideDomain)}.`, [], [r.id]);
+        const outsideRange = p.rangeAuto ? undefined : fitsAxioms(m, b.id, p.ranges).outside;
+        if (outsideRange) add('Outside range', 'warning', `"${p.name}" points to "${name(b.id)}", which ${isNot(outsideRange)}.`, [], [r.id]);
       }
     }
     for (const p of plainRelationships(m)) {

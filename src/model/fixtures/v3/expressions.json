@@ -1,0 +1,451 @@
+{
+  "format": "conceptweaver",
+  "version": 3,
+  "name": "Expressions fixture",
+  "description": "",
+  "baseIri": "http://example.org/expressions#",
+  "ontologyIri": "http://example.org/expressions",
+  "prefixes": [],
+  "mode": "ontology",
+  "lang": "en",
+  "vocab": {
+    "enabled": true,
+    "map": {}
+  },
+  "props": [
+    {
+      "id": "7zxzkpg3wq9",
+      "name": "has topping",
+      "iri": "http://example.org/expressions#hasTopping",
+      "description": "",
+      "chars": []
+    },
+    {
+      "id": "5whnrlxmwq9",
+      "name": "has child",
+      "iri": "http://example.org/expressions#hasChild",
+      "description": "",
+      "chars": []
+    },
+    {
+      "id": "y5aoh4n3wq9",
+      "name": "has member",
+      "iri": "http://example.org/expressions#hasMember",
+      "description": "",
+      "chars": []
+    },
+    {
+      "id": "acc0kcs3wq9",
+      "name": "has sibling",
+      "iri": "http://example.org/expressions#hasSibling",
+      "description": "",
+      "chars": []
+    },
+    {
+      "id": "q0qxh12uwq9",
+      "name": "made in",
+      "iri": "http://example.org/expressions#madeIn",
+      "description": "",
+      "chars": []
+    },
+    {
+      "id": "18m6t72xwq9",
+      "name": "loves",
+      "iri": "http://example.org/expressions#loves",
+      "description": "",
+      "chars": []
+    }
+  ],
+  "terms": [
+    {
+      "id": "whi0k5k1wq9",
+      "name": "Person",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -60,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Person"
+    },
+    {
+      "id": "f0ouuh7gwq9",
+      "name": "Organisation",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -372,
+      "y": 250,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Organisation"
+    },
+    {
+      "id": "4mnnqqq6wq9",
+      "name": "Place",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -233,
+      "y": 250,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Place"
+    },
+    {
+      "id": "bp233b47wq9",
+      "name": "Pizza",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -113,
+      "y": 250,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Pizza"
+    },
+    {
+      "id": "5zrx9wpbwq9",
+      "name": "Meat topping",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 26,
+      "y": 250,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#MeatTopping"
+    },
+    {
+      "id": "nmbmwy6owq9",
+      "name": "Colour",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 60,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Colour"
+    },
+    {
+      "id": "5hjjoqr9wq9",
+      "name": "Vegetarian pizza",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 199,
+      "y": 250,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#VegetarianPizza",
+      "axioms": [
+        "owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Pizza> [ a owl:Class ; owl:complementOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasTopping> ; owl:someValuesFrom <http://example.org/expressions#MeatTopping> ] ] ) ]"
+      ]
+    },
+    {
+      "id": "48tb3hikwq9",
+      "name": "Adult person",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 372,
+      "y": 250,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#AdultPerson",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Person> [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasAge> ; owl:someValuesFrom [ a rdfs:Datatype ; owl:onDatatype xsd:integer ; owl:withRestrictions ( [ xsd:minInclusive \"18\"^^xsd:integer ] ) ] ] ) ]"
+      ]
+    },
+    {
+      "id": "cedw65cqwq9",
+      "name": "Agent",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -365,
+      "y": 314,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Agent",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Class ; owl:unionOf ( <http://example.org/expressions#Person> <http://example.org/expressions#Organisation> ) ]"
+      ]
+    },
+    {
+      "id": "8u76m5zgwq9",
+      "name": "Italian thing",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -222,
+      "y": 314,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#ItalianThing",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#madeIn> ; owl:hasValue <http://example.org/expressions#italy> ]"
+      ]
+    },
+    {
+      "id": "v9gi243ywq9",
+      "name": "Parent",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -251,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Parent",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:minCardinality \"1\"^^xsd:nonNegativeInteger ]"
+      ]
+    },
+    {
+      "id": "ci6re9otwq9",
+      "name": "Grandparent",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -63,
+      "y": 314,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Grandparent",
+      "axioms": [
+        "owl:equivalentClass [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:someValuesFrom [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:someValuesFrom <http://example.org/expressions#Person> ] ]"
+      ]
+    },
+    {
+      "id": "jwp50z0nwq9",
+      "name": "Member",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 72,
+      "y": 314,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Member",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty [ owl:inverseOf <http://example.org/expressions#hasMember> ] ; owl:someValuesFrom <http://example.org/expressions#Organisation> ]"
+      ]
+    },
+    {
+      "id": "bi0shot7wq9",
+      "name": "Traffic colour",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 219,
+      "y": 314,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#TrafficColour",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Class ; owl:oneOf ( <http://example.org/expressions#red> <http://example.org/expressions#amber> <http://example.org/expressions#green> ) ]"
+      ]
+    },
+    {
+      "id": "z661tnjdwq9",
+      "name": "Narcissist",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -120,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Narcissist",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#loves> ; owl:hasSelf \"true\"^^xsd:boolean ]"
+      ]
+    },
+    {
+      "id": "35fbcflewq9",
+      "name": "Twin",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 365,
+      "y": 314,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Twin",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasSibling> ; owl:qualifiedCardinality \"1\"^^xsd:nonNegativeInteger ; owl:onClass [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Person> [ a owl:Class ; owl:complementOf <http://example.org/expressions#Organisation> ] ) ] ]",
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:allValuesFrom [ a owl:Class ; owl:unionOf ( <http://example.org/expressions#Person> <http://example.org/expressions#Place> ) ] ]"
+      ]
+    },
+    {
+      "id": "chcqrw08wq9",
+      "name": "Hermit",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": -158,
+      "y": 378,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#Hermit"
+    },
+    {
+      "id": "jjh241w6wqb",
+      "name": "has age",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 0,
+      "y": 378,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#hasAge",
+      "ranges": [
+        {
+          "id": "ft4h8ja9wqb",
+          "range": {
+            "type": "Datatype",
+            "iri": "http://www.w3.org/2001/XMLSchema#integer"
+          }
+        }
+      ]
+    },
+    {
+      "id": "swh851gnwqb",
+      "name": "Italy",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 158,
+      "y": 378,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#italy"
+    },
+    {
+      "id": "eztafg2wwqb",
+      "name": "red",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 12,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#red"
+    },
+    {
+      "id": "5s941bauwqb",
+      "name": "amber",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 132,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#amber"
+    },
+    {
+      "id": "s5pzec6bwqb",
+      "name": "green",
+      "description": "",
+      "type": "instance",
+      "color": "",
+      "x": 252,
+      "y": 110,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/expressions#green"
+    }
+  ],
+  "relations": [
+    {
+      "id": "rzqbqj4iwqb",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "from": "v9gi243ywq9",
+      "to": "whi0k5k1wq9"
+    },
+    {
+      "id": "bk24ixx6wqb",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "from": "z661tnjdwq9",
+      "to": "whi0k5k1wq9"
+    },
+    {
+      "id": "dnfcoq5zwqb",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "from": "eztafg2wwqb",
+      "to": "nmbmwy6owq9"
+    },
+    {
+      "id": "8anmuecgwqb",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "from": "5s941bauwqb",
+      "to": "nmbmwy6owq9"
+    },
+    {
+      "id": "8jfm0zd2wqb",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "from": "s5pzec6bwqb",
+      "to": "nmbmwy6owq9"
+    }
+  ],
+  "shapes": {
+    "nodes": [],
+    "extra": ""
+  },
+  "quality": {
+    "off": [],
+    "on": []
+  },
+  "externals": [],
+  "mappings": [],
+  "rejected": [],
+  "governance": {
+    "custom": [],
+    "overrides": {}
+  },
+  "style": {
+    "theme": "standard",
+    "nodeTypes": {},
+    "edgeTypes": {},
+    "nodes": {},
+    "edges": {},
+    "anchors": {}
+  },
+  "layout": {
+    "kind": "hierarchy",
+    "direction": "TB",
+    "nodeSpacing": 36,
+    "layerSpacing": 70,
+    "repulsion": 1,
+    "routing": "auto",
+    "root": ""
+  },
+  "datatypes": [],
+  "unmapped": "<http://example.org/expressions#Hermit> <http://www.w3.org/2002/07/owl#disjointWith> [ <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Restriction> ; <http://www.w3.org/2002/07/owl#onProperty> <http://example.org/expressions#loves> ; <http://www.w3.org/2002/07/owl#someValuesFrom> <http://example.org/expressions#Person> ] .\n"
+}

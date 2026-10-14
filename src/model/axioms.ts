@@ -1,4 +1,6 @@
 import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, isInstanceOf, objectProperties, propLinks, wouldCycle } from './props';
+import { propDatatype, propDatatypes, unionClasses, withUnionClasses } from './domains';
+import { namedClasses, type ClassAxiom } from './expressions';
 import { reason } from './reasoner';
 import { outsideEnumeration } from './datatypes';
 import { validateLiteral } from './literals';
@@ -226,11 +228,14 @@ export interface ClassProperty {
  */
 export function propertiesOfClass(model: Model, classId: string): ClassProperty[] {
   const out: ClassProperty[] = [];
-  for (const p of objectProperties(model)) if (p.domain.includes(classId)) out.push({ ref: p.id, data: false, name: p.name, iri: p.iri, auto: p.domainAuto });
+  const iri = model.terms.find((t) => t.id === classId)?.iri;
+  // A domain stated as axioms names a class that it is, or is a union or an intersection of.
+  const names = (axioms: ClassAxiom[]) => !!iri && axioms.some((a) => namedClasses(a.expression).includes(iri));
+  for (const p of objectProperties(model)) if (p.domainAuto ? p.usedFrom.includes(classId) : names(p.domains)) out.push({ ref: p.id, data: false, name: p.name, iri: p.iri, auto: p.domainAuto });
   for (const t of model.terms) {
     if (t.type !== 'property') continue;
     const d = dataDomain(model, t);
-    if (d.ids.includes(classId)) out.push({ ref: t.id, data: true, name: t.name || 'Unnamed', iri: t.iri, auto: d.auto });
+    if (d.auto ? d.attached.includes(classId) : names(d.axioms)) out.push({ ref: t.id, data: true, name: t.name || 'Unnamed', iri: t.iri, auto: d.auto });
   }
   return out.sort((a, b) => Number(a.data) - Number(b.data) || a.name.localeCompare(b.name));
 }
@@ -253,32 +258,63 @@ export function inheritedPropertiesOfClass(model: Model, classId: string): (Clas
   return out;
 }
 
-/** Adds the class to a property's domain. A domain that so far only followed use becomes one set by hand, with the same classes. */
+/**
+ * Adds the class to a property's domain: the domain becomes "any of" the classes it was and this
+ * one. A domain that so far only followed use becomes one set by hand, with the same classes and
+ * this one. A domain stated otherwise (two axioms, which hold together, or an expression that is
+ * not a union of classes) is not changed here: what adding a class means for it is a choice to
+ * make on the property, where all of it is shown.
+ */
 export function addToDomain(model: Model, classId: string, p: { ref: string; data: boolean }): Edit {
-  if (model.terms.find((t) => t.id === classId)?.type !== 'concept') return refuse('Only a class can be in a domain.');
+  const cls = model.terms.find((t) => t.id === classId);
+  if (cls?.type !== 'concept' || !cls.iri) return refuse('Only a class can be in a domain.');
+  const iriOf = (ids: string[]) => ids.map((id) => model.terms.find((t) => t.id === id)?.iri).filter((x): x is string => !!x);
+  const add = (name: string, axioms: ClassAxiom[], auto: boolean, used: string[]): ClassAxiom[] | string => {
+    const list = auto ? iriOf(used) : unionClasses(axioms);
+    if (!list) return `The domain of ${q(name)} is stated as ${axioms.length > 1 ? `${axioms.length} axioms, which all hold` : 'an expression that is not a list of classes'}. Change it on the property, where all of it is shown.`;
+    if (list.includes(cls.iri!)) return `${q(nameOf(model, classId))} is already in the domain of ${q(name)}.`;
+    return withUnionClasses(auto ? [] : axioms, [...list, cls.iri!]);
+  };
   if (p.data) {
     const t = model.terms.find((x) => x.id === p.ref && x.type === 'property');
     if (!t) return refuse('That data property no longer exists.');
     const d = dataDomain(model, t);
-    if (d.ids.includes(classId)) return refuse(`${q(nameOf(model, classId))} is already in the domain of ${q(t.name)}.`);
-    return { model: { ...model, terms: model.terms.map((x) => (x.id === t.id ? { ...x, domain: [...d.ids, classId] } : x)) } };
+    const domains = add(t.name, d.axioms, d.auto, d.attached);
+    if (typeof domains === 'string') return refuse(domains);
+    return { model: { ...model, terms: model.terms.map((x) => (x.id === t.id ? { ...x, domains } : x)) } };
   }
   const v = findProp(model, p.ref);
   if (!v) return refuse('That object property no longer exists.');
-  if (v.domain.includes(classId)) return refuse(`${q(nameOf(model, classId))} is already in the domain of ${q(v.name)}.`);
-  return { model: { ...model, props: model.props.map((x) => (x.id === v.id ? { ...x, domain: [...v.domain, classId] } : x)) } };
+  const domains = add(v.name, v.domains, v.domainAuto, v.usedFrom);
+  if (typeof domains === 'string') return refuse(domains);
+  return { model: { ...model, props: model.props.map((x) => (x.id === v.id ? { ...x, domains } : x)) } };
 }
 
-/** Takes the class out of a domain that was set by hand. One that follows use changes only by changing the use. */
+/**
+ * Takes the class out of a domain that was set by hand: out of the classes it is "any of", or the
+ * axiom that is that class alone. One that follows use changes only by changing the use.
+ */
 export function removeFromDomain(model: Model, classId: string, p: { ref: string; data: boolean }): Edit {
+  const iri = model.terms.find((t) => t.id === classId)?.iri;
+  const take = (axioms: ClassAxiom[]): ClassAxiom[] | string => {
+    const list = unionClasses(axioms);
+    if (list && iri && list.includes(iri)) return withUnionClasses(axioms, list.filter((x) => x !== iri));
+    const alone = axioms.filter((a) => a.expression.type === 'Class' && a.expression.iri === iri);
+    if (alone.length) return axioms.filter((a) => !alone.includes(a));
+    return 'The class is part of an expression in this domain. Change it on the property, where all of it is shown.';
+  };
   if (p.data) {
     const t = model.terms.find((x) => x.id === p.ref);
-    if (!t?.domain) return refuse('This domain follows the classes the property is attached to. Remove the restriction that attaches it instead.');
-    return { model: { ...model, terms: model.terms.map((x) => (x.id === t.id ? { ...x, domain: t.domain!.filter((id) => id !== classId) } : x)) } };
+    if (!t?.domains) return refuse('This domain follows the classes the property is attached to. Remove the restriction that attaches it instead.');
+    const domains = take(t.domains);
+    if (typeof domains === 'string') return refuse(domains);
+    return { model: { ...model, terms: model.terms.map((x) => (x.id === t.id ? { ...x, domains } : x)) } };
   }
   const entry = model.props.find((x) => x.id === p.ref);
-  if (!entry?.domain) return refuse('This domain follows the classes the property is used between. Remove the restriction that uses it instead.');
-  return { model: { ...model, props: model.props.map((x) => (x === entry ? { ...x, domain: entry.domain!.filter((id) => id !== classId) } : x)) } };
+  if (!entry?.domains) return refuse('This domain follows the classes the property is used between. Remove the restriction that uses it instead.');
+  const domains = take(entry.domains);
+  if (typeof domains === 'string') return refuse(domains);
+  return { model: { ...model, props: model.props.map((x) => (x === entry ? { ...x, domains } : x)) } };
 }
 
 // ---------------------------------------------------------------- individuals
@@ -286,7 +322,10 @@ export function removeFromDomain(model: Model, classId: string, p: { ref: string
 export { validateLiteral } from './literals';
 
 /** The datatype a value is written with: its own if it has one, or else the range of its property. */
-export const datatypeOf = (model: Model, v: DataValue): string | undefined => v.dt ?? model.terms.find((t) => t.id === v.prop)?.range;
+export const datatypeOf = (model: Model, v: DataValue): string | undefined => {
+  const prop = model.terms.find((t) => t.id === v.prop);
+  return v.dt ?? (prop && propDatatype(prop));
+};
 
 const sameValue = (a: DataValue, b: DataValue) => a.prop === b.prop && a.value === b.value && (a.lang ?? '') === (b.lang ?? '');
 
@@ -298,13 +337,20 @@ export function addValue(model: Model, id: string, draft: { prop: string; value:
   if (prop?.type !== 'property') return refuse('Choose a data property.');
   const value = draft.value.trim();
   const lang = draft.lang?.trim().toLowerCase() || undefined;
-  const bad = validateLiteral(value, prop.range);
-  if (bad) return refuse(bad);
+  // Every datatype the range names holds for the value; facets, unions and the like are not checked here.
+  const datatypes = propDatatypes(prop);
+  for (const range of datatypes) {
+    const bad = validateLiteral(value, range);
+    if (bad) return refuse(bad);
+  }
   if (lang && !isLang(lang)) return refuse(`${q(lang)} is not a language code. Use one like en, nl or zh.`);
-  if (lang && prop.range && prop.range !== 'rdf:langString' && prop.range !== 'xsd:string') return refuse(`A language only goes with text. ${q(prop.name)} holds ${DATATYPES.find((d) => d.id === prop.range)?.label ?? prop.range} values.`);
+  const notText = datatypes.find((range) => range !== 'rdf:langString' && range !== 'xsd:string');
+  if (lang && notText) return refuse(`A language only goes with text. ${q(prop.name)} holds ${DATATYPES.find((d) => d.id === notText)?.label ?? notText} values.`);
   // Where the property's values are an enumerated datatype, the value has to be one it lists.
-  const outside = outsideEnumeration(model, prop.range, { value, lang });
-  if (outside) return refuse(outside);
+  for (const range of datatypes) {
+    const outside = outsideEnumeration(model, range, { value, lang });
+    if (outside) return refuse(outside);
+  }
   const next: DataValue = { prop: prop.id, value, ...(lang ? { lang } : {}) };
   const have = ind.values ?? [];
   if (have.some((v) => sameValue(v, next))) return refuse(`${q(ind.name)} already has that value for ${q(prop.name)}.`);

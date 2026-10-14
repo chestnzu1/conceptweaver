@@ -135,6 +135,8 @@
 
   const termLink = (id) => el('button', { type: 'button', class: 'link', onclick: () => choose({ kind: 'term', id }, { centre: true }) }, nameOf(id));
   const section = (title, ...kids) => (kids.flat(Infinity).some(Boolean) ? [el('h3', null, title), ...kids.flat(Infinity)] : []);
+  // A domain or range stated as several axioms holds them all: each is joined by "and", a union in brackets.
+  const allOf = (axioms) => (axioms.length ? axioms.map((x) => (axioms.length > 1 && / or /.test(x) ? '(' + x + ')' : x)).join(' and ') : 'anything');
 
   function iriRow(x) {
     if (!x.iri) return null;
@@ -258,7 +260,7 @@
       p.description ? el('p', null, p.description) : null,
       ...section(
         'Declared',
-        el('dl', null, [el('dt', null, 'Domain'), el('dd', null, p.domain.join(', ') || 'anything'), el('dt', null, 'Range'), el('dd', null, p.range.join(', ') || 'anything'), p.characteristics.length ? [el('dt', null, 'Characteristics'), el('dd', null, p.characteristics.join(', '))] : null]),
+        el('dl', null, [el('dt', null, 'Domain'), el('dd', null, allOf(p.domain)), el('dt', null, 'Range'), el('dd', null, allOf(p.range)), p.characteristics.length ? [el('dt', null, 'Characteristics'), el('dd', null, p.characteristics.join(', '))] : null]),
       ),
       ...section('Used in', uses.length ? el('ul', { class: 'links' }, uses.map((r) => el('li', null, termLink(r.from), el('em', null, ' ' + r.label + ' '), termLink(r.to)))) : el('p', { class: 'muted' }, 'Not used between any two terms yet.')),
       ...section('Metadata', metaList(p.meta)),

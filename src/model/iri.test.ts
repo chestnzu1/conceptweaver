@@ -65,7 +65,7 @@ describe('IRI suffix', () => {
     const old = 'http://example.org/films#Film';
     const model = {
       ...m,
-      terms: m.terms.map((t) => (t.id === award.id ? { ...t, axioms: [`rdfs:subClassOf [ a owl:Class ; owl:complementOf <${old}> ]`] } : t)),
+      terms: m.terms.map((t) => (t.id === award.id ? { ...t, classAxioms: [{ id: 'x', kind: 'SubClassOf' as const, expression: { type: 'ObjectComplementOf' as const, operand: { type: 'Class' as const, iri: old } } }] } : t)),
       shapes: {
         extra: `<http://example.org/s#X> <http://www.w3.org/ns/shacl#targetClass> <${old}> .`,
         nodes: [{ id: 's1', iri: 'http://example.org/s#FilmShape', name: 'Film shape', targetClass: [old], targetNode: [], targetSubjectsOf: [], targetObjectsOf: [], properties: [{ id: 'p1', path: 'http://example.org/films#wins', class: old, in: [{ v: old, iri: true }, { v: old }] }] }],
@@ -75,7 +75,7 @@ describe('IRI suffix', () => {
     };
     const next = setIriSuffix(model, { term: film.id }, 'Movie').model!;
     const iri = 'http://example.org/films#Movie';
-    expect(next.terms.find((t) => t.id === award.id)!.axioms![0]).toContain(`<${iri}>`);
+    expect(next.terms.find((t) => t.id === award.id)!.classAxioms![0].expression).toEqual({ type: 'ObjectComplementOf', operand: { type: 'Class', iri } });
     expect(next.shapes.extra).toContain(`<${iri}>`);
     expect(next.shapes.nodes[0]).toMatchObject({ iri: 'http://example.org/s#FilmShape', targetClass: [iri] });
     // A literal that happens to read like the IRI is a literal, and stays.

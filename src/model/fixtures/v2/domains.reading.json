@@ -1,0 +1,101 @@
+{
+  "props": [
+    {
+      "name": "knows",
+      "domain": [
+        "lkv3oltoq5w"
+      ],
+      "range": [
+        "lkv3oltoq5w"
+      ],
+      "domainAuto": true,
+      "rangeAuto": true
+    },
+    {
+      "name": "located in",
+      "domain": [],
+      "range": [
+        "runp04o0q5w"
+      ],
+      "domainAuto": false,
+      "rangeAuto": false
+    },
+    {
+      "name": "member of",
+      "domain": [
+        "lkv3oltoq5w"
+      ],
+      "range": [
+        "w4fan6t8q5w"
+      ],
+      "domainAuto": false,
+      "rangeAuto": false
+    },
+    {
+      "name": "took part in",
+      "domain": [
+        "lkv3oltoq5w",
+        "w4fan6t8q5w"
+      ],
+      "range": [
+        "tcaf56ohq5w"
+      ],
+      "domainAuto": false,
+      "rangeAuto": false
+    }
+  ],
+  "dataProps": [
+    {
+      "name": "age",
+      "domain": {
+        "ids": [
+          "lkv3oltoq5w"
+        ],
+        "auto": false
+      },
+      "range": "xsd:integer",
+      "axioms": []
+    },
+    {
+      "name": "size",
+      "domain": {
+        "ids": [
+          "lkv3oltoq5w",
+          "w4fan6t8q5w"
+        ],
+        "auto": false
+      },
+      "range": "enum:size",
+      "axioms": []
+    },
+    {
+      "name": "colour",
+      "domain": {
+        "ids": [],
+        "auto": false
+      },
+      "range": "enum:colours",
+      "axioms": []
+    },
+    {
+      "name": "note",
+      "domain": {
+        "ids": [],
+        "auto": true
+      },
+      "range": null,
+      "axioms": []
+    },
+    {
+      "name": "code",
+      "domain": {
+        "ids": [],
+        "auto": true
+      },
+      "range": "xsd:string",
+      "axioms": [
+        "rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:string ; owl:withRestrictions ( [ xsd:length \"4\"^^xsd:integer ] ) ]"
+      ]
+    }
+  ]
+}

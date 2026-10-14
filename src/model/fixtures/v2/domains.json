@@ -1,0 +1,304 @@
+{
+  "format": "conceptweaver",
+  "version": 2,
+  "name": "Domains fixture",
+  "description": "",
+  "baseIri": "http://example.org/domains#",
+  "ontologyIri": "",
+  "prefixes": [],
+  "mode": "ontology",
+  "lang": "en",
+  "vocab": {
+    "enabled": false,
+    "map": {}
+  },
+  "props": [
+    {
+      "id": "07i47ixgq5w",
+      "name": "member of",
+      "description": "",
+      "chars": [],
+      "domain": [
+        "lkv3oltoq5w"
+      ],
+      "range": [
+        "w4fan6t8q5w"
+      ],
+      "iri": "http://example.org/domains#memberOf"
+    },
+    {
+      "id": "b8fz17leq5w",
+      "name": "took part in",
+      "description": "",
+      "chars": [],
+      "domain": [
+        "lkv3oltoq5w",
+        "w4fan6t8q5w"
+      ],
+      "range": [
+        "tcaf56ohq5w"
+      ],
+      "iri": "http://example.org/domains#tookPartIn"
+    },
+    {
+      "id": "f862wg2yq5w",
+      "name": "located in",
+      "description": "",
+      "chars": [],
+      "domain": [],
+      "range": [
+        "runp04o0q5w"
+      ],
+      "iri": "http://example.org/domains#locatedIn"
+    },
+    {
+      "id": "c2y7ve1pq5w",
+      "name": "knows",
+      "description": "",
+      "chars": [],
+      "iri": "http://example.org/domains#knows"
+    }
+  ],
+  "terms": [
+    {
+      "id": "6iqxc5i5q5w",
+      "name": "Agent",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 0,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/domains#Agent"
+    },
+    {
+      "id": "lkv3oltoq5w",
+      "name": "Person",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 120,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/domains#Person"
+    },
+    {
+      "id": "w4fan6t8q5w",
+      "name": "Organisation",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 240,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/domains#Organisation"
+    },
+    {
+      "id": "tcaf56ohq5w",
+      "name": "Event",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 360,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/domains#Event"
+    },
+    {
+      "id": "runp04o0q5w",
+      "name": "Place",
+      "description": "",
+      "type": "concept",
+      "color": "",
+      "x": 480,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/domains#Place"
+    },
+    {
+      "id": "kqcg9c9xq5w",
+      "name": "age",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 600,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:integer",
+      "domain": [
+        "lkv3oltoq5w"
+      ],
+      "iri": "http://example.org/domains#age"
+    },
+    {
+      "id": "3pn20a25q5w",
+      "name": "size",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 720,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "range": "enum:size",
+      "domain": [
+        "lkv3oltoq5w",
+        "w4fan6t8q5w"
+      ],
+      "iri": "http://example.org/domains#size_2"
+    },
+    {
+      "id": "csmxahrfq5w",
+      "name": "colour",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 840,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "range": "enum:colours",
+      "domain": [],
+      "iri": "http://example.org/domains#colour"
+    },
+    {
+      "id": "94pshsvgq5w",
+      "name": "note",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 960,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "iri": "http://example.org/domains#note"
+    },
+    {
+      "id": "giu3kqb6q5w",
+      "name": "code",
+      "description": "",
+      "type": "property",
+      "color": "",
+      "x": 1080,
+      "y": 0,
+      "synonyms": "",
+      "fields": [],
+      "range": "xsd:string",
+      "axioms": [
+        "rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:string ; owl:withRestrictions ( [ xsd:length \"4\"^^xsd:integer ] ) ]"
+      ],
+      "iri": "http://example.org/domains#code"
+    }
+  ],
+  "relations": [
+    {
+      "id": "u140vjndq5w",
+      "from": "lkv3oltoq5w",
+      "to": "6iqxc5i5q5w",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "u2rw6tncq5w",
+      "from": "w4fan6t8q5w",
+      "to": "6iqxc5i5q5w",
+      "label": "",
+      "kind": "generalization",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    },
+    {
+      "id": "rg0gcwtoq5w",
+      "from": "lkv3oltoq5w",
+      "to": "lkv3oltoq5w",
+      "label": "knows",
+      "kind": "association",
+      "description": "",
+      "fromCard": "",
+      "toCard": "",
+      "prop": "c2y7ve1pq5w"
+    },
+    {
+      "id": "6bzii1bkq5w",
+      "from": "tcaf56ohq5w",
+      "to": "kqcg9c9xq5w",
+      "label": "",
+      "kind": "property",
+      "description": "",
+      "fromCard": "",
+      "toCard": ""
+    }
+  ],
+  "shapes": {
+    "nodes": [],
+    "extra": ""
+  },
+  "externals": [],
+  "mappings": [],
+  "rejected": [],
+  "governance": {
+    "custom": [],
+    "overrides": {}
+  },
+  "style": {
+    "theme": "standard",
+    "nodeTypes": {},
+    "edgeTypes": {},
+    "nodes": {},
+    "edges": {},
+    "anchors": {}
+  },
+  "layout": {
+    "kind": "manual",
+    "direction": "TB",
+    "nodeSpacing": 36,
+    "layerSpacing": 70,
+    "repulsion": 1,
+    "routing": "auto",
+    "root": ""
+  },
+  "datatypes": [
+    {
+      "id": "size",
+      "name": "Size",
+      "description": "",
+      "values": [
+        {
+          "value": "small"
+        },
+        {
+          "value": "large"
+        }
+      ],
+      "iri": "http://example.org/domains#Size"
+    },
+    {
+      "id": "colours",
+      "name": "colour values",
+      "description": "",
+      "values": [
+        {
+          "value": "red"
+        },
+        {
+          "value": "blue"
+        }
+      ],
+      "anonymous": true
+    }
+  ],
+  "quality": {
+    "off": [],
+    "on": []
+  }
+}

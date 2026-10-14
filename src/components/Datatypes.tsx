@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { addDatatype, addEnumValue, datatypeTurtle, enumOf, enumRange, literalText, removeDatatype, removeEnumValue, updateDatatype, usersOf } from '../model/datatypes';
+import { datatypeAxiom, withDatatype } from '../model/domains';
+import { keyOfRange } from '../model/expressions';
 import { useStore } from '../model/store';
 import { DATATYPES, type EnumDatatype, type Term } from '../model/types';
 import { CommitInput } from './fields';
@@ -16,18 +18,24 @@ export function RangeSelect({ term, label = 'Datatype' }: { term: Term; label?: 
   const datatypes = useStore((s) => s.model.datatypes);
   const st = useStore.getState;
   const choose = (value: string) => {
-    if (value !== NEW) return st().updateTerm(term.id, { range: value || undefined });
+    if (value !== NEW) return st().updateTerm(term.id, { ranges: withDatatype(term, value || undefined) });
     // A new one becomes the range in the same step. It gets its IRI from the name it is then given, not from this one.
     let name = 'New datatype';
     for (let i = 2; datatypes.some((d) => d.name.trim().toLowerCase() === name.toLowerCase()); i++) name = `New datatype ${i}`;
     st().apply((m) => {
       const made = addDatatype(m, name);
-      return made.model && made.id ? { ...made.model, terms: made.model.terms.map((t) => (t.id === term.id ? { ...t, range: enumRange(made.id!) } : t)) } : m;
+      return made.model && made.id ? { ...made.model, terms: made.model.terms.map((t) => (t.id === term.id ? { ...t, ranges: withDatatype(t, enumRange(made.id!)) } : t)) } : m;
     });
   };
+  // The datatype the range names on its own; further axioms of the range are listed with it.
+  const chosen = datatypeAxiom(term);
+  const value = chosen ? (keyOfRange(chosen.range) ?? '') : '';
+  const known = !value || DATATYPES.some((d) => d.id === value) || datatypes.some((d) => enumRange(d.id) === value);
   return (
-    <select aria-label={label} value={term.range ?? ''} onChange={(e) => choose(e.target.value)}>
+    <select aria-label={label} value={value} onChange={(e) => choose(e.target.value)}>
       <option value="">Not set</option>
+      {/* A datatype the list does not offer (one of XML Schema's others, or of another vocabulary) is kept, and shown. */}
+      {!known && <option value={value}>{value}</option>}
       <optgroup label="Standard datatypes">
         {DATATYPES.map((d) => (
           <option key={d.id} value={d.id}>
@@ -136,6 +144,7 @@ export function EnumDatatypeEditor({ datatype: d }: { datatype: EnumDatatype }) 
 
 /** The enumerated datatype a data property has as its range, with its editor, if it has one. */
 export function RangeEnumeration({ term }: { term: Term }) {
-  const d = useStore((s) => enumOf(s.model, term.range));
+  const chosen = datatypeAxiom(term);
+  const d = useStore((s) => enumOf(s.model, chosen && keyOfRange(chosen.range)));
   return d ? <EnumDatatypeEditor key={d.id} datatype={d} /> : null;
 }

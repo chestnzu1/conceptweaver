@@ -130,7 +130,7 @@ const section = (id) => panel.locator(`[data-section="${id}"]`);
 const listed = async (id) => (await section(id).locator('.inferred-list li').allInnerTexts()).map(flat);
 await side.getByRole('button', { name: 'Clerk', exact: true }).first().click();
 ok((await listed('inferred-superclasses')).join(' | ') === 'Worker Entailed, according to HermiT 1.4.5.456 (OWL 2 DL).', 'a class shows the superclass only the OWL 2 DL reasoner finds, credited to it: ' + (await listed('inferred-superclasses')).join(' | '));
-ok(flat(await panel.innerText()).includes('Inferred restrictions (1)') && flat(await panel.innerText()).includes('intersectionOf'), 'and what it inherits from that superclass is among its inferred restrictions');
+ok(flat(await panel.innerText()).includes('Inferred restrictions (1)') && flat(await panel.innerText()).includes('Person and Employed'), 'and what it inherits from that superclass is among its inferred restrictions, in Manchester syntax');
 await side.getByRole('button', { name: 'Worker', exact: true }).first().click();
 ok((await listed('inferred-subclasses')).join(' | ') === 'Clerk Entailed, according to HermiT 1.4.5.456 (OWL 2 DL).' && (await listed('inferred-instances')).join(' | ') === 'Ann Entailed, according to HermiT 1.4.5.456 (OWL 2 DL).', 'a defined class shows what is entailed to be under it and in it: ' + [...(await listed('inferred-subclasses')), ...(await listed('inferred-instances'))].join(' | '));
 await side.getByRole('tab', { name: /^Individuals/ }).click();

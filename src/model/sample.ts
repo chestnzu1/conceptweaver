@@ -1,4 +1,5 @@
 import { parseOutline } from './bulk';
+import { withDatatype } from './domains';
 import { arrangeAsHierarchy } from './layout';
 import { emptyModel, newProp, newRelation, newTerm, type Model, type RelKind, type TermType } from './types';
 
@@ -27,8 +28,8 @@ export function sampleModel(): Model {
   term('Running time', 'Length of the film in minutes.', 'property');
   term('Parasite', 'South Korean film from 2019, directed by Bong Joon-ho.', 'instance');
 
-  m.terms.find((t) => t.name === 'Release date')!.range = 'xsd:date';
-  m.terms.find((t) => t.name === 'Running time')!.range = 'xsd:integer';
+  m.terms.find((t) => t.name === 'Release date')!.ranges = withDatatype({}, 'xsd:date');
+  m.terms.find((t) => t.name === 'Running time')!.ranges = withDatatype({}, 'xsd:integer');
 
   rel('Actor', '', 'Person', 'generalization');
   rel('Director', '', 'Person', 'generalization');

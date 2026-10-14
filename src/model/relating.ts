@@ -48,7 +48,7 @@ export function cannotRelate(model: Model, fromId: string, toId: string): string
 
 /** A property that exists in name only: nothing was said about it, and nothing refers to it. */
 function pristine(model: Model, p: ObjProp): boolean {
-  if (p.description.trim() || p.chars.length || p.domain || p.range || p.fields?.length || p.external !== undefined) return false;
+  if (p.description.trim() || p.chars.length || p.domains || p.ranges || p.fields?.length || p.external !== undefined) return false;
   if (PROP_LINKS.some((l) => p[l]?.length)) return false;
   if (model.props.some((other) => other !== p && PROP_LINKS.some((l) => other[l]?.includes(p.id)))) return false;
   // An IRI of its own choosing would be something said about it; the one made from its name is not.

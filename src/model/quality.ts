@@ -7,6 +7,11 @@ import { isAbsoluteIri, STANDARD } from './prefixes';
 import { nameKey } from './identity';
 import { assertedSuperclasses, objectProperties, propLinks } from './props';
 import { shapeReferences } from './shapes';
+import { OWL, unparsedIn, type ClassAxiomKind } from './expressions';
+import { classText, namingFor } from './manchester';
+
+/** How each kind of class axiom is written in Manchester syntax, before its expression. */
+const CLASS_AXIOM_WORDS: Record<ClassAxiomKind, string> = { SubClassOf: 'SubClassOf:', EquivalentClasses: 'EquivalentTo:', DisjointClasses: 'DisjointWith:' };
 import { DATATYPES, PROP_LINKS, isLang, type Model, type QualityConfig, type Term } from './types';
 import { resolveModel } from './vocab';
 
@@ -272,8 +277,10 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
   }
   if (!skos) {
     for (const p of props) {
-      if (!p.rels.length && !p.domain.length && !p.range.length && !PROP_LINKS.some((l) => propLinks(model, p.id, l).length)) add('unused-entity', `Object property ${q(p.name)} is declared but never used, and has no domain or range.`, { prop: p.id });
-      else if (!p.domain.length || !p.range.length) add('missing-domain-range', `Object property ${q(p.name)} has no ${!p.domain.length && !p.range.length ? 'domain or range' : !p.domain.length ? 'domain' : 'range'}.`, { prop: p.id, suggestion: 'Open the property and add a class, if there is one that everything having it belongs to. A property does not need a domain or a range.' });
+      const domain = (p.domainAuto ? p.usedFrom : p.domains).length > 0;
+      const range = (p.rangeAuto ? p.usedTo : p.ranges).length > 0;
+      if (!p.rels.length && !domain && !range && !PROP_LINKS.some((l) => propLinks(model, p.id, l).length)) add('unused-entity', `Object property ${q(p.name)} is declared but never used, and has no domain or range.`, { prop: p.id });
+      else if (!domain || !range) add('missing-domain-range', `Object property ${q(p.name)} has no ${!domain && !range ? 'domain or range' : !domain ? 'domain' : 'range'}.`, { prop: p.id, suggestion: 'Open the property and add a class, if there is one that everything having it belongs to. A property does not need a domain or a range.' });
     }
   }
 
@@ -352,10 +359,19 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
   // ---- enumerations
   if (!skos) {
     const kindOf = (t: Term) => (t.type === 'concept' ? 'class' : t.type === 'property' ? 'data property' : 'individual');
+    const naming = namingFor(model);
     for (const c of model.terms) {
-      for (const a of c.axioms ?? []) {
-        if (!/\bowl:oneOf\b/.test(a)) continue;
-        add('enumeration-unsupported', `${q(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${a.length > 140 ? a.slice(0, 140) + '…' : a}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is. It is listed with the entity under Other asserted expressions.' });
+      // A list in a class axiom (a superclass that is one, a second definition, a list inside another expression).
+      for (const a of c.classAxioms ?? []) {
+        const json = JSON.stringify(a.expression);
+        if (!/"type":"(ObjectOneOf|DataOneOf)"/.test(json) && !unparsedIn(a.expression).some((x) => x.includes(OWL + 'oneOf'))) continue;
+        const text = `${CLASS_AXIOM_WORDS[a.kind]} ${classText(a.expression, naming)}`;
+        add('enumeration-unsupported', `${q(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${text.length > 140 ? text.slice(0, 140) + '…' : text}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is, and the OWL 2 DL reasoner reads it. It is listed with the class’s axioms.' });
+      }
+      // In a domain or range, a list is part of the expression; one kept as it was read (empty, or not well formed) is not taken.
+      for (const a of [...(c.domains ?? []).map((x) => x.expression), ...(c.ranges ?? []).map((x) => x.range)].flatMap(unparsedIn)) {
+        if (!a.includes(OWL + 'oneOf')) continue;
+        add('enumeration-unsupported', `${q(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${a.length > 140 ? a.slice(0, 140) + '…' : a}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is. It is listed with the property’s domain or range, kept as it was read.' });
       }
       if (c.type !== 'concept' || !c.oneOf) continue;
       const here = c.oneOf.map((id) => byId.get(id)).filter((t): t is Term => !!t);

@@ -1,3 +1,4 @@
+import { propDatatype, withDatatype } from './domains';
 import { describe, expect, it } from 'vitest';
 import { addValue } from './axioms';
 import { addDatatype, addEnumValue, datatypeTurtle, enumOf, enumRange, outsideEnumeration, rangeLabel, removeDatatype, removeEnumValue, updateDatatype } from './datatypes';
@@ -25,7 +26,7 @@ const coded = (): { m: Model; id: string } => {
   const made = addDatatype(base(), 'Status code');
   let m = ok(made);
   for (const value of ['active', 'inactive', 'pending']) m = ok(addEnumValue(m, made.id!, { value }));
-  m = withIris({ ...m, terms: m.terms.map((t) => (t.id === 'status' ? { ...t, range: enumRange(made.id!) } : t)) });
+  m = withIris({ ...m, terms: m.terms.map((t) => (t.id === 'status' ? { ...t, ranges: withDatatype({}, enumRange(made.id!)) } : t)) });
   return { m, id: made.id! };
 };
 const block = (ttl: string, subject: string) => ttl.split('\n\n').find((b) => b.startsWith(subject + ' ')) ?? '';
@@ -96,7 +97,7 @@ describe('enumerated datatypes', () => {
     expect(back.datatypes[0]).toMatchObject({ name: 'Status code', iri: 'http://example.org/orders#StatusCode', values: m.datatypes[0].values });
     expect(back.datatypes[0].anonymous).toBeUndefined();
     const status = back.terms.find((t) => t.name === 'status')!;
-    expect(enumOf(back, status.range)).toBe(back.datatypes[0]);
+    expect(enumOf(back, propDatatype(status))).toBe(back.datatypes[0]);
     // It did not turn into a class or an individual on the way.
     expect(Object.fromEntries(back.terms.map((t) => [t.name, t.type]))).toEqual({ Order: 'concept', 'Order 1': 'instance', status: 'property' });
     expect(back.terms.find((t) => t.name === 'Order 1')!.values).toEqual([{ prop: status.id, value: 'pending' }]);
@@ -116,7 +117,7 @@ describe('enumerated datatypes', () => {
 :Age a rdfs:Datatype ; owl:equivalentClass [ a rdfs:Datatype ; owl:onDatatype xsd:integer ; owl:withRestrictions ( [ xsd:minInclusive 0 ] ) ] .
 :age a owl:DatatypeProperty ; rdfs:label "age" ; rdfs:range :Age .`;
     const back = fromTurtle(ttl);
-    const of = (name: string) => enumOf(back, back.terms.find((t) => t.name === name)!.range);
+    const of = (name: string) => enumOf(back, propDatatype(back.terms.find((t) => t.name === name)!));
     expect(of('size')).toMatchObject({ anonymous: true, values: [{ value: 'S' }, { value: 'M' }, { value: 'L' }] });
     expect(of('level')).toMatchObject({ name: 'Level', iri: 'http://example.org/orders#Level', values: [{ value: '1', dt: 'xsd:integer' }, { value: '2', dt: 'xsd:integer' }, { value: '3', dt: 'xsd:integer' }] });
     // A datatype defined by a restriction is not a list of values: there is no editor for it, and it is not taken for one.
@@ -142,11 +143,11 @@ describe('enumerated datatypes', () => {
     const { m, id } = coded();
     const back = normalizeModel(JSON.parse(JSON.stringify(m)));
     expect(back.datatypes).toEqual(m.datatypes);
-    expect(back.terms.find((t) => t.id === 'status')!.range).toBe(enumRange(id));
+    expect(propDatatype(back.terms.find((t) => t.id === 'status')!)).toBe(enumRange(id));
     // A range that names a datatype that is not there is dropped; a model from before has none.
     const dangling = JSON.parse(JSON.stringify(m));
     dangling.datatypes = [];
-    expect(normalizeModel(dangling).terms.find((t) => t.id === 'status')!.range).toBeUndefined();
+    expect(propDatatype(normalizeModel(dangling).terms.find((t) => t.id === 'status')!)).toBeUndefined();
     const { datatypes: _, ...old } = JSON.parse(JSON.stringify(base()));
     expect(normalizeModel(old).datatypes).toEqual([]);
     stable(m);
@@ -154,6 +155,6 @@ describe('enumerated datatypes', () => {
     const removed = removeDatatype(m, id);
     expect(removed.note).toMatch(/“status” has no range now/);
     expect(removed.model!.datatypes).toEqual([]);
-    expect(removed.model!.terms.find((t) => t.id === 'status')!.range).toBeUndefined();
+    expect(propDatatype(removed.model!.terms.find((t) => t.id === 'status')!)).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 // Drives the built app in a headless browser to check stable identity: a model saved in format 1
-// opens as it was and is kept in format 2; renaming an object property renames its uses and no
+// opens as it was and is kept in the format of today; renaming an object property renames its uses and no
 // others; every new entity has an IRI from the start.
 // Needs the preview server:  pnpm build && pnpm exec vite preview --port 5181
 import { chromium } from 'playwright-core';
@@ -48,7 +48,7 @@ await tab('Graph');
 await page.locator('.node').first().locator('.node-box').click();
 const json = await (async () => { await page.keyboard.press('ArrowRight'); return saved(); })();
 const kept = json ?? (await saved());
-ok(kept === null || (kept.version === 2 && kept.props.every((p) => typeof p.id === 'string' && p.id) && kept.relations.some((r) => r.prop)), `kept in format 2: every object property with an id, and its uses naming it${kept ? ` (version ${kept.version}, ${kept.props.length} properties)` : ' (no change written yet)'}`);
+ok(kept === null || (kept.version === 4 && kept.props.every((p) => typeof p.id === 'string' && p.id) && kept.relations.some((r) => r.prop)), `kept in the format of today (4): every object property with an id, and its uses naming it${kept ? ` (version ${kept.version}, ${kept.props.length} properties)` : ' (no change written yet)'}`);
 
 // ---------------------------------------------------------------- renaming a property renames its uses, and no others
 await tab('Entities');

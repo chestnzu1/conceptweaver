@@ -1,6 +1,9 @@
 import { noLayout, normalizeLayout, type GraphLayout } from '../layout/types';
 import { noStyle, normalizeGraphStyle, type GraphStyle } from './graphStyle';
-import { STANDARD } from './prefixes';
+import { classExpressionAxiomFrom, classExpressionFrom, dataRangeFrom, expressionOfTurtle, rangeOfKey, WELL_KNOWN, type ClassAxiom, type ClassAxiomKind, type ClassExpressionAxiom, type DataRangeAxiom } from './expressions';
+import { statementsOf } from './unmapped';
+import { withIris } from './iri';
+import { compactIri, STANDARD } from './prefixes';
 
 export type TermType = 'concept' | 'property' | 'instance';
 export type RelKind = 'association' | 'generalization' | 'property';
@@ -76,9 +79,15 @@ export interface ObjProp {
    */
   nameLang?: string;
   descriptionLang?: string;
-  /** Term ids. Left out, the domain (or range) follows the relationships that use the property. */
-  domain?: string[];
-  range?: string[];
+  /**
+   * The property's domain and range: an axiom for each rdfs:domain (rdfs:range) statement. All of
+   * them hold at once, so that two axioms mean both (their intersection); "either" is one axiom
+   * that is a union. Left out, the domain (or range) follows the relationships that use the
+   * property, and is written as the class they start from (point to), or the union of those.
+   * Empty: there is none.
+   */
+  domains?: ClassAxiom[];
+  ranges?: ClassAxiom[];
   /** Ids from CHARACTERISTICS, e.g. "transitive". */
   chars: string[];
   /**
@@ -158,7 +167,10 @@ export interface EnumDatatype {
   anonymous?: boolean;
 }
 
-/** How a data property refers to an enumerated datatype as its range. */
+/**
+ * How a datatype is named where one is chosen from a list: a standard one by its prefixed name
+ * ("xsd:date"), an enumerated datatype of the model as "enum:" and its id.
+ */
 export const ENUM_RANGE = 'enum:';
 
 export const COLORS = ['', 'blue', 'green', 'amber', 'red', 'purple', 'teal', 'pink'] as const;
@@ -208,18 +220,23 @@ export interface Term {
    */
   pendingIri?: true;
   /**
-   * For a data property: the datatype of its values. Either one of the standard ones, by name
-   * ("xsd:date"), or an enumerated datatype of the model, as "enum:" and its id (see EnumDatatype).
+   * For a data property: its range, an axiom for each rdfs:range statement, all of which hold at
+   * once. Most often one datatype: a standard one, or an enumerated datatype of the model (see
+   * EnumDatatype). None: it has no range.
    */
-  range?: string;
-  /** For a data property: the classes that can have it, when set by hand. Otherwise the classes it is attached to. */
-  domain?: string[];
+  ranges?: DataRangeAxiom[];
   /**
-   * Asserted axioms about a class that have no drawing of their own, kept word for word: a
-   * predicate and a class expression in Turtle, such as
-   * "rdfs:subClassOf [ owl:intersectionOf ( … ) ]". They come from imported ontologies.
+   * For a data property: its domain, an axiom for each rdfs:domain statement, when set by hand
+   * (as an object property's is). Left out, it is the classes it is attached to.
    */
-  axioms?: string[];
+  domains?: ClassAxiom[];
+  /**
+   * For a class: what it is stated to be a subclass of, equivalent to or disjoint with, where that
+   * is a class expression and not something drawn (a named superclass, a restriction by one
+   * property on a named class, an enumeration): "Person and (hasAge some xsd:integer[>= 18])".
+   * Each is an axiom of its own, of the kind it was stated as; none is merged with another.
+   */
+  classAxioms?: ClassExpressionAxiom[];
   /** For a data property: each thing has at most one value (owl:FunctionalProperty). */
   functional?: boolean;
   /** For an individual: the literal values it has for data properties. */
@@ -300,9 +317,14 @@ export interface Prefix {
 /**
  * The version of the model format this code writes. 1: object properties are known by their
  * name, lower-cased. 2 (from 2026-10-14): by an id of their own, which relationships and other
- * properties refer to. A model of version 1 is read and brought up to date by normalizeModel.
+ * properties refer to. 3 (from 2026-10-14): a domain or range is a list of axioms, each a class
+ * expression (or for a data property's range a data range), where it was a list of classes that
+ * meant their union, and a data property's range one datatype. 4 (from 2026-10-14): a class's
+ * superclasses, equivalent classes and disjoint classes that are expressions are axioms with a
+ * structured expression (Term.classAxioms), where they were kept as Turtle text (Term.axioms). A
+ * model of an earlier version is read and brought up to date by normalizeModel.
  */
-export const MODEL_VERSION = 2;
+export const MODEL_VERSION = 4;
 
 export interface Model {
   format: 'conceptweaver';
@@ -664,7 +686,36 @@ export function normalizeModel(raw: unknown): Model {
     }
     datatypes.push({ id: str(d.id), name: str(d.name), description: str(d.description), ...describedBy(d.describedBy), ...langs(d), values, ...(str(d.iri) ? { iri: str(d.iri), ...(d.pendingIri === true ? { pendingIri: true as const } : {}) } : {}), ...(d.anonymous === true ? { anonymous: true } : {}) });
   }
-  const knownRange = (range: string) => DATATYPES.some((x) => x.id === range) || (range.startsWith(ENUM_RANGE) && datatypes.some((x) => x.id === range.slice(ENUM_RANGE.length)));
+  const enums = new Set(datatypes.map((d) => d.id));
+  // Format 3 states a domain or range as axioms; before it, as a list of classes that meant their
+  // union, and a data property's range as one datatype. Those are read below, once every term is.
+  const version = typeof o.version === 'number' ? o.version : 1;
+  const classAxioms = (v: unknown): ClassAxiom[] | undefined => {
+    if (version < 3 || !Array.isArray(v)) return undefined;
+    const out: ClassAxiom[] = [];
+    for (const a of v as Record<string, unknown>[]) {
+      const expression = a && typeof a === 'object' ? classExpressionFrom(a.expression) : undefined;
+      if (expression) out.push({ id: str(a.id) && !out.some((x) => x.id === a.id) ? str(a.id) : uid(), expression });
+    }
+    return out;
+  };
+  const rangeAxioms = (v: unknown): DataRangeAxiom[] | undefined => {
+    if (version < 3 || !Array.isArray(v)) return undefined;
+    const out: DataRangeAxiom[] = [];
+    for (const a of v as Record<string, unknown>[]) {
+      const range = a && typeof a === 'object' ? dataRangeFrom(a.range, 0, enums) : undefined;
+      if (range) out.push({ id: str(a.id) && !out.some((x) => x.id === a.id) ? str(a.id) : uid(), range });
+    }
+    return out.length ? out : undefined;
+  };
+  const classAxiomsOf = (v: unknown): ClassExpressionAxiom[] => {
+    const out: ClassExpressionAxiom[] = [];
+    for (const a of Array.isArray(v) ? v : []) {
+      const read = classExpressionAxiomFrom(a);
+      if (read) out.push({ ...read, id: read.id && !out.some((x) => x.id === read.id) ? read.id : uid() });
+    }
+    return out;
+  };
   const ids = new Set<string>();
   const terms: Term[] = [];
   for (const t of o.terms as Record<string, unknown>[]) {
@@ -687,8 +738,9 @@ export function normalizeModel(raw: unknown): Model {
       synonyms: str(t.synonyms),
       fields: fieldList(t.fields),
       ...(str(t.iri) ? { iri: str(t.iri), ...(t.pendingIri === true ? { pendingIri: true as const } : {}) } : {}),
-      ...(knownRange(str(t.range)) ? { range: str(t.range) } : {}),
-      ...(Array.isArray(t.axioms) && t.axioms.length ? { axioms: t.axioms.map((a) => str(a)).filter(Boolean) } : {}),
+      ...(type === 'property' && rangeAxioms(t.ranges) ? { ranges: rangeAxioms(t.ranges) } : {}),
+      ...(type === 'property' && classAxioms(t.domains) ? { domains: classAxioms(t.domains) } : {}),
+      ...(version >= 4 && type !== 'property' && type !== 'instance' && classAxiomsOf(t.classAxioms).length ? { classAxioms: classAxiomsOf(t.classAxioms) } : {}),
       ...(t.functional === true ? { functional: true } : {}),
       ...(typeof t.external === 'string' ? { external: t.external } : {}),
     });
@@ -709,10 +761,20 @@ export function normalizeModel(raw: unknown): Model {
     term.oneOf = [...new Set((t.oneOf as unknown[]).map((x) => str(x)).filter((id) => ids.has(id) && id !== term.id))];
     if (t.allDifferent === true) term.allDifferent = true;
   }
-  // A data property's hand-set domain can only name terms that exist.
-  for (const [i, t] of (o.terms as Record<string, unknown>[]).entries()) {
+  // Before format 3: a data property's hand-set domain, a list of terms, and its range, one
+  // datatype. Before format 4: what a term had that was kept as Turtle text.
+  const legacy: ClassLists = new Map();
+  for (const t of version < 4 ? (o.terms as Record<string, unknown>[]) : []) {
     const term = t && typeof t === 'object' ? terms.find((x) => x.id === str(t.id)) : undefined;
-    if (term && Array.isArray(t.domain) && i >= 0) term.domain = [...new Set(t.domain.map((x) => str(x)).filter((id) => ids.has(id)))];
+    if (!term) continue;
+    const texts = Array.isArray(t.axioms) ? t.axioms.map((a) => str(a)).filter(Boolean) : [];
+    const datatype = str(t.range);
+    const entry = {
+      ...(texts.length ? { texts } : {}),
+      ...(version < 3 && term.type === 'property' && Array.isArray(t.domain) ? { domain: [...new Set(t.domain.map((x) => str(x)).filter((id) => ids.has(id)))] } : {}),
+      ...(version < 3 && term.type === 'property' && (DATATYPES.some((x) => x.id === datatype) || (datatype.startsWith(ENUM_RANGE) && enums.has(datatype.slice(ENUM_RANGE.length)))) ? { datatype } : {}),
+    };
+    if (Object.keys(entry).length || (version < 3 && term.type === 'property')) legacy.set(term.id, entry);
   }
   const relIds = new Set<string>();
   const relations: Relation[] = [];
@@ -759,8 +821,8 @@ export function normalizeModel(raw: unknown): Model {
     if (byName && props.some((x) => key(x.name) === key(str(p.name)))) continue;
     let id = byName ? '' : str(p.id);
     if (!id || props.some((x) => x.id === id)) id = uid();
-    const domain = idList(p.domain);
-    const range = idList(p.range);
+    const domain = version < 3 ? idList(p.domain) : undefined;
+    const range = version < 3 ? idList(p.range) : undefined;
     const entry: ObjProp = {
       id,
       name: str(p.name).trim(),
@@ -768,14 +830,15 @@ export function normalizeModel(raw: unknown): Model {
       ...describedBy(p.describedBy),
       ...langs(p),
       chars: Array.isArray(p.chars) ? [...new Set(p.chars.map((c) => str(c)).filter(Boolean))] : [],
-      ...(domain ? { domain: domain.list } : {}),
-      ...(range ? { range: range.list } : {}),
+      ...(classAxioms(p.domains) ? { domains: classAxioms(p.domains) } : {}),
+      ...(classAxioms(p.ranges) ? { ranges: classAxioms(p.ranges) } : {}),
       ...(str(p.iri) ? { iri: str(p.iri), ...(p.pendingIri === true ? { pendingIri: true as const } : {}) } : {}),
       ...(fieldList(p.fields).length ? { fields: fieldList(p.fields) } : {}),
       ...(typeof p.external === 'string' ? { external: p.external } : {}),
     };
     props.push(entry);
     read.push({ raw: p, entry });
+    if (domain || range) legacy.set(entry.id, { ...(domain ? { domain: domain.list } : {}), ...(range ? { range: range.list } : {}) });
   }
   // The links between properties, once all of them are known. A name in format 1 that no
   // property had pointed at nothing (and was never exported): it is not kept.
@@ -798,14 +861,16 @@ export function normalizeModel(raw: unknown): Model {
     const domain = relations.filter((r) => r.kind === 'property' && r.to === t.id).map((r) => r.from);
     const range = (o.relations as Record<string, unknown>[]).filter((r) => r && r.kind === 'range' && r.from === t.id && ids.has(str(r.to))).map((r) => str(r.to));
     if (!props.some((x) => key(x.name) === key(t.name)) && t.name.trim()) {
-      props.push(newProp({ name: t.name.trim(), description: t.description, ...(domain.length ? { domain } : {}), ...(range.length ? { range } : {}) }));
+      const made = newProp({ name: t.name.trim(), description: t.description });
+      props.push(made);
+      if (domain.length || range.length) legacy.set(made.id, { ...(domain.length ? { domain } : {}), ...(range.length ? { range } : {}) });
     }
     terms.splice(terms.indexOf(t), 1);
     ids.delete(t.id);
     for (let i = relations.length - 1; i >= 0; i--) if (relations[i].from === t.id || relations[i].to === t.id) relations.splice(i, 1);
     for (const d of domain) for (const r of range) relations.push(newRelation({ from: d, to: r, label: t.name.trim() }));
   }
-  return {
+  const model: Model = {
     format: 'conceptweaver',
     version: MODEL_VERSION,
     name: str(o.name, 'Untitled model') || 'Untitled model',
@@ -871,6 +936,87 @@ export function normalizeModel(raw: unknown): Model {
       on: Array.isArray((o.quality as QualityConfig | undefined)?.on) ? [...new Set((o.quality as QualityConfig).on.map((x) => str(x)).filter(Boolean))] : [],
     },
   };
+  return version < 4 ? withClassLists(model, legacy) : model;
+}
+
+/**
+ * Domains and ranges given as lists of classes (by term id), a data property's datatype by the
+ * name it is chosen by, and what a model before format 4 kept as Turtle text with the term.
+ */
+export type ClassLists = Map<string, { domain?: string[]; range?: string[]; datatype?: string; texts?: string[] }>;
+
+/** The predicate a kept text starts with, and the kind of class axiom it is. */
+const KEPT_AS: Record<string, ClassAxiomKind> = { 'rdfs:subClassOf': 'SubClassOf', 'owl:equivalentClass': 'EquivalentClasses', 'owl:disjointWith': 'DisjointClasses' };
+
+/**
+ * A model of an earlier format with its domains, ranges and class expressions as axioms. What
+ * they meant is what those formats wrote to RDF, and that is kept:
+ *
+ * - (formats 1 and 2) a list of one class was that class, a list of several was their union
+ *   (one rdfs:domain statement with an owl:unionOf, its classes in the order of their names as
+ *   written), an empty list no domain at all, and none at all a domain that follows the uses. A
+ *   data property's datatype is one axiom, and a range written in place that the model kept as
+ *   text (rdfs:range [ … ]) becomes the axiom it states, before it, as it was written;
+ * - (formats 1 to 3) a superclass, equivalent class or disjoint class kept as text
+ *   ("rdfs:subClassOf [ … ]") becomes the axiom of that kind it states, in the same order;
+ *   anything else kept as text is kept as the statement it is, with what the model has no place
+ *   for (Model.unmapped).
+ *
+ * Classes are named by IRI in an axiom; entities that had none get theirs first.
+ */
+export function withClassLists(m: Model, legacy: ClassLists): Model {
+  if (!legacy.size) return m;
+  const named = withIris(m);
+  const iriOf = new Map(named.terms.map((t) => [t.id, t.iri!]));
+  const written = (iri: string) => compactIri(named, iri) ?? `<${iri}>`;
+  const axioms = (ids: string[]): ClassAxiom[] => {
+    const iris = ids.map((id) => iriOf.get(id)).filter((x): x is string => !!x);
+    if (!iris.length) return [];
+    const sorted = [...iris].sort((a, b) => (written(a) < written(b) ? -1 : written(a) > written(b) ? 1 : 0));
+    return [{ id: uid(), expression: sorted.length === 1 ? { type: 'Class', iri: sorted[0] } : { type: 'ObjectUnionOf', operands: sorted.map((iri) => ({ type: 'Class', iri })) } }];
+  };
+  // Text kept with a term that is no class axiom or range is kept as the statement it is.
+  const kept: string[] = [];
+  const out: Model = {
+    ...named,
+    props: named.props.map((p) => {
+      const was = legacy.get(p.id);
+      return was ? { ...p, ...(was.domain ? { domains: axioms(was.domain) } : {}), ...(was.range ? { ranges: axioms(was.range) } : {}) } : p;
+    }),
+    terms: named.terms.map((t) => {
+      const was = legacy.get(t.id);
+      if (!was) return t;
+      const out: Term = { ...t };
+      if (was.domain) out.domains = axioms(was.domain);
+      const ranges: DataRangeAxiom[] = [];
+      const classAxioms: ClassExpressionAxiom[] = [];
+      for (const text of was.texts ?? []) {
+        const at = text.indexOf(' ');
+        const pred = at > 0 ? text.slice(0, at) : '';
+        const body = text.slice(at + 1);
+        const range = pred === 'rdfs:range' && t.type === 'property' ? expressionOfTurtle(body, 'data') : undefined;
+        const kind = t.type === 'concept' ? KEPT_AS[pred] : undefined;
+        const expression = kind ? expressionOfTurtle(body, 'class') : undefined;
+        if (range) ranges.push({ id: uid(), range });
+        else if (kind) classAxioms.push({ id: uid(), kind, expression: expression ?? { type: 'Unparsed', turtle: body } });
+        else {
+          try {
+            kept.push(...statementsOf(`${WELL_KNOWN}<${t.iri}> ${text} .`).map((s) => s.text));
+          } catch {
+            // Not Turtle at all: it is kept where it can be seen, as a comment.
+            kept.push(`# Kept with <${t.iri}>, not readable as Turtle: ${text.replace(/\s+/g, ' ')}`);
+          }
+        }
+      }
+      const datatype = was.datatype ? rangeOfKey(was.datatype) : undefined;
+      if (datatype) ranges.push({ id: uid(), range: datatype });
+      if (ranges.length) out.ranges = ranges;
+      if (classAxioms.length) out.classAxioms = classAxioms;
+      return out;
+    }),
+  };
+  if (!kept.length) return out;
+  return { ...out, unmapped: [...(out.unmapped ?? '').split('\n').filter(Boolean), ...kept].sort().join('\n') + '\n' };
 }
 
 const SEVERITIES = ['Violation', 'Warning', 'Info'];

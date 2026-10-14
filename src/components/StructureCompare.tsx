@@ -268,7 +268,7 @@ function Comparison({ host, c, skos, parent, one }: { host: StructureHost; c: Cl
       </>
     ) : (
       <>
-        <code>{x.text}</code> <span className="tag auto" title={`A class expression the class is asserted to be ${x.relation === 'subClassOf' ? 'a subclass of' : 'equivalent to'}, kept as it was written. It is compared as text and not interpreted.`}>kept as written</span>
+        <code>{x.text}</code> <span className="tag auto" title={`A class expression the class is asserted to be ${x.relation === 'subClassOf' ? 'a subclass of' : x.relation === 'equivalentClass' ? 'equivalent to' : 'disjoint with'}. It is compared as it is written, and not interpreted.`}>{x.relation === 'subClassOf' ? 'expression' : x.relation === 'equivalentClass' ? 'equivalent to' : 'disjoint with'}</span>
       </>
     );
   return (

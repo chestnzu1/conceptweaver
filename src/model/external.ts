@@ -1,4 +1,6 @@
 import { bounds } from './geometry';
+import { withoutEntities } from './domains';
+import { namedClasses, type ClassAxiom } from './expressions';
 import { nameKey, propOf } from './identity';
 import { objectProperties } from './props';
 import { fromTurtle } from './rdf';
@@ -99,6 +101,20 @@ function placer(model: Model) {
 }
 
 /**
+ * A data property's range as it can be stated in another model: a datatype of the ontology's
+ * own that is enumerated is named by its IRI there, and left out where it has none.
+ */
+function portableRanges(t: Term, ext: Model, model: Model): Pick<Term, 'ranges'> {
+  const enums = new Set(model.datatypes.map((d) => d.id));
+  const ranges = t.ranges?.flatMap((a) => {
+    if (a.range.type !== 'Enumeration' || enums.has(a.range.datatype)) return [a];
+    const iri = ext.datatypes.find((d) => d.id === (a.range as { datatype: string }).datatype)?.iri;
+    return iri ? [{ ...a, range: { type: 'Datatype' as const, iri } }] : [];
+  });
+  return ranges?.length ? { ranges } : {};
+}
+
+/**
  * Makes an external entity usable in the active model: a reference to it, under its own IRI,
  * that can be chosen as a superclass, a domain, a range or a filler. Its definition stays where
  * it is. If the model already has an entity with that IRI, that one is used.
@@ -109,7 +125,7 @@ export function reuseEntity(model: Model, ref: Pick<ExternalRef, 'id' | 'name' |
     if (!t?.iri) throw new Error('That entity has no IRI, so it cannot be referred to.');
     const here = model.terms.find((x) => x.iri === t.iri);
     if (here) return { model, entity: { kind: 'term', id: here.id }, added: false };
-    const stub = newTerm({ name: t.name, type: t.type, iri: t.iri, description: t.description, external: ref.id, ...(t.range ? { range: t.range } : {}), ...placer(model)() });
+    const stub = newTerm({ name: t.name, type: t.type, iri: t.iri, description: t.description, external: ref.id, ...portableRanges(t, ext, model), ...placer(model)() });
     return { model: { ...model, terms: [...model.terms, stub] }, entity: { kind: 'term', id: stub.id }, added: true };
   }
   const p = ext.props.find((x) => x.id === entity.prop);
@@ -163,8 +179,8 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
       else skipped.push(t.iri);
       continue;
     }
-    const { domain: _d, values: _v, external: _e, ...rest } = t;
-    const copy: Term = { ...rest, id: uid(), ...place() };
+    const { domains: _d, ranges: _r, values: _v, external: _e, ...rest } = t;
+    const copy: Term = { ...rest, ...portableRanges(t, ext, model), id: uid(), ...place() };
     terms.push(copy);
     termByIri.set(t.iri, copy);
     termId.set(id, copy.id);
@@ -178,7 +194,7 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
     if (!t?.iri) return undefined;
     let here = termByIri.get(t.iri);
     if (!here) {
-      here = newTerm({ name: t.name, type: t.type, iri: t.iri, description: t.description, external: ref.id, ...(t.range ? { range: t.range } : {}), ...place() });
+      here = newTerm({ name: t.name, type: t.type, iri: t.iri, description: t.description, external: ref.id, ...portableRanges(t, ext, model), ...place() });
       terms.push(here);
       termByIri.set(t.iri, here);
       referenced++;
@@ -202,7 +218,7 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
       continue;
     }
     // It keeps its name, even where a property of the model has the same one: they are told apart by IRI.
-    const { domain: _d, range: _r, parents: _p, inverses: _i, equivalents: _e, disjoints: _j, external: _x, ...rest } = p;
+    const { domains: _d, ranges: _r, parents: _p, inverses: _i, equivalents: _e, disjoints: _j, external: _x, ...rest } = p;
     const copy: ObjProp = { ...rest, id: uid() };
     props.push(copy);
     propByIri.set(p.iri, copy);
@@ -227,6 +243,11 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
     return here;
   };
 
+  /** Axioms as they are, the classes they name that the ontology has brought along as references. */
+  const withClassesOf = (axioms: ClassAxiom[]): ClassAxiom[] => {
+    for (const a of axioms) for (const iri of namedClasses(a.expression)) for (const [id, t] of extTerm) if (t.iri === iri) termFor(id);
+    return axioms;
+  };
   // What the ontology says about each copied entity comes along.
   const said = (r: Pick<Relation, 'from' | 'to' | 'kind' | 'predicate' | 'label'>, prop?: string) => `${r.from}|${r.to}|${r.kind}|${r.predicate ?? ''}|${prop ?? nameKey(r.label)}`;
   const stated = new Set(model.relations.map((r) => said(r, propOf(model, r)?.id)));
@@ -248,18 +269,18 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
     const t = extTerm.get(id)!;
     const mine = terms.findIndex((x) => x.id === termId.get(id));
     if (mine < 0) continue;
-    const domain = t.domain?.map(termFor).filter((x): x is string => !!x);
+    // A domain names classes by IRI, which are the same here; those the ontology has come along as references.
+    const domains = t.domains && withClassesOf(t.domains);
     const values = t.values?.map((v) => ({ ...v, prop: termFor(v.prop) ?? '' })).filter((v) => v.prop);
-    if (domain?.length || values?.length) terms[mine] = { ...terms[mine], ...(domain?.length ? { domain } : {}), ...(values?.length ? { values } : {}) };
+    if (domains || values?.length) terms[mine] = { ...terms[mine], ...(domains ? { domains } : {}), ...(values?.length ? { values } : {}) };
   }
   for (const id of speakingProps) {
     const p = extProp.get(id)!;
     const at = props.findIndex((x) => x.iri === p.iri);
     if (at < 0) continue;
     const next: ObjProp = { ...props[at] };
-    const ids = (list?: string[]) => list?.map(termFor).filter((x): x is string => !!x);
-    if (ids(p.domain)?.length) next.domain = ids(p.domain);
-    if (ids(p.range)?.length) next.range = ids(p.range);
+    if (p.domains) next.domains = withClassesOf(p.domains);
+    if (p.ranges) next.ranges = withClassesOf(p.ranges);
     if (attach && next.external !== undefined) next.chars = [...new Set([...next.chars, ...p.chars])];
     for (const link of PROP_LINKS) {
       const linked = p[link]?.map((x) => propFor(x)?.id).filter((x): x is string => !!x && x !== next.id);
@@ -313,13 +334,18 @@ export function removeExternal(model: Model, id: string): { model: Model; error?
   const ref = model.externals.find((e) => e.id === id);
   if (use.statements) return { error: `${use.statements} statement${use.statements === 1 ? '' : 's'} in this ontology still refer to entities of “${ref?.name ?? 'it'}”. Remove those first (the Mappings tab lists them).` };
   const gone = new Set(model.terms.filter((t) => t.external === id).map((t) => t.id));
+  // What the domains and ranges said of its entities goes with them.
+  const iris = new Set([...model.terms.filter((t) => gone.has(t.id)), ...model.props.filter((p) => p.external === id)].map((x) => x.iri).filter((x): x is string => !!x));
   return {
-    model: {
-      ...model,
-      externals: model.externals.filter((e) => e.id !== id),
-      terms: model.terms.filter((t) => !gone.has(t.id)).map((t) => (t.domain?.some((d) => gone.has(d)) ? { ...t, domain: t.domain.filter((d) => !gone.has(d)) } : t)),
-      props: model.props.filter((p) => p.external !== id).map((p) => (p.domain?.some((d) => gone.has(d)) || p.range?.some((d) => gone.has(d)) ? { ...p, ...(p.domain ? { domain: p.domain.filter((d) => !gone.has(d)) } : {}), ...(p.range ? { range: p.range.filter((d) => !gone.has(d)) } : {}) } : p)),
-    },
+    model: withoutEntities(
+      {
+        ...model,
+        externals: model.externals.filter((e) => e.id !== id),
+        terms: model.terms.filter((t) => !gone.has(t.id)),
+        props: model.props.filter((p) => p.external !== id),
+      },
+      iris,
+    ),
   };
 }
 

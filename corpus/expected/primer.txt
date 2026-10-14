@@ -5,7 +5,7 @@ ontology's IRI, annotations and imports.
 Original: 93 axioms. Saved: 128 axioms.
 Lost: 1 (DisjointClasses 1).
 Added: 37 (AnnotationAssertion 29, Declaration 4, DisjointClasses 3, Annotation 1).
-Kept as it was, not editable here: 2 property chains, 1 key, 1 annotation on an axiom, 3 negative property assertions, 27 other statements.
+Kept as it was, not editable here: 2 property chains, 1 key, 1 annotation on an axiom, 3 negative property assertions, 26 other statements.
 
 Lost: in the original, not in what was saved
   DisjointClasses(:Father :Mother :YoungChild)

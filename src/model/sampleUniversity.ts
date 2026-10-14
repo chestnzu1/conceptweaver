@@ -1,6 +1,6 @@
 import { parseOutline } from './bulk';
 import { arrangeAsHierarchy } from './layout';
-import { emptyModel, newProp, newRelation, newTerm, type Model, type ObjProp, type Quantifier } from './types';
+import { emptyModel, newProp, newRelation, newTerm, withClassLists, type ClassLists, type Model, type ObjProp, type Quantifier } from './types';
 
 const CLASSES = `Agent
   Person
@@ -244,6 +244,8 @@ export function universitySample(): Model {
   m.lang = 'en';
   m.vocab.enabled = true;
   const id: Record<string, string> = {};
+  // Domains and ranges, by the ids of the classes: made axioms of once every class has its IRI.
+  const lists: ClassLists = new Map();
   const term = (name: string, patch: Parameters<typeof newTerm>[0] = {}) => {
     const t = newTerm({ name, ...patch });
     id[name] = t.id;
@@ -278,8 +280,7 @@ export function universitySample(): Model {
   const named: [ObjProp, string, string][] = [];
   for (const [name, description, chars, inverseOf, parent, domain, range] of rows(OBJECT_PROPERTIES)) {
     const p = newProp({ name, description, chars: chars ? chars.split(',') : [] });
-    if (domain) p.domain = [id[domain]];
-    if (range) p.range = [id[range]];
+    if (domain || range) lists.set(p.id, { ...(domain ? { domain: [id[domain]] } : {}), ...(range ? { range: [id[range]] } : {}) });
     m.props.push(p);
     named.push([p, inverseOf, parent]);
   }
@@ -293,7 +294,8 @@ export function universitySample(): Model {
   }
 
   for (const [name, range, description, owners, domain] of rows(DATA_PROPERTIES)) {
-    term(name, { type: 'property', range, description, ...(domain ? { domain: [id[domain]] } : {}) });
+    const t = term(name, { type: 'property', description });
+    lists.set(t.id, { datatype: range, ...(domain ? { domain: [id[domain]] } : {}) });
     for (const owner of owners.split(',')) rel(owner.trim(), name, { kind: 'property' });
   }
 
@@ -315,5 +317,5 @@ export function universitySample(): Model {
   for (const [subject, label, object] of rows(FACTS)) rel(subject, object, { label });
 
   arrangeAsHierarchy(m);
-  return m;
+  return withClassLists(m, lists);
 }

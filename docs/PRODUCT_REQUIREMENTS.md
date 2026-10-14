@@ -280,7 +280,7 @@ per model. Refactoring is limited to moving a namespace.
 | FR-M1-5 | Labels, definitions and notes in several languages per entity; a display language for the whole interface. | Partially Implemented (annotation fields carry a language tag; one display language) | P1 |
 | FR-M1-6 | Refactoring: merge two entities, move entities to another namespace, replace one entity by another everywhere, deprecate with a successor. | Partially Implemented (`moveNamespace`) | P2 |
 | FR-M1-7 | For any entity, list every axiom that mentions it. | Partially Implemented (relationships and restrictions are listed) | P1 |
-| FR-M1-8 | Statements with no editor are preserved and written back unchanged. | Implemented 2026-10-14 (kept whole as read, `src/model/unmapped.ts`; the corpus loses 28 statements of nine ontologies, n-ary axioms among them) | P0 |
+| FR-M1-8 | Statements with no editor are preserved and written back unchanged. | Implemented 2026-10-14 (kept whole as read, `src/model/unmapped.ts`; the corpus loses 24 statements of nine ontologies, n-ary axioms among them) | P0 |
 | FR-M1-9 | Namespace prefixes and the ontology IRI are managed in one place and kept on import and export. | Existing | P0 |
 
 **Module non-functional points.** NFR-1 is decided here. Identity changes need a file-format
@@ -327,11 +327,11 @@ axioms, annotations on axioms, datatype facets or rules.
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
 | FR-M2-1 | Qualified restrictions (some, only, min, max, exactly) on a property, drawn as a line or edited in a form. | Existing | P0 |
-| FR-M2-2 | Class expressions are structured data: named class, and, or, not, some, only, min, max, exactly, value, self, one-of, nested to any depth. | Recommended | P0 |
-| FR-M2-3 | A Manchester-syntax editor for superclass and equivalent-class expressions, with completion of entity names, syntax errors shown in place, and a rendering in words. | Recommended | P0 |
+| FR-M2-2 | Class expressions are structured data: named class, and, or, not, some, only, min, max, exactly, value, self, one-of, nested to any depth. | Implemented 2026-10-14: domains and ranges (model format 3) and superclasses, equivalent and disjoint classes (model format 4, `Term.classAxioms`), with inverse properties and data ranges; `src/model/expressions.ts` | P0 |
+| FR-M2-3 | A Manchester-syntax editor for superclass and equivalent-class expressions, with completion of entity names, syntax errors shown in place, and a rendering in words. | Implemented 2026-10-14: a visual editor (nested blocks) and a Manchester-syntax editor (CodeMirror: completion, highlighting, bracket matching, formatting, errors in place) on one expression; checked against the OWL API's Manchester parser. A rendering in words is not done: the blocks name each operator | P0 |
 | FR-M2-4 | Property chains, keys, disjoint unions, negative property assertions and general class axioms can be stated and edited. | Recommended | P1 |
 | FR-M2-5 | Annotations on axioms are kept, shown and editable. | Recommended | P1 |
-| FR-M2-6 | Datatype restrictions with facets (ranges, patterns, lengths). | Recommended | P2 |
+| FR-M2-6 | Datatype restrictions with facets (ranges, patterns, lengths). | Partly implemented 2026-10-14: in any data range of an expression or a range axiom (`xsd:integer[>= 0]`); not as a named datatype | P2 |
 | FR-M2-7 | Every edit goes through one rule service that accepts it or refuses it with a reason, whichever control was used. | Partially Implemented (rules exist; two behaviours for moving an end, TD-06) | P0 |
 | FR-M2-8 | SWRL rules. | Future | P3 |
 

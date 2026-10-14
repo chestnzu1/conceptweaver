@@ -1,4 +1,6 @@
 import { SIDES, type Anchor, type EdgeAnchors } from './geometry';
+import { propDatatype } from './domains';
+import { dataText, namingFor } from './manchester';
 import { compactIri } from './prefixes';
 import { ENUM_RANGE, type Model, type Term, type TermType } from './types';
 
@@ -418,10 +420,14 @@ interface Look {
  * or null when every node is the standard box. What it returns is remembered per term, so asking
  * again while nothing changed costs a lookup.
  */
-export function nodeLookFor(model: Model): ((t: Pick<Term, 'name' | 'type' | 'range'>) => Look | undefined) | null {
+export function nodeLookFor(model: Model): ((t: Pick<Term, 'name' | 'type' | 'ranges'>) => Look | undefined) | null {
   const style = model.style;
   const enums = model.datatypes;
-  if (!Object.keys(style.nodeTypes).length && !Object.keys(style.nodes).length && !enums.length) return null;
+  // A range that is not one datatype (facets, a union) is shown as it is written.
+  const written = (t: Pick<Term, 'type' | 'ranges'>) => t.type === 'property' && !!t.ranges?.length && !propDatatype(t);
+  const expressions = model.terms.some(written);
+  if (!Object.keys(style.nodeTypes).length && !Object.keys(style.nodes).length && !enums.length && !expressions) return null;
+  const naming = expressions ? namingFor(model) : undefined;
   const byTerm = new WeakMap<object, Look | null>();
   return (sized) => {
     const hit = byTerm.get(sized);
@@ -430,7 +436,8 @@ export function nodeLookFor(model: Model): ((t: Pick<Term, 'name' | 'type' | 'ra
     const ns = resolveNode(style, nodeTypeOf(model.mode, t.type), t);
     const text = ns.label && ns.label !== 'name' ? labelText(model, t, ns.label) : undefined;
     // A data property whose values are an enumerated datatype shows that datatype's name.
-    const datatype = t.type === 'property' && t.range?.startsWith(ENUM_RANGE) ? enums.find((d) => d.id === t.range!.slice(ENUM_RANGE.length))?.name : undefined;
+    const key = t.type === 'property' ? propDatatype(t) : undefined;
+    const datatype = key?.startsWith(ENUM_RANGE) ? enums.find((d) => d.id === key.slice(ENUM_RANGE.length))?.name : naming && written(t) ? t.ranges!.map((a) => dataText(a.range, naming)).join(' and ') : undefined;
     const look: Look | null =
       ns.shape || ns.width || ns.height || ns.fontSize || ns.fontWeight || text !== undefined || datatype
         ? { shape: ns.shape, width: ns.width, height: ns.height, fontSize: ns.fontSize, fontWeight: ns.fontWeight, ...(text !== undefined ? { text } : {}), ...(datatype ? { datatype } : {}) }

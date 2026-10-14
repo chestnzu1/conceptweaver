@@ -114,7 +114,44 @@ editor does not offer, written with `rdfs:Literal` (OWL-Time, 3); text that look
 written as a link (RO, 3); white space in two comments, which the browser's RDF/XML reader and
 the OWL API's read differently (FOAF, 2). What is added is an `rdfs:label` for each entity that
 had none, a declaration where OWL 1 used an entity without one, and those same n-ary axioms as
-pairs. The rest of this section describes the baseline as it was before these tasks.
+pairs.
+
+**Since then: domains and ranges as axioms** (model format 3, the same day). Each `rdfs:domain`
+and `rdfs:range` statement is read as an axiom of its own with a structured expression, and
+written back as one statement. Over the nine, 24 statements are lost and 1,764 added:
+
+| Ontology | Axioms, original → saved | Lost | Added | Kept as it was, not editable here |
+| --- | ---: | ---: | ---: | --- |
+| Pizza (2016) | 801 → 1,208 | 10 | 417 | 24 statements |
+| Wine | 747 → 1,983 | 5 | 1,241 | 135 statements |
+| Koala | 70 → 107 | 0 | 38 | nothing |
+| PROV-O | 973 → 973 | 0 | 1 | 13 property chains, 8 annotations on axioms, 60 other statements |
+| SKOS | 205 → 205 | 0 | 0 | 92 statements |
+| OWL-Time | 1,064 → 1,078 | 3 | 17 | 57 statements |
+| FOAF | 551 → 557 | 2 | 9 | 96 statements |
+| OWL 2 Primer example | 93 → 128 | 1 | 37 | 2 property chains, 1 key, 1 annotation on an axiom, 3 negative property assertions, 26 other statements |
+| Relation Ontology, core | 372 → 372 | 3 | 4 | 2 property chains, 2 annotations on axioms, 4 SWRL rules, 12 other statements |
+
+PROV-O's two domains of `prov:hadActivity` and of `prov:hadRole` (a class, and a union of
+classes) are kept as the two axioms they are; before, they were merged into one union, which
+lost both and added a third that says something else. Wine no longer gains a domain for
+`vin:locatedIn`: its `rdfs:domain owl:Thing` is an axiom now, where the reader used to drop it and
+the writer put a domain made from the property's uses in its place. And the domains and ranges
+that were kept as text, because they were not a class or a union of classes (an intersection, a
+restriction, a datatype with facets), are the model's now and can be edited: 55 statements fewer
+are kept as text over the nine (FOAF 42, OWL-Time 6, Wine 2, RO 2, and SKOS, the Primer and
+PROV-O 1 each).
+What is still lost is the n-ary disjointness and difference (16), the OWL-Time datatype (3), the
+RO links (3) and the FOAF white space (2) above.
+
+**Since then: class expressions as axioms** (model format 4, the same day). A superclass, an
+equivalent class or a disjoint class that is an expression is an axiom of the class with its
+structure; a disjoint class that is an expression, and a superclass that is not a class of the
+model (`owl:Thing`), were kept as statements before and are the model's now. Nothing more is
+lost or added (24 and 1,764 over the nine); 5 statements fewer are kept as text (FOAF 95, RO 10
+other statements, OWL-Time 55).
+
+The rest of this section describes the baseline as it was before these tasks.
 
 Only Koala comes back with nothing lost. What is lost, by cause, from the lists:
 

@@ -1,4 +1,6 @@
+import type { ClassExpressionAxiom } from './expressions';
 import { nameKey } from './identity';
+import { classText, namingFor } from './manchester';
 import { objectProperties, restrictionsOf, type Restriction } from './props';
 import { reason, type SuperLink } from './reasoner';
 import { creditOf, type ReasoningResult } from './reasoning';
@@ -26,7 +28,7 @@ export interface InferredRestriction {
   sources: RestrictionSource[];
 }
 
-/** A class expression kept as text (see Term.axioms) that is inherited in the same way. */
+/** A class expression stated of a superclass (see Term.classAxioms) that is inherited in the same way, as Manchester syntax. */
 export interface InferredExpression {
   key: string;
   text: string;
@@ -50,8 +52,12 @@ export function restrictionKey(r: Restriction): string {
   return r.data ? `d|${r.rel.to}|${r.quantifier}|${r.n ?? ''}` : `o|${r.rel.prop ?? nameKey(r.rel.label)}|${r.quantifier}|${r.n ?? ''}|${r.rel.to}`;
 }
 
-/** The class expression of a kept axiom, whether it was stated as a superclass or as an equivalent class. */
-export const expressionOf = (axiom: string) => axiom.replace(/^(rdfs:subClassOf|owl:equivalentClass)\s+/, '');
+/**
+ * The class expression a class axiom makes a superclass of the class, as a key that is the same
+ * for the same expression: a superclass, or an equivalent class (which is one both ways). A
+ * disjoint class is not one: undefined.
+ */
+export const expressionOf = (a: ClassExpressionAxiom): string | undefined => (a.kind === 'DisjointClasses' ? undefined : JSON.stringify(a.expression));
 
 const EMPTY = { restrictions: [], expressions: [] };
 
@@ -69,7 +75,8 @@ export function inferredRestrictions(model: Model, classId: string, more?: { sup
   if (!reasoning.consistent) return { status: 'inconsistent', ...EMPTY };
 
   const own = new Set(restrictionsOf(model, classId).map(restrictionKey));
-  const ownText = new Set((self.axioms ?? []).map(expressionOf));
+  const ownText = new Set((self.classAxioms ?? []).map(expressionOf));
+  const naming = namingFor(model);
   const restrictions = new Map<string, InferredRestriction>();
   const expressions = new Map<string, InferredExpression>();
   // Directly stated superclasses first, so that the nearest source is named first.
@@ -85,12 +92,12 @@ export function inferredRestrictions(model: Model, classId: string, more?: { sup
       if (hit) hit.sources.push(source);
       else restrictions.set(key, { key, restriction: r, sources: [source] });
     }
-    for (const axiom of byId.get(link.id)?.axioms ?? []) {
-      const text = expressionOf(axiom);
-      if (ownText.has(text)) continue;
-      const hit = expressions.get(text);
+    for (const axiom of byId.get(link.id)?.classAxioms ?? []) {
+      const key = expressionOf(axiom);
+      if (key === undefined || ownText.has(key)) continue;
+      const hit = expressions.get(key);
       if (hit) hit.sources.push(source);
-      else expressions.set(text, { key: text, text, sources: [source] });
+      else expressions.set(key, { key, text: classText(axiom.expression, naming), sources: [source] });
     }
   }
   return {
@@ -105,7 +112,7 @@ export const NOT_INFERRED = [
   'Weaker forms of a restriction: “exactly 2” also implies “min 2”, “max 2” and “some”, and “directs some Documentary” implies “directs some Film”. Only the restriction as stated is shown.',
   'Restrictions through the property hierarchy: one on a sub-property or an inverse property is not turned into one on the related property.',
   'Class membership that follows from a restriction, such as a property’s domain making a restricted class a kind of that domain.',
-  'Anything that needs the inside of a kept class expression (unions, intersections, nested restrictions): those are inherited as text, not interpreted.',
+  'Anything that needs the inside of a class expression stated as an axiom (unions, intersections, nested restrictions): those are inherited as they are stated, not interpreted. The OWL 2 DL reasoner (HermiT) interprets them.',
   'What follows from an enumeration by trying each member in turn: a restriction that every member of { A, B } meets is not concluded for the class.',
 ];
 

@@ -1,6 +1,6 @@
 import type { Model, Term } from './types';
 
-const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'range', 'domain', 'axioms', 'functional', 'values', 'external', 'oneOf', 'allDifferent'];
+const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'ranges', 'domains', 'classAxioms', 'functional', 'values', 'external', 'oneOf', 'allDifferent'];
 
 let last: Model | undefined;
 

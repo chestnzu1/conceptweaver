@@ -1,3 +1,4 @@
+import { withDatatype } from './domains';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { addValue } from './axioms';
 import { parseRelations } from './bulk';
@@ -19,7 +20,7 @@ const studio = (): Model => {
     newTerm({ id: 'film', name: 'Film' }),
     newTerm({ id: 'work', name: 'Work' }),
     newTerm({ id: 'award', name: 'Award' }),
-    newTerm({ id: 'title', name: 'title', type: 'property', range: 'xsd:string' }),
+    newTerm({ id: 'title', name: 'title', type: 'property', ranges: withDatatype({}, 'xsd:string') }),
     newTerm({ id: 'label', name: 'label', type: 'property' }),
     newTerm({ id: 'parasite', name: 'Parasite', type: 'instance' }),
     newTerm({ id: 'bong', name: 'Bong', type: 'instance' }),
@@ -90,7 +91,7 @@ describe('a line between two classes', () => {
     const id = draw('film', 'award', 'wins');
     expect(kind(id)).toBe('object');
     expect(props()).toEqual(['directed by', 'wins']);
-    expect(objectProperties(st().model).find((p) => p.name === 'wins')).toMatchObject({ domain: ['film'], range: ['award'] });
+    expect(objectProperties(st().model).find((p) => p.name === 'wins')).toMatchObject({ usedFrom: ['film'], usedTo: ['award'], domainAuto: true, rangeAuto: true });
     const ttl = toTurtle(st().model);
     // As OWL has it: a property that is declared, and a class restricted by it. Not a triple from one class to the other.
     expect(block(ttl, ':wins')).toContain(':wins a owl:ObjectProperty');
@@ -341,7 +342,7 @@ describe('a relationship added without saying between what', () => {
     m.terms = [
       newTerm({ id: 'customer', name: 'Customer' }),
       newTerm({ id: 'person', name: 'Person' }),
-      newTerm({ id: 'age', name: 'age', type: 'property', range: 'xsd:integer' }),
+      newTerm({ id: 'age', name: 'age', type: 'property', ranges: withDatatype({}, 'xsd:integer') }),
       newTerm({ id: 'active', name: 'Active', type: 'instance' }),
       newTerm({ id: 'blocked', name: 'Blocked', type: 'instance' }),
     ];

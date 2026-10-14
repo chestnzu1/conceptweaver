@@ -2,18 +2,12 @@ PROV-O (prov-o.ttl, read as Turtle), opened in ConceptWeaver and saved as Turtle
 unchanged, then compared with the original by the OWL API: axioms by structure, and the
 ontology's IRI, annotations and imports.
 
-Original: 973 axioms. Saved: 971 axioms.
-Lost: 4 (ObjectPropertyDomain 4).
-Added: 3 (ObjectPropertyDomain 2, Annotation 1).
-Kept as it was, not editable here: 13 property chains, 8 annotations on axioms, 61 other statements.
+Original: 973 axioms. Saved: 973 axioms.
+Lost: 0.
+Added: 1 (Annotation 1).
+Kept as it was, not editable here: 13 property chains, 8 annotations on axioms, 60 other statements.
 
 Lost: in the original, not in what was saved
-  ObjectPropertyDomain(:hadActivity :Influence)
-  ObjectPropertyDomain(:hadActivity ObjectUnionOf(:Delegation :Derivation :End :Start))
-  ObjectPropertyDomain(:hadRole :Influence)
-  ObjectPropertyDomain(:hadRole ObjectUnionOf(:Association :InstantaneousEvent))
 
 Added: in what was saved, not in the original
   Annotation(rdfs:label "prov-o"^^xsd:string)
-  ObjectPropertyDomain(:hadActivity ObjectUnionOf(:Delegation :Derivation :End :Influence :Start))
-  ObjectPropertyDomain(:hadRole ObjectUnionOf(:Association :Influence :InstantaneousEvent))

@@ -1,3 +1,4 @@
+import { propDatatype } from './domains';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startReasoner, unavailable } from '../../reasoner/run.mjs';
 import { readModelFile } from './files';
@@ -165,7 +166,8 @@ describe.skipIf(!!why)('ontologies in the syntaxes that are OWL\'s own', () => {
       expect(m).toMatchObject({ name: 'Pizza ontology', mode: 'ontology', ontologyIri: 'http://example.org/pizza', baseIri: 'http://example.org/pizza#' });
       expect(names(m)).toEqual(['Margherita', 'My lunch', 'Pizza', 'Tomato', 'Topping', 'price']);
       expect(term(m, 'Margherita').iri).toBe('http://example.org/pizza#Margherita');
-      expect(term(m, 'price')).toMatchObject({ type: 'property', range: 'xsd:decimal', functional: true });
+      expect(term(m, 'price')).toMatchObject({ type: 'property', functional: true });
+      expect(propDatatype(term(m, 'price'))).toBe('xsd:decimal');
       expect(term(m, 'My lunch')).toMatchObject({ type: 'instance', values: [{ prop: term(m, 'price').id, value: '9.50' }] });
       expect(m.props).toMatchObject([{ name: 'has topping', chars: ['transitive'] }]);
       const said = m.relations.map((r) => `${m.terms.find((t) => t.id === r.from)!.name} ${relChoice(m, r)} ${m.terms.find((t) => t.id === r.to)!.name}`);

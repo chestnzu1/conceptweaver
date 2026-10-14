@@ -1,5 +1,6 @@
 import { enumerationExpression, isEnumeration } from '../model/axioms';
 import { configOf, supports } from '../model/modelTypes';
+import { classText, namingFor } from '../model/manchester';
 import { compactIri } from '../model/prefixes';
 import { assertedSuperclasses, findProp, restrictionsOf } from '../model/props';
 import { reason } from '../model/reasoner';
@@ -59,8 +60,8 @@ function indexOf(given: Model): LocalIndex {
     termOf.set(iri, t.id);
     const curie = t.iri ? compactIri(model, t.iri) : undefined;
     const labels = [...t.synonyms.split(','), ...t.fields.filter((f) => LABELS.has(f.key)).map((f) => f.value)].map((s) => s.trim()).filter(Boolean);
-    // Superclasses that are class expressions without a name are kept as text with the class. They are counted, and are not classes here.
-    const anonymous = t.axioms?.filter((a) => a.startsWith('rdfs:subClassOf ')).length ?? 0;
+    // Superclasses that are class expressions without a name are axioms of the class. They are counted, and are not classes here.
+    const anonymous = t.classAxioms?.filter((a) => a.kind === 'SubClassOf' && a.expression.type !== 'Class').length ?? 0;
     graph.classes.push({ iri, label: t.name || 'Unnamed', search: curie ? [...labels, curie] : labels, ...(t.external !== undefined ? { external: true } : {}), ...(anonymous ? { anonymousSuperclasses: anonymous } : {}) });
   }
   for (const t of listed) {
@@ -131,6 +132,7 @@ const UNNAMED_PROPERTY = 'urn:conceptweaver:property:';
  */
 function axiomsOf(given: Model, iris: Iri[]): Map<Iri, ClassAxiom[]> {
   const model = stable(given);
+  const naming = namingFor(model);
   const index = indexOf(model);
   const byId = new Map(model.terms.map((t) => [t.id, t]));
   const out = new Map<Iri, ClassAxiom[]>();
@@ -145,11 +147,10 @@ function axiomsOf(given: Model, iris: Iri[]): Map<Iri, ClassAxiom[]> {
       // A restriction is the same restriction wherever it is asserted: by its property, how many, and of what.
       axioms.push({ kind: 'restriction', key: `r|${property.iri}|${r.quantifier}|${r.n ?? ''}|${filler.iri ?? filler.label}`, property, quantifier: r.quantifier, ...(r.n !== undefined ? { n: r.n } : {}), filler, text: r.text });
     }
-    for (const axiom of term.axioms ?? []) {
-      const relation = axiom.startsWith('owl:equivalentClass ') ? 'equivalentClass' : axiom.startsWith('rdfs:subClassOf ') ? 'subClassOf' : undefined;
-      if (!relation) continue;
-      const text = axiom.replace(/^\S+\s+/, '');
-      axioms.push({ kind: 'expression', key: `x|${relation}|${text}`, relation, text });
+    for (const axiom of term.classAxioms ?? []) {
+      const relation = axiom.kind === 'EquivalentClasses' ? 'equivalentClass' : axiom.kind === 'SubClassOf' ? 'subClassOf' : 'disjointWith';
+      // The same expression is the same axiom wherever it is stated: it is keyed by its structure, and shown in Manchester syntax.
+      axioms.push({ kind: 'expression', key: `x|${relation}|${JSON.stringify(axiom.expression)}`, relation, text: classText(axiom.expression, naming) });
     }
     // An enumeration is defined as exactly its members. One that lists none yet says nothing.
     if (isEnumeration(term) && term.oneOf?.length) {

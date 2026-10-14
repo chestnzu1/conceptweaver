@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type ThHTMLAttrib
 import type { EntityMatch, ListKind, MatchField } from '../entities/contracts';
 import { inferredRestrictions } from '../model/inferred';
 import { propNamed, propOf } from '../model/identity';
-import { CHARACTERISTICS, dataDomain, fitsIn, hasCardinality, objectProperties, isInstanceOf, plainRelationships, propLinks, offeredChoices, relChoice, restrictionsOf, type RelChoice } from '../model/props';
+import { CHARACTERISTICS, dataDomain, fitsAxioms, hasCardinality, objectProperties, isInstanceOf, plainRelationships, propLinks, offeredChoices, relChoice, restrictionsOf, type RelChoice } from '../model/props';
 import { endsForNew } from '../model/relating';
 import { compactIri } from '../model/prefixes';
 import { useStore } from '../model/store';
@@ -17,6 +17,49 @@ import { GovernanceView } from './Governance';
 import { Marked, MarkedField, type Ranges } from './Highlight';
 import { IriCell, SuperclassEditor } from './Iri';
 import { TermChips } from './TermChips';
+import { unionClasses, withUnionClasses } from '../model/domains';
+import type { ClassAxiom } from '../model/expressions';
+import { allOf, classText, namingFor } from '../model/manchester';
+import { CLASS_AXIOM } from './ClassAxioms';
+
+/**
+ * A domain or range in a table cell. Where it is "any of" some classes (or follows the uses), a
+ * list of them to add to and take from; where it is stated otherwise (two axioms, which hold
+ * together, or an expression), the axioms as they are written, changed where the entity is edited.
+ */
+function AxiomsCell({ axioms, auto, used, of, which, empty, onChange, onReset, onOpen }: { axioms: ClassAxiom[]; auto: boolean; used: string[]; of: string; which: 'domain' | 'range'; empty: string; onChange: (axioms: ClassAxiom[]) => void; onReset: () => void; onOpen: () => void }) {
+  const model = useStore((s) => s.model);
+  const naming = useMemo(() => namingFor(model), [model]);
+  const termOf = (iri: string) => model.terms.find((t) => t.iri === iri);
+  const iriOf = (id: string) => model.terms.find((t) => t.id === id)?.iri;
+  const iris = auto ? undefined : unionClasses(axioms);
+  const listed = auto ? used : iris?.every((iri) => termOf(iri)) ? iris.map((iri) => termOf(iri)!.id) : undefined;
+  const set = (ids: string[]) => onChange(withUnionClasses(auto ? [] : axioms, ids.map(iriOf).filter((x): x is string => !!x)));
+  const reset = !auto && (
+    <button className="link reset" title={which === 'domain' ? 'Let it follow where the property is used again' : 'Let it follow what the property points to again'} onClick={onReset}>
+      reset
+    </button>
+  );
+  if (!listed)
+    return (
+      <>
+        <code className="axiom" title={axioms.length > 1 ? 'All of these hold' : undefined}>
+          {allOf(axioms.map((a) => classText(a.expression, naming)))}
+        </code>{' '}
+        <button className="link" onClick={onOpen} title={`Change the ${which} of ${of} where all of it is shown`}>
+          edit
+        </button>{' '}
+        {reset}
+      </>
+    );
+  return (
+    <>
+      <TermChips ids={listed} placeholder={`Add a class to the ${which}`} of={of} empty={empty} add={(id) => set([...listed, id])} remove={(id) => set(listed.filter((x) => x !== id))} />
+      {auto && listed.length > 0 && <span className="tag auto">from use</span>}
+      {reset}
+    </>
+  );
+}
 
 type Tab = 'concept' | 'object' | 'property' | 'instance' | 'relations' | 'governance';
 
@@ -92,6 +135,7 @@ function TermSelect({ value, current, onChange, label, sorted }: { value: string
  */
 export function EntitiesView() {
   const model = useStore((s) => s.model);
+  const naming = useMemo(() => namingFor(model), [model]);
   const sel = useStore((s) => s.sel);
   const selProp = useStore((s) => s.selProp);
   const st = useStore.getState;
@@ -372,11 +416,11 @@ export function EntitiesView() {
               {r.property} <em>{r.quantifier}{r.n !== undefined ? ' ' + r.n : ''}</em> {r.filler}
             </div>
           ))}
-          {t.axioms?.length ? (
-            <div className="muted" title={t.axioms.join('\n')}>
-              + {t.axioms.length} other asserted expression{t.axioms.length === 1 ? '' : 's'}
+          {(t.classAxioms ?? []).map((a) => (
+            <div key={a.id} className="class-axiom-line" title={CLASS_AXIOM[a.kind].about}>
+              <em>{CLASS_AXIOM[a.kind].label}</em> {classText(a.expression, naming)}
             </div>
-          ) : null}
+          ))}
         </>
       ),
     },
@@ -499,34 +543,30 @@ export function EntitiesView() {
                     <IriCell iri={p.iri} of={p.name} marks={iriMarks(p.id)} />
                   </td>
                   {(['domain', 'range'] as const).map((side) => {
-                    const ids = p[side];
+                    const key = side === 'domain' ? 'domains' : 'ranges';
+                    const axioms = p[key];
                     const auto = side === 'domain' ? p.domainAuto : p.rangeAuto;
                     // Uses between classes that a hand-set domain or range does not cover.
-                    const outside = auto
-                      ? 0
-                      : p.rels.filter((r) => type.get(r.from) === 'concept' && type.get(r.to) === 'concept' && ids.length > 0 && !fitsIn(model, side === 'domain' ? r.from : r.to, ids)).length;
+                    const outside = auto ? 0 : p.rels.filter((r) => type.get(r.from) === 'concept' && type.get(r.to) === 'concept' && fitsAxioms(model, side === 'domain' ? r.from : r.to, axioms).outside).length;
                     return (
                       <td key={side} className="cell-edit">
-                        <TermChips
-                          ids={ids}
-                          placeholder={`Add a class to the ${side}`}
+                        <AxiomsCell
+                          axioms={axioms}
+                          auto={auto}
+                          used={side === 'domain' ? p.usedFrom : p.usedTo}
                           of={p.name}
+                          which={side}
                           empty="anything"
-                          add={(id) => st().updateProp(p.id, { [side]: [...ids, id] })}
-                          remove={(id) => st().updateProp(p.id, { [side]: ids.filter((x) => x !== id) })}
+                          onChange={(next) => st().updateProp(p.id, { [key]: next })}
+                          onReset={() => st().updateProp(p.id, { [key]: undefined })}
+                          onOpen={() => st().selectProp(p.id)}
                         />
-                        {auto && ids.length > 0 && <span className="tag auto">from use</span>}
-                        {!auto && (
-                          <button className="link reset" title="Let it follow where the property is used again" onClick={() => st().updateProp(p.id, { [side]: undefined })}>
-                            reset
-                          </button>
-                        )}
                         {outside > 0 && (
                           <span className="bad" title="Open the property to see which">
                             ✗ {outside} use{outside === 1 ? '' : 's'} outside
                           </span>
                         )}
-                        {!auto && ids.length > 0 && p.rels.length > 0 && outside === 0 && <span className="good">✓ uses fit</span>}
+                        {!auto && axioms.length > 0 && p.rels.length > 0 && outside === 0 && <span className="good">✓ uses fit</span>}
                       </td>
                     );
                   })}
@@ -574,23 +614,17 @@ export function EntitiesView() {
                     {(() => {
                       const d = dataDomain(model, t);
                       return (
-                        <>
-                          <TermChips
-                            ids={d.ids}
-                            placeholder="Add a class to the domain"
-                            of={t.name}
-                            empty="not set"
-                            add={(id) => st().updateTerm(t.id, { domain: [...d.ids, id] })}
-                            remove={(id) => st().updateTerm(t.id, { domain: d.ids.filter((x) => x !== id) })}
-                          />
-                          {d.auto ? (
-                            d.ids.length > 0 && <span className="tag auto">from use</span>
-                          ) : (
-                            <button className="link reset" title="Let it follow the classes it is attached to again" onClick={() => st().updateTerm(t.id, { domain: undefined })}>
-                              reset
-                            </button>
-                          )}
-                        </>
+                        <AxiomsCell
+                          axioms={d.axioms}
+                          auto={d.auto}
+                          used={d.attached}
+                          of={t.name}
+                          which="domain"
+                          empty="not set"
+                          onChange={(domains) => st().updateTerm(t.id, { domains })}
+                          onReset={() => st().updateTerm(t.id, { domains: undefined })}
+                          onOpen={() => st().focusTerm(t.id)}
+                        />
                       );
                     })()}
                   </td>

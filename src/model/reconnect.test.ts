@@ -1,3 +1,4 @@
+import { withDatatype } from './domains';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { withAnchor } from './graphStyle';
 import { withIris } from './iri';
@@ -22,7 +23,7 @@ const studio = (): Model => {
     newTerm({ id: 'work', name: 'Work' }),
     newTerm({ id: 'award', name: 'Award' }),
     newTerm({ id: 'person', name: 'Person' }),
-    newTerm({ id: 'title', name: 'title', type: 'property', range: 'xsd:string' }),
+    newTerm({ id: 'title', name: 'title', type: 'property', ranges: withDatatype({}, 'xsd:string') }),
     newTerm({ id: 'label', name: 'label', type: 'property' }),
     newTerm({ id: 'parasite', name: 'Parasite', type: 'instance' }),
     newTerm({ id: 'bong', name: 'Bong', type: 'instance' }),

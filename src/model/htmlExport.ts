@@ -8,7 +8,9 @@ import { nodeTypeOf, resolveEdge, resolveNode, type EdgeType } from './graphStyl
 import { baseIriOf } from './iri';
 import { configOf } from './modelTypes';
 import { compactIri, ontologyIriOf } from './prefixes';
-import { CHARACTERISTICS, objectProperties } from './props';
+import { propDatatype } from './domains';
+import { classText, dataText, namingFor } from './manchester';
+import { CHARACTERISTICS, expressionsOf, objectProperties } from './props';
 import { routeOf, type Route } from '../layout/types';
 import type { Model, Term } from './types';
 import { resolveModel } from './vocab';
@@ -86,6 +88,7 @@ export interface ViewerProp {
   iri?: string;
   curie?: string;
   description: string;
+  /** Each axiom of the domain (range) as it is written: all of them hold. */
   domain: string[];
   range: string[];
   characteristics: string[];
@@ -144,6 +147,13 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
   const config = configOf(model);
   const byIri = new Map(model.terms.filter((t) => t.iri).map((t) => [t.iri!, t]));
   const name = (id: string) => model.terms.find((t) => t.id === id)?.name || 'Unnamed';
+  const naming = namingFor(model);
+  const datatypeText = (t: Term) => {
+    const key = propDatatype(t);
+    const listed = enumOf(model, key);
+    if (listed) return `${rangeLabel(model, key)}: one of ${listed.values.map(literalText).join(', ') || '(no values yet)'}`;
+    return key && t.ranges!.length === 1 ? key : t.ranges!.map((a) => dataText(a.range, naming)).join(' and ');
+  };
 
   // The metadata an entity has: the fields of the registry that have a value, then whatever other annotations there are.
   const metaOf = (e: MetaEntity | undefined): ViewerTerm['meta'] => {
@@ -188,8 +198,8 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
     shape: shapeOf(t),
     description: t.description,
     synonyms: t.synonyms.split(',').map((s) => s.trim()).filter(Boolean),
-    // A standard datatype by its name; an enumerated one by its name and the values it lists.
-    ...(t.type === 'property' && t.range ? { datatype: enumOf(model, t.range) ? `${rangeLabel(model, t.range)}: one of ${enumOf(model, t.range)!.values.map(literalText).join(', ') || '(no values yet)'}` : t.range } : {}),
+    // A standard datatype by its name; an enumerated one by its name and the values it lists; any other range as it is written.
+    ...(t.type === 'property' && t.ranges?.length ? { datatype: datatypeText(t) } : {}),
     values: (t.values ?? []).map((v) => ({ prop: name(v.prop), value: v.value + (v.lang ? ` @${v.lang}` : '') })),
     meta: metaOf(metaEntity(model, { term: t.id })),
     ...(t.external !== undefined ? { external: true } : {}),
@@ -249,8 +259,8 @@ export function viewerData(model: Model, now = new Date(), picture: Picture = {}
           name: p.name,
           ...(p.iri ? { iri: p.iri, curie: compactIri(model, p.iri) ?? p.iri } : {}),
           description: p.description,
-          domain: p.domain.map(name),
-          range: p.range.map(name),
+          domain: expressionsOf(model, p.domains, p.domainAuto, p.usedFrom).map((e) => classText(e, naming)),
+          range: expressionsOf(model, p.ranges, p.rangeAuto, p.usedTo).map((e) => classText(e, naming)),
           characteristics: CHARACTERISTICS.filter((c) => p.chars.includes(c.id)).map((c) => c.label),
           uses: p.rels.map((r) => r.id),
           meta: metaOf(metaEntity(model, { prop: p.id })),

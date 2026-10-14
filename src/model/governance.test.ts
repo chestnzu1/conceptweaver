@@ -1,3 +1,4 @@
+import { withDatatype } from './domains';
 import { describe, expect, it } from 'vitest';
 import { addCustomField, checkValue, fieldKey, fieldsFor, metaEntity, metaProblems, overrideField, registry, removeCustomField, termKind, updateCustomField, valuesOf, withProfile, writeValues, type MetaValue } from './governance';
 import { setIriSuffix, withIris } from './iri';
@@ -15,7 +16,7 @@ const base = (): Model => {
     newTerm({ id: 'customer', name: 'Customer', description: 'A person or organization purchasing products.' }),
     newTerm({ id: 'crm', name: 'CRM Department', type: 'instance' }),
     newTerm({ id: 'dept', name: 'Department' }),
-    newTerm({ id: 'email', name: 'email', type: 'property', range: 'xsd:string' }),
+    newTerm({ id: 'email', name: 'email', type: 'property', ranges: withDatatype({}, 'xsd:string') }),
     newTerm({ id: 'table', name: 'Customer table', type: 'instance' }),
   ];
   m.relations = [newRelation({ from: 'crm', to: 'dept', kind: 'generalization' })];

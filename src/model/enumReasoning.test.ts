@@ -1,3 +1,5 @@
+import { withDatatype } from './domains';
+import { XSD } from './expressions';
 import { describe, expect, it } from 'vitest';
 import { addEnumMember, addLink, declareAllDifferent, setAllDifferent, setEnumeration } from './axioms';
 import { addDatatype, addEnumValue, enumRange } from './datatypes';
@@ -192,7 +194,7 @@ describe('reasoning with enumerated datatypes', () => {
     m = { ...m, terms: [...m.terms, newTerm({ id: 'state', name: 'state', type: 'property' }), newTerm({ id: 'mode', name: 'mode', type: 'property' })] };
     const made = addDatatype(m, 'Switch state');
     m = ok(addEnumValue(ok(addEnumValue(ok(made), made.id!, { value: 'on' })), made.id!, { value: 'off' }));
-    m = patch(m, 'state', { range: enumRange(made.id!) });
+    m = patch(m, 'state', { ranges: withDatatype({}, enumRange(made.id!)) });
     m = isA(m, 'mode', 'state');
     return patch(m, 'lamp', { values: [{ prop, value }] });
   };
@@ -318,7 +320,7 @@ describe('enumerations in JSON-LD', () => {
     let m = setAllDifferent(enumerated(), 'color', true);
     m = { ...m, terms: [...m.terms, newTerm({ id: 'state', name: 'state', type: 'property' })] };
     const made = addDatatype(m, 'Switch state');
-    m = withIris(patch(ok(addEnumValue(ok(addEnumValue(ok(made), made.id!, { value: 'on' })), made.id!, { value: '2', dt: 'xsd:integer' })), 'state', { range: enumRange(made.id!) }));
+    m = withIris(patch(ok(addEnumValue(ok(addEnumValue(ok(made), made.id!, { value: 'on' })), made.id!, { value: '2', dt: 'xsd:integer' })), 'state', { ranges: withDatatype({}, enumRange(made.id!)) }));
     const graph = JSON.parse(toJsonLd(m))['@graph'] as Record<string, unknown>[];
     const node = (id: string) => graph.find((n) => n['@id'] === 'http://example.org/traffic#' + id)!;
     const iri = (id: string) => ({ '@id': 'http://example.org/traffic#' + id });
@@ -352,18 +354,19 @@ describe('lists the editor does not take', () => {
       :Nobody a owl:Class ; owl:equivalentClass [ a owl:Class ; owl:oneOf () ] .
       :Unnamed a owl:Class ; owl:equivalentClass [ a owl:Class ; owl:oneOf ( [ a :Loop ] ) ] .
       :Fine a owl:Class ; owl:equivalentClass [ a owl:Class ; owl:oneOf ( :Red ) ] .`);
-    for (const name of ['Loop', 'Open', 'Fork', 'Nobody', 'Unnamed']) {
+    // None is an enumeration, or any class expression OWL has: each is an axiom of its class, kept as it was read.
+    const kept = (name: string) => {
       const c = term(back, name);
-      expect([name, c.type, c.oneOf]).toEqual([name, 'concept', undefined]);
-      expect(c.axioms).toHaveLength(1);
-      expect(c.axioms![0]).toMatch(/^owl:equivalentClass \[ a owl:Class ; owl:oneOf /);
-    }
+      expect([name, c.type, c.oneOf, c.classAxioms?.length, c.classAxioms?.[0].kind, c.classAxioms?.[0].expression.type]).toEqual([name, 'concept', undefined, 1, 'EquivalentClasses', 'Unparsed']);
+      return (c.classAxioms![0].expression as { turtle: string }).turtle;
+    };
+    const [O, R, T] = ['http://www.w3.org/2002/07/owl#', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'http://example.org/traffic#'];
     // A broken list is written cell by cell, as broken as it was, so that it is not mended into an enumeration on the way.
-    expect(term(back, 'Loop').axioms![0]).toContain('owl:oneOf [ rdf:first <http://example.org/traffic#Red> ; rdf:rest [ rdf:first <http://example.org/traffic#Green> ; rdf:rest [] ] ]');
-    expect(term(back, 'Open').axioms![0]).toContain('owl:oneOf [ rdf:first <http://example.org/traffic#Red> ]');
-    expect(term(back, 'Fork').axioms![0]).toContain('owl:oneOf [ rdf:first <http://example.org/traffic#Red> ; rdf:first <http://example.org/traffic#Green> ; rdf:rest () ]');
-    expect(term(back, 'Nobody').axioms![0]).toContain('owl:oneOf ()');
-    expect(term(back, 'Unnamed').axioms![0]).toContain('owl:oneOf ( [ a <http://example.org/traffic#Loop> ] )');
+    expect(kept('Loop')).toContain(`<${O}oneOf> [ <${R}first> <${T}Red> ; <${R}rest> [ <${R}first> <${T}Green> ; <${R}rest> [] ] ]`);
+    expect(kept('Open')).toContain(`<${O}oneOf> [ <${R}first> <${T}Red> ]`);
+    expect(kept('Fork')).toContain(`<${O}oneOf> [ <${R}first> <${T}Green> ; <${R}first> <${T}Red> ; <${R}rest> () ]`);
+    expect(kept('Nobody')).toContain(`<${O}oneOf> ()`);
+    expect(kept('Unnamed')).toContain(`<${O}oneOf> ( [ <${R}type> <${T}Loop> ] )`);
     expect(term(back, 'Fine').oneOf).toHaveLength(1);
     // Each is pointed out, as something kept and not read.
     const found = rules(back);
@@ -373,7 +376,8 @@ describe('lists the editor does not take', () => {
     expect(reason(back, true).inferences.map((i) => i.text)).toEqual(['“Red” is an instance of “Fine”']);
     // What is written out is Turtle that reads back to the same thing.
     const again = fromTurtle(toTurtle(back));
-    expect(again.terms.filter((t) => t.axioms).map((t) => [t.name, t.axioms])).toEqual(back.terms.filter((t) => t.axioms).map((t) => [t.name, t.axioms]));
+    const stated = (m: Model) => m.terms.filter((t) => t.classAxioms).map((t) => [t.name, t.classAxioms!.map((a) => [a.kind, a.expression])]);
+    expect(stated(again)).toEqual(stated(back));
   });
 
   it('keeps a data range that is not a plain list of literals with its property', () => {
@@ -382,21 +386,23 @@ describe('lists the editor does not take', () => {
       :grade a owl:DatatypeProperty ; rdfs:range [ a rdfs:Datatype ; owl:unionOf ( xsd:integer [ a rdfs:Datatype ; owl:oneOf ( "pass" "fail" ) ] ) ] .
       :state a owl:DatatypeProperty ; rdfs:range [ a rdfs:Datatype ; owl:oneOf ( "on" "off" ) ] .
       :none a owl:DatatypeProperty ; rdfs:range [ a rdfs:Datatype ; owl:oneOf () ] .`);
-    expect(term(back, 'age')).toMatchObject({ type: 'property', axioms: ['rdfs:range [ a rdfs:Datatype ; owl:onDatatype xsd:integer ; owl:withRestrictions ( [ xsd:minInclusive "0"^^xsd:integer ] ) ]'] });
-    expect(term(back, 'age').range).toBeUndefined();
-    expect(term(back, 'grade').axioms![0]).toContain('owl:unionOf ( xsd:integer [ a rdfs:Datatype ; owl:oneOf ( "pass" "fail" ) ] )');
-    expect(term(back, 'none').axioms).toEqual(['rdfs:range [ a rdfs:Datatype ; owl:oneOf () ]']);
-    // The one that is a plain list is the enumerated datatype of the property, and is not kept a second time.
-    expect(term(back, 'state').axioms).toBeUndefined();
+    // Each range is the data range it states: a datatype narrowed by a facet, a union with a list in it.
+    const ranges = (m: Model, name: string) => term(m, name).ranges?.map((a) => a.range);
+    expect(term(back, 'age')).toMatchObject({ type: 'property' });
+    expect('axioms' in term(back, 'age')).toBe(false);
+    expect(ranges(back, 'age')).toEqual([{ type: 'DatatypeRestriction', datatype: XSD + 'integer', facets: [{ facet: XSD + 'minInclusive', value: { value: '0', datatype: XSD + 'integer' } }] }]);
+    expect(ranges(back, 'grade')).toEqual([{ type: 'DataUnionOf', operands: [{ type: 'Datatype', iri: XSD + 'integer' }, { type: 'DataOneOf', literals: [{ value: 'pass' }, { value: 'fail' }] }] }]);
+    // An empty list is no data range OWL has: it is kept as it was read.
+    expect(ranges(back, 'none')).toEqual([{ type: 'Unparsed', turtle: '[ <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Datatype> ; <http://www.w3.org/2002/07/owl#oneOf> () ]' }]);
+    // The one that is a plain list is the enumerated datatype of the property.
+    expect('axioms' in term(back, 'state')).toBe(false);
     expect(back.datatypes.map((d) => [d.anonymous, d.values.map((v) => v.value)])).toEqual([[true, ['on', 'off']]]);
-    expect(rules(back).map((d) => [d.rule, d.terms.map((id) => back.terms.find((t) => t.id === id)!.name)])).toEqual([
-      ['enumeration-unsupported', ['grade']],
-      ['enumeration-unsupported', ['none']],
-    ]);
+    expect(ranges(back, 'state')).toEqual([{ type: 'Enumeration', datatype: back.datatypes[0].id }]);
+    expect(rules(back).map((d) => [d.rule, d.terms.map((id) => back.terms.find((t) => t.id === id)!.name)])).toEqual([['enumeration-unsupported', ['none']]]);
     const ttl = toTurtle(back);
     expect(ttl).toContain('owl:withRestrictions ( [ xsd:minInclusive "0"^^xsd:integer ] )');
     const again = fromTurtle(ttl);
-    expect(again.terms.map((t) => [t.name, t.axioms])).toEqual(back.terms.map((t) => [t.name, t.axioms]));
+    for (const name of ['age', 'grade', 'none']) expect(ranges(again, name)).toEqual(ranges(back, name));
     expect(again.datatypes.map((d) => d.values)).toEqual(back.datatypes.map((d) => d.values));
   });
 });

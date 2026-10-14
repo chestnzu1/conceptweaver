@@ -101,7 +101,7 @@ describe('local model library', () => {
       baseIri: 'http://uni.example.org/ontology#',
       prefixes: [{ prefix: 'foaf', iri: 'http://xmlns.com/foaf/0.1/' }],
     });
-    m.terms[0] = { ...m.terms[0], axioms: ['rdfs:subClassOf [ a owl:Class ; owl:unionOf ( <http://a.org/X> <http://a.org/Y> ) ]'], fields: [{ key: 'skos:prefLabel', value: 'Agent', lang: 'nl' }] };
+    m.terms[0] = { ...m.terms[0], classAxioms: [{ id: 'x', kind: 'SubClassOf', expression: { type: 'ObjectUnionOf', operands: [{ type: 'Class', iri: 'http://a.org/X' }, { type: 'Class', iri: 'http://a.org/Y' }] } }], fields: [{ key: 'skos:prefLabel', value: 'Agent', lang: 'nl' }] };
     const info = await saveModel(m);
     const back = (await loadModel(info.id))!.model;
     // The same model, field for field…
@@ -144,7 +144,8 @@ describe('local model library', () => {
     expect((await listModels())[0]).toEqual(info);
     const { model } = (await loadModel('legacy-1'))!;
     expect(model.terms.map((t) => t.name)).toEqual(['Film', 'Studio']);
-    expect(model.props).toMatchObject([{ name: 'Distributed by', domain: ['f'], range: ['s'] }]);
+    // What it was drawn between is its domain and range, stated as axioms (model format 3).
+    expect(model.props).toMatchObject([{ name: 'Distributed by', domains: [{ expression: { type: 'Class', iri: model.terms[0].iri } }], ranges: [{ expression: { type: 'Class', iri: model.terms[1].iri } }] }]);
     expect(model).toMatchObject({ prefixes: [], ontologyIri: '', mode: 'ontology' });
   });
 

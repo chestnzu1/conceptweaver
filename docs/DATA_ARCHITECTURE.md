@@ -81,9 +81,9 @@ the migration map.
 | `prefixes` | Namespace prefixes | `project.prefixes` (JSON). Prefixes are how IRIs are written, not statements |
 | `mode` | OWL ontology or SKOS vocabulary | `project.kind` |
 | `lang` | Default language of labels | `project.default_lang`; every literal carries its own language tag in the graph |
-| `terms` (name, description, synonyms, type, `iri`, `fields`, `range`, `domain`, `values`, `oneOf`, `axioms`) | Classes, data properties, individuals and what is said of them | Axioms and annotation assertions in the asserted graph |
+| `terms` (name, description, synonyms, type, `iri`, `fields`, `ranges`, `domains`, `values`, `oneOf`, `classAxioms`) | Classes, data properties, individuals and what is said of them | Axioms and annotation assertions in the asserted graph |
 | `terms[].x`, `.y`, `.color` | Where a term is drawn and in which colour | `diagram.positions`, `diagram.style` |
-| `props` | Object properties with characteristics, domains, ranges, hierarchy | Axioms in the asserted graph |
+| `props` | Object properties with characteristics, domains and ranges (an axiom for each statement, model format 3), hierarchy | Axioms in the asserted graph |
 | `relations` | Subclass links, memberships, restrictions, facts, standard-property statements | Axioms in the asserted graph |
 | `relations[].fromCard`, `.toCard` and plain relationships (SKOS mode) | Diagram cardinalities and non-OWL lines | In a vocabulary: SKOS statements in the graph. Cardinality text: diagram metadata |
 | `vocab` | Which labels stand for which standard property | `project.settings` (an authoring convenience) |

@@ -1,3 +1,5 @@
+import { individual, objectProperty } from './expressions';
+import { withDatatype } from './domains';
 import { describe, expect, it } from 'vitest';
 import { inferredRestrictions } from './inferred';
 import { newProp, emptyModel, newRelation, newTerm, type Model, type Quantifier } from './types';
@@ -9,7 +11,7 @@ function build(lines: string[], patch: (m: Model, id: Record<string, string>) =>
   const id: Record<string, string> = {};
   const term = (name: string, type: 'concept' | 'property' = 'concept', range?: string) => {
     if (!id[name]) {
-      const t = newTerm({ name, type, ...(range ? { range } : {}) });
+      const t = newTerm({ name, type, ...(range ? { ranges: withDatatype({}, range) } : {}) });
       id[name] = t.id;
       m.terms.push(t);
     }
@@ -83,13 +85,16 @@ describe('inferred restrictions', () => {
     expect(show(unlinked, id.Actor)).toEqual([]);
   });
 
-  it('inherits class expressions kept as text, without interpreting them', () => {
-    const union = '[ a owl:Class ; owl:unionOf ( <http://x.org/A> <http://x.org/B> ) ]';
+  it('inherits a superclass’s class expressions as they are stated, without interpreting them; not its disjoint classes', () => {
     const { m, id } = build(['Actor < Person'], (model, ids) => {
-      model.terms.find((t) => t.id === ids.Person)!.axioms = [`rdfs:subClassOf ${union}`, 'owl:equivalentClass [ a owl:Restriction ; owl:onProperty <http://x.org/p> ; owl:hasValue <http://x.org/v> ]'];
+      model.terms.find((t) => t.id === ids.Person)!.classAxioms = [
+        { id: 'a', kind: 'SubClassOf', expression: { type: 'ObjectUnionOf', operands: [{ type: 'Class', iri: 'http://x.org/A' }, { type: 'Class', iri: 'http://x.org/B' }] } },
+        { id: 'b', kind: 'EquivalentClasses', expression: { type: 'ObjectHasValue', property: objectProperty('http://x.org/p'), individual: individual('http://x.org/v') } },
+        { id: 'c', kind: 'DisjointClasses', expression: { type: 'Class', iri: 'http://x.org/C' } },
+      ];
     });
     const got = inferredRestrictions(m, id.Actor);
-    expect(got.expressions.map((e) => `${e.text} ← ${e.sources.map((s) => s.name)}`)).toEqual([`${union} ← Person`, '[ a owl:Restriction ; owl:onProperty <http://x.org/p> ; owl:hasValue <http://x.org/v> ] ← Person']);
+    expect(got.expressions.map((e) => `${e.text} ← ${e.sources.map((s) => s.name)}`)).toEqual(['<http://x.org/A> or <http://x.org/B> ← Person', '<http://x.org/p> value <http://x.org/v> ← Person']);
     expect(inferredRestrictions(m, id.Person).expressions).toEqual([]);
   });
 

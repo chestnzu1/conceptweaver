@@ -1,0 +1,76 @@
+{
+  "classes": [
+    {
+      "name": "Vegetarian pizza",
+      "iri": "http://example.org/expressions#VegetarianPizza",
+      "axioms": [
+        "owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Pizza> [ a owl:Class ; owl:complementOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasTopping> ; owl:someValuesFrom <http://example.org/expressions#MeatTopping> ] ] ) ]"
+      ]
+    },
+    {
+      "name": "Adult person",
+      "iri": "http://example.org/expressions#AdultPerson",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Person> [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasAge> ; owl:someValuesFrom [ a rdfs:Datatype ; owl:onDatatype xsd:integer ; owl:withRestrictions ( [ xsd:minInclusive \"18\"^^xsd:integer ] ) ] ] ) ]"
+      ]
+    },
+    {
+      "name": "Agent",
+      "iri": "http://example.org/expressions#Agent",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Class ; owl:unionOf ( <http://example.org/expressions#Person> <http://example.org/expressions#Organisation> ) ]"
+      ]
+    },
+    {
+      "name": "Italian thing",
+      "iri": "http://example.org/expressions#ItalianThing",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#madeIn> ; owl:hasValue <http://example.org/expressions#italy> ]"
+      ]
+    },
+    {
+      "name": "Parent",
+      "iri": "http://example.org/expressions#Parent",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:minCardinality \"1\"^^xsd:nonNegativeInteger ]"
+      ]
+    },
+    {
+      "name": "Grandparent",
+      "iri": "http://example.org/expressions#Grandparent",
+      "axioms": [
+        "owl:equivalentClass [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:someValuesFrom [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:someValuesFrom <http://example.org/expressions#Person> ] ]"
+      ]
+    },
+    {
+      "name": "Member",
+      "iri": "http://example.org/expressions#Member",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty [ owl:inverseOf <http://example.org/expressions#hasMember> ] ; owl:someValuesFrom <http://example.org/expressions#Organisation> ]"
+      ]
+    },
+    {
+      "name": "Traffic colour",
+      "iri": "http://example.org/expressions#TrafficColour",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Class ; owl:oneOf ( <http://example.org/expressions#red> <http://example.org/expressions#amber> <http://example.org/expressions#green> ) ]"
+      ]
+    },
+    {
+      "name": "Narcissist",
+      "iri": "http://example.org/expressions#Narcissist",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#loves> ; owl:hasSelf \"true\"^^xsd:boolean ]"
+      ]
+    },
+    {
+      "name": "Twin",
+      "iri": "http://example.org/expressions#Twin",
+      "axioms": [
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasSibling> ; owl:qualifiedCardinality \"1\"^^xsd:nonNegativeInteger ; owl:onClass [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Person> [ a owl:Class ; owl:complementOf <http://example.org/expressions#Organisation> ] ) ] ]",
+        "rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:allValuesFrom [ a owl:Class ; owl:unionOf ( <http://example.org/expressions#Person> <http://example.org/expressions#Place> ) ] ]"
+      ]
+    }
+  ],
+  "unmapped": "<http://example.org/expressions#Hermit> <http://www.w3.org/2002/07/owl#disjointWith> [ <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Restriction> ; <http://www.w3.org/2002/07/owl#onProperty> <http://example.org/expressions#loves> ; <http://www.w3.org/2002/07/owl#someValuesFrom> <http://example.org/expressions#Person> ] .\n"
+}

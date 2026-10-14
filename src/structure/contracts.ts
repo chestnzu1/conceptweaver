@@ -251,7 +251,7 @@ export type Quantifier = 'some' | 'only' | 'min' | 'max' | 'exactly';
  */
 export type ClassAxiom =
   | { kind: 'restriction'; key: string; property: PropertyRef; quantifier: Quantifier; n?: number; filler: FillerRef; text: string }
-  | { kind: 'expression'; key: string; relation: 'subClassOf' | 'equivalentClass'; text: string };
+  | { kind: 'expression'; key: string; relation: 'subClassOf' | 'equivalentClass' | 'disjointWith'; text: string };
 
 /**
  * How something is known. asserted: it is stated outright. asserted-chain: it follows from

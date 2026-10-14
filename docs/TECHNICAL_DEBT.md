@@ -121,6 +121,11 @@ entity. Descriptions, names and annotations are written back with the property a
 they were read in. The corpus now loses 28 statements of nine ontologies, not 790; what remains
 is listed in BASELINES.md. Step 2 (the OWL API as the canonical form) is Phase 3.
 
+**Status, 2026-10-14, later.** Domains and ranges are axioms (model format 3, see TD-02): two
+`rdfs:domain` statements of one property were read as one union, which changed what they meant
+(PROV-O's `prov:hadActivity` and `prov:hadRole`); each is now an axiom of its own. The corpus
+loses 24 statements.
+
 ### TD-02 Class expressions are kept as raw Turtle text — High
 
 **Where.** `Term.axioms` in `src/model/types.ts`; written back at `src/model/rdf.ts:293`.
@@ -142,6 +147,29 @@ not, some/only/min/max/exactly/value/self, one-of) with a parser from and a writ
 and a Manchester-syntax text editor with completion over it. Existing `axioms` strings are
 parsed on load and fall back to text when they cannot be. See M2 in
 [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md).
+
+**Status, 2026-10-14: done for domains and ranges.** `src/model/expressions.ts` is that type:
+`ClassExpression` and `DataRange`, named as in the OWL 2 structural specification (and so as the
+OWL API's classes are), entities by IRI, with a reader from RDF, IRI renaming, pruning of deleted
+entities and an `Unparsed` case for what has no structure (kept as canonical Turtle, read-only).
+`src/model/manchester.ts` prints and parses it; `src/components/AxiomList.tsx` edits it. Domains
+and ranges of object and data properties are lists of axioms of it (`ObjProp.domains`/`ranges`,
+`Term.domains`/`ranges`, model format 3), and a data range a format 2 model kept in `Term.axioms`
+is parsed into one on load.
+
+**Status, 2026-10-14, later: done.** Superclasses, equivalent classes and disjoint classes that
+are expressions are axioms of the class with that structure (`Term.classAxioms`, model format 4;
+`Term.axioms` is gone, and a model of format 3 or before is converted on load). The type has an
+object property expression of its own (a property or its inverse), typed data properties and
+individuals, and a printer to OWL functional syntax, the OWL API's form. The editor
+(`src/components/ExpressionEditor.tsx`) builds an expression as nested blocks or writes it in
+Manchester syntax with completion of the next name or keyword, highlighting, bracket matching,
+formatting and errors in place; the reader is checked against the OWL API's own Manchester
+parser (`src/model/expressionConformance.test.ts`). What remains as text is what OWL has no class
+expression for (`Unparsed`, read-only); general class axioms, property chains, keys and
+`owl:disjointUnionOf` are still kept as statements (TD-01). The app's own rule reasoner still
+does not interpret expressions (`REASONER_LIMITS`); HermiT does. The limits that remain are listed in
+[EXPRESSION_EDITOR_LIMITATIONS.md](EXPRESSION_EDITOR_LIMITATIONS.md).
 
 ### TD-03 Object properties are identified by lower-cased name — High
 

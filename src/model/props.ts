@@ -1,3 +1,5 @@
+import { propDatatype, termOfIri } from './domains';
+import { fits as fitsExpression, type ClassAxiom, type ClassExpression } from './expressions';
 import { DEFAULT_PROP, linkProps, nameKey, propOf } from './identity';
 import { allowsKind, configOf, type RelKindId } from './modelTypes';
 import { ENUM_RANGE, PROP_LINKS, QUANTIFIERS, type DescriptionProperty, type ExtraField, type Model, type ObjProp, type PropLink, type Quantifier, type Relation, type RestrictionSpec, type Term } from './types';
@@ -25,11 +27,18 @@ export interface PropView {
   describedBy?: DescriptionProperty;
   nameLang?: string;
   descriptionLang?: string;
-  /** Term ids. When not set by hand these follow the classes the property is used between. */
-  domain: string[];
-  range: string[];
+  /**
+   * The domain and range stated: an axiom for each rdfs:domain (rdfs:range) statement, all of
+   * which hold at once. Empty where none is stated, and where they follow the uses (`domainAuto`).
+   */
+  domains: ClassAxiom[];
+  ranges: ClassAxiom[];
+  /** Not stated by hand: the domain (range) follows the classes the uses start from (point to). */
   domainAuto: boolean;
   rangeAuto: boolean;
+  /** The classes, by term id, that the uses between classes start from and point to. */
+  usedFrom: string[];
+  usedTo: string[];
   chars: string[];
   /** Ids of other properties, as declared on this one (see `propLinks` for both directions). */
   parents: string[];
@@ -76,10 +85,12 @@ function analyse(model: Model): Analysis {
       ...(p.nameLang !== undefined ? { nameLang: p.nameLang } : {}),
       ...(p.descriptionLang !== undefined ? { descriptionLang: p.descriptionLang } : {}),
       chars: p.chars,
-      domain: p.domain?.filter((id) => types.has(id)) ?? [],
-      range: p.range?.filter((id) => types.has(id)) ?? [],
-      domainAuto: !p.domain,
-      rangeAuto: !p.range,
+      domains: p.domains ?? [],
+      ranges: p.ranges ?? [],
+      domainAuto: !p.domains,
+      rangeAuto: !p.ranges,
+      usedFrom: [],
+      usedTo: [],
       parents: p.parents ?? [],
       inverses: p.inverses ?? [],
       equivalents: p.equivalents ?? [],
@@ -108,8 +119,8 @@ function analyse(model: Model): Analysis {
     }
     v.rels.push(r);
     if (types.get(r.from) !== 'concept' || types.get(r.to) !== 'concept') continue;
-    if (v.domainAuto && !v.domain.includes(r.from)) v.domain.push(r.from);
-    if (v.rangeAuto && !v.range.includes(r.to)) v.range.push(r.to);
+    if (!v.usedFrom.includes(r.from)) v.usedFrom.push(r.from);
+    if (!v.usedTo.includes(r.to)) v.usedTo.push(r.to);
   }
   const fits = (id: string, allowed: string[]) => {
     const seen = new Set<string>();
@@ -163,11 +174,44 @@ export function propLinks(model: Model, id: string, link: PropLink): string[] {
 }
 export { PROP_LINKS };
 
-/** The classes that can have a data property: set by hand, or else the terms it is attached to. */
-export function dataDomain(model: Model, t: Term): { ids: string[]; auto: boolean } {
-  const known = new Set(model.terms.map((x) => x.id));
-  if (t.domain) return { ids: t.domain.filter((id) => known.has(id)), auto: false };
-  return { ids: [...new Set(model.relations.filter((r) => r.kind === 'property' && r.to === t.id && known.has(r.from)).map((r) => r.from))], auto: true };
+/**
+ * A data property's domain: the axioms stated by hand (`auto` false), or else none, and it
+ * follows the classes it is attached to (`attached`, by term id, whichever it is).
+ */
+export function dataDomain(model: Model, t: Term): { axioms: ClassAxiom[]; auto: boolean; attached: string[] } {
+  const known = new Set(model.terms.filter((x) => x.type === 'concept').map((x) => x.id));
+  const attached = [...new Set(model.relations.filter((r) => r.kind === 'property' && r.to === t.id && known.has(r.from)).map((r) => r.from))];
+  return { axioms: t.domains ?? [], auto: !t.domains, attached };
+}
+
+/**
+ * A domain or range as the expressions it is: the axioms stated, or where it follows the uses
+ * (`auto`), the class the uses start from (point to), or the union of those. None: it has none.
+ */
+export function expressionsOf(model: Model, axioms: ClassAxiom[], auto: boolean, used: string[]): ClassExpression[] {
+  if (!auto) return axioms.map((a) => a.expression);
+  const iris = used.map((id) => model.terms.find((t) => t.id === id)?.iri).filter((x): x is string => !!x);
+  if (!iris.length) return [];
+  return [iris.length === 1 ? { type: 'Class', iri: iris[0] } : { type: 'ObjectUnionOf', operands: iris.map((iri) => ({ type: 'Class', iri })) }];
+}
+
+/**
+ * Whether a term is in a domain or range stated as axioms: in every one of them, since all of
+ * them hold. False, with the first axiom it is shown not to be in; true where it is shown to be in
+ * all; undefined where some cannot be told (an expression this editor does not judge).
+ */
+export function fitsAxioms(model: Model, id: string, axioms: ClassAxiom[]): { fits: boolean | undefined; outside?: ClassAxiom } {
+  const isA = (iri: string) => {
+    const t = termOfIri(model, iri);
+    return !!t && analyse(model).fits(id, [t.id]);
+  };
+  let unknown = false;
+  for (const a of axioms) {
+    const ok = fitsExpression(a.expression, isA);
+    if (ok === false) return { fits: false, outside: a };
+    if (ok === undefined) unknown = true;
+  }
+  return { fits: unknown ? undefined : true };
 }
 
 /** What a relationship is, as offered where its kind is chosen. Which kinds there are depends on the type of model. */
@@ -318,8 +362,9 @@ function allRestrictions(m: Model, declared: Map<string, string>): Map<string, R
     let line: Pick<Restriction, 'data' | 'property' | 'filler'> | undefined;
     if (r.kind === 'property' && to.type === 'property') {
       // The values it has to have: a standard datatype by its name, an enumerated one by the name it was given.
-      const listed = to.range?.startsWith(ENUM_RANGE) ? m.datatypes.find((d) => d.id === to.range!.slice(ENUM_RANGE.length))?.name : undefined;
-      line = { data: true, property: to.name || 'Unnamed', filler: listed ?? (to.range?.startsWith(ENUM_RANGE) ? undefined : to.range) ?? 'rdfs:Literal' };
+      const range = propDatatype(to);
+      const listed = range?.startsWith(ENUM_RANGE) ? m.datatypes.find((d) => d.id === range.slice(ENUM_RANGE.length))?.name : undefined;
+      line = { data: true, property: to.name || 'Unnamed', filler: listed ?? (range?.startsWith(ENUM_RANGE) ? undefined : range) ?? 'rdfs:Literal' };
     } else if (r.kind === 'association' && r.prop !== undefined && to.type === 'concept' && declared.has(r.prop)) {
       line = { data: false, property: declared.get(r.prop)!, filler: to.name || 'Unnamed' };
     }

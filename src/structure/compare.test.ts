@@ -141,12 +141,12 @@ describe('when one restriction implies another', () => {
     expect(related('age max 1 xsd:integer', 'age max 2 xsd:integer').forward).toEqual(['stronger than age max 2 xsd:integer']);
   });
 
-  it('compares a kept class expression as text and never calls one stronger', () => {
+  it('compares a class expression as it is written and never calls one stronger', () => {
     const text = '[ owl:intersectionOf ( :C :D ) ]';
     const { result } = compare(HIERARCHY, { A: [expression(text), expression('[ owl:unionOf ( :C :D ) ]')], B: [expression(text), 'p some D'] }, 'A', 'B');
     expect(table(result)).toEqual(['[ owl:intersectionOf ( :C :D ) ]: own / own', '[ owl:unionOf ( :C :D ) ]: own / inherited', 'p some D: absent / own']);
     expect(result.axioms.every((r) => r.axiom.kind !== 'expression' || (r.relations.length === 0 && r.unverified.length === 0))).toBe(true);
-    expect(result.notes.join(' ')).toMatch(/compared as text/);
+    expect(result.notes.join(' ')).toMatch(/compared as they are written/);
   });
 });
 

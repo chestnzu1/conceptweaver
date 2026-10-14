@@ -1,4 +1,5 @@
 import type { Route } from '../layout/types';
+import { propDatatype } from './domains';
 import type { Relation, RelKind, Term } from './types';
 
 export const NODE_H = 40;
@@ -50,7 +51,7 @@ export interface NodeLook {
   datatype?: string;
 }
 
-type Sized = Pick<Term, 'name' | 'type' | 'range'>;
+type Sized = Pick<Term, 'name' | 'type' | 'ranges'>;
 let lookOf: (t: Sized) => NodeLook | undefined = () => undefined;
 
 /**
@@ -68,8 +69,10 @@ const fontOf = (look: NodeLook | undefined) => (look?.fontSize || look?.fontWeig
 /** Text drawn on a node: the name, and for a data property its datatype ("Release date : date"). */
 export function nodeLabel(t: Sized): string {
   const look = lookOf(t);
-  // "date" for xsd:date; an enumerated datatype by its name, which only the model knows.
-  const range = t.type === 'property' && t.range ? (look?.datatype ?? (t.range.startsWith('enum:') ? 'enumeration' : t.range.split(':')[1])) : '';
+  // "date" for xsd:date; an enumerated datatype by its name, and a range that is an expression as
+  // written, which only the model knows.
+  const key = t.type === 'property' ? propDatatype(t) : undefined;
+  const range = t.type === 'property' && t.ranges?.length ? (look?.datatype ?? (!key ? 'data range' : key.startsWith('enum:') ? 'enumeration' : (key.split(':')[1] ?? key))) : '';
   return (look?.text ?? (t.name || '')) + (range ? ` : ${range}` : '');
 }
 
@@ -423,7 +426,7 @@ const hintOf = (port: number, labelUp: boolean): RouteHint => {
  * one term do so side by side in the order they come from, and at which end its words go. The
  * same answer is the same object, so a line is drawn again only when its own answer changed.
  */
-export function routeHints(relations: Pick<Relation, 'id' | 'from' | 'to'>[], byId: Map<string, Pick<Term, 'id' | 'x' | 'y' | 'name' | 'type' | 'range'>>, route: Route): Map<string, RouteHint> {
+export function routeHints(relations: Pick<Relation, 'id' | 'from' | 'to'>[], byId: Map<string, Pick<Term, 'id' | 'x' | 'y' | 'name' | 'type' | 'ranges'>>, route: Route): Map<string, RouteHint> {
   const out = new Map<string, RouteHint>();
   if (route.how === 'direct') return out;
   const down = route.dir === 'TB' || route.dir === 'BT';

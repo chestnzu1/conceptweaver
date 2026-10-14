@@ -5,7 +5,7 @@ ontology's IRI, annotations and imports.
 Original: 1064 axioms. Saved: 1078 axioms.
 Lost: 3 (SubClassOf 3).
 Added: 17 (Declaration 14, SubClassOf 3).
-Kept as it was, not editable here: 63 statements.
+Kept as it was, not editable here: 55 statements.
 
 Lost: in the original, not in what was saved
   SubClassOf(:DateTimeDescription DataAllValuesFrom(:day xsd:gDay))

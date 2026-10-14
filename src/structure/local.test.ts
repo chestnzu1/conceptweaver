@@ -1,3 +1,4 @@
+import { withDatatype } from '../model/domains';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { withIris } from '../model/iri';
 import type { DlReport, ReasoningResult } from '../model/reasoning';
@@ -27,14 +28,14 @@ function cast(): { m: Model; id: Record<string, string> } {
   const isA = (a: string, b: string) => m.relations.push(newRelation({ from: id[a], to: id[b], kind: 'generalization' }));
   term('Agent', { iri: 'http://vocab.org/v#Agent', external: 'vocab' });
   term('Person', { synonyms: 'Human, Individual person' });
-  // An anonymous superclass, kept as text: it is asserted of Actor, and it is not a class.
-  term('Actor', { axioms: ['rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :actsIn ; owl:someValuesFrom :Film ]'], fields: [{ key: 'skos:altLabel', value: 'Performer' }] });
+  // An anonymous superclass, an axiom of the class: it is asserted of Actor, and it is not a class.
+  term('Actor', { classAxioms: [{ id: 'x', kind: 'SubClassOf', expression: { type: 'ObjectSomeValuesFrom', property: { type: 'ObjectProperty', iri: NS + 'actsIn' }, filler: { type: 'Class', iri: NS + 'Film' } } }], fields: [{ key: 'skos:altLabel', value: 'Performer' }] });
   term('Employee');
   term('WorkingActor');
   term('Performer');
   term('Film');
   term('Tom Hanks', { type: 'instance' });
-  term('Stage name', { type: 'property', range: 'xsd:string' });
+  term('Stage name', { type: 'property', ranges: withDatatype({}, 'xsd:string') });
   isA('Person', 'Agent');
   isA('Actor', 'Person');
   isA('Employee', 'Person');
@@ -457,9 +458,9 @@ describe('comparing two classes of the model in the editor', () => {
       return t.id;
     };
     for (const name of ['Party', 'Organisation', 'Party local profile', 'Organisation local profile', 'Person']) term(name);
-    term('global identifier', { type: 'property', range: 'xsd:string' });
+    term('global identifier', { type: 'property', ranges: withDatatype({}, 'xsd:string') });
     // The property is declared with Party as its domain. That is a statement about the property, not about Party.
-    m.props = [newProp({ name: 'has local profile', description: '', chars: [], domain: [id.Party] })];
+    m.props = [newProp({ name: 'has local profile', description: '', chars: [], domains: [{ id: 'd', expression: { type: 'Class', iri: NS + 'Party' } }] })];
     const rel = (from: string, to: string, patch: Parameters<typeof newRelation>[0] extends infer P ? Partial<P> : never = {}) => m.relations.push(newRelation({ from: id[from], to: id[to], ...patch }));
     rel('Organisation', 'Party', { kind: 'generalization' });
     rel('Person', 'Party', { kind: 'generalization' });
@@ -504,16 +505,16 @@ describe('comparing two classes of the model in the editor', () => {
     expect(checked.relationship.verified).toBe(true);
   });
 
-  it('includes class expressions that are kept as written, and the list of an enumeration', async () => {
+  it('includes class expressions, as Manchester syntax, and the list of an enumeration', async () => {
     const { m, id } = party();
     const active = newTerm({ name: 'Active', type: 'instance' });
     const model = withIris({
       ...m,
-      terms: [...m.terms.map((t) => (t.id === id.Party ? { ...t, axioms: ['rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :audits ; owl:hasValue :Registry ]'] } : t.id === id.Person ? { ...t, oneOf: [active.id] } : t)), active],
+      terms: [...m.terms.map((t) => (t.id === id.Party ? { ...t, classAxioms: [{ id: 'x', kind: 'SubClassOf' as const, expression: { type: 'ObjectHasValue' as const, property: { type: 'ObjectProperty' as const, iri: NS + 'audits' }, individual: { type: 'NamedIndividual' as const, iri: NS + 'Registry' } } }] } : t.id === id.Person ? { ...t, oneOf: [active.id] } : t)), active],
     });
     const c = await compare(serve(() => model), model, 'Organisation', 'Person');
     const text = c.axioms.filter((r) => r.axiom.kind === 'expression').map((r) => `${r.axiom.text}: ${r.a.state} / ${r.b.state}`);
-    expect(text).toEqual(['[ a owl:Restriction ; owl:onProperty :audits ; owl:hasValue :Registry ]: inherited / inherited', '{ Active }: absent / own']);
+    expect(text).toEqual([':audits value :Registry: inherited / inherited', '{ Active }: absent / own']);
     expect(c.relationship).toMatchObject({ kind: 'siblings', shared: [{ label: 'Party' }] });
   });
 

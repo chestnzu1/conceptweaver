@@ -176,7 +176,7 @@ export function compareClasses(ctx: CompareContext, ref: OntologyRef, aIri: Iri,
   const has = (s: AxiomStanding) => s.state !== 'absent';
   const count = (test: (r: ComparedAxiom) => boolean) => axioms.filter(test).length;
   const notes: string[] = [];
-  if (axioms.some((r) => r.axiom.kind === 'expression')) notes.push('Class expressions kept as they were written (intersections, unions, nested restrictions, enumerations) are compared as text. What they mean is not worked out, so one is never said to be stronger than another.');
+  if (axioms.some((r) => r.axiom.kind === 'expression')) notes.push('Class expressions (intersections, unions, nested restrictions, enumerations) are compared as they are written. What they mean is not worked out, so one is never said to be stronger than another.');
   if (byProperty.size > 1) notes.push('Restrictions are compared only where they are on the same property. A restriction on a sub-property is not set against one on the property above it.');
   if (axioms.some((r) => r.axiom.kind === 'restriction' && r.axiom.filler.kind === 'datatype')) notes.push('Datatypes are not compared with each other: restrictions on a data property are related only where they name the same datatype.');
   for (const l of [A, B]) if (l.unsatisfiable) notes.push(`“${l.self.label}” can never have an instance, according to the reasoner. Everything is true of such a class, so only what is stated of it and above it is shown as inherited.`);

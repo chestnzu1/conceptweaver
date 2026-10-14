@@ -1,3 +1,4 @@
+import { propDatatype } from './domains';
 import { describe, expect, it } from 'vitest';
 import { readExternal } from './external';
 import { readModelFile } from './files';
@@ -94,10 +95,10 @@ function shape(m: Model) {
     mode: m.mode,
     ontologyIri: m.ontologyIri,
     terms: m.terms
-      .map((t) => ({ iri: t.iri, name: t.name, type: t.type, description: t.description, synonyms: t.synonyms.split(',').map((x) => x.trim()).sort(), range: t.range, functional: !!t.functional, domain: named(t.domain), fields: [...t.fields].map((f) => JSON.stringify(f)).sort(), axioms: (t.axioms ?? []).length, values: (t.values ?? []).map((v) => `${name.get(v.prop)}=${v.value}`).sort(), oneOf: t.oneOf ? named(t.oneOf) : null }))
+      .map((t) => ({ iri: t.iri, name: t.name, type: t.type, description: t.description, synonyms: t.synonyms.split(',').map((x) => x.trim()).sort(), ranges: (t.ranges ?? []).map((a) => JSON.stringify(a.range)), functional: !!t.functional, domains: t.domains?.map((a) => JSON.stringify(a.expression)), fields: [...t.fields].map((f) => JSON.stringify(f)).sort(), axioms: (t.classAxioms ?? []).map((a) => a.kind + JSON.stringify(a.expression)), values: (t.values ?? []).map((v) => `${name.get(v.prop)}=${v.value}`).sort(), oneOf: t.oneOf ? named(t.oneOf) : null }))
       .sort((a, b) => (a.iri ?? '').localeCompare(b.iri ?? '')),
     relations: m.relations.map((r) => [name.get(r.from), r.kind, r.label, r.predicate ?? '', r.restriction ?? '', r.restrictionN ?? '', JSON.stringify(r.more ?? []), name.get(r.to)].join(' | ')).sort(),
-    props: m.props.map((p) => ({ name: p.name, iri: p.iri, chars: [...p.chars].sort(), domain: named(p.domain), range: named(p.range), parents: props(p.parents), inverses: props(p.inverses) })).sort((a, b) => a.name.localeCompare(b.name)),
+    props: m.props.map((p) => ({ name: p.name, iri: p.iri, chars: [...p.chars].sort(), domains: p.domains?.map((a) => JSON.stringify(a.expression)), ranges: p.ranges?.map((a) => JSON.stringify(a.expression)), parents: props(p.parents), inverses: props(p.inverses) })).sort((a, b) => a.name.localeCompare(b.name)),
     externals: m.externals.map((e) => e.iri).sort(),
   };
 }
@@ -151,7 +152,8 @@ describe('an ontology in RDF/XML', () => {
     expect(term(m, 'Pizza')).toMatchObject({ type: 'concept', synonyms: 'Pie', description: 'A baked flat bread with toppings & cheese.' });
     // A label in another language is kept as an annotation.
     expect(term(m, 'Pizza').fields).toEqual([{ key: 'rdfs:label', value: 'Pizza italiana', lang: 'it' }]);
-    expect(term(m, 'price')).toMatchObject({ type: 'property', range: 'xsd:decimal', functional: true });
+    expect(term(m, 'price')).toMatchObject({ type: 'property', functional: true });
+    expect(propDatatype(term(m, 'price'))).toBe('xsd:decimal');
     expect(term(m, 'My lunch')).toMatchObject({ type: 'instance', values: [{ prop: term(m, 'price').id, value: '9.50' }] });
     expect(m.props).toMatchObject([{ name: 'has topping', chars: ['transitive'], iri: 'http://example.org/pizza#hasTopping' }]);
     // The hierarchy, a restriction in a nested element, a membership.
@@ -161,7 +163,8 @@ describe('an ontology in RDF/XML', () => {
     expect(kinds).toContain('My lunch instanceOf Margherita');
     expect(restrictionsOf(m, term(m, 'Margherita').id).map((r) => `${r.property} ${r.quantifier} ${r.filler}`)).toEqual(['has topping some Tomato']);
     // A class expression there is no drawing for is kept as it was stated, read from the list in the file.
-    expect(term(m, 'Vegetarian pizza').axioms).toEqual(['owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( <http://example.org/pizza#Pizza> [ a owl:Restriction ; owl:onProperty <http://example.org/pizza#hasTopping> ; owl:allValuesFrom <http://example.org/pizza#Tomato> ] ) ]']);
+    const P = 'http://example.org/pizza#';
+    expect(term(m, 'Vegetarian pizza').classAxioms!.map((a) => [a.kind, a.expression])).toEqual([['EquivalentClasses', { type: 'ObjectIntersectionOf', operands: [{ type: 'Class', iri: P + 'Pizza' }, { type: 'ObjectAllValuesFrom', property: { type: 'ObjectProperty', iri: P + 'hasTopping' }, filler: { type: 'Class', iri: P + 'Tomato' } }] }]]);
     // What it imports is recorded by its IRI, and its own prefixes are kept.
     expect(m.externals.map((e) => e.iri)).toEqual(['http://example.org/food']);
     expect(m.prefixes).toEqual([{ prefix: 'food', iri: 'http://example.org/food#' }]);

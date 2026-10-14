@@ -1,3 +1,4 @@
+import { withDatatype } from './domains';
 import { describe, expect, it } from 'vitest';
 import { runChecks } from './checks';
 import { hasCardinality, nextSpec, restrictionByRelation, restrictionSpecs, restrictionsOf, specsPatch } from './props';
@@ -9,7 +10,7 @@ function films() {
   const m = emptyModel('Films');
   m.baseIri = 'http://example.org/films#';
   const [director, film, award] = ['Director', 'Film', 'Award'].map((name) => newTerm({ name }));
-  const time = newTerm({ name: 'Running time', type: 'property', range: 'xsd:integer' });
+  const time = newTerm({ name: 'Running time', type: 'property', ranges: withDatatype({}, 'xsd:integer') });
   m.terms.push(director, film, award, time);
   m.props.push(newProp({ name: 'directs', description: '', chars: [] }));
   const directs = newRelation({ from: director.id, to: film.id, label: 'directs' });

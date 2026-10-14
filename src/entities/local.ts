@@ -1,5 +1,6 @@
 import { standardAnnotation } from '../model/annotations';
 import { rangeLabel } from '../model/datatypes';
+import { propDatatype, propDatatypes } from '../model/domains';
 import { expressionOf, FAST_CREDIT, restrictionKey } from '../model/inferred';
 import { configOf, supports } from '../model/modelTypes';
 import { compactIri } from '../model/prefixes';
@@ -104,8 +105,8 @@ function build(model: Model): Index {
       return classes.map((t) => {
         const supers = parents.get(t.id)!.length;
         const subs = children.get(t.id) ?? 0;
-        // What the table lists as asserted: the restrictions by a property, and the class expressions kept as written.
-        const restrictions = restricted ? restrictionsOf(model, t.id).length + (t.axioms?.length ?? 0) : 0;
+        // What the table lists as asserted: the restrictions by a property, and the class axioms with an expression.
+        const restrictions = restricted ? restrictionsOf(model, t.id).length + (t.classAxioms?.length ?? 0) : 0;
         return {
           key: t.id,
           ...(t.iri ? { iri: t.iri } : {}),
@@ -123,7 +124,7 @@ function build(model: Model): Index {
         label: p.name,
         texts: textsOf(model, p),
         sort: { name: p.name, iri: p.iri, relations: p.rels.length },
-        facts: { domain: withOrWithout(p.domain.length > 0), range: withOrWithout(p.range.length > 0), characteristics: p.chars, inverse: flag(propLinks(model, p.id, 'inverses').length > 0) },
+        facts: { domain: withOrWithout((p.domainAuto ? p.usedFrom : p.domains).length > 0), range: withOrWithout((p.rangeAuto ? p.usedTo : p.ranges).length > 0), characteristics: p.chars, inverse: flag(propLinks(model, p.id, 'inverses').length > 0) },
       })),
     dataProperty: () =>
       (oneKind ? [] : of('property')).map((t) => ({
@@ -131,8 +132,8 @@ function build(model: Model): Index {
         ...(t.iri ? { iri: t.iri } : {}),
         label: t.name || 'Unnamed',
         texts: textsOf(model, t),
-        sort: { name: t.name, iri: t.iri, range: rangeLabel(model, t.range), relations: degreeOf(t.id) },
-        facts: { domain: withOrWithout(dataDomain(model, t).ids.length > 0), range: withOrWithout(!!t.range), functional: flag(!!t.functional), datatype: t.range ? [t.range] : [] },
+        sort: { name: t.name, iri: t.iri, range: rangeLabel(model, propDatatype(t)), relations: degreeOf(t.id) },
+        facts: { domain: withOrWithout(dataDomain(model, t).auto ? dataDomain(model, t).attached.length > 0 : dataDomain(model, t).axioms.length > 0), range: withOrWithout(!!t.ranges?.length), functional: flag(!!t.functional), datatype: propDatatypes(t) },
       })),
     individual: () => {
       const classes = new Set(model.terms.filter((t) => t.type === 'concept').map((t) => t.id));
@@ -290,7 +291,7 @@ function build(model: Model): Index {
       const r = reasoning();
       const facts = new Map<string, string[]>();
       const own = new Map<string, { keys: string[]; texts: string[] }>();
-      const stated = (id: string) => own.get(id) ?? own.set(id, { keys: restrictionsOf(model, id).map(restrictionKey), texts: (byId.get(id)?.axioms ?? []).map(expressionOf) }).get(id)!;
+      const stated = (id: string) => own.get(id) ?? own.set(id, { keys: restrictionsOf(model, id).map(restrictionKey), texts: (byId.get(id)?.classAxioms ?? []).map(expressionOf).filter((x): x is string => x !== undefined) }).get(id)!;
       for (const t of model.terms) {
         if (t.type !== 'concept') continue;
         const mine = stated(t.id);

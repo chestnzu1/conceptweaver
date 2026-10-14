@@ -32,6 +32,7 @@ import { IriCell } from './Iri';
 import { CommitInput } from './fields';
 import { Disclosure, Icon } from './Icon';
 import { enumOf, rangeLabel } from '../model/datatypes';
+import { propDatatype } from '../model/domains';
 
 /**
  * The parts of the entity editor that state OWL axioms about the selected entity. What each part
@@ -160,42 +161,6 @@ export function LinkEditor({ term, kind, noun, label, hint }: { term: Term; kind
         of={term.name}
         empty={model.vocab.enabled ? 'none stated' : 'none in force: RDFS & OWL properties are off'}
       />
-    </div>
-  );
-}
-
-/**
- * Class expressions without a name that are asserted of the class (an intersection, a nested
- * restriction…), kept exactly as they were written. They are shown apart from the named classes.
- */
-export function AnonymousExpressions({ term, predicate }: { term: Term; predicate: 'rdfs:subClassOf' | 'owl:equivalentClass' }) {
-  const st = useStore.getState;
-  const all = term.axioms ?? [];
-  const mine = all.map((a, i) => ({ a, i })).filter((x) => x.a.startsWith(predicate + ' '));
-  if (!mine.length) return null;
-  return (
-    <div className="anonymous">
-      <small>
-        Anonymous class expression{mine.length === 1 ? '' : 's'}: kept exactly as written and exported with the class.
-      </small>
-      <ul className="axioms">
-        {mine.map(({ a, i }) => (
-          <li key={i}>
-            <code>{a.slice(predicate.length + 1)}</code>
-            <button
-              className="btn icon ghost"
-              title="Remove this expression from the class (Undo brings it back)"
-              aria-label="Remove anonymous expression"
-              onClick={() => {
-                const left = all.filter((_, j) => j !== i);
-                st().updateTerm(term.id, { axioms: left.length ? left : undefined });
-              }}
-            >
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -389,8 +354,9 @@ export function IndividualAssertions({ term }: { term: Term }) {
   const [draft, setDraft] = useState<{ prop?: string; value: string; lang: string; error?: string }>({ value: '', lang: '' });
   const dataProp = draft.prop ? byId.get(draft.prop) : undefined;
   // Where the property's values are an enumerated datatype, they are the ones it lists, offered as they are typed.
-  const listed = enumOf(model, dataProp?.range);
-  const textual = !dataProp?.range || dataProp.range === 'xsd:string' || dataProp.range === 'rdf:langString' || !!listed?.values.some((v) => v.lang);
+  const range = dataProp && propDatatype(dataProp);
+  const listed = enumOf(model, range);
+  const textual = !range || range === 'xsd:string' || range === 'rdf:langString' || !!listed?.values.some((v) => v.lang);
   const ofType = (type: TermType) => () => model.terms.filter((t) => t.type === type).map(choice);
   const stateFact = () => {
     const error = st().edit((m) => addFact(m, term.id, fact.prop ?? '', fact.to ?? ''));
@@ -458,7 +424,7 @@ export function IndividualAssertions({ term }: { term: Term }) {
           <input
             aria-label="Value"
             aria-invalid={!!draft.error}
-            placeholder={listed ? `one of the values of ${listed.name}` : dataProp?.range ? `${DATATYPES.find((d) => d.id === dataProp.range)?.label ?? 'value'} (${dataProp.range})` : 'Value'}
+            placeholder={listed ? `one of the values of ${listed.name}` : range ? `${DATATYPES.find((d) => d.id === range)?.label ?? 'value'} (${range})` : 'Value'}
             list={listed ? 'enum-values' : undefined}
             value={draft.value}
             onChange={(e) => setDraft({ ...draft, value: e.target.value, error: undefined })}

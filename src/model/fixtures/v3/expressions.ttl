@@ -1,0 +1,107 @@
+@prefix : <http://example.org/expressions#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/expressions> a owl:Ontology ;
+    rdfs:label "Expressions fixture"@en .
+
+:Person a owl:Class ;
+    rdfs:label "Person"@en .
+
+:Organisation a owl:Class ;
+    rdfs:label "Organisation"@en .
+
+:Place a owl:Class ;
+    rdfs:label "Place"@en .
+
+:Pizza a owl:Class ;
+    rdfs:label "Pizza"@en .
+
+:MeatTopping a owl:Class ;
+    rdfs:label "Meat topping"@en .
+
+:Colour a owl:Class ;
+    rdfs:label "Colour"@en .
+
+:VegetarianPizza a owl:Class ;
+    rdfs:label "Vegetarian pizza"@en ;
+    owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Pizza> [ a owl:Class ; owl:complementOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasTopping> ; owl:someValuesFrom <http://example.org/expressions#MeatTopping> ] ] ) ] .
+
+:AdultPerson a owl:Class ;
+    rdfs:label "Adult person"@en ;
+    rdfs:subClassOf [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Person> [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasAge> ; owl:someValuesFrom [ a rdfs:Datatype ; owl:onDatatype xsd:integer ; owl:withRestrictions ( [ xsd:minInclusive "18"^^xsd:integer ] ) ] ] ) ] .
+
+:Agent a owl:Class ;
+    rdfs:label "Agent"@en ;
+    rdfs:subClassOf [ a owl:Class ; owl:unionOf ( <http://example.org/expressions#Person> <http://example.org/expressions#Organisation> ) ] .
+
+:ItalianThing a owl:Class ;
+    rdfs:label "Italian thing"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#madeIn> ; owl:hasValue <http://example.org/expressions#italy> ] .
+
+:Parent a owl:Class ;
+    rdfs:label "Parent"@en ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:minCardinality "1"^^xsd:nonNegativeInteger ] .
+
+:Grandparent a owl:Class ;
+    rdfs:label "Grandparent"@en ;
+    owl:equivalentClass [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:someValuesFrom [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:someValuesFrom <http://example.org/expressions#Person> ] ] .
+
+:Member a owl:Class ;
+    rdfs:label "Member"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty [ owl:inverseOf <http://example.org/expressions#hasMember> ] ; owl:someValuesFrom <http://example.org/expressions#Organisation> ] .
+
+:TrafficColour a owl:Class ;
+    rdfs:label "Traffic colour"@en ;
+    rdfs:subClassOf [ a owl:Class ; owl:oneOf ( <http://example.org/expressions#red> <http://example.org/expressions#amber> <http://example.org/expressions#green> ) ] .
+
+:Narcissist a owl:Class ;
+    rdfs:label "Narcissist"@en ;
+    rdfs:subClassOf :Person , [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#loves> ; owl:hasSelf "true"^^xsd:boolean ] .
+
+:Twin a owl:Class ;
+    rdfs:label "Twin"@en ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasSibling> ; owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ; owl:onClass [ a owl:Class ; owl:intersectionOf ( <http://example.org/expressions#Person> [ a owl:Class ; owl:complementOf <http://example.org/expressions#Organisation> ] ) ] ] , [ a owl:Restriction ; owl:onProperty <http://example.org/expressions#hasChild> ; owl:allValuesFrom [ a owl:Class ; owl:unionOf ( <http://example.org/expressions#Person> <http://example.org/expressions#Place> ) ] ] .
+
+:Hermit a owl:Class ;
+    rdfs:label "Hermit"@en .
+
+:hasChild a owl:ObjectProperty ;
+    rdfs:label "has child"@en .
+
+:hasMember a owl:ObjectProperty ;
+    rdfs:label "has member"@en .
+
+:hasSibling a owl:ObjectProperty ;
+    rdfs:label "has sibling"@en .
+
+:hasTopping a owl:ObjectProperty ;
+    rdfs:label "has topping"@en .
+
+:loves a owl:ObjectProperty ;
+    rdfs:label "loves"@en .
+
+:madeIn a owl:ObjectProperty ;
+    rdfs:label "made in"@en .
+
+:hasAge a owl:DatatypeProperty ;
+    rdfs:label "has age"@en ;
+    rdfs:range xsd:integer .
+
+:italy a owl:NamedIndividual ;
+    rdfs:label "Italy"@en .
+
+:red a owl:NamedIndividual , :Colour ;
+    rdfs:label "red"@en .
+
+:amber a owl:NamedIndividual , :Colour ;
+    rdfs:label "amber"@en .
+
+:green a owl:NamedIndividual , :Colour ;
+    rdfs:label "green"@en .
+
+# Kept as they were read: statements this editor has no place for.
+<http://example.org/expressions#Hermit> <http://www.w3.org/2002/07/owl#disjointWith> [ <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Restriction> ; <http://www.w3.org/2002/07/owl#onProperty> <http://example.org/expressions#loves> ; <http://www.w3.org/2002/07/owl#someValuesFrom> <http://example.org/expressions#Person> ] .
