@@ -3,6 +3,7 @@
 import { chromium } from 'playwright-core';
 import fs, { globSync } from 'node:fs';
 
+const base = process.argv[2] ?? 'http://localhost:5181/';
 const exe = globSync(process.env.HOME + '/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell')[0];
 const shots = new URL('./shots/', import.meta.url).pathname;
 fs.mkdirSync(shots, { recursive: true });
@@ -32,7 +33,7 @@ const add = async (label, text) => {
 };
 const rdf = async (subject) => { await tab('RDF'); const ttl = await page.locator('.rdf-code').innerText(); await tab('Graph'); return ttl.split('\n\n').find((b) => b.startsWith(subject + ' ')) ?? ''; };
 
-await page.goto('http://localhost:5181/');
+await page.goto(base);
 await page.evaluate(() => { localStorage.clear(); });
 await page.reload();
 await page.waitForSelector('.node');

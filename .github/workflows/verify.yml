@@ -1,0 +1,70 @@
+# Every check the project has, on every push: pnpm verify (see scripts/verify.mjs).
+name: verify
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.25.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # The OWL 2 DL reasoner and the OWL syntax conversions are a Java service; without a JDK
+      # their tests skip, so they would pass here without having run.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - run: pnpm install --frozen-lockfile
+
+      # The reasoner's libraries (robot.jar, 93 MB) are fetched once and kept under their pinned checksum.
+      - name: Read the checksum of the reasoner's libraries
+        id: robot
+        run: node -e "import('./reasoner/run.mjs').then((m) => console.log('sha256=' + m.LIBRARY.sha256))" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: reasoner/lib/robot.jar
+          key: robot-jar-${{ steps.robot.outputs.sha256 }}
+      - name: Fetch the reasoner's libraries and compile the service
+        run: node -e "import('./reasoner/run.mjs').then((m) => m.prepare())"
+
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}-headless-shell
+      - name: Install Chromium's headless shell and what it needs from the system
+        run: pnpm exec playwright-core install --with-deps --only-shell chromium
+
+      - run: pnpm verify
+
+      - name: Keep the screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: e2e/shots/
+          if-no-files-found: ignore
+          retention-days: 14

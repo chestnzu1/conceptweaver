@@ -11,11 +11,19 @@ All commands at a glance (see *Getting started* below for how to use them):
 pnpm install
 pnpm dev        # http://localhost:5180
 pnpm test       # model-layer unit tests
+pnpm lint       # oxlint (.oxlintrc.json); fails on any finding
 pnpm build      # static site in dist/
+pnpm verify     # every check: type-check, lint, unit tests, build, all browser checks, UI audit
+pnpm bench      # the benchmarks, kept in bench-results/ (see docs/BASELINES.md)
 pnpm reasoner   # the OWL 2 DL reasoning service (HermiT) on http://localhost:5190; needs a JDK, 11 or later
-node e2e/sidebar-tree.mjs   # browser checks (also e2e/inferred-restrictions.mjs, e2e/instance-of.mjs, e2e/restrictions.mjs, e2e/governance.mjs, e2e/graph-style.mjs, e2e/model-types.mjs, e2e/html-export.mjs, e2e/enumerations.mjs, e2e/dl-reasoning.mjs, e2e/relationship-kinds.mjs, e2e/inferred-relations.mjs, e2e/edge-endpoints.mjs); need `pnpm exec vite preview --port 5181` running
-node e2e/ui-audit.mjs       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
+node e2e/sidebar-tree.mjs [base URL]   # one browser check, against a running server (default http://localhost:5181/, from `pnpm exec vite preview --port 5181`)
+node e2e/ui-audit.mjs [base URL]       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
 ```
+
+`pnpm verify` is what CI runs on every push (`.github/workflows/verify.yml`). It serves the build
+on a free port of its own, so it does not disturb `pnpm dev`. The browser checks need Chromium's
+headless shell (`pnpm exec playwright-core install chromium-headless-shell`); the ones that need
+Java say SKIPPED without it, and run in CI, which has a JDK.
 
 ## Getting started
 
@@ -510,6 +518,9 @@ Up to about 2,000 terms and 5,000 relationships everything stays responsive. At 
 terms the tables, checks, reasoner, RDF and SPARQL still work but the canvas becomes slow.
 Long tables and result lists are shown a page at a time; the search above a table narrows it.
 `BENCH_OUT=/tmp/bench.txt pnpm exec vitest run src/model/bench.test.ts` times the model layer.
+`pnpm bench` runs both benchmarks named here and measures, in the browser, how long the page is
+blocked by an edit, a reasoner run and a validation run on 2,600 classes; the numbers it gave
+when this was set up are in [docs/BASELINES.md](docs/BASELINES.md).
 
 The Structure Explorer is built for more than that, because it does not need the ontology to be
 in the page: it asks a service, a branch or a page at a time, and draws only the lines in view.
@@ -586,6 +597,11 @@ that *Layered* says so and uses the built-in hierarchical layout.
   backend*). Only `local.ts`
   reads the app's model, and a test (`boundaries.test.ts`) fails if anything else there does, or
   if any of it reaches for the interface. A backend takes part by implementing `StructureService`.
+- `e2e` – the browser checks: each a Node script that drives the built app in a headless
+  Chromium and prints PASS or FAIL for each thing it checks. Each takes the app's address as its
+  argument.
+- `scripts` – `verify.mjs` (every check, as CI runs it), `bench.mjs` (the benchmarks and their
+  report) and `main-thread.mjs` (the longest main-thread task in the browser, for `bench.mjs`).
 
 ## OWL constructs without an editor
 

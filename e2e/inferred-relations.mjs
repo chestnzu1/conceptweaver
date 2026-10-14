@@ -51,9 +51,7 @@ const v = page.locator('.validation');
 const card = v.locator('.owl-card');
 const panel = page.locator('.inspector');
 const side = page.locator('.term-list');
-const zoom = page.locator('.zoom');
 const toggle = page.locator('.subgraph').getByRole('button', { name: /^Inferred facts/ });
-const node = (name) => page.locator('.node', { has: page.locator('text', { hasText: new RegExp('^' + name + '$') }) });
 const toast = async () => flat(await page.locator('.toast').innerText().catch(() => ''));
 // The inferred relationships on the canvas: what each says, and between which two it is drawn.
 const dottedFacts = async () => (await page.locator('.edge.inferred-fact .edge-label').allTextContents()).map(flat).sort();

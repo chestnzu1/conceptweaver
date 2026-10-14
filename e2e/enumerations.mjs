@@ -31,7 +31,6 @@ const addMember = async (text) => {
   await definition.locator('input[type=search]').fill(text);
   await definition.locator('.subgraph-found button').first().dispatchEvent('pointerdown');
 };
-const toast = async () => flat(await page.locator('.toast').innerText().catch(() => ''));
 
 await page.goto(base);
 await page.evaluate(() => { localStorage.clear(); });

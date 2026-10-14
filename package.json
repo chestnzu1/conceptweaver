@@ -8,6 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "lint": "oxlint --deny-warnings",
+    "verify": "node scripts/verify.mjs",
+    "bench": "node scripts/bench.mjs",
     "reasoner": "node reasoner/run.mjs"
   },
   "dependencies": {
@@ -26,6 +29,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "fake-indexeddb": "^6.2.5",
+    "oxlint": "1.87.0",
     "playwright-core": "^1.64.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",

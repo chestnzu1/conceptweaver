@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // oxlint, not ESLint: typescript-eslint does not read TypeScript 7. oxlint reads the
+  // `eslint-disable` comments in the source as they are, under the same rule names.
+  "plugins": ["typescript", "oxc", "react"],
+  "categories": { "correctness": "warn" },
+  "env": { "browser": true, "node": true, "es2024": true },
+  "rules": {
+    // The two rules the `eslint-disable` comments in src/components assume.
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+
+    // The idioms the code uses on purpose: dropping a key by destructuring it into `_`,
+    // `cond && act()` and `cond ? a() : b()` as statements. tsc already reports unused
+    // locals and parameters in TypeScript; here the rule mainly guards the .js and .mjs files.
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "ignoreRestSiblings": true, "caughtErrors": "none" }],
+    "no-unused-expressions": ["warn", { "allowShortCircuit": true, "allowTernary": true }],
+
+    // Diagnostics of the React Compiler, which the app does not use. Adopting them means
+    // reworking components, which is its own decision.
+    "react/set-state-in-effect": "off",
+    "react/preserve-manual-memoization": "off",
+    "react/globals": "off",
+    "react/refs": "off"
+  }
+}

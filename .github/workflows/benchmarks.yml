@@ -1,0 +1,51 @@
+# The benchmarks, once a week and on request: pnpm bench (see scripts/bench.mjs). The numbers are
+# kept as an artifact of the run and shown on its summary page. They are measured on a shared
+# runner, so they say more about change over time than about any one machine.
+name: benchmarks
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.25.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}-headless-shell
+      - name: Install Chromium's headless shell and what it needs from the system
+        run: pnpm exec playwright-core install --with-deps --only-shell chromium
+
+      - run: pnpm bench bench-results/run
+
+      - name: Show the report on the run's summary page
+        run: cat bench-results/run/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: benchmarks-${{ github.run_number }}
+          path: bench-results/run/
+          retention-days: 90

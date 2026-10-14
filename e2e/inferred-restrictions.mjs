@@ -3,6 +3,7 @@
 import { chromium } from 'playwright-core';
 import fs, { globSync } from 'node:fs';
 
+const base = process.argv[2] ?? 'http://localhost:5181/';
 const exe = globSync(process.env.HOME + '/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell')[0];
 const shots = new URL('./shots/', import.meta.url).pathname;
 fs.mkdirSync(shots, { recursive: true });
@@ -26,7 +27,7 @@ const tab = (name) => page.locator('.header').getByRole('tab', { name, exact: na
 const row = (name) => page.locator('.view tbody tr', { has: page.locator(`input[value="${name}"]`) });
 const bulkRel = async (text) => { await page.getByRole('button', { name: 'Bulk add' }).click(); await page.getByRole('tab', { name: '2. Relationships' }).click(); await page.locator('.dialog textarea').fill(text); await page.getByRole('button', { name: 'Add relationships' }).click(); };
 
-await page.goto('http://localhost:5181/');
+await page.goto(base);
 await page.waitForSelector('.node');
 await side.getByRole('button', { name: 'Expand all' }).click();
 

@@ -46,7 +46,7 @@ const table = () => view.locator('table').evaluate((t) => {
   return [...t.querySelectorAll('tbody tr')].map((tr) => {
     const cells = [...tr.children];
     const cell = (h) => cells[heads.indexOf(h)];
-    const text = (h) => { const c = cell(h); if (!c) return ''; const box = c.querySelector('input:not([type=checkbox]), select'); return (box ? (box.tagName === 'SELECT' ? box.selectedOptions[0]?.textContent : box.value) : c.textContent).trim(); };
+    const text = (h) => { const c = cell(h); if (!c) return ''; const box = c.querySelector('input:not([type=checkbox]), select'); return (box ? (box.tagName === 'SELECT' ? box.selectedOptions[0]?.textContent ?? '' : box.value) : c.textContent).trim(); };
     return {
       name: (tr.querySelector('input[aria-label="Name"], input[aria-label="Property name"]') ?? {}).value ?? '',
       iri: (tr.querySelector('.iri-cell') ?? {}).textContent?.trim() ?? '',

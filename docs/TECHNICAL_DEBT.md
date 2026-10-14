@@ -358,6 +358,16 @@ runs type-check, unit tests, build, every browser script and the UI audit; the b
 a schedule and their numbers are kept. Add a linter with the rules the disable comments already
 assume. Give every browser script the base-URL argument.
 
+**Status, 2026-10-14.** Done apart from component tests: `pnpm verify` (`scripts/verify.mjs`)
+and `.github/workflows/verify.yml` on every push; oxlint (`.oxlintrc.json`) with the two
+`react-hooks` rules the comments assume, since typescript-eslint does not read TypeScript 7;
+every browser script takes the base URL; the timing check in `e2e/sidebar-tree.mjs` is a median
+of five against a calibration; `pnpm bench` weekly in `.github/workflows/benchmarks.yml`, with
+today's numbers in [BASELINES.md](BASELINES.md). oxlint finds no problem behind three of the 21
+`exhaustive-deps` comments (`Canvas.tsx`, `SparqlView.tsx`, `StructureExplore.tsx`); they are kept,
+because its port of the rule is not the original's and at least the one in `SparqlView.tsx`
+suppresses a finding the original reports.
+
 ### TD-16 One global 6,400-line stylesheet — Low
 
 **Where.** `src/styles.css` (6,434 lines). Class names are global.

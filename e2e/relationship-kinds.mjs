@@ -23,7 +23,8 @@ const turtle = async () => { await tab('RDF'); const ttl = await page.locator('.
 const block = (ttl, subject) => flat(ttl.split('\n\n').find((b) => b.startsWith(subject + ' ')) ?? '');
 const node = (name) => page.locator('.node', { has: page.locator('text', { hasText: new RegExp('^' + name + '$') }) });
 const edges = () => page.locator('.edge').count();
-const toast = async () => flat(await page.locator('.toast').innerText().catch(() => ''));
+// No notice is waited for 2 s, not the default 30: several checks expect none.
+const toast = async () => flat(await page.locator('.toast').innerText({ timeout: 2000 }).catch(() => ''));
 const editor = page.locator('.inline-editor');
 const field = (label) => panel.locator('.field', { has: page.locator(`:scope > span:has-text("${label}")`) }).first();
 const kind = field('Kind').locator('select');
@@ -31,7 +32,6 @@ const kind = field('Kind').locator('select');
 const label = panel.locator('input').first();
 const kinds = () => kind.locator('option').evaluateAll((os) => os.map((o) => o.textContent));
 const chosen = async () => flat(await kind.locator('option:checked').innerText());
-const properties = async () => flat(await page.locator('.term-list .chips').innerText());
 // Drags the ⊕ handle of one term onto another. Says whether a name is then asked for.
 const drag = async (from, to) => {
   await node(from).locator('.node-box').hover();
@@ -50,14 +50,13 @@ await page.goto(base);
 await page.evaluate(() => { localStorage.clear(); });
 await page.reload();
 await page.waitForSelector('.node');
-const before = await edges();
 const declared = await objectProperties();
 
 // ---------------------------------------------------------------- two classes: "is a", or an object property
 ok(await drag('Studio', 'Person'), 'a line between two classes asks what it is called');
 ok((await editor.inputValue()) === 'related to', 'starting from “related to”, the name it has until it is given one');
 await name('Is A');
-await page.locator('.edge.sel .edge-label-bg, .edge.sel .edge-line').first().click({ force: true }).catch(() => {});
+await page.locator('.edge.sel .edge-label-bg, .edge.sel .edge-line').first().click({ force: true, timeout: 2000 }).catch(() => {});
 ok((await chosen()) === 'Is a (generalization)' && (await kinds()).join(' | ') === 'Object property | Is a (generalization)', 'called “Is A”, it is “Is a (generalization)”; a plain relationship is not among the kinds: ' + (await kinds()).join(' | '));
 let ttl = await turtle();
 ok(/rdfs:subClassOf [^.]*:Person/.test(block(ttl, ':Studio')) && !/:isA\b|:is_a\b|rdf:Property/.test(ttl), 'it is written rdfs:subClassOf, from the subclass to the superclass, and no property was made of the words: ' + block(ttl, ':Studio').slice(-90));

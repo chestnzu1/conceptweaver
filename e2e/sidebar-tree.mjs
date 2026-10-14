@@ -3,6 +3,7 @@
 import { chromium } from 'playwright-core';
 import fs, { globSync } from 'node:fs';
 
+const base = process.argv[2] ?? 'http://localhost:5181/';
 const exe = globSync(process.env.HOME + '/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell')[0];
 const shots = new URL('./shots/', import.meta.url).pathname;
 fs.mkdirSync(shots, { recursive: true });
@@ -22,7 +23,7 @@ const tab = (name) => page.locator('.header').getByRole('tab', { name, exact: na
 const file = async (item) => { await page.getByRole('button', { name: 'File', exact: true }).click(); await page.getByRole('menuitem', { name: item }).click(); };
 const bulkRel = async (text) => { await page.getByRole('button', { name: 'Bulk add' }).click(); await page.getByRole('tab', { name: '2. Relationships' }).click(); await page.locator('.dialog textarea').fill(text); await page.getByRole('button', { name: 'Add relationships' }).click(); };
 
-await page.goto('http://localhost:5181/');
+await page.goto(base);
 await page.waitForSelector('.node');
 
 // ---- the tree
@@ -113,11 +114,23 @@ await file(/^Generate a stress-test model/);
 await page.waitForFunction(() => document.querySelectorAll('.node').length > 900);
 const big = await side.locator('.tree-line').count();
 ok(big < 120 && (await side.locator('.list-count').innerText()).includes('650 classes'), `650-class model: the tree opens two levels deep (${big} rows drawn, not 650)`);
-const time = async (label, selector) => page.evaluate(async ([label, selector]) => { const el = document.querySelector(selector); const t0 = performance.now(); el.click(); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))); return `${label}: ${Math.round(performance.now() - t0)} ms`; }, [label, selector]);
-const expandAll = await time('expand all 650 classes', '.term-list .mini[aria-label="Expand all"]');
+// From the click to the second frame after it, when what it changed is drawn.
+const time = (selector) => page.evaluate(async (selector) => { const el = document.querySelector(selector); const t0 = performance.now(); el.click(); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))); return Math.round(performance.now() - t0); }, selector);
+// Selecting is timed five times, on five rows, and judged by the median, so that one slow frame
+// does not decide. It is judged against selecting in the tree as it opened, a hundred rows or so,
+// as a measure of this machine at this moment: the fully open tree may take three times that, or
+// 400 ms, whichever is more. What this guards against is selection costing in proportion to the rows.
+// The first selection in a model just opened costs more than the rest; it falls among the five of
+// the calibration, and all ten timings are shown.
+const select = async (rows) => { const ms = []; for (const n of rows) ms.push(await time(`.term-list .tree-line:nth-child(${n}) .label`)); return ms; };
+const median = (ms) => [...ms].sort((a, b) => a - b)[2];
+const calm = await select([10, 20, 30, 40, 50]);
+const calibration = median(calm);
+const expandAll = await time('.term-list .mini[aria-label="Expand all"]');
 const rowsOpen = await side.locator('.tree-line').count();
-const pick = await time('select a class in the fully open tree', '.term-list .tree-line:nth-child(300) .label');
-ok(rowsOpen > 650 && Number(expandAll.match(/(\d+) ms/)[1]) < 1500 && Number(pick.match(/(\d+) ms/)[1]) < 400, `${expandAll} (${rowsOpen} rows); ${pick}`);
+const picks = await select([300, 310, 320, 330, 340]);
+const bound = Math.max(400, 3 * calibration);
+ok(rowsOpen > 650 && expandAll < 1500 && median(picks) < bound, `expand all 650 classes: ${expandAll} ms (${rowsOpen} rows); select a class in the fully open tree: ${median(picks)} ms, the median of ${picks.join(', ')} (under ${bound} ms: 400, or three times the ${calibration} ms, the median of ${calm.join(', ')}, it takes in the tree as it opened)`);
 await side.getByLabel('Search terms').fill('Class 64');
 await page.waitForTimeout(150);
 ok((await side.locator('.tree-line.match').count()) >= 11, `search in the large tree: ${await side.locator('.list-count').innerText()}`.replace(/\s+/g, ' '));

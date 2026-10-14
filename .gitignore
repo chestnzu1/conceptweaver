@@ -5,3 +5,6 @@ e2e/shots
 # The OWL 2 DL reasoning service: fetched libraries and compiled classes
 reasoner/lib/
 reasoner/build/
+
+# What pnpm bench measures (scripts/bench.mjs)
+bench-results/
