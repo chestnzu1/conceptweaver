@@ -15,6 +15,7 @@ pnpm lint       # oxlint (.oxlintrc.json); fails on any finding
 pnpm build      # static site in dist/
 pnpm verify     # every check: type-check, lint, unit tests, build, all browser checks, UI audit
 pnpm bench      # the benchmarks, kept in bench-results/ (see docs/BASELINES.md)
+pnpm corpus     # fetches the round-trip corpus (corpus/corpus.mjs) once; its test then runs with the unit tests
 pnpm reasoner   # the OWL 2 DL reasoning service (HermiT) on http://localhost:5190; needs a JDK, 11 or later
 node e2e/sidebar-tree.mjs [base URL]   # one browser check, against a running server (default http://localhost:5181/, from `pnpm exec vite preview --port 5181`)
 node e2e/ui-audit.mjs [base URL]       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
@@ -602,6 +603,9 @@ that *Layered* says so and uses the built-in hierarchical layout.
   argument.
 - `scripts` – `verify.mjs` (every check, as CI runs it), `bench.mjs` (the benchmarks and their
   report) and `main-thread.mjs` (the longest main-thread task in the browser, for `bench.mjs`).
+- `corpus` – the round-trip corpus: `corpus.mjs` lists the ontologies, each by a fixed version
+  and its checksum, and fetches them into `files/` (not committed); `expected/` holds what a
+  round trip through the app loses of each today (see *Reading ontologies*).
 
 ## OWL constructs without an editor
 
@@ -757,7 +761,9 @@ pnpm reasoner          # http://localhost:5190; Ctrl+C stops it
   functional syntax, Manchester syntax or OBO is sent to it (`POST /convert`) and comes back as
   Turtle, with its prefixes, which the app then reads like any other. Only the file is read: no
   import is fetched, and nothing is reasoned over or kept. A service started before this was
-  added has to be stopped and started again to have it.
+  added has to be stopped and started again to have it. It also compares two documents of one
+  ontology statement by statement (`POST /compare`), which the round-trip test uses; the app
+  does not ask it that.
 - **Who can ask it**: it listens on 127.0.0.1 only and answers pages served from this machine
   (`localhost`, `127.0.0.1`). An app served from elsewhere has to be named when the service is
   started: `pnpm reasoner --allow-origin=https://where.the.app.is`. `--port=` and `--host=`
@@ -967,7 +973,9 @@ it, and nothing was replaced):
   the model; `rdfs:subClassOf`, `rdf:type`, restrictions by one property, domains, ranges and
   property characteristics are drawn or listed; any other class expression (an intersection, a
   union, a nested restriction) is kept on its class as text and written back as it was. It is
-  shown, exported and sent to the reasoner, but not edited piece by piece.
+  shown, exported and sent to the reasoner, but not edited piece by piece. Not so an
+  `owl:intersectionOf` stated on the named class itself, the short form in which older RDF/XML
+  files define a class: that is lost, without notice (see *What a round trip loses* below).
 - **Not read**: SWRL rules, property chains (`owl:propertyChainAxiom`), keys (`owl:hasKey`),
   negative property assertions, annotations on axioms (as opposed to on entities) and statements
   about anonymous individuals. The model has no place for them, so an ontology that has them
@@ -975,6 +983,19 @@ it, and nothing was replaced):
   counted when the file is opened and said in a message that stays ("2 property chains and 1
   SWRL rule"), so that a round trip through the app is not taken for a faithful copy of such an
   ontology. `owl:AllDisjointClasses` is read, as pairwise disjointness.
+- **What a round trip loses, measured.** `src/model/corpus.test.ts` opens each ontology of a
+  fixed corpus (`corpus/corpus.mjs`: the seven above, the OWL 2 Primer's example and the core of
+  the Relation Ontology), saves it as Turtle unchanged, and has the OWL API compare the two
+  statement by statement. On 2026-10-14 the nine lost 795 statements between them and gained
+  2,056; the message on opening names at most 36 of the lost. Besides what it names: version IRIs
+  and most annotations of the ontology itself; every `rdfs:comment` comes back as
+  `skos:definition`; a class defined by an `owl:intersectionOf` stated on the class itself, as
+  Wine writes 61 of its classes; datatype definitions, `owl:sameAs`, class assertions of a class
+  expression; and a property typed only by a characteristic (`owl:TransitiveProperty` and the
+  like, without `owl:ObjectProperty`), with all that is said of it. Disjointness and difference
+  among more than two come back pair by pair, and every entity is given an `rdfs:label`. The
+  lists are in `corpus/expected/`, one file for each ontology, and the test fails when one
+  changes: a fix shows there as statements no longer lost. `pnpm corpus` fetches the corpus once.
 - **Imports are not followed.** What an ontology imports is listed under *Align* by its IRI;
   add it there (from a file or a URL) for its entities to be reused and its axioms reasoned
   with.

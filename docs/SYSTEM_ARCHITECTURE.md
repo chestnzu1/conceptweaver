@@ -62,7 +62,7 @@ flowchart LR
 | Entities service | `src/entities` | 1,500 lines incl. tests | Search, sort, filter behind `EntityQueryService`; local and HTTP implementations. |
 | Layouts | `src/layout` | 1,400 lines | Seven layouts over a neutral `LayoutGraph`; run in a worker. |
 | HTML export | `src/export` | 1,300 lines | Self-contained viewer page. |
-| OWL service | `reasoner/` | 930 lines | One Java file on the JDK's `HttpServer`: `/health`, `/reason`, `/convert`. |
+| OWL service | `reasoner/` | 930 lines | One Java file on the JDK's `HttpServer`: `/health`, `/reason`, `/convert` (and, since 2026-10-14, `/compare`, for the round-trip test). |
 | Browser checks | `e2e/` (21 scripts) | 5,400 lines | Playwright scripts against the built app; one of them is a UI audit. |
 
 Runtime dependencies are few (`package.json`): `react`, `zustand`, `n3` (Turtle), `oxigraph`

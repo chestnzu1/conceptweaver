@@ -48,6 +48,14 @@ jobs:
       - name: Fetch the reasoner's libraries and compile the service
         run: node -e "import('./reasoner/run.mjs').then((m) => m.prepare())"
 
+      # The round-trip corpus: public ontologies, each pinned by its checksum in corpus/corpus.mjs.
+      - uses: actions/cache@v6
+        with:
+          path: corpus/files
+          key: corpus-${{ hashFiles('corpus/corpus.mjs') }}
+      - name: Fetch the round-trip corpus
+        run: pnpm corpus
+
       - name: Read the Playwright version
         id: playwright
         run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"

@@ -1,10 +1,16 @@
-# Performance Baselines
+# Baselines
 
-Recorded on 2026-10-14 for roadmap task 1.2, with `pnpm bench`, against the application as of
-commit `d540164` (the benchmarks were added on top of it; no application code changed). Phase 1's
-"no task over 100 ms" (NFR-3, milestone MS-3) is judged against these numbers. Companion
-documents: [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §8,
-[PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) (NFR-3, NFR-4).
+What the application does today, measured, so that Phase 1 can be judged against it. Recorded on
+2026-10-14 against the application as of commit `d540164`; the measuring was added on top of it,
+and no application code changed. Two kinds:
+
+- **Performance** (roadmap task 1.2), with `pnpm bench`: Phase 1's "no task over 100 ms" (NFR-3,
+  milestone MS-3) is judged against these numbers.
+- **Fidelity** (task 1.3), with the round-trip test: milestone MS-2, "nothing lost" (NFR-1,
+  FR-M1-8), is judged against what it records. See *The round trip of the corpus* below.
+
+Companion documents: [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §8,
+[PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) (NFR-1, NFR-3, NFR-4).
 
 **Where.** A 13th Gen Intel Core i9-13900HX (32 logical cores, 55 GB) under WSL2
 (Linux 5.15), Node 22.23.2, Chromium headless shell 151. Numbers from another machine, including
@@ -57,7 +63,58 @@ The figures that bear most on the targets, from the raw output below:
 | Measure the hierarchy (*Analyze*, in stretches) | 241 ms | 1,029 ms |
 | A search | 6.5 ms | 21 ms |
 
-## Raw output
+## The round trip of the corpus
+
+`src/model/corpus.test.ts` opens each ontology of the corpus (`corpus/corpus.mjs`, each file at a
+fixed version and checked by its SHA-256) as the app opens a file, saves it as Turtle with no
+change, and has the OWL service compare the two with the OWL API: axioms by structural equality,
+and the ontology's IRI, version IRI, annotations and imports. A statement is *lost* when the
+original has it and the saved file does not, *added* the other way round. The complete lists are
+in `corpus/expected/`, and the test fails when one changes, so that every fix (or new loss)
+shows as a change there; `pnpm exec vitest run src/model/corpus.test.ts -u` records it.
+
+| Ontology | Read as | Axioms, original → saved | Lost | Added | Said to be left out on opening |
+| --- | --- | ---: | ---: | ---: | --- |
+| Pizza (2016) | RDF/XML | 801 → 1,175 | 72 | 436 | nothing |
+| Wine | RDF/XML | 747 → 1,899 | 96 | 1,246 | nothing |
+| Koala | RDF/XML | 70 → 107 | 0 | 38 | nothing |
+| PROV-O | Turtle | 973 → 958 | 95 | 76 | 13 property chains, 8 annotations on an axiom |
+| SKOS | RDF/XML | 205 → 146 | 69 | 4 | nothing |
+| OWL-Time | Turtle | 1,064 → 971 | 151 | 37 | nothing |
+| FOAF | RDF/XML | 551 → 472 | 239 | 159 | nothing |
+| OWL 2 Primer example | RDF/XML | 93 → 95 | 36 | 39 | 2 property chains, 1 key, 1 annotation on an axiom, 3 negative property assertions |
+| Relation Ontology, core | RDF/XML | 372 → 358 | 37 | 21 | 2 property chains, 2 annotations on an axiom, 4 SWRL rules |
+| **All nine** | | | **795** | **2,056** | at most 36 of the lost |
+
+Only Koala comes back with nothing lost. What is lost, by cause, from the lists:
+
+- **Changed, not dropped.** Every `rdfs:comment` on an entity comes back as `skos:definition`,
+  and an annotation property the app does not know may come back under the ontology's own
+  namespace (FOAF's `vs:term_status` as `:termStatus`). Each such statement counts once as lost
+  and once as added. It is most of the annotations OWL-Time and RO lose, and about half of what
+  FOAF and PROV-O lose.
+- **The ontology's own header.** Version IRIs (Pizza, OWL-Time, RO), and annotations of the
+  ontology beyond its name and description: `owl:versionInfo`, creators, contributors, licence,
+  change notes.
+- **Constructs the app names when it leaves them out:** property chains, keys, negative property
+  assertions, SWRL rules, annotations on axioms.
+- **Constructs it leaves out without a word:**
+  - Wine's 61 classes defined by an `owl:intersectionOf` stated on the class itself (an
+    equivalent class in RDF/XML's short form). The README says other class expressions are kept
+    as text; these are not.
+  - A property typed only by a characteristic (`owl:TransitiveProperty`, `owl:SymmetricProperty`
+    and the like, without `owl:ObjectProperty`) is not taken for a property, and goes with all
+    that is said of it (the Primer loses five this way).
+  - Datatype definitions, `owl:sameAs`, class assertions of a class expression (Primer),
+    sub-property axioms between annotation properties (SKOS), `rdfs:isDefinedBy` (SKOS, PROV-O).
+- **Restated.** Disjointness and difference among more than two come back as pairs: Pizza's 9
+  `DisjointClasses` as 393, Wine's five `AllDifferent` as 829 `DifferentIndividuals`. The meaning is
+  the same; the axioms are not, and an editor of the file sees a different ontology.
+- **Added.** Every entity is given an `rdfs:label` from its name, and a declaration where the
+  original, in the style of OWL 1, used an entity without one (Koala's and Wine's individuals,
+  the classes Wine takes from Food).
+
+## Raw output of the benchmarks
 
 ### Main thread in the browser (scripts/main-thread.mjs)
 

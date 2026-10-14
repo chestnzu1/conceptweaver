@@ -11,6 +11,7 @@
     "lint": "oxlint --deny-warnings",
     "verify": "node scripts/verify.mjs",
     "bench": "node scripts/bench.mjs",
+    "corpus": "node corpus/corpus.mjs",
     "reasoner": "node reasoner/run.mjs"
   },
   "dependencies": {

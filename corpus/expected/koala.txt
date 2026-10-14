@@ -1,0 +1,50 @@
+Koala (koala.owl, read as RDF/XML), opened in ConceptWeaver and saved as Turtle
+unchanged, then compared with the original by the OWL API: axioms by structure, and the
+ontology's IRI, annotations and imports.
+
+Original: 70 axioms. Saved: 107 axioms.
+Lost: 0.
+Added: 38 (AnnotationAssertion 31, Declaration 6, Annotation 1).
+Said to be left out when it was opened: nothing.
+
+Lost: in the original, not in what was saved
+
+Added: in what was saved, not in the original
+  Annotation(rdfs:label "koala"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Animal> "Animal"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#BA> "BA"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#BS> "BS"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Degree> "Degree"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#DryEucalyptForest> "Dry Eucalypt Forest"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Female> "Female"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Forest> "Forest"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Gender> "Gender"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#GraduateStudent> "Graduate Student"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Habitat> "Habitat"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Koala> "Koala"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#KoalaWithPhD> "Koala With Ph D"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#MA> "MA"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Male> "Male"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#MaleStudentWith3Daughters> "Male Student With3 Daughters"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Marsupials> "Marsupials"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Parent> "Parent"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Person> "Person"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#PhD> "Ph D"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Quokka> "Quokka"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Rainforest> "Rainforest"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#Student> "Student"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#TasmanianDevil> "Tasmanian Devil"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#University> "University"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#female> "female"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#hasChildren> "has children"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#hasDegree> "has degree"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#hasGender> "has gender"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#hasHabitat> "has habitat"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#isHardWorking> "is Hard Working"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://protege.stanford.edu/plugins/owl/owl-library/koala.owl#male> "male"^^xsd:string)
+  Declaration(NamedIndividual(:BA))
+  Declaration(NamedIndividual(:BS))
+  Declaration(NamedIndividual(:MA))
+  Declaration(NamedIndividual(:PhD))
+  Declaration(NamedIndividual(:female))
+  Declaration(NamedIndividual(:male))

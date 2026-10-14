@@ -81,6 +81,8 @@ import org.semanticweb.owlapi.util.ShortFormProvider;
  *
  *   GET  /health   which reasoner this is
  *   POST /reason   { ontology, imports?: [{ iri, text }], timeoutMs?, explanations?: { max, perSubject, timeoutMs } }
+ *   POST /convert  { document }: the document, in any OWL syntax, as Turtle
+ *   POST /compare  { original, exported }: the statements in one document and not the other
  */
 public class ReasonerService {
   /** Where an import that was not sent is "found": a file that does not exist, so that it is missing and nothing is fetched. */
@@ -110,6 +112,7 @@ public class ReasonerService {
     server.createContext("/health", x -> respond(x, 200, health()));
     server.createContext("/reason", ReasonerService::reason);
     server.createContext("/convert", ReasonerService::convert);
+    server.createContext("/compare", ReasonerService::compare);
     server.setExecutor(Executors.newCachedThreadPool());
     server.start();
     System.out.println("ConceptWeaver reasoning service: HermiT " + hermitVersion + " (OWL API " + owlapiVersion + ") on http://" + host + ":" + port);
@@ -134,8 +137,10 @@ public class ReasonerService {
     o.addProperty("engineVersion", hermitVersion);
     o.addProperty("owlapi", owlapiVersion);
     o.addProperty("profile", "OWL 2 DL");
-    // What else it does besides reasoning: turning an ontology in any OWL syntax into Turtle.
+    // What else it does besides reasoning: turning an ontology in any OWL syntax into Turtle,
+    // and comparing two documents of an ontology statement by statement.
     o.addProperty("converts", true);
+    o.addProperty("compares", true);
     return o;
   }
 
@@ -254,6 +259,14 @@ public class ReasonerService {
    * itself is read: an import is not fetched, and nothing is reasoned over or kept.
    */
   static void convert(HttpExchange x) throws IOException {
+    documents(x, "POST an ontology to /convert.", "The request is not JSON with the \"document\" to read.", new String[] {"document"}, r -> converted(r.get("document").getAsString()));
+  }
+
+  /**
+   * What /convert and /compare have in common as HTTP: a POST of JSON in which each of `fields` is
+   * a string, answered with what `answer` makes of it, and as 422 when that is errors only.
+   */
+  static void documents(HttpExchange x, String usage, String malformed, String[] fields, java.util.function.Function<JsonObject, JsonObject> answer) throws IOException {
     try {
       if (x.getRequestMethod().equals("OPTIONS")) {
         respond(x, 204, new JsonObject());
@@ -264,7 +277,7 @@ public class ReasonerService {
         return;
       }
       if (!x.getRequestMethod().equals("POST")) {
-        respond(x, 405, unread("POST an ontology to /convert."));
+        respond(x, 405, unread(usage));
         return;
       }
       byte[] sent = body(x);
@@ -278,12 +291,14 @@ public class ReasonerService {
       } catch (RuntimeException e) {
         request = null;
       }
-      if (request == null || !request.has("document") || !request.get("document").isJsonPrimitive()) {
-        respond(x, 400, unread("The request is not JSON with the \"document\" to read."));
+      boolean complete = request != null;
+      for (String f : fields) complete = complete && request.has(f) && request.get(f).isJsonPrimitive();
+      if (!complete) {
+        respond(x, 400, unread(malformed));
         return;
       }
-      JsonObject answer = converted(request.get("document").getAsString());
-      respond(x, answer.has("turtle") ? 200 : 422, answer);
+      JsonObject out = answer.apply(request);
+      respond(x, out.getAsJsonArray("errors").size() == 0 ? 200 : 422, out);
     } catch (RuntimeException | Error e) {
       try {
         respond(x, 500, unread(e instanceof OutOfMemoryError ? "The OWL service ran out of memory reading this ontology." : "The OWL service failed: " + e));
@@ -293,21 +308,39 @@ public class ReasonerService {
     }
   }
 
-  static JsonObject converted(String document) {
-    OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
-    // Nothing is fetched: what the document imports stays an import by its IRI, which the app records.
+  /** A document that could not be read, and why, in words. */
+  static class Unreadable extends Exception {
+    Unreadable(String message) {
+      super(message);
+    }
+  }
+
+  /**
+   * Reads a document into `manager`. Nothing is fetched: what the document imports stays an
+   * import by its IRI, which the app records.
+   */
+  static OWLOntology read(OWLOntologyManager manager, String document) throws Unreadable {
     manager.getIRIMappers().add((OWLOntologyIRIMapper) iri -> IRI.create(NOT_PROVIDED + Integer.toHexString(iri.toString().hashCode())));
     OWLOntologyLoaderConfiguration config = new OWLOntologyLoaderConfiguration().setMissingImportHandlingStrategy(MissingImportHandlingStrategy.SILENT);
     // The syntax is told from how the document starts, so that one parser is tried and its complaint is the one reported.
     OWLDocumentFormat written = syntaxOf(document);
-    OWLOntology ontology;
     try {
       StringDocumentSource source = written == null ? new StringDocumentSource(document) : new StringDocumentSource(document, IRI.create("urn:conceptweaver:document"), written, null);
-      ontology = manager.loadOntologyFromOntologyDocument(source, config);
+      return manager.loadOntologyFromOntologyDocument(source, config);
     } catch (Exception e) {
       String said = e.getMessage() == null ? e.toString() : e.getMessage();
       String as = written == null ? "an ontology in any syntax the OWL API knows" : written.getKey();
-      return unread("It could not be read as " + as + ": " + complaint(said));
+      throw new Unreadable("It could not be read as " + as + ": " + complaint(said));
+    }
+  }
+
+  static JsonObject converted(String document) {
+    OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+    OWLOntology ontology;
+    try {
+      ontology = read(manager, document);
+    } catch (Unreadable e) {
+      return unread(e.getMessage());
     }
     try {
       OWLDocumentFormat source = manager.getOntologyFormat(ontology);
@@ -345,6 +378,85 @@ public class ReasonerService {
     java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?s)Parser: [^\\n]*\\n\\s*(?:Stack trace:\\s*)?(.*?)(?:\\n\\s*\\n|\\z)").matcher(message);
     String found = m.find() ? m.group(1) : message;
     return firstLines(found.replaceAll("(?m)^\\s*at .*$", "").replaceAll("org\\.[A-Za-z.]+\\.([A-Za-z]+Exception):?", "").trim(), 3);
+  }
+
+  // ---------------------------------------------------------------- comparing two documents
+
+  /**
+   * Two documents of one ontology, as different tools wrote them, compared statement by statement:
+   * the axioms, the ontology's IRI and version IRI, its annotations and its imports. What is in
+   * one and not the other is listed, each statement written as in functional syntax with the
+   * prefixes of the original. Used to measure what a round trip through the app loses.
+   */
+  static void compare(HttpExchange x) throws IOException {
+    documents(x, "POST two documents to /compare.", "The request is not JSON with the \"original\" and the \"exported\" document.", new String[] {"original", "exported"}, r -> compared(r.get("original").getAsString(), r.get("exported").getAsString()));
+  }
+
+  static final java.util.regex.Pattern BLANK_NODE = java.util.regex.Pattern.compile("_:[A-Za-z0-9_.-]+");
+
+  static JsonObject compared(String original, String exported) {
+    // One manager each: the two documents are usually the same ontology, by the same IRI.
+    OWLOntologyManager left = OWLManager.createOWLOntologyManager();
+    OWLOntologyManager right = OWLManager.createOWLOntologyManager();
+    OWLOntology a;
+    OWLOntology b;
+    try {
+      a = read(left, original);
+    } catch (Unreadable e) {
+      return unread("The original: " + e.getMessage());
+    }
+    try {
+      b = read(right, exported);
+    } catch (Unreadable e) {
+      return unread("The export: " + e.getMessage());
+    }
+    org.semanticweb.owlapi.util.SimpleRenderer shown = new org.semanticweb.owlapi.util.SimpleRenderer();
+    shown.setPrefixesFromOntologyFormat(a, left, false);
+    org.semanticweb.owlapi.util.SimpleRenderer plain = new org.semanticweb.owlapi.util.SimpleRenderer();
+    java.util.Map<Object, String> inA = statements(a, shown, plain);
+    java.util.Map<Object, String> inB = statements(b, shown, plain);
+    JsonObject out = new JsonObject();
+    out.add("errors", new JsonArray());
+    out.add("original", described(left, a));
+    out.add("exported", described(right, b));
+    out.add("removed", only(inA, inB));
+    out.add("added", only(inB, inA));
+    return out;
+  }
+
+  static JsonObject described(OWLOntologyManager manager, OWLOntology o) {
+    JsonObject d = new JsonObject();
+    OWLDocumentFormat format = manager.getOntologyFormat(o);
+    d.addProperty("format", format == null ? "unknown" : format.getKey());
+    d.addProperty("axioms", o.getAxiomCount());
+    return d;
+  }
+
+  /** The statements of `in` that `other` does not have, as they are written, sorted. */
+  static JsonArray only(java.util.Map<Object, String> in, java.util.Map<Object, String> other) {
+    List<String> missing = new ArrayList<>();
+    for (java.util.Map.Entry<Object, String> e : in.entrySet()) if (!other.containsKey(e.getKey())) missing.add(e.getValue());
+    Collections.sort(missing);
+    JsonArray out = new JsonArray();
+    for (String m : missing) out.add(m);
+    return out;
+  }
+
+  /**
+   * What an ontology states, each statement under the key by which the same statement is found in
+   * the other document: the OWL API object itself, which compares by structure. An anonymous
+   * individual is named afresh each time a document is read, so a statement that has one is
+   * keyed by how it reads with every blank node called the same; and is written so, as _:x.
+   */
+  static java.util.Map<Object, String> statements(OWLOntology o, org.semanticweb.owlapi.util.SimpleRenderer shown, org.semanticweb.owlapi.util.SimpleRenderer plain) {
+    java.util.Map<Object, String> out = new java.util.HashMap<>();
+    for (OWLAxiom ax : o.getAxioms()) out.put(ax.getAnonymousIndividuals().isEmpty() ? ax : "axiom " + BLANK_NODE.matcher(plain.render(ax)).replaceAll("_:x"), BLANK_NODE.matcher(shown.render(ax)).replaceAll("_:x"));
+    org.semanticweb.owlapi.model.OWLOntologyID id = o.getOntologyID();
+    String header = "Ontology(" + (id.getOntologyIRI().isPresent() ? "<" + id.getOntologyIRI().get() + ">" : "") + (id.getVersionIRI().isPresent() ? " <" + id.getVersionIRI().get() + ">" : "") + ")";
+    out.put("header " + header, header);
+    for (org.semanticweb.owlapi.model.OWLAnnotation an : o.getAnnotations()) out.put(an.getAnonymousIndividuals().isEmpty() ? an : "annotation " + BLANK_NODE.matcher(plain.render(an)).replaceAll("_:x"), BLANK_NODE.matcher(shown.render(an)).replaceAll("_:x"));
+    for (OWLImportsDeclaration d : o.getImportsDeclarations()) out.put(d, "Import(<" + d.getIRI() + ">)");
+    return out;
   }
 
   // ---------------------------------------------------------------- reasoning

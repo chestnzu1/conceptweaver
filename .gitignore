@@ -8,3 +8,6 @@ reasoner/build/
 
 # What pnpm bench measures (scripts/bench.mjs)
 bench-results/
+
+# The round-trip corpus, fetched by pnpm corpus (corpus/corpus.mjs)
+corpus/files/

@@ -105,6 +105,14 @@ axiom model on the server:
    (ADR-004 in [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)); `Model` becomes the editing
    view and the offline file format.
 
+**Measured, 2026-10-14** (roadmap task 1.3). The round-trip test (`src/model/corpus.test.ts`)
+saves nine public ontologies unchanged: 795 statements lost and 2,056 added between them, of which
+the message on opening names at most 36. The loss is wider than this section says. Besides the
+constructs listed above, it drops classes defined by an `owl:intersectionOf` stated on the class
+(61 in Wine), properties typed only by a characteristic, datatype definitions and `owl:sameAs`;
+it writes `rdfs:comment` back as `skos:definition`; and it restates n-ary disjointness and
+difference pair by pair. Details in [BASELINES.md](BASELINES.md); the lists in `corpus/expected/`.
+
 ### TD-02 Class expressions are kept as raw Turtle text — High
 
 **Where.** `Term.axioms` in `src/model/types.ts`; written back at `src/model/rdf.ts:293`.
