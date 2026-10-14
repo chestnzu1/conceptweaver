@@ -221,6 +221,21 @@ history, the edit commands), a *session* slice (selection, viewport, dialogs, pa
 slice per job-like concern (validation, reasoning, layout, externals). The document slice is
 what later talks to `OntologyEditService` (see ADR-002).
 
+**Status, 2026-10-14.** Done (roadmap task 1.6), with no change in behaviour. `store.ts` is now
+65 lines that put the store together from slices in `src/model/state/`: the document
+(`document.ts`: the model, its history, the saved model it is; `edits.ts`: the edit commands),
+the session (`session.ts`: selection, viewport, view, dialogs, panels, preferences, notices, the
+Structure Explorer and Entities lists; `subgraph.ts`), and one slice per job (`validation.ts`,
+`externals.ts`, `layout.ts`, whose run and glide are its own). The working copy kept in the
+browser is `persistence.ts`, attached to the store once it is made; storage keys are
+`storage.ts`, and what the canvas shows of the model is `view.ts`. Every member was moved as it
+was: the store has the same 136 keys, of the same kinds, with the same initial values, and every
+import of `store.ts` stays as it was. `state/slices.test.ts` checks that no two slices have a key
+in common and that together they are the store. Slices reach each other through `get()`; the
+document's `replaceModel` still resets the session and the jobs for a new document, which is the
+one place the document knows of them. The rule logic in the edit commands (TD-06) is next, in
+task 1.7.
+
 ### TD-05 Components reach into model internals — Medium
 
 **Where.** 34 of the 37 files in `src/components` import from `../model/` (`Alignment.tsx` 14

@@ -647,7 +647,8 @@ that *Layered* says so and uses the built-in hierarchical layout.
 
 ## Layout of the code
 
-- `src/model` – everything that isn't UI: types, the zustand store (state, history, autosave),
+- `src/model` – everything that isn't UI: types, the zustand store (`store.ts`, made of slices in
+  `state/`: the document and its edits, the session, and one slice per job; the working copy in `state/persistence.ts`),
   layout algorithms, checks, RDF import/export, file handling. What two terms can be related by
   is in `props.ts`, `relating.ts` and `axioms.ts`, and `reconnect.ts` asks them whether an end
   of a relationship can be moved to another term. How a line runs is `geometry.ts`, including
