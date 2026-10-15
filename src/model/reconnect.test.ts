@@ -78,6 +78,9 @@ describe('which terms can take an end', () => {
     expect(reconnection(m, 'has', 'to')!.refusal('work')).toBe('“has data property” needs a data property at this end: “Work” is a class.');
     expect(reconnection(m, 'uses', 'to')!.refusal('bong')).toBe('The object property “directed by” needs a class at this end: “Bong” is an individual.');
     expect(reconnection(m, 'fact', 'to')!.refusal('person')).toBe('The object property “directed by” needs an individual at this end: “Person” is a class.');
+    // An individual and a data property are never joined by a line: that is the reason, with what to do instead.
+    expect(reconnection(m, 'type', 'to')!.refusal('title')).toBe('“Parasite” is an individual and “title” is a data property: the two are not joined by a line. An individual has a value for a data property. Open “Parasite” and add it under Data property assertions.');
+    expect(reconnection(m, 'has', 'from')!.refusal('bong')).toBe('“Bong” is an individual and “title” is a data property: the two are not joined by a line. An individual has a value for a data property. Open “Bong” and add it under Data property assertions.');
     expect(reconnection(m, 'isa', 'to')!.refusal('film')).toBe('“Film” cannot be a kind of itself.');
     expect(reconnection(m, 'isa', 'to')!.refusal('gone')).toBe('That term no longer exists.');
     // The term it is on can always keep it.

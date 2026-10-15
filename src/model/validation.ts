@@ -11,6 +11,7 @@ import { dlResult, entityLinks, readable, type DlReport, type EngineId, type Ent
 import { SH, shapesToTurtle } from './shapes';
 import { stable } from './stable';
 import type { Model } from './types';
+import { quoted, quotedName } from './words';
 
 /**
  * The validation workbench's model: three kinds of check that answer three different questions
@@ -165,8 +166,6 @@ export interface DataGraph {
 
 export const MODEL_DATA: DataGraph = { source: 'model', includeOntology: true };
 
-const q = (s: string) => `“${s}”`;
-
 /** A short fingerprint of text (FNV-1a), to tell revisions apart at a glance. */
 export function fingerprint(text: string): string {
   let h = 0x811c9dc5;
@@ -284,14 +283,14 @@ function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings:
         }
         if (!low || !high || low.n <= high.n) continue;
         unsatisfiable.add(t.id);
-        const say = (x: (typeof list)[number]) => `${q(x.r.text)}${x.from === (t.name || 'Unnamed') ? '' : `, inherited from ${q(x.from)}`}`;
+        const say = (x: (typeof list)[number]) => `${quoted(x.r.text)}${x.from === (t.name || 'Unnamed') ? '' : `, inherited from ${quoted(x.from)}`}`;
         findings.push({
           id: `owl:r:${t.id}:${low.x.r.rel.id}:${high.x.r.rel.id}`,
           category: 'owl',
           severity: 'error',
           rule: 'Incompatible restrictions',
           ruleId: 'owl-restrictions',
-          message: `${q(t.name)} can never have instances: it needs at least ${low.n} and at most ${high.n} values of ${q(low.x.r.property)} in ${q(low.x.r.filler)}.`,
+          message: `${quoted(t.name)} can never have instances: it needs at least ${low.n} and at most ${high.n} values of ${quoted(low.x.r.property)} in ${quoted(low.x.r.filler)}.`,
           explanation: `Both are asserted: ${say(low.x)}; and ${say(high.x)}.`,
           entity: ix.term(t.id),
           property: low.x.r.property,
@@ -312,7 +311,7 @@ function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings:
         severity: 'warning',
         rule: profile ? 'Outside OWL 2 DL' : 'Conflicting property characteristics',
         ruleId: profile ? 'owl-profile' : 'owl-characteristics',
-        message: `${q(p.name)}: ${issue}`,
+        message: `${quoted(p.name)}: ${issue}`,
         explanation: profile ? 'This does not make the ontology inconsistent; it puts it outside the OWL 2 DL profile.' : 'This is not a contradiction by itself: it becomes one as soon as the property is used in a way the characteristics exclude.',
         entity: ix.prop(p.id),
         property: p.name,
@@ -419,7 +418,7 @@ export function dlFindings(model: Model, report: DlReport): { summary: OwlSummar
       severity: 'error',
       rule: 'Unsatisfiable class',
       ruleId: 'owl-unsatisfiable',
-      message: `${q(t.name || 'Unnamed')} can never have an instance: it is a subclass of owl:Nothing.`,
+      message: `${quotedName(t)} can never have an instance: it is a subclass of owl:Nothing.`,
       entity: ix.term(id),
       terms: [...new Set([id, ...termsOf(j.justifications[0] ?? [])])],
       rels: [],

@@ -8,10 +8,11 @@ import { compactIri } from '../model/prefixes';
 import { useStore } from '../model/store';
 import { iriCut, setIriSuffix } from '../model/iri';
 import { configOf, type EntityColumn } from '../model/modelTypes';
-import { type Model, type Term, type TermType } from '../model/types';
+import { type Model, type Relation, type Term, type TermType } from '../model/types';
 import { EntityToolbar, filtersOn } from './EntityToolbar';
 import { useEntityList } from './entityQuery';
-import { CommitInput, useLazyOptions } from './fields';
+import { EndSelect } from './EndSelect';
+import { CommitInput } from './fields';
 import { RangeSelect } from './Datatypes';
 import { GovernanceView } from './Governance';
 import { Marked, MarkedField, type Ranges } from './Highlight';
@@ -107,24 +108,6 @@ function InferredCell({ model, id }: { model: Model; id: string }) {
         </div>
       )}
     </>
-  );
-}
-
-/** A dropdown of every term that only builds its options when it is about to be used. */
-function TermSelect({ value, current, onChange, label, sorted }: { value: string; current: string; onChange: (id: string) => void; label: string; sorted: Term[] }) {
-  const { ready, lazy } = useLazyOptions();
-  return (
-    <select aria-label={label} value={value} {...lazy} onChange={(e) => onChange(e.target.value)}>
-      {ready ? (
-        sorted.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name || 'Unnamed'}
-          </option>
-        ))
-      ) : (
-        <option value={value}>{current}</option>
-      )}
-    </select>
   );
 }
 
@@ -282,7 +265,7 @@ export function EntitiesView() {
       : 'Who owns each entity, where it stands, and where its data lives. Select an entity to see the metadata that applies to its kind. Every value is an annotation on the entity, stored with a standard RDF property where one exists; none of it changes what a class means.',
   };
 
-  const termSelect = (value: string, onChange: (id: string) => void, label: string) => <TermSelect value={value} onChange={onChange} label={label} sorted={sorted} current={name.get(value) ?? 'Unnamed'} />;
+  const endSelect = (r: Relation, end: 'from' | 'to', label: string) => <EndSelect rel={r} end={end} label={label} sorted={sorted} current={name.get(r[end]) ?? 'Unnamed'} />;
   const rowProps = (t: Term) => ({
     'data-key': t.id,
     className: rowClass(t.id, sel.terms.includes(t.id)),
@@ -702,13 +685,13 @@ export function EntitiesView() {
                   onClick={() => !sel.rels.includes(r.id) && st().select([], [r.id])}
                 >
                   {/* A dropdown cannot mark part of its text: the cell says that the words were found in it. */}
-                  <td className={found(r.id, 'from')}>{termSelect(r.from, (from) => st().updateRelation(r.id, { from }), 'From')}</td>
+                  <td className={found(r.id, 'from')}>{endSelect(r, 'from', 'From')}</td>
                   <td>
                     <MarkedField text={r.label} ranges={marksIn(r.id, 'name', r.label)}>
                       <CommitInput aria-label="Label" list={skos ? undefined : 'object-props'} value={r.label} onCommit={(v) => st().updateRelation(r.id, { label: v.trim() })} />
                     </MarkedField>
                   </td>
-                  <td className={found(r.id, 'to')}>{termSelect(r.to, (to) => st().updateRelation(r.id, { to }), 'To')}</td>
+                  <td className={found(r.id, 'to')}>{endSelect(r, 'to', 'To')}</td>
                   <td className={found(r.id, 'kind')}>
                     <select aria-label="Kind" value={relChoice(model, r)} onChange={(e) => st().setRelChoice(r.id, e.target.value as RelChoice)}>
                       {offeredChoices(model, r).map((k) => (

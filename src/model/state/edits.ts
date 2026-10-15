@@ -1,4 +1,5 @@
-import { makeInstanceOf, type Edit } from '../axioms';
+import { hierarchyOf } from '../../layout/graph';
+import { makeInstanceOf, statedMember, type Edit } from '../axioms';
 import type { BulkRelation, BulkTerm, Outline } from '../bulk';
 import { convertModel } from '../convert';
 import { propDatatype, withDatatype } from '../domains';
@@ -7,14 +8,13 @@ import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaO
 import { PALETTE, patchNodes, resetOwn, withAnchor, withoutAnchors, type GraphStyle } from '../graphStyle';
 import { DEFAULT_PROP, linkProps, nameKey, propNamed } from '../identity';
 import { baseIriOf, moveNamespace } from '../iri';
-import { hierarchyLayout } from '../layout';
 import { allowsKind, configOf, supports, termTypeFor, viewFor } from '../modelTypes';
 import type { SettingsDraft } from '../prefixes';
-import { assertedSuperclasses, declaredProp, isInstanceOf, relChoices, wouldCycle, type RelChoice } from '../props';
+import { declaredProp, isInstanceOf, relChoices, type RelChoice } from '../props';
 import { reconnect, type End } from '../reconnect';
 import { cannotRelate, settleRelation, typed } from '../relating';
 import { INSTANCE_OF, newProp, newRelation, newTerm, PROP_LINKS, type EntityKind, type Model, type ModelMode, type ObjProp, type Relation, type Shapes, type Term, type TermType } from '../types';
-import { labelKey, resolveModel, suggestFor } from '../vocab';
+import { labelKey, suggestFor } from '../vocab';
 import { prune } from './document';
 import type { Slice } from './types';
 
@@ -23,11 +23,14 @@ import type { Slice } from './types';
 /** The last change to the graph style: a drag on a slider or in a colour picker is one step to undo, not fifty. */
 let lastStyleEdit = { key: '', at: 0 };
 
+/** What `updateRelation` changes of a relationship: anything but its id and its ends. */
+export type RelationPatch = Partial<Omit<Relation, 'id' | 'from' | 'to'>>;
+
 /**
  * A relationship with a change made to it. A new label that is not the name of the property the
  * relationship used leaves that property: the label decides again (see settleRelation).
  */
-function retitled(m: Model, r: Relation, patch: Partial<Relation>): Relation {
+function retitled(m: Model, r: Relation, patch: RelationPatch): Relation {
   const next = { ...r, ...patch };
   if (!('label' in patch) || 'prop' in patch || next.prop === undefined) return next;
   const used = m.props.find((p) => p.id === next.prop);
@@ -62,12 +65,18 @@ export interface EditsSlice {
    * is shown, and the id is empty.
    */
   addRelation: (p: Partial<Relation> & { from: string; to: string }, history?: boolean) => string;
-  updateRelation: (id: string, patch: Partial<Relation>, history?: boolean) => void;
+  /**
+   * Changes a relationship: its name, restrictions, cardinalities, description, standard property.
+   * In an ontology a new name can make it something else (see relating.ts). Not its ends: those
+   * are moved with `reconnectRelation`, whichever control moves them.
+   */
+  updateRelation: (id: string, patch: RelationPatch, history?: boolean) => void;
   reverseRelation: (id: string) => void;
   /**
-   * Moves one end of a relationship to another term, as one step that undo takes back. What the
-   * relationship is stays what it was (see reconnect.ts): where the two cannot be related in that
-   * way nothing changes, the reason is shown, and the answer is false.
+   * Moves one end of a relationship to another term, as one step that undo takes back: from the
+   * canvas, the side panel and the table alike. What the relationship is stays what it was (see
+   * reconnect.ts), and changing that is a command of its own (`setRelChoice`). Where the two
+   * cannot be related in that way nothing changes, the reason is shown, and the answer is false.
    */
   reconnectRelation: (id: string, end: End, termId: string) => boolean;
   /**
@@ -118,10 +127,6 @@ export interface EditsSlice {
    * knowing about an accepted one is shown as a notice.
    */
   edit: (fn: (m: Model) => Edit) => string | undefined;
-  /** States that one term is a kind of another. Says so if it was already stated, is the term itself, or closes a cycle. */
-  addSuperclass: (id: string, superId: string) => void;
-  /** Withdraws that statement, and only that one. */
-  removeSuperclass: (id: string, superId: string) => void;
   setVocabEnabled: (on: boolean) => void;
   /** Maps every relation with this label to a standard property; an empty property removes the mapping. */
   mapLabel: (label: string, predicate: string) => void;
@@ -204,22 +209,19 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
     if (!supports(m, 'restrictions')) for (const k of ['restriction', 'restrictionN', 'more'] as const) delete patch[k];
     if (patch.kind === 'property' && !allowsKind(m, 'property')) delete patch.kind;
     let next = { ...m, relations: m.relations.map((r) => (r.id === id ? retitled(m, r, patch) : r)) };
-    // In an ontology a new name or a new end can make it something else: "is a" between two classes
-    // is a superclass, another name an object property. Ends that cannot be related are refused.
+    // In an ontology a new name can make it something else: "is a" between two classes is a
+    // superclass, another name an object property.
     let note: string | undefined;
-    if (typed(m) && ('label' in patch || 'from' in patch || 'to' in patch || 'kind' in patch) && !patch.predicate) {
+    if (typed(m) && ('label' in patch || 'kind' in patch) && !patch.predicate) {
       const settled = settleRelation(next, id, m);
       if (settled.error !== undefined) return get().notify(settled.error);
       next = settled.model!;
       note = settled.note;
     }
-    // Moving an end or changing the kind must not state a class membership a second time.
+    // A new kind or standard property must not state a class membership a second time.
     const now = next.relations.find((r) => r.id === id)!;
-    const moved = 'from' in patch || 'to' in patch || 'kind' in patch || 'predicate' in patch;
-    if (moved && isInstanceOf(next, now) && next.relations.some((r) => r.id !== id && r.from === now.from && r.to === now.to && isInstanceOf(next, r))) {
-      const name = (x: string) => m.terms.find((t) => t.id === x)?.name || 'Unnamed';
-      return get().notify(`“${name(now.from)}” is already stated to be an instance of “${name(now.to)}”.`);
-    }
+    const twice = ('kind' in patch || 'predicate' in patch) && isInstanceOf(next, now) ? statedMember(next, now.from, now.to, id) : undefined;
+    if (twice) return get().notify(twice);
     get().apply(() => next, history);
     if (note) get().notify(note);
   },
@@ -376,7 +378,7 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
     }
     get().apply(() => work);
     if (wasEmpty) {
-      const pos = hierarchyLayout(get().model);
+      const pos = hierarchyOf(get().model);
       get().apply((m) => ({ ...m, terms: m.terms.map((t) => ({ ...t, ...pos.get(t.id) })) }), false);
     }
     set({ sel: { terms: created.map((t) => t.id), rels: rels.map((r) => r.id) } });
@@ -405,7 +407,7 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
     if (!created.length && !rels.length) return { terms: 0, rels: 0 };
     // Lay the new terms out as a tree of their own, below whatever is already on the canvas.
     const fresh = new Set(created.map((t) => t.id));
-    const pos = hierarchyLayout({ ...model, terms: created, relations: rels.filter((r) => fresh.has(r.from) && fresh.has(r.to)) });
+    const pos = hierarchyOf({ ...model, terms: created, relations: rels.filter((r) => fresh.has(r.from) && fresh.has(r.to)) });
     const b = bounds(model.terms);
     const xs = [...pos.values()].map((p) => p.x);
     const dx = b ? (b.x0 + b.x1) / 2 - (Math.min(...xs) + Math.max(...xs)) / 2 : 0;
@@ -601,22 +603,6 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
     if (result.note) get().notify(result.note);
     return undefined;
   },
-  addSuperclass: (id, superId) => {
-    const { model } = get();
-    const name = (x: string) => model.terms.find((t) => t.id === x)?.name || 'Unnamed';
-    if (id === superId) return get().notify('A class cannot be its own superclass.');
-    if (assertedSuperclasses(model, id).includes(superId)) return get().notify(`“${name(superId)}” is already an asserted superclass of “${name(id)}”.`);
-    const cycle = wouldCycle(model, id, superId);
-    get().apply((m) => ({ ...m, relations: [...m.relations, newRelation({ from: id, to: superId, kind: 'generalization' })] }));
-    // Allowed, since OWL allows it (the classes become equivalent), but rarely what was meant.
-    if (cycle) get().notify(`“${name(superId)}” is already a kind of “${name(id)}”, so the two are now each other's superclass. Validation lists this as a circular hierarchy.`);
-  },
-  removeSuperclass: (id, superId) =>
-    get().apply((m) => {
-      // Every statement of it goes (a duplicate would otherwise keep it alive), and nothing else.
-      const stated = new Set(resolveModel(m).relations.filter((r) => r.kind === 'generalization' && r.from === id && r.to === superId).map((r) => r.id));
-      return stated.size ? { ...m, relations: m.relations.filter((r) => !stated.has(r.id)) } : m;
-    }),
   setVocabEnabled: (enabled) => get().apply((m) => ({ ...m, vocab: { ...m.vocab, enabled } })),
   mapLabel: (label, predicate) =>
     get().apply((m) => {

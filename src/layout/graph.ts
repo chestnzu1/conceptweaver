@@ -2,7 +2,8 @@ import { nodeSize } from '../model/geometry';
 import { isInstanceOf } from '../model/props';
 import type { Model } from '../model/types';
 import { resolveModel } from '../model/vocab';
-import type { LayoutGraph } from './types';
+import { hierarchyLayout } from './hierarchy';
+import { noLayout, type LayoutGraph, type Positions } from './types';
 
 /**
  * A model as a layout sees it: a box for each term, as large as it is drawn, and a line for
@@ -18,4 +19,17 @@ export function graphOf(model: Model): LayoutGraph {
       .filter((r) => ids.has(r.from) && ids.has(r.to))
       .map((r) => ({ from: r.from, to: r.to, ...(r.kind === 'generalization' ? { up: true } : m.mode !== 'skos' && isInstanceOf(m, r) ? { member: true } : {}) })),
   };
+}
+
+/**
+ * Where the terms of a whole model go in the layered layout with the usual settings: what a
+ * model gets when it is first made or read, and what terms added in bulk get.
+ */
+export const hierarchyOf = (model: Model): Positions => hierarchyLayout(graphOf(model), noLayout());
+
+/** Arranges a model that was just made or read, in place, and says so in it: the layout selector then shows what it is looking at. */
+export function arrangeAsHierarchy(m: Model): void {
+  const pos = hierarchyOf(m);
+  for (const t of m.terms) Object.assign(t, pos.get(t.id));
+  m.layout = { ...m.layout, kind: 'hierarchy' };
 }

@@ -4,6 +4,7 @@ import type { Entity } from './external';
 import { allPrefixes, compactIri } from './prefixes';
 import { newProp, newRelation, newTerm, type MappingMeta, type Model, type PropLink, type Term } from './types';
 import { resolveModel } from './vocab';
+import { quoted } from './words';
 
 /**
  * Mappings between this ontology and others.
@@ -120,7 +121,6 @@ export function listMappings(model: Model): Mapping[] {
 }
 
 const fail = (error: string): Edit => ({ error });
-const q = (s: string) => `“${s}”`;
 
 export interface NewMeta {
   method?: MappingMeta['method'];
@@ -143,16 +143,16 @@ export function addMapping(model: Model, sourceRef: Entity, predicate: string, t
   if (!def) return fail('Choose how the two are related.');
   if (!source || !target) return fail('Both entities need an IRI to be mapped.');
   if (source.iri === target.iri) return fail('That is one and the same entity: there is nothing to map.');
-  if (source.external === undefined && target.external === undefined) return fail(`${q(source.name)} and ${q(target.name)} are both entities of this ontology. A mapping is between this ontology and another; state this in the entity editor instead.`);
+  if (source.external === undefined && target.external === undefined) return fail(`${quoted(source.name)} and ${quoted(target.name)} are both entities of this ontology. A mapping is between this ontology and another; state this in the entity editor instead.`);
   if (model.mode === 'skos' && def.group === 'OWL') return fail(`This is a SKOS concept scheme, where ${def.id} has no meaning. Use a SKOS mapping property such as skos:exactMatch, or convert the model to an ontology first.`);
-  if (source.kind !== target.kind) return fail(`${q(source.name)} is ${article(source.kind)} and ${q(target.name)} is ${article(target.kind)}. ${def.id} relates two entities of the same kind.`);
+  if (source.kind !== target.kind) return fail(`${quoted(source.name)} is ${article(source.kind)} and ${quoted(target.name)} is ${article(target.kind)}. ${def.id} relates two entities of the same kind.`);
   if (!def.kinds.includes(source.kind)) {
     const instead = MAPPING_PREDICATES.filter((p) => p.kinds.includes(source.kind)).map((p) => p.id);
     return fail(`${def.id} is for ${def.kinds.map(plural).join(' or ')}, not for ${plural(source.kind)}. For ${plural(source.kind)} use ${instead.join(', ')}.`);
   }
   const existing = listMappings(model);
   const same = existing.find((m) => m.predicate === predicate && ((m.source.iri === source.iri && m.target.iri === target.iri) || (def.symmetric && m.source.iri === target.iri && m.target.iri === source.iri)));
-  if (same) return fail(`${q(source.name)} ${def.label} ${q(target.name)} is already stated.`);
+  if (same) return fail(`${quoted(source.name)} ${def.label} ${quoted(target.name)} is already stated.`);
 
   let edit: Edit;
   if (sourceRef.kind === 'prop' && targetRef.kind === 'prop') {
@@ -230,7 +230,7 @@ export function mappingIssues(model: Model, mappings: Mapping[] = listMappings(m
       for (const same of perOntology.values()) {
         if (same.length < 2) continue;
         const local = same[0].source.iri === iri ? same[0].source : same[0].target;
-        out.push({ severity: 'warning', mappings: same.map((m) => m.key), message: `${q(local.name)} is stated to be ${mappingPredicate(predicate)!.label} of ${same.map((m) => q(other(m, iri).name)).join(' and ')}, which are entities of one ontology. That makes them the same as each other, which that ontology may not intend.` });
+        out.push({ severity: 'warning', mappings: same.map((m) => m.key), message: `${quoted(local.name)} is stated to be ${mappingPredicate(predicate)!.label} of ${same.map((m) => quoted(other(m, iri).name)).join(' and ')}, which are entities of one ontology. That makes them the same as each other, which that ontology may not intend.` });
       }
     }
   }
@@ -239,17 +239,17 @@ export function mappingIssues(model: Model, mappings: Mapping[] = listMappings(m
     if (m.predicate !== 'rdfs:subClassOf' && m.predicate !== 'rdfs:subPropertyOf') continue;
     const eq = m.predicate === 'rdfs:subClassOf' ? 'owl:equivalentClass' : 'owl:equivalentProperty';
     const twin = mappings.find((x) => x.predicate === eq && ((x.source.iri === m.source.iri && x.target.iri === m.target.iri) || (x.source.iri === m.target.iri && x.target.iri === m.source.iri)));
-    if (twin) out.push({ severity: 'info', mappings: [m.key, twin.key], message: `${q(m.source.name)} is stated to be both equivalent to and a ${m.predicate === 'rdfs:subClassOf' ? 'subclass' : 'sub-property'} of ${q(m.target.name)}. The second follows from the first.` });
+    if (twin) out.push({ severity: 'info', mappings: [m.key, twin.key], message: `${quoted(m.source.name)} is stated to be both equivalent to and a ${m.predicate === 'rdfs:subClassOf' ? 'subclass' : 'sub-property'} of ${quoted(m.target.name)}. The second follows from the first.` });
   }
   // An OWL equivalence and a SKOS match on one pair say two different kinds of thing; often only one was meant.
   for (const m of mappings) {
     if (m.predicate !== 'skos:exactMatch') continue;
     const twin = mappings.find((x) => (x.predicate === 'owl:equivalentClass' || x.predicate === 'owl:sameAs') && ((x.source.iri === m.source.iri && x.target.iri === m.target.iri) || (x.source.iri === m.target.iri && x.target.iri === m.source.iri)));
-    if (twin) out.push({ severity: 'info', mappings: [m.key, twin.key], message: `${q(m.source.name)} and ${q(m.target.name)} are mapped with both skos:exactMatch and ${twin.predicate}. These say different things: one is about concepts in a catalogue, the other is a logical statement a reasoner acts on.` });
+    if (twin) out.push({ severity: 'info', mappings: [m.key, twin.key], message: `${quoted(m.source.name)} and ${quoted(m.target.name)} are mapped with both skos:exactMatch and ${twin.predicate}. These say different things: one is about concepts in a catalogue, the other is a logical statement a reasoner acts on.` });
   }
   for (const m of mappings) {
     for (const end of [m.source, m.target]) {
-      if (end.external === '') out.push({ severity: 'info', mappings: [m.key], message: `${q(end.name)} <${end.iri}> belongs to an ontology that is not in the library, so the mapping cannot be checked against its definition.` });
+      if (end.external === '') out.push({ severity: 'info', mappings: [m.key], message: `${quoted(end.name)} <${end.iri}> belongs to an ontology that is not in the library, so the mapping cannot be checked against its definition.` });
     }
   }
   return out;

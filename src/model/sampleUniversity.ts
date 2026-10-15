@@ -1,5 +1,5 @@
 import { parseOutline } from './bulk';
-import { arrangeAsHierarchy } from './layout';
+import { arrangeAsHierarchy } from '../layout/graph';
 import { emptyModel, newProp, newRelation, newTerm, withClassLists, type ClassLists, type Model, type ObjProp, type Quantifier } from './types';
 
 const CLASSES = `Agent

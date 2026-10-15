@@ -4,8 +4,10 @@ import { withAnchor } from './graphStyle';
 import { configOf } from './modelTypes';
 import { propOf } from './identity';
 import { isInstanceOf, kindsBetween, relChoice, restrictionSpecs, type RelChoice } from './props';
+import { cannotRelate } from './relating';
 import type { Model, Relation, Term, TermType } from './types';
 import { resolveModel, stdProp } from './vocab';
+import { quotedName } from './words';
 
 /**
  * Moving one end of a relationship from the term it is on to another.
@@ -17,11 +19,16 @@ import { resolveModel, stdProp } from './vocab';
  * stays a use of that property. Where the new pair cannot be related in that way the end cannot
  * be put there, and the reason is given in words.
  *
+ * This is the one rule for moving an end, whichever control moves it: the canvas, the side panel
+ * and the table. To make a relationship another kind of relationship is an edit of its own
+ * (setRelChoice in the store, Kind in the app).
+ *
  * The rules are the ones the rest of the app relates terms by: what each pair of kinds of term
- * can be joined by (props.ts), what a standard property is meant to connect (vocab.ts), and what
- * is not stated twice or cannot hold together (axioms.ts). Nothing here draws anything. The
- * canvas asks which terms can take an end while it is dragged; the same answer decides when the
- * end is let go, and would decide for a server that kept the ontology.
+ * can be joined by (props.ts, relating.ts), what a standard property is meant to connect
+ * (vocab.ts), and what is not stated twice or cannot hold together (axioms.ts). Nothing here
+ * draws anything. The canvas asks which terms can take an end while it is dragged, the panel and
+ * the table when their dropdown of an end is reached; the same answer decides when the end is
+ * let go or chosen, and would decide for a server that kept the ontology.
  */
 
 export type End = 'from' | 'to';
@@ -47,7 +54,6 @@ export interface Reconnection {
   refusal: (termId: string) => string | undefined;
 }
 
-const q = (t: Term | undefined) => `“${t?.name || 'Unnamed'}”`;
 const article = (word: string) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
 
 /** What a relationship is, as the model is read: with the standard properties in force where they are. */
@@ -83,7 +89,7 @@ export function fixedBecause(model: Model, relId: string): string | undefined {
   const a = model.terms.find((t) => t.id === rel.from);
   const b = model.terms.find((t) => t.id === rel.to);
   if (a?.external === undefined && b?.external === undefined) return undefined;
-  if (a?.external !== undefined && b?.external !== undefined) return `${q(a)} and ${q(b)} both belong to other ontologies: what is said between them is said there, so its ends stay where they are.`;
+  if (a?.external !== undefined && b?.external !== undefined) return `${quotedName(a)} and ${quotedName(b)} both belong to other ontologies: what is said between them is said there, so its ends stay where they are.`;
   const mapping = listMappings(model).find((m) => m.rels.includes(relId));
   return mapping ? `This is a mapping to another ontology (${mapping.source.name} ${mapping.predicate} ${mapping.target.name}). Mappings are kept under Align, with their status and notes: change it there.` : undefined;
 }
@@ -126,7 +132,7 @@ export function reconnection(model: Model, relId: string, end: End): Reconnectio
   const sentence = (from: Term | undefined, to: Term | undefined) => {
     const verb =
       meaning === 'standard' ? (link ? `is ${LINKS[link].phrase}` : predicate!) : meaning === 'instanceOf' ? 'is an instance of' : meaning === 'generalization' ? 'is a kind of' : meaning === 'property' ? 'has the data property' : rel.label.trim() || 'is related to';
-    return `${q(from)} ${verb} ${q(to)}`;
+    return `${quotedName(from)} ${verb} ${quotedName(to)}`;
   };
   const ends = (id: string) => (end === 'from' ? { from: id, to: rel.to } : { from: rel.from, to: id });
 
@@ -137,7 +143,13 @@ export function reconnection(model: Model, relId: string, end: End): Reconnectio
     return !meant.length || meant.includes(t.type);
   };
   const byType = new Map<TermType, boolean>();
-  for (const t of model.terms) if (!byType.has(t.type)) byType.set(t.type, fits(t));
+  // A kind of term no line joins to the one that stays (an individual and a data property) is refused for that, with what to do instead.
+  const apart = new Set<TermType>();
+  for (const t of model.terms) {
+    if (byType.has(t.type)) continue;
+    byType.set(t.type, fits(t));
+    if (cannotRelate(model, ends(t.id).from, ends(t.id).to)) apart.add(t.type);
+  }
   const wanted = config.termTypes.filter((type) => byType.get(type));
   const needs = wanted.map(noun).join(' or ');
   // A kind of relationship the type of model no longer has (a plain one, in an ontology) is given a kind before it is moved.
@@ -166,12 +178,13 @@ export function reconnection(model: Model, relId: string, end: End): Reconnectio
     const t = byId.get(id);
     if (!t) return 'That term no longer exists.';
     if (!offered) return `${config.label === 'OWL ontology' ? 'An OWL ontology' : 'This type of model'} has no relationships of this kind. Choose what this one is first (right-click it, Kind); then its ends can be moved.`;
-    if (!byType.get(t.type)) return needs ? `${what} needs ${needs} at this end: ${q(t)} is ${noun(t.type)}.` : `${what} has no other term in this model it could join at this end.`;
-    if (id === staying && (hierarchy || meaning === 'instanceOf' || std?.symmetric)) return `${q(t)} cannot be ${hierarchy ? 'a kind of' : link ? LINKS[link].phrase : predicate} itself.`;
+    if (apart.has(t.type)) return cannotRelate(model, ends(id).from, ends(id).to);
+    if (!byType.get(t.type)) return needs ? `${what} needs ${needs} at this end: ${quotedName(t)} is ${noun(t.type)}.` : `${what} has no other term in this model it could join at this end.`;
+    if (id === staying && (hierarchy || meaning === 'instanceOf' || std?.symmetric)) return `${quotedName(t)} cannot be ${hierarchy ? 'a kind of' : link ? LINKS[link].phrase : predicate} itself.`;
     const [from, to] = end === 'from' ? [t, other] : [other, t];
     if (stated.has(id)) return `It is already stated that ${sentence(from, to)}.`;
     const against = ruledOut.get(id);
-    if (against) return `${q(from)} is stated to be ${against} ${q(to)}. Both cannot hold; remove that statement first.`;
+    if (against) return `${quotedName(from)} is stated to be ${against} ${quotedName(to)}. Both cannot hold; remove that statement first.`;
     return undefined;
   };
   return { rel, end, moving, staying, meaning, ...(predicate ? { predicate } : {}), what, ...(fixed ? { fixed } : {}), refusal };

@@ -8,7 +8,9 @@ import { compactIri, expandIri, validateSettings } from './prefixes';
 import { searchTerms } from './subgraph';
 import { reason } from './reasoner';
 import { relationsCsv } from './files';
-import { forceLayout, hierarchyLayout } from './layout';
+import { forceLayout } from '../layout/force';
+import { graphOf, hierarchyOf } from '../layout/graph';
+import { noLayout } from '../layout/types';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { sampleModel, skosSample } from './sample';
 import { universitySample } from './sampleUniversity';
@@ -131,12 +133,12 @@ describe('checks', () => {
 describe('layout', () => {
   it('places parents above children and never stacks two terms', () => {
     const m = sampleModel();
-    for (const layout of [hierarchyLayout, forceLayout]) {
+    for (const layout of [hierarchyOf, (x: Model) => forceLayout(graphOf(x), noLayout())]) {
       const pos = layout(m);
       expect(pos.size).toBe(m.terms.length);
       expect(new Set([...pos.values()].map((p) => `${p.x},${p.y}`)).size).toBe(m.terms.length);
     }
-    const pos = hierarchyLayout(m);
+    const pos = hierarchyOf(m);
     const y = (name: string) => pos.get(m.terms.find((t) => t.name === name)!.id)!.y;
     expect(y('Person')).toBeLessThan(y('Actor'));
     expect(y('Film')).toBeLessThan(y('Documentary'));
@@ -147,7 +149,7 @@ describe('layout', () => {
     const [a, b] = [newTerm({ name: 'A' }), newTerm({ name: 'B' })];
     m.terms.push(a, b);
     m.relations.push(newRelation({ from: a.id, to: b.id }), newRelation({ from: b.id, to: a.id }), newRelation({ from: a.id, to: a.id }));
-    expect(hierarchyLayout(m).size).toBe(2);
+    expect(hierarchyOf(m).size).toBe(2);
   });
 });
 
@@ -218,7 +220,7 @@ describe('rdfs/owl vocabulary', () => {
 
   it('treats a relation mapped to rdfs:subClassOf as hierarchy', () => {
     const m = build();
-    const pos = hierarchyLayout(m);
+    const pos = hierarchyOf(m);
     const y = (name: string) => pos.get(m.terms.find((t) => t.name === name)!.id)!.y;
     expect(y('Vehicle')).toBeLessThan(y('Car'));
   });

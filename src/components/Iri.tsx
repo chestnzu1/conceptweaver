@@ -1,7 +1,7 @@
 import { compactIri } from '../model/prefixes';
 import { assertedSuperclasses } from '../model/props';
 import { useStore } from '../model/store';
-import { addIsA } from '../model/axioms';
+import { addIsA, removeIsA } from '../model/axioms';
 import { EntityPicker, type Choice } from './EntityPicker';
 import type { Term } from '../model/types';
 import { Marked, type Ranges } from './Highlight';
@@ -74,7 +74,7 @@ export function SuperclassEditor({ term }: { term: Term }) {
       values={supers.map((id) => pick(byId.get(id)!))}
       options={() => model.terms.filter((t) => t.id !== term.id && (skos || t.type === wanted)).map(pick)}
       onAdd={(id) => st().edit((m) => addIsA(m, term.id, id))}
-      onRemove={(id) => st().removeSuperclass(term.id, id)}
+      onRemove={(id) => st().edit((m) => ({ model: removeIsA(m, term.id, id) }))}
       onOpen={(id) => st().focusTerm(id)}
       noun={noun}
       of={term.name}

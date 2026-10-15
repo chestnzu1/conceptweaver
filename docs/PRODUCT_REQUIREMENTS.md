@@ -332,7 +332,7 @@ axioms, annotations on axioms, datatype facets or rules.
 | FR-M2-4 | Property chains, keys, disjoint unions, negative property assertions and general class axioms can be stated and edited. | Recommended | P1 |
 | FR-M2-5 | Annotations on axioms are kept, shown and editable. | Recommended | P1 |
 | FR-M2-6 | Datatype restrictions with facets (ranges, patterns, lengths). | Partly implemented 2026-10-14: in any data range of an expression or a range axiom (`xsd:integer[>= 0]`); not as a named datatype | P2 |
-| FR-M2-7 | Every edit goes through one rule service that accepts it or refuses it with a reason, whichever control was used. | Partially Implemented (rules exist; two behaviours for moving an end, TD-06) | P0 |
+| FR-M2-7 | Every edit goes through one rule service that accepts it or refuses it with a reason, whichever control was used. | Partially Implemented (rules exist; since 2026-10-15 one rule for moving an end from the canvas, the panel and the table, TD-06; one service for every edit is roadmap task 1.8) | P0 |
 | FR-M2-8 | SWRL rules. | Future | P3 |
 
 **Module non-functional points.** A class expression that fails to parse is never discarded: it

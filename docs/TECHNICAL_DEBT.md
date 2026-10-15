@@ -272,6 +272,34 @@ comes last and through `GraphService` (subgraph in, positions kept locally).
 decide the reconnect question once (recommended: the stricter rule everywhere, with changing the
 kind as its own explicit command).
 
+**Status, 2026-10-15.** Done (roadmap task 1.7), with the recommended rule.
+
+- Moving an end has one rule, `reconnect.ts`: what the relationship is stays fixed. The canvas,
+  the side panel and the table of relationships all move an end with `reconnectRelation`. The
+  panel and the table share one dropdown, `src/components/EndSelect.tsx`, which lists a term
+  that cannot take the end greyed out, with the reason as its tooltip; it asks `reconnection`
+  when the dropdown is reached, as the canvas does when an end is taken hold of. `updateRelation`
+  no longer takes ends: its patch type leaves `from` and `to` out, so a control that tries does
+  not compile. The kind is changed with `setRelChoice` (*Kind*). What this costs: where no kind
+  fits both the old pair of terms and the new one (a class membership whose start would move to
+  a class), the relationship is drawn again; before, the panel and the table turned it into
+  whatever the new pair made it.
+- A pair that no line joins (an individual and a data property) is refused, when an end is
+  moved, with the reason `cannotRelate` gives when one is drawn, and what to do instead.
+- The store's `addSuperclass` had no callers and is gone; `removeSuperclass` is gone too, and
+  the entity editor adds and removes a superclass with `addIsA` and `removeIsA` through `edit`.
+  The check that an individual is not stated twice to be an instance of a class was written in
+  both `makeInstanceOf` and `updateRelation`; it is `statedMember` in `axioms.ts`.
+- The eight `q()` helpers are `quoted` and `quotedName` in `src/model/words.ts`.
+- `src/model/layout.ts` is gone. `arrangeAsHierarchy` and `hierarchyOf` (a whole model, with the
+  usual settings) are in `src/layout/graph.ts` beside `graphOf`, and no two functions share the
+  names `hierarchyLayout` and `forceLayout` any more.
+
+Not done: some refusals still say the same thing in two wordings (moving an end says "It is
+already stated that “Film” is a kind of “Work”", adding a superclass "“Work” is already an
+asserted superclass of “Film”"), and `reverseRelation` checks only the direction a membership
+and a "has data property" must have, not whether the reversed statement is stated already.
+
 ### TD-07 Line geometry is implemented twice — Medium
 
 **Where.** `src/model/geometry.ts` (668 lines, TypeScript) and `src/export/viewer.js` (862 lines,

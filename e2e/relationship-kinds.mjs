@@ -27,6 +27,8 @@ const edges = () => page.locator('.edge').count();
 const toast = async () => flat(await page.locator('.toast').innerText({ timeout: 2000 }).catch(() => ''));
 const editor = page.locator('.inline-editor');
 const field = (label) => panel.locator('.field', { has: page.locator(`:scope > span:has-text("${label}")`) }).first();
+// Whether an option is greyed out. Not isDisabled(): inside a <label> Playwright asks the label's control instead.
+const greyed = (option) => option.evaluate((o) => o.disabled);
 const kind = field('Kind').locator('select');
 // The name of the selected line: the one text box of its panel.
 const label = panel.locator('input').first();
@@ -106,8 +108,15 @@ await drag('Release date : date', 'Parasite');
 ok((await edges()) === count, 'nor the other way round');
 // by moving the end of a line that is there
 await page.locator('.edge.instance-of .edge-label-bg').first().click();
-await field('To').locator('select').selectOption({ label: 'Running time' });
-ok(flat(await field('To').locator('select option:checked').innerText()) === 'Film' && (await toast()).includes('the two are not joined by a line'), 'nor by moving the end of another line onto a data property');
+// The panel moves an end by the canvas's rule: a term that cannot take it is greyed out, with the reason as its tooltip.
+const endTo = field('To').locator('select');
+await endTo.focus();
+const runningTime = endTo.locator('option').filter({ hasText: /^Running time$/ });
+ok((await greyed(runningTime)) && (await runningTime.getAttribute('title')).includes('the two are not joined by a line') && flat(await endTo.locator('option:checked').innerText()) === 'Film', 'nor by moving the end of another line onto a data property: it is offered greyed out, with the reason');
+const endFrom = field('From').locator('select');
+await endFrom.focus();
+const studioFrom = endFrom.locator('option').filter({ hasText: /^Studio$/ });
+ok((await greyed(studioFrom)) && (await studioFrom.getAttribute('title')) === '“is an instance of” needs an individual at this end: “Studio” is a class.', 'nor is a membership made a superclass by moving its start onto a class: ' + (await studioFrom.getAttribute('title')));
 // what an individual has for a data property is a value
 await node('Parasite').locator('.node-box').click();
 const values = panel.locator('[data-section="values"]');
@@ -172,13 +181,18 @@ await rowOf('Studio').locator('td').nth(1).click();
 await section('Relationships');
 await addRel.click();
 ok((await line(view.locator('tbody tr.sel'))) === 'Aa Active → Studio (Is Instance Of)' && (await toast()) === '', 'with a term selected the relationship is one of that term, the way such a line runs: ' + (await line(view.locator('tbody tr.sel'))));
-// The ends are then changed in the row. Two that cannot be related are still refused there, where the reason applies.
+// The ends are then changed in the row, by the rule the canvas and the panel move them by: the
+// relationship stays what it is. Two that cannot be related are offered greyed out, with the reason.
 const to = view.locator('tbody tr.sel').getByLabel('To', { exact: true });
 await to.focus();
-await to.selectOption({ label: 'Aa age' });
-ok((await toast()).includes('“Aa Active” is an individual and “Aa age” is a data property: the two are not joined by a line') && (await line(view.locator('tbody tr.sel'))) === 'Aa Active → Studio (Is Instance Of)', 'choosing a data property as the other end of an individual is refused, with the reason, and the row stays as it was');
+const age = to.locator('option').filter({ hasText: /^Aa age$/ });
+ok((await greyed(age)) && (await age.getAttribute('title')).includes('“Aa Active” is an individual and “Aa age” is a data property: the two are not joined by a line') && (await line(view.locator('tbody tr.sel'))) === 'Aa Active → Studio (Is Instance Of)', 'a data property is offered greyed out as the other end of an individual, with the reason, and the row stays as it was');
 await to.selectOption({ label: 'Film' });
 ok((await line(view.locator('tbody tr.sel'))) === 'Aa Active → Film (Is Instance Of)', 'and an end that can be related is taken: ' + (await line(view.locator('tbody tr.sel'))));
+const from = view.locator('tbody tr.sel').getByLabel('From', { exact: true });
+await from.focus();
+const studioStart = from.locator('option').filter({ hasText: /^Studio$/ });
+ok((await greyed(studioStart)) && (await studioStart.getAttribute('title')) === '“is an instance of” needs an individual at this end: “Studio” is a class.', 'a class cannot be its start: that would make it a superclass, which is chosen under Kind');
 await page.locator('.toast').waitFor({ state: 'detached', timeout: 6000 }).catch(() => {});
 // Narrowed by the tab's own search to something the new relationship is not, it is listed all the same, marked as just added.
 const search = view.getByRole('searchbox');

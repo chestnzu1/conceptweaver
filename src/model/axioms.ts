@@ -6,6 +6,7 @@ import { outsideEnumeration } from './datatypes';
 import { validateLiteral } from './literals';
 import { DATATYPES, INSTANCE_OF, isLang, newRelation, newTerm, type DataValue, type Model, type PropLink, type Term, type TermType } from './types';
 import { resolveModel } from './vocab';
+import { quoted, quotedName } from './words';
 
 /**
  * The asserted OWL axioms the entity editor reads and writes, beyond what a line on the canvas
@@ -19,7 +20,6 @@ export type Edit = { model: Model; note?: string; error?: undefined } | { error:
 
 const refuse = (error: string): Edit => ({ error });
 const nameOf = (m: Model, id: string) => m.terms.find((t) => t.id === id)?.name || 'Unnamed';
-const q = (s: string) => `“${s}”`;
 
 // ---------------------------------------------------------------- statements between two terms
 
@@ -59,20 +59,20 @@ export function addLink(model: Model, id: string, other: string, kind: LinkKind)
   const b = model.terms.find((t) => t.id === other);
   if (!a || !b) return refuse('That entity no longer exists.');
   const noun = KIND_NOUN[type];
-  if (id === other) return refuse(`${q(a.name)} cannot be ${phrase} itself.`);
-  if (a.type !== type || b.type !== type) return refuse(`Only a ${noun} can be ${phrase} a ${noun}; ${q(b.type === type ? a.name : b.name)} is not one.`);
+  if (id === other) return refuse(`${quoted(a.name)} cannot be ${phrase} itself.`);
+  if (a.type !== type || b.type !== type) return refuse(`Only a ${noun} can be ${phrase} a ${noun}; ${quoted(b.type === type ? a.name : b.name)} is not one.`);
   // Read with the standard properties in force, as they will be once this is stated.
   const on = model.vocab.enabled ? model : { ...model, vocab: { ...model.vocab, enabled: true } };
-  if (linkedTerms(on, id, kind).some((x) => x.id === other)) return refuse(`${q(a.name)} is already stated to be ${phrase} ${q(b.name)}.`);
+  if (linkedTerms(on, id, kind).some((x) => x.id === other)) return refuse(`${quoted(a.name)} is already stated to be ${phrase} ${quoted(b.name)}.`);
   if (opposite && linkedTerms(on, id, opposite).some((x) => x.id === other)) {
-    return refuse(`${q(a.name)} is stated to be ${LINKS[opposite].phrase} ${q(b.name)}. Both cannot hold; remove that statement first.`);
+    return refuse(`${quoted(a.name)} is stated to be ${LINKS[opposite].phrase} ${quoted(b.name)}. Both cannot hold; remove that statement first.`);
   }
   // Two members of an enumeration whose members are declared all different are different, each from the other.
   const apart = kind === 'sameAs' ? model.terms.find((t) => isEnumeration(t) && t.allDifferent && t.oneOf!.includes(id) && t.oneOf!.includes(other)) : undefined;
-  if (apart) return refuse(`${q(a.name)} and ${q(b.name)} are members of ${q(apart.name)}, whose members are declared all different. Both cannot hold; take that declaration off the class first.`);
+  if (apart) return refuse(`${quoted(a.name)} and ${quoted(b.name)} are members of ${quoted(apart.name)}, whose members are declared all different. Both cannot hold; take that declaration off the class first.`);
   let note: string | undefined;
   if (kind === 'disjointWith' && (wouldCycle(on, id, other) || wouldCycle(on, other, id))) {
-    note = `${q(a.name)} and ${q(b.name)} are a kind of one another, so the more specific one can now have no members. Validation will list it.`;
+    note = `${quoted(a.name)} and ${quoted(b.name)} are a kind of one another, so the more specific one can now have no members. Validation will list it.`;
   }
   if (!model.vocab.enabled) note = [note, '“Use RDFS & OWL properties” was switched on, which this kind of statement needs.'].filter(Boolean).join(' ');
   return { model: { ...on, relations: [...on.relations, newRelation({ from: id, to: other, predicate })] }, note };
@@ -104,13 +104,13 @@ export function addIsA(model: Model, id: string, superId: string): Edit {
   if (!a || !b) return refuse('That entity no longer exists.');
   const meaning = model.mode === 'skos' ? { predicate: 'skos:broader', noun: 'broader concept' } : isAMeaning(a, b);
   if (!meaning) return refuse(`${a.type === 'instance' ? 'An' : 'A'} ${KIND_NOUN[a.type]} cannot be a kind of ${b.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[b.type]}.`);
-  if (id === superId) return refuse(`${q(a.name)} cannot be its own ${meaning.noun}.`);
-  if (assertedSuperclasses(model, id).includes(superId)) return refuse(`${q(b.name)} is already an asserted ${meaning.noun} of ${q(a.name)}.`);
+  if (id === superId) return refuse(`${quoted(a.name)} cannot be its own ${meaning.noun}.`);
+  if (assertedSuperclasses(model, id).includes(superId)) return refuse(`${quoted(b.name)} is already an asserted ${meaning.noun} of ${quoted(a.name)}.`);
   const cycle = a.type === b.type && wouldCycle(model, id, superId);
   return {
     model: { ...model, relations: [...model.relations, newRelation({ from: id, to: superId, kind: 'generalization' })] },
     // Allowed, since OWL allows it (the two become equivalent), but rarely what was meant.
-    ...(cycle ? { note: `${q(b.name)} is already a kind of ${q(a.name)}, so the two are now each other's ${meaning.noun}. Validation lists this as a circular hierarchy.` } : {}),
+    ...(cycle ? { note: `${quoted(b.name)} is already a kind of ${quoted(a.name)}, so the two are now each other's ${meaning.noun}. Validation lists this as a circular hierarchy.` } : {}),
   };
 }
 
@@ -118,6 +118,16 @@ export function addIsA(model: Model, id: string, superId: string): Edit {
 export function removeIsA(model: Model, id: string, superId: string): Model {
   const stated = new Set(resolveModel(model).relations.filter((r) => r.kind === 'generalization' && r.from === id && r.to === superId).map((r) => r.id));
   return stated.size ? { ...model, relations: model.relations.filter((r) => !stated.has(r.id)) } : model;
+}
+
+/**
+ * Why an individual cannot be stated to be an instance of a class by one more relationship
+ * (`relId`): another one says so already. Nothing when none does.
+ */
+export function statedMember(model: Model, individual: string, cls: string, relId: string): string | undefined {
+  if (!model.relations.some((r) => r.id !== relId && r.from === individual && r.to === cls && isInstanceOf(model, r))) return undefined;
+  const name = (id: string) => quotedName(model.terms.find((t) => t.id === id));
+  return `${name(individual)} is already stated to be an instance of ${name(cls)}.`;
 }
 
 /**
@@ -132,17 +142,16 @@ export function makeInstanceOf(model: Model, relId: string): Edit {
   if (!rel || !a || !b) return refuse('That relationship no longer exists.');
   if (model.mode === 'skos') return refuse(`A concept scheme has no individuals, so nothing in it can be “${INSTANCE_OF}”.`);
   const [ind, cls] = a.type === 'instance' && b.type === 'concept' ? [a, b] : a.type === 'concept' && b.type === 'instance' ? [b, a] : [];
-  if (!ind || !cls) return refuse(`“${INSTANCE_OF}” joins an individual and a class. ${q(a.name || 'Unnamed')} is ${a.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[a.type]} and ${q(b.name || 'Unnamed')} is ${b.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[b.type]}.`);
-  if (model.relations.some((r) => r.id !== rel.id && r.from === ind.id && r.to === cls.id && isInstanceOf(model, r))) {
-    return refuse(`${q(ind.name || 'Unnamed')} is already stated to be an instance of ${q(cls.name || 'Unnamed')}.`);
-  }
+  if (!ind || !cls) return refuse(`“${INSTANCE_OF}” joins an individual and a class. ${quotedName(a)} is ${a.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[a.type]} and ${quotedName(b)} is ${b.type === 'instance' ? 'an' : 'a'} ${KIND_NOUN[b.type]}.`);
+  const twice = statedMember(model, ind.id, cls.id, rel.id);
+  if (twice) return refuse(twice);
   const reversed = rel.from !== ind.id;
   // Nothing of what it was before applies to a membership: no name, no standard property, no quantifier, no cardinalities.
   const { plain: _plain, predicate: _predicate, restriction: _restriction, restrictionN: _n, more: _more, ...base } = rel;
   const next = { ...base, from: ind.id, to: cls.id, label: '', kind: 'generalization' as const, fromCard: '', toCard: '' };
   return {
     model: { ...model, relations: model.relations.map((r) => (r.id === rel.id ? next : r)) },
-    ...(reversed ? { note: `“${INSTANCE_OF}” always points from the individual to the class, so the relationship was turned around: ${q(ind.name || 'Unnamed')} → ${q(cls.name || 'Unnamed')}.` } : {}),
+    ...(reversed ? { note: `“${INSTANCE_OF}” always points from the individual to the class, so the relationship was turned around: ${quotedName(ind)} → ${quotedName(cls)}.` } : {}),
   };
 }
 
@@ -156,11 +165,11 @@ export function addPropLink(model: Model, key: string, other: string, link: Prop
   const b = findProp(model, other);
   if (!a || !b) return refuse('That object property no longer exists.');
   if (key === other) {
-    return refuse(link === 'inverses' ? `A property that is its own inverse is a symmetric property: tick “Symmetric” for ${q(a.name)} instead.` : `${q(a.name)} cannot be ${LINK_PHRASE[link]} itself.`);
+    return refuse(link === 'inverses' ? `A property that is its own inverse is a symmetric property: tick “Symmetric” for ${quoted(a.name)} instead.` : `${quoted(a.name)} cannot be ${LINK_PHRASE[link]} itself.`);
   }
-  if (propLinks(model, key, link).includes(other)) return refuse(`${q(a.name)} is already stated to be ${LINK_PHRASE[link]} ${q(b.name)}.`);
+  if (propLinks(model, key, link).includes(other)) return refuse(`${quoted(a.name)} is already stated to be ${LINK_PHRASE[link]} ${quoted(b.name)}.`);
   const clash: PropLink | undefined = link === 'equivalents' ? 'disjoints' : link === 'disjoints' ? 'equivalents' : undefined;
-  if (clash && propLinks(model, key, clash).includes(other)) return refuse(`${q(a.name)} is stated to be ${LINK_PHRASE[clash]} ${q(b.name)}. Both cannot hold; remove that statement first.`);
+  if (clash && propLinks(model, key, clash).includes(other)) return refuse(`${quoted(a.name)} is stated to be ${LINK_PHRASE[clash]} ${quoted(b.name)}. Both cannot hold; remove that statement first.`);
   let note: string | undefined;
   if (link === 'parents') {
     // Following the stated superproperties upwards from the new one: does it lead back here?
@@ -172,8 +181,8 @@ export function addPropLink(model: Model, key: string, other: string, link: Prop
       seen.add(k);
       queue.push(...propLinks(model, k, 'parents'));
     }
-    if (seen.has(key)) note = `${q(b.name)} is already a sub-property of ${q(a.name)}, so the two now mean the same.`;
-    else if (propLinks(model, key, 'disjoints').includes(other)) note = `${q(a.name)} is also stated to be disjoint with ${q(b.name)}, so it can now never hold between two things.`;
+    if (seen.has(key)) note = `${quoted(b.name)} is already a sub-property of ${quoted(a.name)}, so the two now mean the same.`;
+    else if (propLinks(model, key, 'disjoints').includes(other)) note = `${quoted(a.name)} is also stated to be disjoint with ${quoted(b.name)}, so it can now never hold between two things.`;
   }
   return { model: { ...model, props: model.props.map((p) => (p.id === key ? { ...p, [link]: [...(p[link] ?? []), other] } : p)) }, note };
 }
@@ -271,8 +280,8 @@ export function addToDomain(model: Model, classId: string, p: { ref: string; dat
   const iriOf = (ids: string[]) => ids.map((id) => model.terms.find((t) => t.id === id)?.iri).filter((x): x is string => !!x);
   const add = (name: string, axioms: ClassAxiom[], auto: boolean, used: string[]): ClassAxiom[] | string => {
     const list = auto ? iriOf(used) : unionClasses(axioms);
-    if (!list) return `The domain of ${q(name)} is stated as ${axioms.length > 1 ? `${axioms.length} axioms, which all hold` : 'an expression that is not a list of classes'}. Change it on the property, where all of it is shown.`;
-    if (list.includes(cls.iri!)) return `${q(nameOf(model, classId))} is already in the domain of ${q(name)}.`;
+    if (!list) return `The domain of ${quoted(name)} is stated as ${axioms.length > 1 ? `${axioms.length} axioms, which all hold` : 'an expression that is not a list of classes'}. Change it on the property, where all of it is shown.`;
+    if (list.includes(cls.iri!)) return `${quoted(nameOf(model, classId))} is already in the domain of ${quoted(name)}.`;
     return withUnionClasses(auto ? [] : axioms, [...list, cls.iri!]);
   };
   if (p.data) {
@@ -343,9 +352,9 @@ export function addValue(model: Model, id: string, draft: { prop: string; value:
     const bad = validateLiteral(value, range);
     if (bad) return refuse(bad);
   }
-  if (lang && !isLang(lang)) return refuse(`${q(lang)} is not a language code. Use one like en, nl or zh.`);
+  if (lang && !isLang(lang)) return refuse(`${quoted(lang)} is not a language code. Use one like en, nl or zh.`);
   const notText = datatypes.find((range) => range !== 'rdf:langString' && range !== 'xsd:string');
-  if (lang && notText) return refuse(`A language only goes with text. ${q(prop.name)} holds ${DATATYPES.find((d) => d.id === notText)?.label ?? notText} values.`);
+  if (lang && notText) return refuse(`A language only goes with text. ${quoted(prop.name)} holds ${DATATYPES.find((d) => d.id === notText)?.label ?? notText} values.`);
   // Where the property's values are an enumerated datatype, the value has to be one it lists.
   for (const range of datatypes) {
     const outside = outsideEnumeration(model, range, { value, lang });
@@ -353,8 +362,8 @@ export function addValue(model: Model, id: string, draft: { prop: string; value:
   }
   const next: DataValue = { prop: prop.id, value, ...(lang ? { lang } : {}) };
   const have = ind.values ?? [];
-  if (have.some((v) => sameValue(v, next))) return refuse(`${q(ind.name)} already has that value for ${q(prop.name)}.`);
-  const note = prop.functional && have.some((v) => v.prop === prop.id) ? `${q(prop.name)} is functional: a thing has at most one value. Two different values make the ontology inconsistent, and Validation will say so.` : undefined;
+  if (have.some((v) => sameValue(v, next))) return refuse(`${quoted(ind.name)} already has that value for ${quoted(prop.name)}.`);
+  const note = prop.functional && have.some((v) => v.prop === prop.id) ? `${quoted(prop.name)} is functional: a thing has at most one value. Two different values make the ontology inconsistent, and Validation will say so.` : undefined;
   return { model: { ...model, terms: model.terms.map((t) => (t.id === id ? { ...t, values: [...have, next] } : t)) }, note };
 }
 
@@ -378,8 +387,8 @@ export function addFact(model: Model, id: string, key: string, other: string): E
   if (a?.type !== 'instance') return refuse('Only an individual has property values.');
   if (!prop) return refuse('Choose an object property.');
   if (b?.type !== 'instance') return refuse('The value of an object property is another individual.');
-  if (prop.rels.some((r) => r.from === id && r.to === other)) return refuse(`${q(a.name)} ${prop.name} ${q(b.name)} is already stated.`);
-  const self = id === other && prop.chars.includes('irreflexive') ? `${q(prop.name)} is irreflexive, so nothing can be related to itself by it. Validation will list this.` : undefined;
+  if (prop.rels.some((r) => r.from === id && r.to === other)) return refuse(`${quoted(a.name)} ${prop.name} ${quoted(b.name)} is already stated.`);
+  const self = id === other && prop.chars.includes('irreflexive') ? `${quoted(prop.name)} is irreflexive, so nothing can be related to itself by it. Validation will list this.` : undefined;
   return { model: { ...model, relations: [...model.relations, newRelation({ from: id, to: other, label: prop.name, prop: prop.id })] }, note: self };
 }
 

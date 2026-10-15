@@ -5,6 +5,7 @@ import { DEFAULT_PROP, nameKey, propNamed, propOf } from './identity';
 import { kindsBetween } from './props';
 import { INSTANCE_OF, newProp, newRelation, PROP_LINKS, type Model, type ObjProp, type Relation, type Term, type TermType } from './types';
 import { resolveModel } from './vocab';
+import { quotedName } from './words';
 
 /**
  * What a relationship is, in a type of model where that follows from what it joins and what it
@@ -20,14 +21,14 @@ import { resolveModel } from './vocab';
  *   an individual, a data property   nothing. What an individual has for a data property is a
  *                             value, given in its editor; a line between the two says nothing in OWL.
  *
- * Everything that adds a relationship or changes its name or its ends goes through here, so that
- * what is refused in the editor is refused in the model as well.
+ * Everything that adds a relationship or changes its name goes through here, so that what is
+ * refused in the editor is refused in the model as well. Moving an end is not worked out again
+ * here: it keeps what the relationship is (reconnect.ts).
  */
 
 /** The words that make a line between two classes a statement that one is a kind of the other. */
 export const IS_A = /^is[- ]an?$/i;
 
-const q = (t: Term | undefined) => `“${t?.name || 'Unnamed'}”`;
 const noun = (t: Term) => (t.type === 'concept' ? 'a class' : t.type === 'property' ? 'a data property' : 'an individual');
 
 /** Whether the type of model works relationships out this way. */
@@ -41,9 +42,9 @@ export function cannotRelate(model: Model, fromId: string, toId: string): string
   if (!a || !b || kindsBetween(model, { from: fromId, to: toId }).length) return undefined;
   const [individual, property] = a.type === 'instance' ? [a, b] : [b, a];
   if (individual.type === 'instance' && property.type === 'property') {
-    return `${q(individual)} is an individual and ${q(property)} is a data property: the two are not joined by a line. An individual has a value for a data property. Open ${q(individual)} and add it under Data property assertions.`;
+    return `${quotedName(individual)} is an individual and ${quotedName(property)} is a data property: the two are not joined by a line. An individual has a value for a data property. Open ${quotedName(individual)} and add it under Data property assertions.`;
   }
-  return `${q(a)} is ${noun(a)} and ${q(b)} is ${noun(b)}: there is nothing in OWL that a line between the two could say.`;
+  return `${quotedName(a)} is ${noun(a)} and ${quotedName(b)} is ${noun(b)}: there is nothing in OWL that a line between the two could say.`;
 }
 
 /** A property that exists in name only: nothing was said about it, and nothing refers to it. */
@@ -99,9 +100,9 @@ export function settleRelation(model: Model, id: string, before?: Model): Edit {
   } else if (choice === 'property') {
     // "Has data property" points from the class to the property, whichever way the line was drawn.
     const [cls, prop] = a.type === 'concept' ? [a, b] : [b, a];
-    out = { model: put(model, { ...kept, from: cls.id, to: prop.id, label: '', kind: 'property', fromCard: '', toCard: '' }), ...unnamed(`${q(cls)} has the data property ${q(prop)}`) };
+    out = { model: put(model, { ...kept, from: cls.id, to: prop.id, label: '', kind: 'property', fromCard: '', toCard: '' }), ...unnamed(`${quotedName(cls)} has the data property ${quotedName(prop)}`) };
   } else if (choice === 'generalization') {
-    const what = a.type === 'property' ? `${q(a)} is a sub-property of ${q(b)}` : `${q(a)} is a kind of ${q(b)}`;
+    const what = a.type === 'property' ? `${quotedName(a)} is a sub-property of ${quotedName(b)}` : `${quotedName(a)} is a kind of ${quotedName(b)}`;
     out = { model: put(model, { ...bare, label: '', kind: 'generalization' }), ...unnamed(what) };
   } else {
     // A use of an object property: the one of that name, declared here if there is none yet. The

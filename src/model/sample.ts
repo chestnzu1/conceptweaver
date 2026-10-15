@@ -1,6 +1,6 @@
 import { parseOutline } from './bulk';
 import { withDatatype } from './domains';
-import { arrangeAsHierarchy } from './layout';
+import { arrangeAsHierarchy } from '../layout/graph';
 import { emptyModel, newProp, newRelation, newTerm, type Model, type RelKind, type TermType } from './types';
 
 /** A small film-industry knowledge graph used as the starting example. */

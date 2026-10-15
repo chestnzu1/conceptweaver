@@ -1,4 +1,4 @@
-import { arrangeAsHierarchy } from './layout';
+import { arrangeAsHierarchy } from '../layout/graph';
 import { withDatatype } from './domains';
 import { emptyModel, newProp, newRelation, newTerm, withClassLists, DATATYPES, type ClassLists, type Model, type Quantifier } from './types';
 

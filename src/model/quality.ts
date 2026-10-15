@@ -14,6 +14,7 @@ import { classText, namingFor } from './manchester';
 const CLASS_AXIOM_WORDS: Record<ClassAxiomKind, string> = { SubClassOf: 'SubClassOf:', EquivalentClasses: 'EquivalentTo:', DisjointClasses: 'DisjointWith:' };
 import { DATATYPES, PROP_LINKS, isLang, type Model, type QualityConfig, type Term } from './types';
 import { resolveModel } from './vocab';
+import { quoted } from './words';
 
 /**
  * Modelling diagnostics: things worth a second look that are neither a logical contradiction
@@ -147,7 +148,6 @@ export interface Diagnostic {
   fix?: QuickFix;
 }
 
-const q = (s: string) => `“${s}”`;
 const local = (iri: string) => iri.slice(Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1);
 const namespace = (iri: string) => iri.slice(0, Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/')) + 1);
 const humanize = (iri: string) => decodeURIComponent(local(iri)).replace(/[_-]+/g, ' ').replace(/(\p{Ll}|\p{N})(\p{Lu})/gu, '$1 $2').trim();
@@ -183,7 +183,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
       if (first && second && first.from === second.from && first.to === second.to) {
         d.fix = {
           label: 'Remove the second one',
-          preview: `Removes the later of the two identical relationships ${q(name(second.from))} → ${q(name(second.to))}. The first stays, so what the model says does not change.`,
+          preview: `Removes the later of the two identical relationships ${quoted(name(second.from))} → ${quoted(name(second.to))}. The first stays, so what the model says does not change.`,
           apply: (m) => ({ ...m, relations: m.relations.filter((r) => r.id !== second.id) }),
         };
       }
@@ -196,7 +196,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
       const t = byId.get(i.terms[0]);
       if (t?.iri && humanize(t.iri)) {
         const label = humanize(t.iri);
-        d.fix = { label: `Name it ${q(label)}`, preview: `Sets the label (rdfs:label) to ${q(label)}, taken from the last part of its IRI <${t.iri}>. The IRI is not changed.`, apply: (m) => ({ ...m, terms: m.terms.map((x) => (x.id === t.id ? { ...x, name: label } : x)) }) };
+        d.fix = { label: `Name it ${quoted(label)}`, preview: `Sets the label (rdfs:label) to ${quoted(label)}, taken from the last part of its IRI <${t.iri}>. The IRI is not changed.`, apply: (m) => ({ ...m, terms: m.terms.map((x) => (x.id === t.id ? { ...x, name: label } : x)) }) };
       }
     }
     out.push(d);
@@ -204,7 +204,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
 
   // ---- documentation
   const props = skos ? [] : objectProperties(model);
-  if (!skos) for (const p of props) if (!p.description.trim()) add('missing-definition', `Object property ${q(p.name)} has no description.`, { prop: p.id, suggestion: 'Open the property and write a description under Annotations, if it needs one.' });
+  if (!skos) for (const p of props) if (!p.description.trim()) add('missing-definition', `Object property ${quoted(p.name)} has no description.`, { prop: p.id, suggestion: 'Open the property and write a description under Annotations, if it needs one.' });
 
   if (on('missing-language')) {
     if (!model.lang && model.terms.length) {
@@ -215,18 +215,18 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
       for (const t of model.terms) {
         const bare = untagged(t.fields);
         if (!bare.length) continue;
-        add('missing-language', `${q(t.name)} has ${bare.length} annotation${bare.length === 1 ? '' : 's'} without a language: ${bare.map((f) => f.key).join(', ')}.`, {
+        add('missing-language', `${quoted(t.name)} has ${bare.length} annotation${bare.length === 1 ? '' : 's'} without a language: ${bare.map((f) => f.key).join(', ')}.`, {
           terms: [t.id],
           fix: {
             label: `Tag as “${model.lang}”`,
-            preview: `Gives ${bare.map((f) => `${f.key} ${q(f.value)}`).join(', ')} the model’s language, ${model.lang}. Only do this if ${bare.length === 1 ? 'it is' : 'they are'} written in that language.`,
+            preview: `Gives ${bare.map((f) => `${f.key} ${quoted(f.value)}`).join(', ')} the model’s language, ${model.lang}. Only do this if ${bare.length === 1 ? 'it is' : 'they are'} written in that language.`,
             apply: (m) => ({ ...m, terms: m.terms.map((x) => (x.id === t.id ? { ...x, fields: x.fields.map((f) => (TEXTUAL.test(f.key) && !f.lang && f.value.trim() && isLang(m.lang) ? { ...f, lang: m.lang } : f)) } : x)) }),
           },
         });
       }
       for (const p of props) {
         const bare = untagged(p.fields);
-        if (bare.length) add('missing-language', `Object property ${q(p.name)} has ${bare.length} annotation${bare.length === 1 ? '' : 's'} without a language: ${bare.map((f) => f.key).join(', ')}.`, { prop: p.id });
+        if (bare.length) add('missing-language', `Object property ${quoted(p.name)} has ${bare.length} annotation${bare.length === 1 ? '' : 's'} without a language: ${bare.map((f) => f.key).join(', ')}.`, { prop: p.id });
       }
     }
   }
@@ -245,7 +245,7 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
       if (style === 'other' || n / items.length < 0.7) continue;
       for (const i of items) {
         if (fits(local(i.iri), style)) continue;
-        add('naming-convention', `The IRI of ${q(i.name)} ends in ${q(local(i.iri))}; most ${what} here are written in ${style}.`, {
+        add('naming-convention', `The IRI of ${quoted(i.name)} ends in ${quoted(local(i.iri))}; most ${what} here are written in ${style}.`, {
           terms: i.term ? [i.term] : [],
           prop: i.prop,
           explanation: `${n} of ${items.length} ${what} use ${style}. An IRI is an identifier: changing it changes which entity this is for everyone who refers to it, so it is not changed for you.`,
@@ -267,31 +267,31 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     for (const spellings of seen.values()) {
       if (spellings.size < 2) continue;
       const names = [...spellings.keys()];
-      add('annotation-practice', `The annotation properties ${names.map(q).join(' and ')} differ only in spelling. Each is exported as a property of its own.`, { terms: [...new Set([...spellings.values()].flat())].slice(0, 50), suggestion: 'If they are meant to be one property, give them the same name in each entity’s annotations.' });
+      add('annotation-practice', `The annotation properties ${names.map(quoted).join(' and ')} differ only in spelling. Each is exported as a property of its own.`, { terms: [...new Set([...spellings.values()].flat())].slice(0, 50), suggestion: 'If they are meant to be one property, give them the same name in each entity’s annotations.' });
     }
   }
 
   // ---- structure
   if (!skos && on('root-class')) {
-    for (const t of model.terms) if (t.type === 'concept' && !assertedSuperclasses(model, t.id).some((id) => byId.get(id)?.type === 'concept')) add('root-class', `${q(t.name)} has no asserted superclass, so it sits directly under owl:Thing.`, { terms: [t.id] });
+    for (const t of model.terms) if (t.type === 'concept' && !assertedSuperclasses(model, t.id).some((id) => byId.get(id)?.type === 'concept')) add('root-class', `${quoted(t.name)} has no asserted superclass, so it sits directly under owl:Thing.`, { terms: [t.id] });
   }
   if (!skos) {
     for (const p of props) {
       const domain = (p.domainAuto ? p.usedFrom : p.domains).length > 0;
       const range = (p.rangeAuto ? p.usedTo : p.ranges).length > 0;
-      if (!p.rels.length && !domain && !range && !PROP_LINKS.some((l) => propLinks(model, p.id, l).length)) add('unused-entity', `Object property ${q(p.name)} is declared but never used, and has no domain or range.`, { prop: p.id });
-      else if (!domain || !range) add('missing-domain-range', `Object property ${q(p.name)} has no ${!domain && !range ? 'domain or range' : !domain ? 'domain' : 'range'}.`, { prop: p.id, suggestion: 'Open the property and add a class, if there is one that everything having it belongs to. A property does not need a domain or a range.' });
+      if (!p.rels.length && !domain && !range && !PROP_LINKS.some((l) => propLinks(model, p.id, l).length)) add('unused-entity', `Object property ${quoted(p.name)} is declared but never used, and has no domain or range.`, { prop: p.id });
+      else if (!domain || !range) add('missing-domain-range', `Object property ${quoted(p.name)} has no ${!domain && !range ? 'domain or range' : !domain ? 'domain' : 'range'}.`, { prop: p.id, suggestion: 'Open the property and add a class, if there is one that everything having it belongs to. A property does not need a domain or a range.' });
     }
   }
 
   // ---- IRIs and namespaces
   const entities: { iri?: string; term?: string; prop?: string; name: string }[] = [...model.terms.map((t) => ({ iri: t.iri, term: t.id, name: t.name })), ...model.props.map((p) => ({ iri: p.iri, prop: p.id, name: p.name }))];
   const where = (e: { term?: string; prop?: string }) => ({ terms: e.term ? [e.term] : [], prop: e.prop });
-  for (const e of entities) if (e.iri && !isAbsoluteIri(e.iri)) add('malformed-iri', `The IRI of ${q(e.name)}, ${q(e.iri)}, is not an absolute IRI.`, { ...where(e), explanation: 'An absolute IRI has a scheme such as http: and no spaces or characters like < > " { }.' });
+  for (const e of entities) if (e.iri && !isAbsoluteIri(e.iri)) add('malformed-iri', `The IRI of ${quoted(e.name)}, ${quoted(e.iri)}, is not an absolute IRI.`, { ...where(e), explanation: 'An absolute IRI has a scheme such as http: and no spaces or characters like < > " { }.' });
   if (on('duplicate-iri')) {
     const byIri = new Map<string, typeof entities>();
     for (const e of entities) if (e.iri) byIri.set(e.iri, [...(byIri.get(e.iri) ?? []), e]);
-    for (const [iri, list] of byIri) if (list.length > 1) add('duplicate-iri', `${list.map((e) => q(e.name)).join(' and ')} share the IRI <${iri}>. In RDF they are one entity.`, { terms: list.flatMap((e) => (e.term ? [e.term] : [])), prop: list.find((e) => e.prop)?.prop });
+    for (const [iri, list] of byIri) if (list.length > 1) add('duplicate-iri', `${list.map((e) => quoted(e.name)).join(' and ')} share the IRI <${iri}>. In RDF they are one entity.`, { terms: list.flatMap((e) => (e.term ? [e.term] : [])), prop: list.find((e) => e.prop)?.prop });
   }
   if (on('namespace-usage')) {
     const base = baseIriOf(model);
@@ -309,13 +309,13 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
   }
   if (on('unresolved-reference')) {
     const ids = new Set(props.map((p) => p.id));
-    for (const p of model.props) for (const link of PROP_LINKS) for (const k of p[link] ?? []) if (!ids.has(k)) add('unresolved-reference', `Object property ${q(p.name)} refers to a property that is not in the model.`, { prop: p.id, suggestion: 'Open the property and remove the reference, or declare the missing property.' });
+    for (const p of model.props) for (const link of PROP_LINKS) for (const k of p[link] ?? []) if (!ids.has(k)) add('unresolved-reference', `Object property ${quoted(p.name)} refers to a property that is not in the model.`, { prop: p.id, suggestion: 'Open the property and remove the reference, or declare the missing property.' });
     const iris = new Set(entities.map((e) => e.iri).filter(Boolean));
     const missing = new Map<string, string[]>();
     for (const r of shapeReferences(model.shapes)) if (!iris.has(r.iri)) missing.set(r.shape.id, [...(missing.get(r.shape.id) ?? []), `${r.as} <${r.iri}>`]);
     for (const [shape, list] of missing) {
       const s = model.shapes.nodes.find((x) => x.id === shape)!;
-      add('unresolved-reference', `Shape ${q(s.name)} refers to ${list.length === 1 ? 'an IRI that is' : `${list.length} IRIs that are`} not in this ontology: ${[...new Set(list)].slice(0, 3).join(', ')}${list.length > 3 ? '…' : ''}.`, { shape, severity: 'info', explanation: 'That is as it should be when the shape is for imported data with a vocabulary of its own. Against this model’s own data it will match nothing.' });
+      add('unresolved-reference', `Shape ${quoted(s.name)} refers to ${list.length === 1 ? 'an IRI that is' : `${list.length} IRIs that are`} not in this ontology: ${[...new Set(list)].slice(0, 3).join(', ')}${list.length > 3 ? '…' : ''}.`, { shape, severity: 'info', explanation: 'That is as it should be when the shape is for imported data with a vocabulary of its own. Against this model’s own data it will match nothing.' });
     }
   }
   if (on('prefix-conflict')) {
@@ -323,9 +323,9 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     const seenNs = new Map<string, string>();
     for (const p of model.prefixes) {
       const std = STANDARD.find((s) => s.prefix.toLowerCase() === p.prefix.toLowerCase());
-      if (std && std.iri !== p.iri) add('prefix-conflict', `The prefix ${q(p.prefix)} is defined as <${p.iri}>, but it is the standard prefix for <${std.iri}>.`, { model: true });
-      if (seenName.has(p.prefix.toLowerCase())) add('prefix-conflict', `The prefix ${q(p.prefix)} is defined twice: <${seenName.get(p.prefix.toLowerCase())}> and <${p.iri}>.`, { model: true });
-      if (seenNs.has(p.iri)) add('prefix-conflict', `The prefixes ${q(seenNs.get(p.iri)!)} and ${q(p.prefix)} both stand for <${p.iri}>.`, { model: true });
+      if (std && std.iri !== p.iri) add('prefix-conflict', `The prefix ${quoted(p.prefix)} is defined as <${p.iri}>, but it is the standard prefix for <${std.iri}>.`, { model: true });
+      if (seenName.has(p.prefix.toLowerCase())) add('prefix-conflict', `The prefix ${quoted(p.prefix)} is defined twice: <${seenName.get(p.prefix.toLowerCase())}> and <${p.iri}>.`, { model: true });
+      if (seenNs.has(p.iri)) add('prefix-conflict', `The prefixes ${quoted(seenNs.get(p.iri)!)} and ${quoted(p.prefix)} both stand for <${p.iri}>.`, { model: true });
       seenName.set(p.prefix.toLowerCase(), p.iri);
       seenNs.set(p.iri, p.prefix);
     }
@@ -336,22 +336,22 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     const dataNames = new Map(model.terms.filter((t) => t.type === 'property' && t.name.trim()).map((t) => [nameKey(t.name), t]));
     for (const p of props) {
       const twin = dataNames.get(nameKey(p.name));
-      if (twin) add('property-kind', `${q(p.name)} is the name of an object property and of a data property. They are two properties with two IRIs; it is easy to use the wrong one.`, { terms: [twin.id], prop: p.id });
+      if (twin) add('property-kind', `${quoted(p.name)} is the name of an object property and of a data property. They are two properties with two IRIs; it is easy to use the wrong one.`, { terms: [twin.id], prop: p.id });
     }
     for (const r of resolveModel(model).relations) {
       const ends = [byId.get(r.from)?.type, byId.get(r.to)?.type].sort().join('|');
       if (ends === 'instance|property' && !r.predicate) {
         const [individual, property] = byId.get(r.from)?.type === 'instance' ? [r.from, r.to] : [r.to, r.from];
-        add('property-kind', `${q(name(individual))} is joined to the data property ${q(name(property))} by a line. In OWL an individual has a value for a data property; a line between the two says nothing.`, {
+        add('property-kind', `${quoted(name(individual))} is joined to the data property ${quoted(name(property))} by a line. In OWL an individual has a value for a data property; a line between the two says nothing.`, {
           terms: [individual, property],
           rels: [r.id],
-          suggestion: `Give ${q(name(individual))} its value under Data property assertions in its editor, and remove the line.`,
-          fix: { label: 'Remove the line', preview: `Removes the line between ${q(name(individual))} and ${q(name(property))}. Both stay in the model, and so do the values ${q(name(individual))} has.`, apply: (m) => ({ ...m, relations: m.relations.filter((x) => x.id !== r.id) }) },
+          suggestion: `Give ${quoted(name(individual))} its value under Data property assertions in its editor, and remove the line.`,
+          fix: { label: 'Remove the line', preview: `Removes the line between ${quoted(name(individual))} and ${quoted(name(property))}. Both stay in the model, and so do the values ${quoted(name(individual))} has.`, apply: (m) => ({ ...m, relations: m.relations.filter((x) => x.id !== r.id) }) },
         });
         continue;
       }
       if (r.kind === 'association' && !r.predicate && byId.get(r.to)?.type === 'property' && byId.get(r.from)?.type === 'concept') {
-        add('property-kind', `${q(name(r.from))} is linked to the data property ${q(name(r.to))} by an ordinary relationship${r.label.trim() ? ` ${q(r.label.trim())}` : ''}. To say the class has the property, the relationship should be of the kind “Has data property”.`, { rels: [r.id] });
+        add('property-kind', `${quoted(name(r.from))} is linked to the data property ${quoted(name(r.to))} by an ordinary relationship${r.label.trim() ? ` ${quoted(r.label.trim())}` : ''}. To say the class has the property, the relationship should be of the kind “Has data property”.`, { rels: [r.id] });
       }
     }
   }
@@ -366,55 +366,55 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
         const json = JSON.stringify(a.expression);
         if (!/"type":"(ObjectOneOf|DataOneOf)"/.test(json) && !unparsedIn(a.expression).some((x) => x.includes(OWL + 'oneOf'))) continue;
         const text = `${CLASS_AXIOM_WORDS[a.kind]} ${classText(a.expression, naming)}`;
-        add('enumeration-unsupported', `${q(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${text.length > 140 ? text.slice(0, 140) + '…' : text}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is, and the OWL 2 DL reasoner reads it. It is listed with the class’s axioms.' });
+        add('enumeration-unsupported', `${quoted(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${text.length > 140 ? text.slice(0, 140) + '…' : text}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is, and the OWL 2 DL reasoner reads it. It is listed with the class’s axioms.' });
       }
       // In a domain or range, a list is part of the expression; one kept as it was read (empty, or not well formed) is not taken.
       for (const a of [...(c.domains ?? []).map((x) => x.expression), ...(c.ranges ?? []).map((x) => x.range)].flatMap(unparsedIn)) {
         if (!a.includes(OWL + 'oneOf')) continue;
-        add('enumeration-unsupported', `${q(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${a.length > 140 ? a.slice(0, 140) + '…' : a}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is. It is listed with the property’s domain or range, kept as it was read.' });
+        add('enumeration-unsupported', `${quoted(c.name)} has an owl:oneOf the editor does not take as an enumeration: ${a.length > 140 ? a.slice(0, 140) + '…' : a}`, { terms: [c.id], suggestion: 'Nothing has to be done: it is exported as it is. It is listed with the property’s domain or range, kept as it was read.' });
       }
       if (c.type !== 'concept' || !c.oneOf) continue;
       const here = c.oneOf.map((id) => byId.get(id)).filter((t): t is Term => !!t);
       const drop = (ids: Set<string>) => (m: Model) => ({ ...m, terms: m.terms.map((t) => (t.id === c.id && t.oneOf ? { ...t, oneOf: t.oneOf.filter((id) => !ids.has(id)) } : t)) });
-      if (!here.length) add('enumeration-empty', `${q(c.name)} is defined as an enumeration but lists no individual yet. Until it does, it is exported as an ordinary class.`, { terms: [c.id], suggestion: 'Open the class and add its members under Class definition, or make it an ordinary class again there.' });
+      if (!here.length) add('enumeration-empty', `${quoted(c.name)} is defined as an enumeration but lists no individual yet. Until it does, it is exported as an ordinary class.`, { terms: [c.id], suggestion: 'Open the class and add its members under Class definition, or make it an ordinary class again there.' });
       const gone = c.oneOf.filter((id) => !byId.has(id));
       if (gone.length) {
-        add('enumeration-member', `${q(c.name)} lists ${gone.length === 1 ? 'an individual that is' : `${gone.length} individuals that are`} no longer in the model.`, {
+        add('enumeration-member', `${quoted(c.name)} lists ${gone.length === 1 ? 'an individual that is' : `${gone.length} individuals that are`} no longer in the model.`, {
           terms: [c.id],
-          fix: { label: 'Take off the list', preview: `Removes ${gone.length === 1 ? 'the entry' : `the ${gone.length} entries`} that no longer ${gone.length === 1 ? 'refers' : 'refer'} to anything from the members of ${q(c.name)}. Nothing that is exported changes.`, apply: drop(new Set(gone)) },
+          fix: { label: 'Take off the list', preview: `Removes ${gone.length === 1 ? 'the entry' : `the ${gone.length} entries`} that no longer ${gone.length === 1 ? 'refers' : 'refer'} to anything from the members of ${quoted(c.name)}. Nothing that is exported changes.`, apply: drop(new Set(gone)) },
         });
       }
       for (const t of here) {
         if (t.type === 'instance') continue;
-        add('enumeration-member', `${q(c.name)} lists ${q(t.name)}, which is a ${kindOf(t)}, not an individual.`, {
+        add('enumeration-member', `${quoted(c.name)} lists ${quoted(t.name)}, which is a ${kindOf(t)}, not an individual.`, {
           terms: [c.id, t.id],
           explanation: 'An enumeration (owl:oneOf) lists individuals. It is exported with this member as it is, but the reasoner leaves the whole enumeration alone until the list holds individuals only.',
-          fix: { label: 'Take it off the list', preview: `Removes ${q(t.name)} from the members of ${q(c.name)}. ${q(t.name)} itself stays in the model.`, apply: drop(new Set([t.id])) },
+          fix: { label: 'Take it off the list', preview: `Removes ${quoted(t.name)} from the members of ${quoted(c.name)}. ${quoted(t.name)} itself stays in the model.`, apply: drop(new Set([t.id])) },
         });
       }
       const byIri = new Map<string, Term[]>();
       for (const t of here) if (t.iri) byIri.set(t.iri, [...(byIri.get(t.iri) ?? []), t]);
       for (const [iri, twins] of byIri) {
         if (twins.length < 2) continue;
-        add('enumeration-member', `${q(c.name)} lists ${twins.map((t) => q(t.name)).join(' and ')}, which share the IRI <${iri}>. In RDF that is one individual, listed ${twins.length === 2 ? 'twice' : `${twins.length} times`}.`, {
+        add('enumeration-member', `${quoted(c.name)} lists ${twins.map((t) => quoted(t.name)).join(' and ')}, which share the IRI <${iri}>. In RDF that is one individual, listed ${twins.length === 2 ? 'twice' : `${twins.length} times`}.`, {
           terms: [c.id, ...twins.map((t) => t.id)],
-          fix: { label: 'Keep the first only', preview: `Removes ${twins.slice(1).map((t) => q(t.name)).join(', ')} from the members of ${q(c.name)}, leaving ${q(twins[0].name)}. The individuals themselves stay in the model.`, apply: drop(new Set(twins.slice(1).map((t) => t.id))) },
+          fix: { label: 'Keep the first only', preview: `Removes ${twins.slice(1).map((t) => quoted(t.name)).join(', ')} from the members of ${quoted(c.name)}, leaving ${quoted(twins[0].name)}. The individuals themselves stay in the model.`, apply: drop(new Set(twins.slice(1).map((t) => t.id))) },
         });
       }
       const individuals = here.filter((t) => t.type === 'instance');
       if (!c.allDifferent && individuals.length > 1) {
-        add('enumeration-distinct', `The ${individuals.length} members of ${q(c.name)} are not declared different, so two of them may be one and the same individual.`, {
+        add('enumeration-distinct', `The ${individuals.length} members of ${quoted(c.name)} are not declared different, so two of them may be one and the same individual.`, {
           terms: [c.id],
-          fix: { label: 'Declare them all different', preview: `States that ${individuals.map((t) => q(t.name)).join(', ')} are all different individuals (owl:AllDifferent). Only do this if they are.`, apply: (m) => ({ ...m, terms: m.terms.map((t) => (t.id === c.id && t.oneOf ? { ...t, allDifferent: true } : t)) }) },
+          fix: { label: 'Declare them all different', preview: `States that ${individuals.map((t) => quoted(t.name)).join(', ')} are all different individuals (owl:AllDifferent). Only do this if they are.`, apply: (m) => ({ ...m, terms: m.terms.map((t) => (t.id === c.id && t.oneOf ? { ...t, allDifferent: true } : t)) }) },
         });
       }
     }
     for (const d of model.datatypes) {
       const users = usersOf(model, d.id);
       const about = users.length ? { terms: users.map((t) => t.id) } : { model: true };
-      const of = users.length ? `, the range of ${users.map((t) => q(t.name)).join(', ')},` : '';
+      const of = users.length ? `, the range of ${users.map((t) => quoted(t.name)).join(', ')},` : '';
       if (!d.values.length) {
-        add('enumeration-empty', `The enumerated datatype ${q(d.name)}${of} has no values yet. ${d.anonymous ? 'Nothing is written for it until it has one.' : 'Until it has one, it is exported as a datatype without a definition.'}`, { ...about, suggestion: 'Select a data property that has it as its range and add the values there.' });
+        add('enumeration-empty', `The enumerated datatype ${quoted(d.name)}${of} has no values yet. ${d.anonymous ? 'Nothing is written for it until it has one.' : 'Until it has one, it is exported as a datatype without a definition.'}`, { ...about, suggestion: 'Select a data property that has it as its range and add the values there.' });
       }
       const seen = new Set<string>();
       const twice = new Set<number>();
@@ -424,12 +424,12 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
         seen.add(key);
         // A datatype the app does not know the shape of cannot be checked, and is taken as it is.
         const wrong = v.dt && v.lang ? 'has a language and a datatype; a literal has one or the other' : !v.dt || DATATYPES.some((x) => x.id === v.dt) ? validateLiteral(v.value, v.dt) : undefined;
-        if (wrong) add('enumeration-value', `${literalText(v)}, one of the values of ${q(d.name)}, is not a literal that can be written: ${wrong.replace(/^Enter a value\.$/, 'it is empty.')}`, { ...about, suggestion: 'Remove the value from the datatype and add it again as it should be.' });
+        if (wrong) add('enumeration-value', `${literalText(v)}, one of the values of ${quoted(d.name)}, is not a literal that can be written: ${wrong.replace(/^Enter a value\.$/, 'it is empty.')}`, { ...about, suggestion: 'Remove the value from the datatype and add it again as it should be.' });
       });
       if (twice.size) {
-        add('enumeration-value', `${q(d.name)} lists ${[...twice].map((i) => literalText(d.values[i])).join(', ')} more than once.`, {
+        add('enumeration-value', `${quoted(d.name)} lists ${[...twice].map((i) => literalText(d.values[i])).join(', ')} more than once.`, {
           ...about,
-          fix: { label: 'Keep one of each', preview: `Removes the repeated ${twice.size === 1 ? 'value' : 'values'} from ${q(d.name)}. What the datatype allows does not change.`, apply: (m) => ({ ...m, datatypes: m.datatypes.map((x) => (x.id === d.id ? { ...x, values: x.values.filter((_, i) => !twice.has(i)) } : x)) }) },
+          fix: { label: 'Keep one of each', preview: `Removes the repeated ${twice.size === 1 ? 'value' : 'values'} from ${quoted(d.name)}. What the datatype allows does not change.`, apply: (m) => ({ ...m, datatypes: m.datatypes.map((x) => (x.id === d.id ? { ...x, values: x.values.filter((_, i) => !twice.has(i)) } : x)) }) },
         });
       }
     }

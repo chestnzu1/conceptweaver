@@ -202,7 +202,7 @@ describe('an individual and a data property', () => {
 
   it('cannot be reached by moving an end of another line, or by a change of kind', () => {
     const id = draw('film', 'title');
-    st().updateRelation(id, { from: 'parasite' });
+    expect(st().reconnectRelation(id, 'from', 'parasite')).toBe(false);
     expect([rel(id).from, rel(id).to]).toEqual(['film', 'title']);
     expect(st().toast).toBe(WHY);
     // A model that has such a line from before: it is not made a "has data property" either.
@@ -251,16 +251,25 @@ describe('the other pairs', () => {
     expect(block(toTurtle(st().model), ':title')).toContain('rdfs:subPropertyOf :label');
   });
 
-  it('a line whose end is moved becomes what its new ends make it', () => {
+  it('a line whose end is moved stays what it was, from whichever control; its kind is changed on its own', () => {
     const id = draw('parasite', 'film');
-    // From the individual to another class: still a membership. From a class to a class: a superclass.
-    st().updateRelation(id, { to: 'work' });
-    expect(kind(id)).toBe('instanceOf');
-    st().updateRelation(id, { from: 'film' });
-    expect([kind(id), rel(id).from, rel(id).to]).toEqual(['generalization', 'film', 'work']);
-    // Onto a data property: the class has it.
-    st().updateRelation(id, { to: 'title' });
-    expect(kind(id)).toBe('property');
+    // From the individual to another class: still a membership.
+    expect(st().reconnectRelation(id, 'to', 'work')).toBe(true);
+    expect([kind(id), rel(id).from, rel(id).to]).toEqual(['instanceOf', 'parasite', 'work']);
+    // From a class to a class it would be a superclass: it is not made one to fit.
+    expect(st().reconnectRelation(id, 'from', 'film')).toBe(false);
+    expect(st().toast).toBe('“is an instance of” needs an individual at this end: “Film” is a class.');
+    expect([kind(id), rel(id).from, rel(id).to]).toEqual(['instanceOf', 'parasite', 'work']);
+    // A line between two classes stays a use of its property when an end moves to another class,
+    // and becomes "is a" only when that is chosen.
+    const uses = draw('film', 'work', 'directed by');
+    expect(st().reconnectRelation(uses, 'to', 'award')).toBe(true);
+    expect([kind(uses), rel(uses).label]).toEqual(['object', 'directed by']);
+    expect(st().setRelChoice(uses, 'generalization')).toBe(true);
+    expect([kind(uses), rel(uses).from, rel(uses).to]).toEqual(['generalization', 'film', 'award']);
+    // Onto a data property it would be "has data property": that is refused as well.
+    expect(st().reconnectRelation(uses, 'to', 'title')).toBe(false);
+    expect(kind(uses)).toBe('generalization');
   });
 });
 

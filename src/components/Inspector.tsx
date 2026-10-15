@@ -12,6 +12,7 @@ import { propOf } from '../model/identity';
 import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, restrictionSpecs, specsPatch, type RelChoice, CHARACTERISTICS, dataDomain, expressionsOf, findProp, fitsAxioms, objectProperties, restrictionsOf, type PropView } from '../model/props';
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
+import { EndSelect } from './EndSelect';
 import { CommitInput, CommitTextarea } from './fields';
 import { SuperclassEditor } from './Iri';
 import { CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
@@ -768,7 +769,7 @@ function RelationPanel({ rel }: { rel: Relation }) {
   const model = useStore((s) => s.model);
   const update = useStore((s) => s.updateRelation);
   const st = useStore.getState;
-  const sorted = [...model.terms].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = useMemo(() => [...model.terms].sort((a, b) => a.name.localeCompare(b.name)), [model.terms]);
   const skos = model.mode === 'skos';
   const props = activeProps(model);
   const own = props.some((p) => p.id === rel.predicate) ? rel.predicate! : '';
@@ -792,16 +793,11 @@ function RelationPanel({ rel }: { rel: Relation }) {
   const byName = auto && !own && kinds.some((k) => k.value === 'object' && !k.disabled) && kinds.some((k) => k.value === 'generalization' && !k.disabled);
 
   const names = (ids: string[]) => ids.map((id) => model.terms.find((t) => t.id === id)?.name).join(', ') || 'anything';
+  // Moving an end is the edit dragging it on the canvas makes, by the same rule: what the relationship is stays.
   const endpoint = (side: 'from' | 'to') => (
     <label className="field">
       <span>{side === 'from' ? 'From' : 'To'}</span>
-      <select value={rel[side]} onChange={(e) => update(rel.id, { [side]: e.target.value })}>
-        {sorted.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name || 'Unnamed'}
-          </option>
-        ))}
-      </select>
+      <EndSelect rel={rel} end={side} sorted={sorted} current={model.terms.find((t) => t.id === rel[side])?.name || 'Unnamed'} />
     </label>
   );
   return (

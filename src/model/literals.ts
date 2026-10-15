@@ -1,10 +1,10 @@
+import { quoted } from './words';
+
 /**
  * Whether text can be a literal of a datatype: a whole number for xsd:integer, a date for
  * xsd:date. Used wherever a value is typed in: the values of individuals, and the values an
  * enumerated datatype lists.
  */
-
-const q = (s: string) => `“${s}”`;
 
 const INTEGER = /^[+-]?\d+$/;
 const DECIMAL = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
@@ -29,6 +29,6 @@ const SHAPES: Record<string, { test: RegExp; example: string; what: string }> = 
 export function validateLiteral(value: string, datatype?: string): string | undefined {
   if (!value.trim()) return 'Enter a value.';
   const shape = datatype ? SHAPES[datatype] : undefined;
-  if (shape && !shape.test.test(value.trim())) return `${q(value.trim())} is not ${shape.what} (${datatype}). It should look like ${shape.example}.`;
+  if (shape && !shape.test.test(value.trim())) return `${quoted(value.trim())} is not ${shape.what} (${datatype}). It should look like ${shape.example}.`;
   return undefined;
 }

@@ -649,7 +649,7 @@ that *Layered* says so and uses the built-in hierarchical layout.
 
 - `src/model` – everything that isn't UI: types, the zustand store (`store.ts`, made of slices in
   `state/`: the document and its edits, the session, and one slice per job; the working copy in `state/persistence.ts`),
-  layout algorithms, checks, RDF import/export, file handling. What two terms can be related by
+  checks, RDF import/export, file handling. What two terms can be related by
   is in `props.ts`, `relating.ts` and `axioms.ts`, and `reconnect.ts` asks them whether an end
   of a relationship can be moved to another term. How a line runs is `geometry.ts`, including
   from an end that was put somewhere by hand; where those ends are is kept in `graphStyle.ts`.
@@ -1006,8 +1006,9 @@ reasoned or validated again for it, and the exported ontology is the same text.
 decides it, `src/model/reconnect.ts`, which draws nothing: `reconnection(model, id, end)` works
 out once which terms could take an end (so that every term on the canvas can be asked while the
 end is dragged, at no cost that grows with the model), and `reconnect(model, id, end, term)`
-gives the model with the end moved, or the reason it cannot be. The canvas, the store and a
-server that kept the ontology would all ask the same two questions. Its rules are the ones the
+gives the model with the end moved, or the reason it cannot be. The canvas, the side panel, the
+table of relationships, the store and a server that kept the ontology all ask the same two
+questions. Its rules are the ones the
 rest of the app relates terms by, not a second set:
 
 | Relationship | Its start | Its end |
@@ -1021,8 +1022,11 @@ rest of the app relates terms by, not a second set:
 | Plain relationship, broader (a vocabulary) | any concept | any concept; "is a" not itself |
 
 - **What it is never changes.** An "is a" dropped on a data property is refused; it does not
-  become "has data property". (The *From* and *To* boxes of the panel still do what they did:
-  there a relationship is given the kind its new ends make it, and says so. A drag never does.)
+  become "has data property". The same holds for the *From* and *To* boxes of the side panel and
+  of the table of relationships, which move an end by the same rule: a term that cannot take it
+  is listed greyed out, with the reason as its tooltip. To make a relationship another kind of
+  relationship is an edit of its own, under *Kind*; where no kind fits both the old ends and the
+  new ones, the relationship is drawn again between the new ones.
 - **One step, or nothing.** The relationship keeps its id, its name, its restrictions
   ("only", "min 1"), its cardinalities, its description and its style; only the end is another
   term. No class or property is made and no other statement is rewritten. Where a rule refuses,

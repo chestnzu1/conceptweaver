@@ -4,6 +4,7 @@ import { enumsOf } from './expressions';
 import { validateLiteral } from './literals';
 import { compactIri } from './prefixes';
 import { DATATYPES, ENUM_RANGE, isLang, uid, type EnumDatatype, type EnumLiteral, type Model } from './types';
+import { quoted } from './words';
 
 /**
  * Enumerated datatypes: datatypes that are a list of literal values (DataOneOf). They are kept
@@ -29,7 +30,6 @@ export function rangeLabel(model: Pick<Model, 'datatypes'>, range: string | unde
 export const usersOf = (model: Model, id: string) => model.terms.filter((t) => t.type === 'property' && t.ranges?.some((a) => enumsOf(a.range).includes(id)));
 
 const sameLiteral = (a: EnumLiteral, b: EnumLiteral) => a.value === b.value && (a.dt ?? '') === (b.dt ?? '') && (a.lang ?? '') === (b.lang ?? '');
-const q = (s: string) => `“${s}”`;
 
 const NUMERIC = new Set(['xsd:integer', 'xsd:decimal', 'xsd:double']);
 const truth = (s: string) => (s === 'true' || s === '1' ? true : s === 'false' || s === '0' ? false : undefined);
@@ -54,7 +54,7 @@ export const literalText = (v: EnumLiteral): string => JSON.stringify(v.value) +
 export function addDatatype(model: Model, name: string): Edit & { id?: string } {
   const clean = name.trim();
   if (!clean) return { error: 'The datatype needs a name.' };
-  if (model.datatypes.some((d) => d.name.trim().toLowerCase() === clean.toLowerCase())) return { error: `There is already a datatype called ${q(clean)}.` };
+  if (model.datatypes.some((d) => d.name.trim().toLowerCase() === clean.toLowerCase())) return { error: `There is already a datatype called ${quoted(clean)}.` };
   const d: EnumDatatype = { id: 'd' + uid(), name: clean, description: '', values: [] };
   return { model: { ...model, datatypes: [...model.datatypes, d] }, id: d.id };
 }
@@ -64,7 +64,7 @@ export function updateDatatype(model: Model, id: string, patch: Partial<Pick<Enu
   if (!d) return { error: 'That datatype no longer exists.' };
   const name = patch.name?.trim();
   if (patch.name !== undefined && !name) return { error: 'The datatype needs a name.' };
-  if (name && model.datatypes.some((x) => x.id !== id && x.name.trim().toLowerCase() === name.toLowerCase())) return { error: `There is already a datatype called ${q(name)}.` };
+  if (name && model.datatypes.some((x) => x.id !== id && x.name.trim().toLowerCase() === name.toLowerCase())) return { error: `There is already a datatype called ${quoted(name)}.` };
   // Named from now on: a datatype written in place has no name to change.
   return { model: { ...model, datatypes: model.datatypes.map((x) => (x.id === id ? { ...x, ...patch, ...(name ? { name } : {}) } : x)) } };
 }
@@ -76,7 +76,7 @@ export function removeDatatype(model: Model, id: string): Edit {
   const users = usersOf(model, id);
   return {
     model: withoutEntities({ ...model, datatypes: model.datatypes.filter((x) => x.id !== id) }, new Set(d.iri ? [d.iri] : []), new Set([id])),
-    ...(users.length ? { note: `${q(d.name)} is gone. ${users.map((t) => q(t.name)).join(', ')} ${users.length === 1 ? 'has' : 'have'} no range now.` } : {}),
+    ...(users.length ? { note: `${quoted(d.name)} is gone. ${users.map((t) => quoted(t.name)).join(', ')} ${users.length === 1 ? 'has' : 'have'} no range now.` } : {}),
   };
 }
 
@@ -92,13 +92,13 @@ export function addEnumValue(model: Model, id: string, draft: { value: string; d
   // Text is kept as typed, spaces inside it and all; anything else has no use for spaces around it.
   const value = dt ? draft.value.trim() : draft.value;
   if (!value.trim()) return { error: 'Enter a value.' };
-  if (dt && !DATATYPES.some((x) => x.id === dt)) return { error: `${q(dt)} is not a datatype the app knows.` };
+  if (dt && !DATATYPES.some((x) => x.id === dt)) return { error: `${quoted(dt)} is not a datatype the app knows.` };
   const bad = validateLiteral(value, dt);
   if (bad) return { error: bad };
-  if (lang && !isLang(lang)) return { error: `${q(lang)} is not a language code. Use one like en, nl or zh.` };
+  if (lang && !isLang(lang)) return { error: `${quoted(lang)} is not a language code. Use one like en, nl or zh.` };
   if (lang && dt) return { error: `A language only goes with text. This value is ${DATATYPES.find((x) => x.id === dt)?.label ?? dt}.` };
   const literal: EnumLiteral = { value, ...(dt ? { dt } : {}), ...(lang ? { lang } : {}) };
-  if (d.values.some((v) => sameLiteral(v, literal))) return { error: `${literalText(literal)} is already one of the values of ${q(d.name)}.` };
+  if (d.values.some((v) => sameLiteral(v, literal))) return { error: `${literalText(literal)} is already one of the values of ${quoted(d.name)}.` };
   return { model: { ...model, datatypes: model.datatypes.map((x) => (x.id === id ? { ...x, values: [...x.values, literal] } : x)) } };
 }
 
@@ -115,7 +115,7 @@ export function outsideEnumeration(model: Model, range: string | undefined, v: {
   const d = enumOf(model, range);
   if (!d) return undefined;
   const fits = d.values.some((x) => x.value === v.value && (x.lang ?? '') === (v.lang ?? '') && (!v.dt || (x.dt ?? 'xsd:string') === v.dt));
-  return fits ? undefined : `${JSON.stringify(v.value)}${v.lang ? '@' + v.lang : ''} is not one of the values of ${q(d.name)}: ${d.values.map(literalText).join(', ') || 'it has none yet'}.`;
+  return fits ? undefined : `${JSON.stringify(v.value)}${v.lang ? '@' + v.lang : ''} is not one of the values of ${quoted(d.name)}: ${d.values.map(literalText).join(', ') || 'it has none yet'}.`;
 }
 
 /** The datatype as it is written to RDF, for showing: a named datatype equivalent to a list of literals, or the list alone. */

@@ -1,7 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { it } from 'vitest';
 import { runChecks } from './checks';
-import { forceLayout, hierarchyLayout } from './layout';
+import { forceLayout } from '../layout/force';
+import { graphOf, hierarchyOf } from '../layout/graph';
+import { noLayout } from '../layout/types';
 import { objectProperties, restrictionsOf } from './props';
 import { fromTurtle, toJsonLd, toTriples, toTurtle } from './rdf';
 import { reason } from './reasoner';
@@ -32,8 +34,8 @@ it.skipIf(!OUT)('times the model layer on large models', async () => {
     const r = time('reasoner', () => reason(fresh(), true));
     lines.push(`${String(n).padStart(5)} classes  = ${issues.length} check results; reasoner: ${r.asserted} stated, ${r.inferred} inferred, ${r.inferences.length} shown, ${r.conflicts.length} conflicts${r.truncated ? ', TRUNCATED' : ''}`);
     for (const c of r.conflicts.slice(0, 4)) lines.push(`      conflict: ${c.rule}: ${c.message} | ${c.because.slice(0, 160)}`);
-    time('hierarchy layout', () => hierarchyLayout(fresh()));
-    time('network layout', () => forceLayout(fresh()));
+    time('hierarchy layout', () => hierarchyOf(fresh()));
+    time('network layout', () => forceLayout(graphOf(fresh()), noLayout()));
     const ttl = time('export Turtle', () => toTurtle(fresh()));
     lines.push(`${String(n).padStart(5)} classes  = Turtle: ${ttl.split('\n').length} lines, ${(ttl.length / 1024).toFixed(0)} KB`);
     time('export JSON-LD', () => toJsonLd(fresh()));

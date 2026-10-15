@@ -1,7 +1,7 @@
 import { Parser } from 'n3';
 import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
 import { baseIriOf, localName } from './iri';
-import { arrangeAsHierarchy } from './layout';
+import { arrangeAsHierarchy } from '../layout/graph';
 import { DATATYPES, ENUM_RANGE, emptyModel, type DescriptionProperty, type NameProperty, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
 import { enumOf, isEnumRange } from './datatypes';
