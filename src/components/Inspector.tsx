@@ -14,7 +14,7 @@ import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { EndSelect } from './EndSelect';
 import { useReasoning, WORKING } from './reasoning';
-import { CommitInput, CommitTextarea } from './fields';
+import { CommitInput, CommitTextarea, useLazyOptions } from './fields';
 import { SuperclassEditor } from './Iri';
 import { CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
@@ -481,9 +481,12 @@ function ClassRestrictions({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
   const st = useStore.getState;
   const restrictions = restrictionsOf(model, term.id);
-  const objProps = objectProperties(model);
-  const dataProps = model.terms.filter((t) => t.type === 'property').sort((a, b) => a.name.localeCompare(b.name));
-  const classes = model.terms.filter((t) => t.type === 'concept').sort((a, b) => a.name.localeCompare(b.name));
+  // The two dropdowns list every property and every class: they are filled when they are reached, not at every redraw.
+  const propsAt = useLazyOptions();
+  const classesAt = useLazyOptions();
+  const objProps = useMemo(() => (propsAt.ready ? objectProperties(model) : []), [propsAt.ready, model]);
+  const dataProps = useMemo(() => (propsAt.ready ? model.terms.filter((t) => t.type === 'property').sort((a, b) => a.name.localeCompare(b.name)) : []), [propsAt.ready, model]);
+  const classes = useMemo(() => (classesAt.ready ? model.terms.filter((t) => t.type === 'concept').sort((a, b) => a.name.localeCompare(b.name)) : []), [classesAt.ready, model]);
   const [prop, setProp] = useState('');
   const [target, setTarget] = useState('');
   const isData = prop.startsWith('d:');
@@ -524,7 +527,7 @@ function ClassRestrictions({ term }: { term: Term }) {
         ))}
       </ul>
       <div className="restriction-add">
-        <select aria-label="Property to restrict by" value={prop} onChange={(e) => setProp(e.target.value)}>
+        <select aria-label="Property to restrict by" value={prop} {...propsAt.lazy} onChange={(e) => setProp(e.target.value)}>
           <option value="">Add: choose a property…</option>
           <optgroup label="Object properties">
             {objProps.map((p) => (
@@ -542,7 +545,7 @@ function ClassRestrictions({ term }: { term: Term }) {
           </optgroup>
         </select>
         {prop && !isData && (
-          <select aria-label="Class it points to" value={target} onChange={(e) => setTarget(e.target.value)}>
+          <select aria-label="Class it points to" value={target} {...classesAt.lazy} onChange={(e) => setTarget(e.target.value)}>
             <option value="">some… choose a class</option>
             {classes.map((c) => (
               <option key={c.id} value={c.id}>

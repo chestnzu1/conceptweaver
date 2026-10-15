@@ -1,3 +1,4 @@
+import { drawnWhole } from '../model/culling';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { exportModel, readModelFile } from '../model/files';
 import { fileText, FORMAT_LABEL, MODEL_FILES } from '../model/rdfFormats';
@@ -21,7 +22,8 @@ export async function openDocument(text: string, name: string, source: { content
   try {
     const { model, format, kept } = await readModelFile(text, name, { ...source, serviceUrl: st.validation.reasonerUrl });
     st.replaceModel(model);
-    st.setView('graph');
+    // On the canvas, unless it is too large to draw whole: then it opens on the Structure Explorer.
+    if (drawnWhole(model)) st.setView('graph');
     const opened = `Opened “${model.name}”${format === 'model' ? '' : ` from ${FORMAT_LABEL[format]}`}: ${model.terms.length.toLocaleString('en')} terms, ${model.relations.length.toLocaleString('en')} relations.`;
     st.notify(opened);
     // What the model has no place for is kept as it was and written back, and that is said: it is there, but not to be edited here.

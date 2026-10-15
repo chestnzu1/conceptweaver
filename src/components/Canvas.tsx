@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { anchorAt, displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nearNode, nodeLabel, nodeSize, outlineToward, placeLabels, pointInNode, routeHints, setNodeLook, textWidth, type EdgeAnchors, type EdgeGeom, type LabelSpec, type Pt, type RouteHint } from '../model/geometry';
 import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL, type DerivedEdge } from '../model/edgeKinds';
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
+import { CULL_FROM, cutPath, detailAt, drawnArea, drawnWhole, GRAPH_LIMIT, LINE_WORDS_FROM, lineIn, termIn, type Area, type Detail } from '../model/culling';
 import { stable } from '../model/stable';
 import { currentDl, layoutOf, useStore, viewOf, type SubgraphState } from '../model/store';
 import { LAYOUT_KINDS, LAYOUTS, routeOf, type Route } from '../layout/types';
@@ -16,6 +17,7 @@ import { activeProps, resolveModel, suggestFor } from '../model/vocab';
 import { StylePanel } from './StylePanel';
 import { SubgraphPanel } from './SubgraphPanel';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
+import { EntityPicker } from './EntityPicker';
 
 /** Follows the pointer until it is released. */
 function track(onMove: (e: PointerEvent) => void, onUp: (e: PointerEvent) => void) {
@@ -31,6 +33,53 @@ function track(onMove: (e: PointerEvent) => void, onUp: (e: PointerEvent) => voi
 }
 
 export function Canvas() {
+  // A model too large to draw whole is drawn around the terms chosen; until one is, nothing of its graph is built.
+  const whole = useStore((s) => s.subgraph.active || drawnWhole(s.model));
+  return whole ? <GraphCanvas /> : <GraphChooser />;
+}
+
+/**
+ * The Graph view of a model too large to draw whole (FR-M5-5): a class is chosen to draw the graph
+ * around, here or in the class tree, and the graph is that class and its neighbours, as far out as
+ * the subgraph settings say, with more of them shown as they are opened.
+ */
+function GraphChooser() {
+  const model = useStore((s) => s.model);
+  const sub = useStore((s) => s.subgraph);
+  const st = useStore.getState;
+  return (
+    <div className="canvas graph-chooser">
+      <div className="chooser">
+        <strong>{model.terms.length.toLocaleString('en')} terms: too many to draw at once</strong>
+        <span>
+          Above {GRAPH_LIMIT.toLocaleString('en')} terms the graph is drawn around a class you choose: it and its neighbours, and more of them as you open them. Choose one here, or click one in the class tree.
+        </span>
+        <EntityPicker
+          values={[]}
+          options={() => model.terms.filter((t) => t.type === 'concept').map((t) => ({ id: t.id, name: t.name || 'Unnamed', iri: t.iri }))}
+          onAdd={(id) => {
+            st().focusTerm(id);
+            return undefined;
+          }}
+          onRemove={() => undefined}
+          noun="class"
+          of=""
+          addLabel="Choose a class to draw the graph around"
+          searchLabel="Search for a class"
+          empty="Choose a class"
+        />
+        {sub.roots.length > 0 && (
+          <button className="btn small" onClick={() => st().resumeSubgraph()}>
+            Back to the subgraph
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The graph, drawn: the whole model, or a subgraph of it. */
+function GraphCanvas() {
   // What is drawn: the whole model, or in subgraph mode the visible part of it with its own layout.
   const settled = useStore(viewOf);
   const tween = useStore((s) => s.tween);
@@ -46,6 +95,8 @@ export function Canvas() {
   const subgraph = useStore((s) => s.subgraph);
   const sel = useStore((s) => s.sel);
   const vp = useStore((s) => s.vp);
+  const canvasSize = useStore((s) => s.canvasSize);
+  const drawAll = useStore((s) => s.drawAll);
   const editing = useStore((s) => s.editing);
   const highlight = useStore((s) => s.highlight);
   const highlightLabel = useStore((s) => s.highlightLabel);
@@ -62,6 +113,18 @@ export function Canvas() {
   const st = useStore.getState;
 
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
+  // What is drawn of a large graph: the part around the view (see culling.ts), the same area for
+  // as long as the view stays inside it, so that panning draws nothing new until it nears the
+  // edge; less of each thing zoomed out. All of it, in full, while a picture is taken, and for a
+  // graph small enough to draw whole.
+  const culled = !drawAll && model.terms.length > CULL_FROM;
+  const lastArea = useRef<Area | undefined>(undefined);
+  const area = useMemo(() => (lastArea.current = !culled || !canvasSize.w || !canvasSize.h ? undefined : drawnArea(lastArea.current, vp, canvasSize)), [vp, canvasSize, culled]);
+  const detail: Detail = culled ? detailAt(vp.k) : 0;
+  // The drawn area is a layer of its own, the size of the area on the screen: a pan moves the
+  // layer, which the browser does without painting anything again. Only a new area, or another
+  // zoom, is painted. Without an area (a picture being taken) the picture is the canvas's size.
+  const layer = area && { x0: area.x0 * vp.k, y0: area.y0 * vp.k, w: (area.x1 - area.x0) * vp.k, h: (area.y1 - area.y0) * vp.k };
 
   const toWorld = (clientX: number, clientY: number): Pt => {
     const r = wrapRef.current!.getBoundingClientRect();
@@ -429,13 +492,14 @@ export function Canvas() {
       <svg
         id="graph-svg"
         // Zoomed far out, relation labels are too small to read and only slow drawing down.
-        className={'graph' + (vp.k < 0.3 ? ' far' : '') + (endDrag ? ' dragging-end' : '') + (reconnecting ? ' reconnecting' : '')}
+        className={'graph' + (layer ? ' layered' : '') + (!drawAll && vp.k < LINE_WORDS_FROM ? ' far' : '') + (endDrag ? ' dragging-end' : '') + (reconnecting ? ' reconnecting' : '')}
+        style={layer ? { width: layer.w, height: layer.h, transform: `translate(${layer.x0 + vp.x}px, ${layer.y0 + vp.y}px)` } : undefined}
         onPointerDown={onBackgroundDown}
         onDoubleClick={(e) => createTermAt(toWorld(e.clientX, e.clientY))}
         onContextMenu={backgroundMenu}
       >
-        <g data-world transform={`translate(${vp.x},${vp.y}) scale(${vp.k})`}>
-          <Scene model={model} route={route} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} drag={dragging} />
+        <g data-world transform={layer ? `translate(${-layer.x0},${-layer.y0}) scale(${vp.k})` : `translate(${vp.x},${vp.y}) scale(${vp.k})`}>
+          <Scene model={model} route={route} sel={sel} highlight={highlight} filter={filter} editing={editing} targetId={targetId} actions={actions} sub={subgraph.active ? subgraph : undefined} derived={derived} drag={dragging} area={area} detail={detail} />
           {connectFrom && <line data-noexport className="connect-line" x1={connectFrom.x} y1={connectFrom.y} x2={connect.to.x} y2={connect.to.y} />}
           {reconnecting && staying && <ReconnectLine staying={staying} taker={taker} at={reconnecting.at} refused={!!reconnecting.why} k={vp.k} />}
 
@@ -566,6 +630,10 @@ interface SceneProps {
   derived: DerivedEdge[];
   /** The end of a relationship that is being dragged, while one is. */
   drag?: SceneDrag;
+  /** The part of the graph to draw; all of it where there is none. */
+  area?: Area;
+  /** How much of each thing is drawn, by how far the view is zoomed out (culling.ts). */
+  detail: Detail;
 }
 
 /** How near its own term, in pixels on the screen, a dragged end still slides along it. */
@@ -619,11 +687,12 @@ const derivedLabel = (x: DerivedEdge) => (x.kind === 'oneOf' ? ONE_OF_LABEL : x.
 let labelSpots = new Map<string, Pt>();
 
 /**
- * Every term and relation of the model. Memoised at three levels so that a large model stays
- * responsive: the scene itself does not change while the view is panned or zoomed, and within it
- * a term or relation is redrawn only when something about it changed.
+ * The terms and relations of the model in the drawn area. Memoised at three levels so that a
+ * large model stays responsive: the scene itself does not change while the view is panned or
+ * zoomed within the area, and within it a term or relation is redrawn only when something about
+ * it changed. Zoomed out, the words are left out, as they are too small to read.
  */
-const Scene = memo(function Scene({ model, route, sel, highlight, filter, editing, targetId, actions, sub, derived, drag }: SceneProps) {
+const Scene = memo(function Scene({ model, route, sel, highlight, filter, editing, targetId, actions, sub, derived, drag, area, detail }: SceneProps) {
   const rootSet = useMemo(() => new Set(sub?.roots), [sub?.roots]);
   const expandedSet = useMemo(() => new Set(sub?.expanded), [sub?.expanded]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
@@ -652,6 +721,24 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
   const oneOfStyle = resolveEdge(style, 'oneOf', '');
   // A derived line takes its place among the relations between the same two terms.
   const offsets = useMemo(() => edgeOffsets(derived.length ? [...relations, ...derived] : relations), [relations, derived]);
+  // What is drawn: the terms in the area, and the lines that may cross it, between terms in it or not.
+  const shownTerms = useMemo(() => (area ? model.terms.filter((t) => termIn(area, t.x, t.y)) : model.terms), [model.terms, area]);
+  const shownRelations = useMemo(() => {
+    if (!area) return relations;
+    return relations.filter((r) => {
+      const a = byId.get(r.from);
+      const b = byId.get(r.to);
+      return !!a && !!b && lineIn(area, a, b, (offsets.get(r.id) ?? 0) + (edgeStyles.get(r.id)?.curve ?? 0));
+    });
+  }, [relations, area, byId, offsets, edgeStyles]);
+  const shownDerived = useMemo(() => {
+    if (!area || !derived.length) return derived;
+    return derived.filter((x) => {
+      const a = byId.get(x.from);
+      const b = byId.get(x.to);
+      return !!a && !!b && lineIn(area, a, b, offsets.get(x.id) ?? 0);
+    });
+  }, [derived, area, byId, offsets]);
   // Geometry is kept per relation and reused while its two ends stay where they are.
   const cache = useRef(new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; pins: EdgeAnchors | undefined; geom: EdgeGeom }>());
   // An end that is sliding along its term is drawn where it is held, before that is kept.
@@ -660,7 +747,7 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
   const routeHint = useMemo(() => routeHints(derived.length ? [...relations, ...derived] : relations, byId, route), [relations, derived, byId, route]);
   const geoms = useMemo(() => {
     const next = new Map<string, { a: Term; b: Term; offset: number; kind: Relation['kind']; es: EdgeStyle; route: Route; hint: RouteHint | undefined; pins: EdgeAnchors | undefined; geom: EdgeGeom }>();
-    for (const r of relations) {
+    for (const r of shownRelations) {
       const a = byId.get(r.from);
       const b = byId.get(r.to);
       if (!a || !b) continue;
@@ -679,13 +766,13 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
     return next;
     // The style object stands for everything about the nodes' sizes and shapes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relations, offsets, byId, edgeStyles, style, route, routeHint, sliding]);
+  }, [shownRelations, offsets, byId, edgeStyles, style, route, routeHint, sliding]);
   // What each edge says. A restriction reads "directs some Film", and several on one line "directs some, only".
   const labels = useMemo(() => edgeLabelsOf(meaning), [meaning]);
   const labelOf = useCallback((r: Relation) => labels.get(r.id) ?? '', [labels]);
   const derivedGeoms = useMemo(() => {
     const out = new Map<string, { a: Term; b: Term; es: EdgeStyle; geom: EdgeGeom }>();
-    for (const x of derived) {
+    for (const x of shownDerived) {
       const a = byId.get(x.from);
       const b = byId.get(x.to);
       const es = x.kind === 'oneOf' ? oneOfStyle : inferredStyle;
@@ -694,29 +781,53 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [derived, byId, offsets, inferredStyle, oneOfStyle, style, route, routeHint]);
-  // Where each label goes: in the middle of its edge, or along it where the middle is taken.
+  }, [shownDerived, byId, offsets, inferredStyle, oneOfStyle, style, route, routeHint]);
+  // A line that runs out of the area is cut to it (culling.ts): one that crosses the view from far
+  // away is drawn only where it may be seen. Kept per line while its path and the area stay the same.
+  const cutCache = useRef(new Map<string, { path: string; area: Area; cut: { d: string; offset: number } | undefined }>());
+  const cuts = useMemo(() => {
+    const next = new Map<string, { path: string; area: Area; cut: { d: string; offset: number } | undefined }>();
+    if (area) {
+      const add = (id: string, a: Term, b: Term, path: string) => {
+        if (termIn(area, a.x, a.y) && termIn(area, b.x, b.y)) return;
+        const old = cutCache.current.get(id);
+        next.set(id, old && old.path === path && old.area === area ? old : { path, area, cut: cutPath(path, area) });
+      };
+      for (const [id, g] of geoms) add(id, g.a, g.b, g.geom.path);
+      for (const [id, g] of derivedGeoms) add(id, g.a, g.b, g.geom.path);
+    }
+    cutCache.current = next;
+    return next;
+  }, [geoms, derivedGeoms, area]);
+  /** The path to draw of a line: cut to the area where it runs out of it; nothing where none of it is in the area. */
+  const drawnPath = (id: string, path: string): { d: string; offset: number } | undefined => {
+    const c = cuts.get(id);
+    return c ? c.cut : { d: path, offset: 0 };
+  };
+  // Where each label goes: in the middle of its edge, or along it where the middle is taken. Zoomed out there are none.
+  const words = detail === 0;
   const spots = useMemo(() => {
+    if (!words) return (labelSpots = new Map<string, Pt>());
     const specs: LabelSpec[] = [];
-    for (const r of relations) {
+    for (const r of shownRelations) {
       const g = geoms.get(r.id);
       const label = g && g.es.labels !== false && labelOf(r);
       if (g && label) specs.push({ id: r.id, geom: g.geom, w: textWidth(label, labelFont(g.es)) + 10, ends: [g.a, g.b] });
     }
-    for (const x of derived) {
+    for (const x of shownDerived) {
       const g = derivedGeoms.get(x.id);
       if (g && g.es.labels !== false) specs.push({ id: x.id, geom: g.geom, w: textWidth(derivedLabel(x), labelFont(g.es)) + 10, ends: [g.a, g.b] });
     }
     // The cardinalities written at the ends of plain relationships stay where they are; labels keep off them.
     const cards: { x: number; y: number; w: number; h: number }[] = [];
-    for (const r of relations) {
+    for (const r of shownRelations) {
       const g = geoms.get(r.id);
       if (!g || !(skos ? r.kind === 'association' : plain.has(r.id))) continue;
       if (r.fromCard) cards.push({ ...g.geom.fromCard, w: textWidth(r.fromCard, LABEL_FONT) + 4, h: 14 });
       if (r.toCard) cards.push({ ...g.geom.toCard, w: textWidth(r.toCard, LABEL_FONT) + 4, h: 14 });
     }
     return (labelSpots = placeLabels(specs, cards));
-  }, [relations, geoms, derived, derivedGeoms, labelOf, skos, plain]);
+  }, [words, shownRelations, geoms, shownDerived, derivedGeoms, labelOf, skos, plain]);
   const selTerms = useMemo(() => new Set(sel.terms), [sel.terms]);
   const selRels = useMemo(() => new Set(sel.rels), [sel.rels]);
   const spot = useMemo(() => new Set(highlight), [highlight]);
@@ -737,27 +848,51 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
   const taking = drag?.refusal;
   const takes = (t: Term) => (!taking ? '' : drag.over === t.id ? (taking(t.id) === undefined ? ' can-take target' : ' cannot-take refused') : taking(t.id) === undefined ? ' can-take' : ' cannot-take');
 
+  // How a relationship's line is drawn; a relationship nobody has classified is drawn fainter.
+  const edgeClass = (r: Relation) =>
+    `edge ${r.kind}${isInstanceOf(meaning, r) ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}${taking && drag.rel === r.id ? ' moving' : ''}`;
+  // Zoomed far out on a large graph, the lines are drawn a few paths at a time, one for each way of
+  // drawing them: no line can be told apart or taken hold of there, and thousands of elements would
+  // only slow drawing down. They let the pointer through, so that a drag pans the view.
+  const batched = detail === 2 && shownRelations.length + shownDerived.length > BATCH_FROM;
+
   return (
     <>
-      {relations.map((r) => {
-        const g = geoms.get(r.id);
-        if (!g) return null;
-        // A relationship nobody has classified is drawn fainter.
-        const instanceOf = isInstanceOf(meaning, r);
-        const label = labelOf(r);
-        const at = spots.get(r.id) ?? g.geom.label;
-        // Cardinalities are drawn for plain relationships only.
-        const cards = skos ? r.kind === 'association' : plain.has(r.id);
-        const cls = `edge ${r.kind}${instanceOf ? ' instance-of' : r.predicate ? ' std' : ''}${plain.has(r.id) ? ' plain' : ''}${selRels.has(r.id) ? ' selected' : ''}${relDim(r) ? ' dim' : ''}${spot.has(r.id) ? ' spot' : ''}${taking && drag.rel === r.id ? ' moving' : ''}`;
-        return <EdgeView key={r.id} r={r} geom={g.geom} es={g.es} lx={at.x} ly={at.y} label={(editing?.kind === 'rel' && editing.id === r.id) || g.es.labels === false ? '' : label} cls={cls} cards={cards} actions={actions} />;
-      })}
-      {derived.map((x) => {
+      {batched ? (
+        <LineBatches
+          lines={[
+            ...shownRelations.flatMap((r) => {
+              const g = geoms.get(r.id);
+              const d = g && drawnPath(r.id, g.geom.path);
+              return g && d ? [{ cls: edgeClass(r), es: g.es, d: d.d, arrow: g.geom.arrow }] : [];
+            }),
+            ...shownDerived.flatMap((x) => {
+              const g = derivedGeoms.get(x.id);
+              const d = g && drawnPath(x.id, g.geom.path);
+              return g && d ? [{ cls: derivedClass(x, relDim(x)), es: g.es, d: d.d, arrow: g.geom.arrow }] : [];
+            }),
+          ]}
+        />
+      ) : (
+        shownRelations.map((r) => {
+          const g = geoms.get(r.id);
+          const d = g && drawnPath(r.id, g.geom.path);
+          if (!g || !d) return null;
+          const label = labelOf(r);
+          const at = spots.get(r.id) ?? g.geom.label;
+          // Cardinalities are drawn for plain relationships only, and only where words are.
+          const cards = words && (skos ? r.kind === 'association' : plain.has(r.id));
+          return <EdgeView key={r.id} r={r} geom={g.geom} d={d.d} dashOffset={d.offset} es={g.es} lx={at.x} ly={at.y} label={!words || (editing?.kind === 'rel' && editing.id === r.id) || g.es.labels === false ? '' : label} cls={edgeClass(r)} cards={cards} actions={actions} />;
+        })
+      )}
+      {!batched && shownDerived.map((x) => {
         const g = derivedGeoms.get(x.id);
-        if (!g) return null;
+        const d = g && drawnPath(x.id, g.geom.path);
+        if (!g || !d) return null;
         const at = spots.get(x.id) ?? g.geom.label;
-        return <DerivedView key={x.id} x={x} geom={g.geom} es={g.es} lx={at.x} ly={at.y} dim={relDim(x)} />;
+        return <DerivedView key={x.id} x={x} geom={g.geom} d={d.d} dashOffset={d.offset} es={g.es} lx={at.x} ly={at.y} dim={relDim(x)} words={words} />;
       })}
-      {model.terms.map((t) => {
+      {shownTerms.map((t) => {
         const cls = `node ${t.type}${t.external !== undefined ? ' external' : ''}${selTerms.has(t.id) ? ' selected' : ''}${termDim(t) ? ' dim' : ''}${targetId === t.id ? ' target' : ''}${takes(t)}`;
         const more = sub?.result?.more.get(t.id) ?? 0;
         return (
@@ -767,10 +902,11 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
             ns={resolveNode(style, nodeTypeOf(model.mode, t.type), t)}
             label={nodeLabel(t)}
             cls={cls + (rootSet.has(t.id) ? ' root' : '')}
-            hideText={editing?.kind === 'term' && editing.id === t.id}
+            hideText={detail === 2 || (editing?.kind === 'term' && editing.id === t.id)}
+            handles={words}
             actions={actions}
             // In a subgraph: how many neighbours are out of sight (click to show), or that they were shown by hand (click to fold).
-            badge={!sub ? '' : expandedSet.has(t.id) ? '−' : more ? `+${more}` : ''}
+            badge={!sub || !words ? '' : expandedSet.has(t.id) ? '−' : more ? `+${more}` : ''}
           />
         );
       })}
@@ -820,6 +956,45 @@ const EndHandles = memo(function EndHandles({ r, ends, pins, from, to, hidden, a
 });
 
 const NO_EDGE_STYLE: EdgeStyle = {};
+/** Above this many lines in view, zoomed far out, they are drawn in batches (LineBatches). */
+const BATCH_FROM = 1500;
+
+/** How a derived line is drawn: an enumeration's, an inferred relationship's or an inferred membership's. */
+const derivedClass = (x: DerivedEdge, dim: boolean) => (x.kind === 'oneOf' ? 'edge one-of' : x.kind === 'fact' ? 'edge association inferred inferred-fact' : 'edge generalization instance-of inferred') + (dim ? ' dim' : '');
+
+/** An arrowhead's points as a path: closed where it is filled or hollow, two strokes where it is open, none where there is none. */
+function arrowPath(points: string, head: EdgeStyle['arrow']): string {
+  if (head === 'none') return '';
+  const [tip, a, b] = points.split(' ');
+  return head === 'open' ? `M${a} L${tip} L${b}` : `M${tip} L${a} L${b} Z`;
+}
+
+/**
+ * Lines drawn a few paths at a time: those drawn alike (the same kind, the same style, selected or
+ * not) as one path, and their arrowheads as another. They look as each line would on its own.
+ */
+function LineBatches({ lines }: { lines: { cls: string; es: EdgeStyle; d: string; arrow: string }[] }) {
+  const groups = new Map<string, { cls: string; vars: React.CSSProperties | undefined; d: string[]; heads: string[] }>();
+  for (const l of lines) {
+    const look = edgeLook(l.es);
+    const key = l.cls + look.cls + JSON.stringify(look.vars ?? {});
+    let g = groups.get(key);
+    if (!g) groups.set(key, (g = { cls: l.cls + look.cls, vars: look.vars, d: [], heads: [] }));
+    g.d.push(l.d);
+    const head = arrowPath(l.arrow, l.es.arrow);
+    if (head) g.heads.push(head);
+  }
+  return (
+    <>
+      {[...groups].map(([key, g]) => (
+        <g key={key} className={g.cls + ' batch'} style={g.vars}>
+          <path className="edge-line" data-part="line" d={g.d.join(' ')} />
+          {g.heads.length > 0 && <path className="edge-arrow" data-part="head" d={g.heads.join(' ')} />}
+        </g>
+      ))}
+    </>
+  );
+}
 const labelFont = (es: EdgeStyle) => (es.labelSize ? `400 ${es.labelSize}px system-ui, sans-serif` : LABEL_FONT);
 const labelHeight = (es: EdgeStyle) => Math.max(LABEL_H, (es.labelSize ?? 12) + 6);
 
@@ -851,7 +1026,8 @@ function Arrow({ points, head }: { points: string; head: EdgeStyle['arrow'] }) {
   return <polyline className="edge-arrow" data-part="head" points={`${a} ${tip} ${b}`} />;
 }
 
-const EdgeView = memo(function EdgeView({ r, geom: g, es, lx, ly, label, cls, cards, actions }: { r: Relation; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; label: string; cls: string; cards: boolean; actions: SceneActions }) {
+// `d` is the line's path as drawn: its geometry's, or cut to the drawn area, its dashes moved on by `dashOffset` to fall as on the whole line.
+const EdgeView = memo(function EdgeView({ r, geom: g, d, dashOffset, es, lx, ly, label, cls, cards, actions }: { r: Relation; geom: EdgeGeom; d: string; dashOffset: number; es: EdgeStyle; lx: number; ly: number; label: string; cls: string; cards: boolean; actions: SceneActions }) {
   const lw = label ? textWidth(label, labelFont(es)) + 10 : 0;
   const lh = labelHeight(es);
   const look = edgeLook(es);
@@ -871,8 +1047,8 @@ const EdgeView = memo(function EdgeView({ r, geom: g, es, lx, ly, label, cls, ca
       }}
       onContextMenu={(e) => actions.relMenu(e, r)}
     >
-      <path data-noexport className="edge-hit" d={g.path} />
-      <path className="edge-line" data-part="line" d={g.path} />
+      <path data-noexport className="edge-hit" d={d} />
+      <path className="edge-line" data-part="line" d={d} style={dashOffset ? { strokeDashoffset: -dashOffset } : undefined} />
       <Arrow points={g.arrow} head={es.arrow} />
       {label && (
         <>
@@ -902,15 +1078,15 @@ const EdgeView = memo(function EdgeView({ r, geom: g, es, lx, ly, label, cls, ca
  * is a line of its own kind from the class to the member, and clicking it opens the class, where
  * the list is.
  */
-function DerivedView({ x, geom: g, es, lx, ly, dim }: { x: DerivedEdge; geom: EdgeGeom; es: EdgeStyle; lx: number; ly: number; dim: boolean }) {
+function DerivedView({ x, geom: g, d, dashOffset, es, lx, ly, dim, words }: { x: DerivedEdge; geom: EdgeGeom; d: string; dashOffset: number; es: EdgeStyle; lx: number; ly: number; dim: boolean; words: boolean }) {
   const oneOf = x.kind === 'oneOf';
-  const label = es.labels === false ? '' : derivedLabel(x);
+  const label = !words || es.labels === false ? '' : derivedLabel(x);
   const lw = textWidth(label, labelFont(es)) + 10;
   const lh = labelHeight(es);
   const look = edgeLook(es);
   return (
     <g
-      className={(oneOf ? 'edge one-of' : x.kind === 'fact' ? 'edge association inferred inferred-fact' : 'edge generalization instance-of inferred') + (dim ? ' dim' : '') + look.cls}
+      className={derivedClass(x, dim) + look.cls}
       data-rel={x.id}
       style={look.vars}
       onPointerDown={
@@ -924,8 +1100,8 @@ function DerivedView({ x, geom: g, es, lx, ly, dim }: { x: DerivedEdge; geom: Ed
       }
     >
       <title>{oneOf ? `Enumeration membership (owl:oneOf): part of how the class is defined, not a relationship of its own. ${x.because}` : `Inferred, not asserted. ${x.because}`}</title>
-      <path data-noexport className="edge-hit" d={g.path} />
-      <path className="edge-line" data-part="line" d={g.path} />
+      <path data-noexport className="edge-hit" d={d} />
+      <path className="edge-line" data-part="line" d={d} style={dashOffset ? { strokeDashoffset: -dashOffset } : undefined} />
       <Arrow points={g.arrow} head={es.arrow} />
       {label && (
         <>
@@ -957,7 +1133,7 @@ function NodeShape({ t, ns, w, h, paintStyle }: { t: Term; ns: NodeStyle; w: num
 }
 
 // `label` is what nodeLabel(t) gives now: it is a prop so that the node is drawn again when the words change though the term did not.
-const NodeView = memo(function NodeView({ t, ns, label, cls, hideText, actions, badge }: { t: Term; ns: NodeStyle; label: string; cls: string; hideText: boolean; actions: SceneActions; badge: string }) {
+const NodeView = memo(function NodeView({ t, ns, label, cls, hideText, handles, actions, badge }: { t: Term; ns: NodeStyle; label: string; cls: string; hideText: boolean; handles: boolean; actions: SceneActions; badge: string }) {
   const { w, h } = nodeSize(t);
   const color = t.color || 'default';
   // A colour of the node's own, then the colour it was given on the canvas, then the theme's.
@@ -997,12 +1173,15 @@ const NodeView = memo(function NodeView({ t, ns, label, cls, hideText, actions, 
           <text y={7}>{badge}</text>
         </g>
       )}
-      <g data-noexport className="handle" transform={`translate(${w},${h / 2})`} onPointerDown={(e) => actions.handleDown(e, t)}>
-        <title>Drag to another term to relate them</title>
-        <circle className="handle-hit" r={13} />
-        <circle className="handle-dot" r={7} />
-        <path className="handle-plus" d="M-3.5,0H3.5M0,-3.5V3.5" />
-      </g>
+      {/* Zoomed out it would be too small to take hold of. */}
+      {handles && (
+        <g data-noexport className="handle" transform={`translate(${w},${h / 2})`} onPointerDown={(e) => actions.handleDown(e, t)}>
+          <title>Drag to another term to relate them</title>
+          <circle className="handle-hit" r={13} />
+          <circle className="handle-dot" r={7} />
+          <path className="handle-plus" d="M-3.5,0H3.5M0,-3.5V3.5" />
+        </g>
+      )}
     </g>
   );
 });

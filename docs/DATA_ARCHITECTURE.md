@@ -36,7 +36,7 @@ integration**: connections, credentials, schema snapshots, mappings and their ve
 
 | Store | Where in code | Contents | Limits |
 | --- | --- | --- | --- |
-| In-memory model | `Model` in `src/model/types.ts` | Everything: terms, relationships, object properties, shapes, mappings, external references, governance set-up, style, layout, enumerated datatypes. | Capped at 50,000 terms and 100,000 relationships (`MAX_TERMS`, `MAX_RELATIONS`). |
+| In-memory model | `Model` in `src/model/types.ts` | Everything: terms, relationships, object properties, shapes, mappings, external references, governance set-up, style, layout, enumerated datatypes. | Capped at 250,000 terms and 1,000,000 relationships (`MAX_TERMS`, `MAX_RELATIONS`; 50,000 and 100,000 until 2026-10-15). |
 | `localStorage` | `src/model/state/storage.ts` | Theme, panel state, saved graph styles, the reasoner's address. Until 2026-10-15 also the working copy, as one JSON string (TD-11); one left there is moved to IndexedDB when the app starts. | About 5 MB per origin. |
 | IndexedDB, database `conceptweaver` | `src/model/library.ts` | Object stores `models` (name, dates), `data` (the model JSON), `externals` (the Turtle of each added external ontology), and since 2026-10-15 (database version 3) `working`: the working copy, as the model itself with which saved model it is, written 300 ms after each change. | Per browser, as much as the browser gives the site; can be evicted (AR-09) unless the browser agrees to persistent storage, which is asked for once something has been edited. |
 | Undo history | `past`, `future` in `src/model/store.ts` | Up to 100 earlier models, in memory. | Lost on reload (TD-12). |

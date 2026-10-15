@@ -1,3 +1,4 @@
+import { drawnWhole, GRAPH_LIMIT } from '../culling';
 import { builtIn } from '../../layout/compute';
 import { graphOf } from '../../layout/graph';
 import { noLayout, type GraphLayout } from '../../layout/types';
@@ -121,6 +122,8 @@ export const subgraphSlice: Slice<SubgraphSlice> = (set, get) => ({
   },
   showFullGraph: () => {
     if (!get().subgraph.active) return;
+    // A model too large to draw whole has no full graph: the canvas asks for a class to draw it around instead.
+    if (!drawnWhole(get().model)) get().notify(`This model has ${get().model.terms.length.toLocaleString('en')} terms, too many to draw at once (more than ${GRAPH_LIMIT.toLocaleString('en')}): the graph is drawn around the terms you choose.`);
     set((s) => ({ subgraph: { ...s.subgraph, active: false } }));
     get().fit();
   },

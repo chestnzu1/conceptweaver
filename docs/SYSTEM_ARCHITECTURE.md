@@ -514,7 +514,7 @@ Three different problems, with different answers.
 | Scale | Local profile | With TDB2 |
 | --- | --- | --- |
 | Up to about 5,000 classes, 50,000 triples | Works today. | Not needed. |
-| 10,000–100,000 classes, up to a few million triples | Model in memory is possible (the model accepts 50,000 terms, `MAX_TERMS`), but parsing takes seconds and the working copy must move to IndexedDB (TD-11). | Comfortable. Queries are index lookups; text search through the Lucene index. |
+| 10,000–100,000 classes, up to a few million triples | Model in memory is possible (the model accepts 250,000 terms since 2026-10-15, `MAX_TERMS`; it was 50,000), but parsing takes seconds and the working copy must move to IndexedDB (TD-11). | Comfortable. Queries are index lookups; text search through the Lucene index. |
 | Tens of millions of triples (instance data) | Not a goal. | Ordinary for TDB2 on one machine with adequate memory and SSD storage. Bulk loading at this size is done with the bulk loader as an offline job, not through the API. |
 | Beyond one machine | — | Out of scope. TDB2 does not cluster; that would be the point to move to a server product behind the same query module. |
 

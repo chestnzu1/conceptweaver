@@ -1,3 +1,4 @@
+import { drawnWhole } from './culling';
 import { flushSync } from 'react-dom';
 import { convertModel } from './convert';
 import { beyondEnumerations, enumerationEdges } from './edgeKinds';
@@ -86,25 +87,36 @@ const STYLE_PROPS = [
 /** Serialises the live canvas to a standalone SVG covering the whole model. */
 function graphSvg(): { svg: string; w: number; h: number } | null {
   const store = useStore.getState();
-  // Selection and spotlight styling shouldn't end up in the picture.
+  // Selection and spotlight styling shouldn't end up in the picture. The canvas draws only what
+  // is in view, and less of it zoomed out: for the picture it draws all of it, in full.
   flushSync(() => {
     store.select([]);
     store.setHighlight([]);
     store.setEditing(null);
+    store.setDrawAll(true);
   });
-  const live = document.getElementById('graph-svg') as SVGSVGElement | null;
-  // The picture is of what the canvas shows: the full graph, or the subgraph when that is on.
-  const b = bounds(viewOf(useStore.getState()).terms);
-  if (!live || !b) return null;
-  const clone = live.cloneNode(true) as SVGSVGElement;
-  const src = live.querySelectorAll('*');
-  const dst = clone.querySelectorAll('*');
-  src.forEach((el, i) => {
-    const cs = getComputedStyle(el);
-    const target = dst[i] as SVGElement;
-    for (const p of STYLE_PROPS) target.style.setProperty(p, cs.getPropertyValue(p));
-    target.removeAttribute('class');
-  });
+  try {
+    const live = document.getElementById('graph-svg') as SVGSVGElement | null;
+    // The picture is of what the canvas shows: the full graph, or the subgraph when that is on.
+    const b = bounds(viewOf(useStore.getState()).terms);
+    if (!live || !b) return null;
+    const clone = live.cloneNode(true) as SVGSVGElement;
+    const src = live.querySelectorAll('*');
+    const dst = clone.querySelectorAll('*');
+    src.forEach((el, i) => {
+      const cs = getComputedStyle(el);
+      const target = dst[i] as SVGElement;
+      for (const p of STYLE_PROPS) target.style.setProperty(p, cs.getPropertyValue(p));
+      target.removeAttribute('class');
+    });
+    return finished(clone, b);
+  } finally {
+    store.setDrawAll(false);
+  }
+}
+
+/** The copy of the canvas made a picture of its own: what is not to be in it taken out, framed on the whole graph. */
+function finished(clone: SVGSVGElement, b: { x0: number; y0: number; x1: number; y1: number }): { svg: string; w: number; h: number } {
   clone.querySelectorAll('[data-noexport]').forEach((el) => el.remove());
   const pad = 70;
   const w = Math.ceil(b.x1 - b.x0 + pad * 2);
@@ -214,6 +226,7 @@ export async function exportModel(format: ExportFormat) {
     else if (format === 'csv-terms') download(`${base}-terms.csv`, '﻿' + termsCsv(m), 'text/csv');
     else if (format === 'csv-relations') download(`${base}-relations.csv`, '﻿' + relationsCsv(m), 'text/csv');
     else if (!viewOf(store).terms.length) store.notify('Nothing to export yet.');
+    else if (!store.subgraph.active && !drawnWhole(store.model)) store.notify('The graph of this model is too large to draw whole: choose a class to draw it around in the Graph view, and the picture is of that.');
     else if (format === 'html') download(`${base}.html`, interactivePage(), 'text/html');
     else if (format === 'svg') download(`${base}.svg`, graphSvg()!.svg, 'image/svg+xml');
     else await exportPng(`${base}.png`);

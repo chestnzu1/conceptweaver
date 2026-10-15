@@ -452,16 +452,16 @@ depth, direction and relationship type (`src/model/subgraph.ts`), adjustable lin
 drag-to-reconnect (`src/model/reconnect.ts`), spotlight and path finding, export as SVG, PNG and
 an interactive HTML page.
 
-**Gaps.** Every term is drawn (TD-10): about 2,000 terms is the comfortable limit. One diagram
-per ontology. Lines do not route around other terms.
+**Gaps.** One diagram per ontology. Lines do not route around other terms. Drawn whole (up to
+12,000 terms), the graph's lines are worked out again at every edit.
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
 | FR-M5-1 | Create and edit entities and relationships directly on the canvas, with rules enforced as they are drawn. | Existing | P0 |
 | FR-M5-2 | Layouts: hierarchical, layered, orthogonal, radial, circular, force-directed, manual; routing straight, curved or right-angled. | Existing | P0 |
 | FR-M5-3 | Subgraph by starting terms, depth, direction and relationship kinds, expandable in place. | Existing | P0 |
-| FR-M5-4 | Only what is in view is drawn; detail is reduced when zoomed out. | Partially Implemented (labels only) | P0 |
-| FR-M5-5 | Above a size threshold the graph opens on a subgraph; the full graph is never instantiated. | Recommended | P0 |
+| FR-M5-4 | Only what is in view is drawn; detail is reduced when zoomed out. | Implemented 2026-10-15 (`src/model/culling.ts`: the area around the view, lines cut to it, a layer moved by a pan; no words below 30 % and 20 %, lines batched far out) | P0 |
+| FR-M5-5 | Above a size threshold the graph opens on a subgraph; the full graph is never instantiated. | Implemented 2026-10-15 (above 12,000 terms: opens on the Structure Explorer, the graph drawn around a chosen class) | P0 |
 | FR-M5-6 | Styling by kind and by element, themes, saved styles. | Existing | P1 |
 | FR-M5-7 | Several named diagrams per ontology, each with its own contents, layout and style. | Recommended | P1 |
 | FR-M5-8 | Export the picture as SVG, PNG and an interactive page. | Existing | P1 |

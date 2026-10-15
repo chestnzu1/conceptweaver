@@ -1,3 +1,4 @@
+import { drawnWhole } from '../culling';
 import { checkpointed, committed, createLocalEditService, discarded, opened, redone, stepChangeSet, undone, type DocumentState, type Step, type Version } from '../../editing/local';
 import type { ChangeSet, OntologyEditService } from '../../editing/contracts';
 import { WORKING_COPY } from '../../structure/local';
@@ -180,7 +181,9 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     // A different document: its history starts afresh, and it counts as unchanged until edited.
     // Another model may be of another type: the view stays only if that type has it.
     const d = opened(model);
-    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, running: false, phase: '', job: null, checks: {}, data: MODEL_DATA, shapeId: null, tab: 'results' }, reasoning: NO_REASONING });
+    // A model too large to draw whole opens on the Structure Explorer, where the graph around a class is a click away.
+    const view = viewFor(model, get().view);
+    set({ view: view === 'graph' && !drawnWhole(model) ? viewFor(model, 'structure') : view, showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, running: false, phase: '', job: null, checks: {}, data: MODEL_DATA, shapeId: null, tab: 'results' }, reasoning: NO_REASONING });
     void get().loadExternals();
     get().fit();
   },
@@ -212,7 +215,7 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
       }
       get().replaceModel(found.model, id);
       // Opening must not itself count as a change (replaceModel may have filled in missing IRIs).
-      set((s) => ({ doc: { id, saved: s.version.state }, view: 'graph' }));
+      set((s) => ({ doc: { id, saved: s.version.state }, view: drawnWhole(s.model) ? 'graph' : s.view }));
       get().notify(`Opened “${found.info.name}”.`);
       return true;
     } catch (e) {

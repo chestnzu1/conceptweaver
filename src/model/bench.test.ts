@@ -90,4 +90,6 @@ it.skipIf(!OUT)('times the model layer on large models', async () => {
     lines.push('');
   }
   writeFileSync(OUT!, lines.join('\n'));
+  // A model of some 10,000 terms, for the Graph view in the browser (scripts/canvas.mjs) and nothing else here.
+  writeFileSync(`${OUT}.6700.json`, JSON.stringify(stressModel(6700)));
 }, 600_000);

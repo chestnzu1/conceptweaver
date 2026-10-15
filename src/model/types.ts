@@ -556,8 +556,13 @@ export interface QualityConfig {
   on: string[];
 }
 
-export const MAX_TERMS = 50_000;
-export const MAX_RELATIONS = 100_000;
+/**
+ * Bounds on what a model file may hold, against a file that is not what it says it is. A model too
+ * large to draw is drawn around the terms chosen (culling.ts, GRAPH_LIMIT), and the Structure
+ * Explorer answers at 200,000 classes, so these are well above what is drawn.
+ */
+export const MAX_TERMS = 250_000;
+export const MAX_RELATIONS = 1_000_000;
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);

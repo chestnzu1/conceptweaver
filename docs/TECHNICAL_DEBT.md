@@ -398,6 +398,26 @@ Structure Explorer handles 200,000 classes (hierarchy built in 0.65 s in
    instantiate the full graph.
 4. Only if those fail: a Canvas 2D layer for edges.
 
+**Status, 2026-10-15: done (roadmap task 2.2), without step 4.** `src/model/culling.ts`:
+
+- Culling: of a graph of more than 500 terms, the canvas draws the terms and lines in an area
+  around the view (the view and four tenths of it on each side), kept while the view stays
+  inside it; a smaller one is drawn whole, as before. Culling the terms was not
+  enough: on a wide hierarchy some 6,000 lines between terms out of view cross it, 1.3 billion
+  pixels of path, so a line that runs out of the area is cut to it, as the same curve.
+- The area is a layer of its own: a pan moves it on the compositor and paints nothing; only a
+  new area, or another zoom, is painted.
+- Level of detail: below 30 % no words on the lines, below 20 % none in the terms and no handles;
+  there, above 1,500 lines, the lines are drawn as one path for each way of drawing them.
+- Subgraph-first: above 12,000 terms (`GRAPH_LIMIT`) the model opens on the Structure Explorer,
+  and the Graph view builds nothing until a class is chosen to draw the graph around.
+
+Panning with some 300 terms in view: 4.5 to 55 frames a second at 2,600 classes, 0.9 to 43 at
+9,892 terms, in a headless browser that paints on the processor; the number of SVG elements
+follows what is in view (BASELINES.md). What remains: a jump to another part of the graph paints
+the new area at once (0.28 s at 9,892 terms), and an edit still works out the lines of the whole
+graph (0.19 s there). Pictures are of the whole graph, drawn in full for the moment they are taken.
+
 ### TD-11 Browser persistence is a single JSON string with a hard ceiling — Medium
 
 **Where.** The subscriber at the end of `src/model/store.ts` writes

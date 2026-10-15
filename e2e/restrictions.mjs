@@ -12,6 +12,8 @@ const page = await browser.newPage({ viewport: { width: 1700, height: 1300 } });
 const errors = [];
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message));
+// Dropdowns of terms fill in when the pointer reaches them, so hover before choosing.
+{ const proto = Object.getPrototypeOf(page.locator('body')); const orig = proto.selectOption; proto.selectOption = async function (...a) { await this.hover(); return orig.apply(this, a); }; }
 let failed = 0;
 const ok = (c, m) => { if (!c) failed++; console.log((c ? 'PASS ' : 'FAIL ') + m); };
 const panel = page.locator('.inspector');

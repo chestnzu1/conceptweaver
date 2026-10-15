@@ -630,9 +630,32 @@ More on what the advanced reasoner does and does not cover is under
 ## Size
 
 Tested with generated ontologies (File → Generate a stress-test model; `src/model/stress.ts`).
-Up to about 2,000 terms and 5,000 relationships everything stays responsive. At about 4,000
-terms the tables, checks, reasoner, RDF and SPARQL still work but the canvas becomes slow.
 Long tables and result lists are shown a page at a time; the search above a table narrows it.
+
+Of a graph of more than 500 terms the canvas draws what is around the view, not the whole graph
+(`src/model/culling.ts`, since 2026-10-15); a smaller one is drawn whole and in full, as before:
+
+- **Only the area around the view is drawn**: the terms in it, and the lines that may cross it,
+  a line from far away cut to the part that may be seen (the same curve, its dashes where they
+  were). The area is the view and four tenths of it on every side, and is drawn as a layer of
+  its own, which a pan moves without painting anything again; when the view nears its edge,
+  another is drawn around it.
+- **Less is drawn zoomed out**: below 30 % no words on the lines, below 20 % no words in the
+  terms and no handles, and above 1,500 lines in view they are drawn as a few paths, one for
+  each way of drawing them, which a drag passes through to pan.
+- **A picture is of the whole graph** all the same: for an SVG, PNG or interactive page the
+  canvas draws all of it, in full, for the moment the picture is taken.
+- **Above 12,000 terms the graph is never drawn whole** (`GRAPH_LIMIT`): such a model opens on
+  the Structure Explorer, and the Graph view asks for a class to draw the graph around (or one
+  is clicked in the class tree, or shown in the graph from anywhere else); *Full graph* comes
+  back to that question, saying why. Drawn whole, the graph is worked out again, line by line,
+  at every edit: some 200 ms at 10,000 terms.
+
+Measured with `scripts/canvas.mjs` (part of `pnpm bench`): on the generated 2,600-class model,
+panning with some 300 terms in view went from 4.5 to 55 frames a second, and 91,949 SVG
+elements are 1,079; on one of 9,892 terms (6,700 classes), from 0.9 to 43, with 825 elements
+for 236,931, and opening it from 5.4 s of blocked page to 0.6 s. Fitted on the screen, both pan
+at 60. A model file holds up to 250,000 terms and 1,000,000 relationships (`MAX_TERMS`).
 `BENCH_OUT=/tmp/bench.txt pnpm exec vitest run src/model/bench.test.ts` times the model layer.
 `pnpm bench` runs both benchmarks named here and measures, in the browser, how long the page is
 blocked by an edit, a reasoner run and a validation run on 2,600 classes; the numbers it gave
@@ -651,12 +674,12 @@ questions to the service, one for each level, not one for each branch.
 
 What does not scale with it is the rest of the app, which holds the whole model in the page. The
 fast reasoner takes 0.13 s for 650 classes and 1.3 s for 5,200, in a worker since 2026-10-15
-(see *Reasoning and validation as jobs*); the canvas draws every term. So that the second of these does not slow the other views down, the
-canvas is not laid out or painted while a view covers it: on 5,200 classes that took a click in
+(see *Reasoning and validation as jobs*); the canvas draws what is around the view, but works
+out the lines of the whole graph at each edit. So that the canvas does not slow the other views
+down, it is not laid out or painted while a view covers it: on 5,200 classes that took a click in
 *Structure* from about 600 ms to under 70 ms. In the browser, with the 5,200-class generated
 ontology open, *Expand all* (7,325 lines, 40 of them drawn) takes 0.2 s, what is said of a class
-0.1 s, *Analyze* 0.2 s; opening such a model still takes several seconds, most of it the canvas
-and the checks behind the Validation count.
+0.1 s, *Analyze* 0.2 s; opening a model of 6,700 classes blocks the page for 0.6 s.
 
 The lists of the Entities page are searched, sorted and filtered by a service of their own,
 over records made once for each revision of the model (0.1 s for the 650 classes of the stress
@@ -684,6 +707,8 @@ that *Layered* says so and uses the built-in hierarchical layout.
   is in `props.ts`, `relating.ts` and `axioms.ts`, and `reconnect.ts` asks them whether an end
   of a relationship can be moved to another term. How a line runs is `geometry.ts`, including
   from an end that was put somewhere by hand; where those ends are is kept in `graphStyle.ts`.
+  What of the graph is drawn, and how much of each thing, by where the view is and how far it
+  is zoomed, is `culling.ts`, which also cuts a long line to the part that may be seen.
   Which object property a relationship uses, by id, is `identity.ts`; every entity's IRI is
   `iri.ts`; a model of an older format is brought up to date in `normalizeModel` (`types.ts`),
   checked against the files in `fixtures/v1`, `v2` and `v3`. What an ontology says that the
@@ -988,8 +1013,10 @@ imports, both in the background.
 
 **Not done.** The reasoner is run once for the views and again inside a validation job, each in
 a worker of its own. Applying a quick fix finds it again by running the quality rules on the page
-(about 0.2 s at 2,600 classes). Opening a large model, and selecting a term in it, are still
-slower than the 100 ms of NFR-3: that is the canvas, which draws every term (TD-10, Phase 2).
+(about 0.2 s at 2,600 classes). At 2,600 classes opening the model blocks the page for 0.2 s,
+selecting a class from the class tree 0.14 s, an edit 0.08 s; at 10,000 terms selecting one is
+0.28 s, most of it painting the part of the graph the view jumps to, and an edit 0.19 s, the
+lines of the whole graph worked out again (`scripts/main-thread.mjs`).
 There is no HTTP client for either service yet; a backend implements the same contracts (Phase 3).
 
 ## OWL 2 DL reasoning (HermiT)
@@ -1135,9 +1162,8 @@ bend points, the canvas cannot keep (see below).
   *Rearrange* runs the layout again. That is deliberate: an edit never moves what was arranged.
 - **Gliding is for up to 300 terms and 700 lines**; a larger graph is shown in its new places at
   once, and nothing glides for someone who asked their system for less motion.
-- **The canvas still draws every term**, so what is said under *Size* about a few thousand terms
-  holds whatever the layout: arranging 5,000 terms takes a fraction of a second, drawing them
-  does not.
+- **The canvas draws what is around the view** (see *Size*), whatever the layout: arranging
+  5,000 terms takes a fraction of a second, and drawing them only as many as are near the view.
 - In the exported page a moved term redraws its lines the way the layout has them, with the
   places among other lines they had when exported.
 

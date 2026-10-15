@@ -73,6 +73,49 @@ reasoner run (OWL checks, built-in reasoner)       < 50 ms           0          
 validation run (all checks)                        < 50 ms           0               0 ms           576 ms
 ```
 
+## The Graph view at scale (roadmap task 2.2, 2026-10-15)
+
+`scripts/canvas.mjs` (part of `pnpm bench` since this task) opens a model in the built app and
+pans the Graph view by dragging, a step each frame, with the whole model fitted and with some 300
+terms in view, the case FR-M5-4 sets a target for: 30 frames a second with 10,000 terms loaded.
+Before is the application as of commit `0b10e0e`, built and measured the same way, the same
+day, on the same machine; the headless browser paints on the processor, so a browser that
+paints on the graphics card does better on both sides.
+
+| Model | Measure | Before | After |
+| --- | --- | ---: | ---: |
+| 2,600 classes (3,839 terms) | SVG elements drawn, 300 terms in view | 91,949 | 1,079 |
+| | panning, 300 terms in view (13 %) | 4.5 frames a second | **55** |
+| | panning, fitted (3 %) | 6.0 | **60** |
+| | opening: longest task | 724 ms | 210 ms |
+| 6,700 classes (9,892 terms) | SVG elements drawn, 300 terms in view | 236,931 | 825 |
+| | panning, 300 terms in view (4 %) | 0.9 | **43** |
+| | panning, fitted (3 %) | 1.7 | **60** |
+| | opening: longest task | 3,243 ms | 593 ms |
+
+The stress model's hierarchy is very wide: at 4 % some 8,000 lines cross the view, most of them
+between terms far out of it, which is what made culling the terms alone not enough (it took the
+6,700-class model from 0.9 to 4.5 frames a second). Within the drawn area a pan paints nothing
+(60 frames a second); what is left of a slower pan is the frames in which the next area is
+painted, up to 0.4 s at 6,700 classes.
+
+The main thread (`scripts/main-thread.mjs`), before and after, two runs each:
+
+| Operation | 2,600 classes, before | after | 6,700 classes, before | after |
+| --- | ---: | ---: | ---: | ---: |
+| Open the model (JSON): longest task | 690 ms | **200 ms** | 5,405 ms | **636 ms** |
+| on screen after | 1.07 s | 0.24 s | 6.96 s | 0.71 s |
+| Select a class in the sidebar: longest task | 105 ms | 123 ms | 197 ms | 280 ms |
+| on screen after | 0.43 s | 0.19 s | 0.60 s | 0.36 s |
+| Edit: rename a class: longest task | 79 ms | 75 ms | 224 ms | 194 ms |
+
+Selecting a class shows it sooner than before but in one longer task: the view jumps to it, and
+the part of the graph around it is drawn and painted at once, where before the whole graph was
+already drawn and only repainted. Above 12,000 terms the graph is not drawn whole; a model of
+50,000 classes (73,810 terms) opens on the Structure Explorer in 13 s, mostly reading the file,
+and its Graph view builds nothing until a class is chosen (`e2e/canvas-scale.mjs` checks the
+same on 12,500).
+
 ## The model layer and the structure services
 
 The figures that bear most on the targets, from the raw output below:

@@ -1,3 +1,4 @@
+import { drawnWhole } from '../culling';
 import { LIST_KINDS, type EntitySort, type FilterValues, type ListKind } from '../../entities/contracts';
 import type { HierarchyMode, Iri } from '../../structure/contracts';
 import { classIriOf } from '../../structure/local';
@@ -120,6 +121,11 @@ export interface SessionSlice {
   selProp: string | null;
   vp: Viewport;
   canvasSize: { w: number; h: number };
+  /**
+   * The canvas draws all of what it shows, in full detail, rather than what is in view: for the
+   * moment a picture of it is taken (files.ts), which is of the whole graph.
+   */
+  drawAll: boolean;
   view: View;
   editing: Editing | null;
   /** Ids of terms and relations to spotlight (everything else is dimmed). */
@@ -179,6 +185,7 @@ export interface SessionSlice {
   setVp: (vp: Viewport) => void;
   zoomBy: (factor: number, cx?: number, cy?: number) => void;
   setCanvasSize: (w: number, h: number) => void;
+  setDrawAll: (on: boolean) => void;
   fit: () => void;
   setView: (v: View) => void;
   setEditing: (e: Editing | null) => void;
@@ -199,6 +206,7 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   selProp: null,
   vp: { x: 0, y: 0, k: 1 },
   canvasSize: { w: 0, h: 0 },
+  drawAll: false,
   view: 'graph',
   editing: null,
   highlight: [],
@@ -334,6 +342,11 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   selectAll: () => set((s) => ({ sel: { terms: viewOf(s).terms.map((t) => t.id), rels: [] } })),
   focusTerm: (id) => {
     if (!get().model.terms.some((x) => x.id === id)) return;
+    // A graph too large to draw whole is drawn around the term.
+    if (!get().subgraph.active && !drawnWhole(get().model)) {
+      get().setSubgraph({ roots: [id], expanded: [], hidden: [] });
+      get().visualizeSubgraph();
+    }
     // Asked to show a term that the subgraph leaves out: it joins the subgraph as a starting point.
     if (get().subgraph.active && !viewOf(get()).terms.some((x) => x.id === id)) {
       const { roots, hidden } = get().subgraph;
@@ -347,6 +360,10 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   focusRelation: (id) => {
     const r = get().model.relations.find((x) => x.id === id);
     if (!r) return;
+    if (!get().subgraph.active && !drawnWhole(get().model)) {
+      get().setSubgraph({ roots: [...new Set([r.from, r.to])], expanded: [], hidden: [] });
+      get().visualizeSubgraph();
+    }
     if (get().subgraph.active) {
       const shown = new Set(viewOf(get()).terms.map((t) => t.id));
       const missing = [r.from, r.to].filter((x) => !shown.has(x));
@@ -404,6 +421,7 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
       return { vp: { k, x: px - (px - s.vp.x) * ratio, y: py - (py - s.vp.y) * ratio } };
     }),
   setCanvasSize: (w, h) => set({ canvasSize: { w, h } }),
+  setDrawAll: (on) => set({ drawAll: on }),
   fit: () => {
     const { canvasSize } = get();
     const { w, h } = canvasSize;

@@ -4,9 +4,11 @@
 //
 // The model layer (src/model/bench.test.ts) and the structure services (src/structure/bench.test.ts)
 // on generated models; then, in the browser, the main thread on the 2,600-class model
-// (scripts/main-thread.mjs). The results go to bench-results/<date and time>/ unless a directory is
-// given: model.txt, structure.txt, main-thread.txt, and report.md, which puts them together with
-// the machine and the commit they were measured on. Numbers from different machines do not compare.
+// (scripts/main-thread.mjs) and the Graph view on it and on one of some 10,000 terms
+// (scripts/canvas.mjs). The results go to bench-results/<date and time>/ unless a directory is
+// given: model.txt, structure.txt, main-thread.txt, canvas.txt, and report.md, which puts them
+// together with the machine and the commit they were measured on. Numbers from different machines
+// do not compare.
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -40,8 +42,11 @@ const { base, stop } = await startPreview();
 // The model bench saves each generated model as it would be downloaded; the browser opens the largest.
 const model = path.join(out, 'model.txt.2600.json');
 const { output } = await step('main thread in the browser: scripts/main-thread.mjs', process.execPath, [path.join(root, 'scripts', 'main-thread.mjs'), model, base], { show: false });
+const canvas = [];
+for (const n of [2600, 6700]) canvas.push((await step(`Graph view in the browser, ${n} classes: scripts/canvas.mjs`, process.execPath, [path.join(root, 'scripts', 'canvas.mjs'), path.join(out, `model.txt.${n}.json`), base], { show: false })).output.trimEnd());
 stop();
 fs.writeFileSync(path.join(out, 'main-thread.txt'), output);
+fs.writeFileSync(path.join(out, 'canvas.txt'), canvas.join('\n\n') + '\n');
 for (const f of fs.readdirSync(out)) if (/^model\.txt\.\d+\.json$/.test(f)) fs.rmSync(path.join(out, f));
 
 const git = (args) => { try { return execSync(`git ${args}`, { cwd: root, encoding: 'utf8' }).trim(); } catch { return ''; } };
@@ -59,6 +64,14 @@ The longest task over 50 ms while the operation runs and the page settles. Phase
 
 \`\`\`
 ${output.trimEnd()}
+\`\`\`
+
+## Graph view in the browser (scripts/canvas.mjs)
+
+What is drawn and how smoothly it pans, with the whole model fitted and with some 300 terms in view. FR-M5-4's target: 30 frames a second with 10,000 terms loaded and 300 in view.
+
+\`\`\`
+${read('canvas.txt')}
 \`\`\`
 
 ## Model layer (src/model/bench.test.ts)

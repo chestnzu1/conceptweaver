@@ -680,6 +680,19 @@ textarea {
   cursor: grabbing;
 }
 
+/* Lines drawn in batches, zoomed far out on a large graph: none can be taken hold of, and a drag pans. */
+.edge.batch {
+  pointer-events: none;
+}
+
+/* The drawn area of a large graph, as a layer the browser moves when the view is panned (Canvas.tsx). */
+.graph.layered {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}
+
 .graph text {
   font-family: system-ui, sans-serif;
   text-anchor: middle;
@@ -1034,6 +1047,32 @@ textarea {
 .empty-hint strong {
   color: var(--ink);
   font-size: 16px;
+}
+
+/* The Graph view of a model too large to draw whole: a class to draw it around is chosen here. */
+.graph-chooser {
+  display: grid;
+  place-items: center;
+}
+
+.graph-chooser .chooser {
+  display: grid;
+  gap: 10px;
+  max-width: 440px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink-2);
+}
+
+.graph-chooser .chooser strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.graph-chooser .chooser > .btn {
+  justify-self: start;
 }
 
 .canvas-banner {
