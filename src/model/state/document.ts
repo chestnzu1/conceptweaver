@@ -1,3 +1,6 @@
+import { checkpointed, committed, createLocalEditService, discarded, opened, redone, stepChangeSet, undone, type DocumentState, type Step, type Version } from '../../editing/local';
+import type { ChangeSet, OntologyEditService } from '../../editing/contracts';
+import { WORKING_COPY } from '../../structure/local';
 import { withoutEntities } from '../domains';
 import { linkProps } from '../identity';
 import { withIris } from '../iri';
@@ -14,10 +17,10 @@ import type { Slice, State } from './types';
 
 /**
  * The document: the model being edited, its history, and which saved model it is. Every edit of
- * the ontology goes through `apply` here (see edits.ts for the edits themselves).
+ * the ontology goes through `apply` here (see edits.ts for the edits themselves), and is a change
+ * set of the edit service (src/editing/local.ts): one step of the history, which undo applies
+ * backwards. A change set made elsewhere comes in through `editService`.
  */
-
-const HISTORY = 100;
 
 /** The IRIs of a model's own entities: its terms, object properties and named datatypes. */
 const entityIris = (m: Model) => new Set([...m.terms, ...m.props, ...m.datatypes].map((x) => x.iri).filter((x): x is string => !!x));
@@ -57,29 +60,32 @@ function loadModel(): Model {
 }
 
 /**
- * How the model in the editor relates to the library of saved models. `saved` is the very model
- * object that was last saved or opened, so "has unsaved changes" is simply "the model is no
- * longer that object" and undoing back to it makes the model clean again.
+ * How the model in the editor relates to the library of saved models. `saved` is the state of
+ * the document that was last saved or opened (`Version.state`), so "has unsaved changes" is
+ * simply "the document is in another state now", and undoing back to it makes it clean again.
+ * Moving terms counts: where they sit is saved with the model.
  */
 export interface Doc {
   /** Id of the saved model this is, or null when it has never been saved to the library. */
   id: string | null;
-  saved: Model | null;
+  saved: number | null;
 }
 
-export const isDirty = (s: { model: Model; doc: Doc }) => s.model !== s.doc.saved;
+export const isDirty = (s: { version: Version; doc: Doc }) => s.version.state !== s.doc.saved;
 
-function loadDoc(model: Model): Doc {
+function loadDoc(state: number): Doc {
   try {
     const d = JSON.parse(localStorage.getItem(DOC_KEY) ?? 'null') as { id?: unknown; dirty?: unknown } | null;
-    if (d) return { id: typeof d.id === 'string' ? d.id : null, saved: d.dirty === true ? null : model };
+    if (d) return { id: typeof d.id === 'string' ? d.id : null, saved: d.dirty === true ? null : state };
   } catch {
     // Unreadable: treat the working copy as an unsaved model.
   }
-  return { id: null, saved: model };
+  return { id: null, saved: state };
 }
 
-const pushHistory = (s: State) => ({ past: [...s.past.slice(-(HISTORY - 1)), s.model], future: [] as Model[] });
+/** The document as the edit service has it, and the parts of the store that hold it. */
+const documentOf = (s: State): DocumentState => ({ model: s.model, version: s.version, past: s.past, future: s.future });
+const held = (d: DocumentState) => ({ model: d.model, version: d.version, past: d.past, future: d.future });
 
 export const prune = (sel: Selection, m: Model): Selection => {
   const t = new Set(m.terms.map((x) => x.id));
@@ -88,9 +94,12 @@ export const prune = (sel: Selection, m: Model): Selection => {
 };
 
 export const initialModel = loadModel();
+const initial = opened(initialModel);
 
 export interface DocumentSlice {
   model: Model;
+  /** Which state the document is in, and which revision of the ontology that is. */
+  version: Version;
   doc: Doc;
   /** Goes up each time another model is put in the editor, so that views can start afresh for it. */
   docSeq: number;
@@ -98,8 +107,10 @@ export interface DocumentSlice {
   libraryAutosave: boolean;
   /** The working copy could not be kept in the browser, so closing the page would lose unsaved changes. */
   workingCopyAtRisk: boolean;
-  past: Model[];
-  future: Model[];
+  /** The steps undo takes back, the last one last; each a change set made in the editor. */
+  past: Step[];
+  future: Step[];
+  /** Makes an edit: one step of the history, or (`history` false) part of the last one. */
   apply: (fn: (m: Model) => Model, history?: boolean) => void;
   checkpoint: () => void;
   discardLast: () => void;
@@ -118,12 +129,16 @@ export interface DocumentSlice {
   /** Called when the library changed a saved model behind the editor's back (renamed or deleted). */
   syncDoc: (change: { renamed?: { id: string; name: string }; deleted?: string }) => void;
   setLibraryAutosave: (on: boolean) => void;
-
+  /** Applies change sets made elsewhere to the document, and answers what it states (src/editing/contracts.ts). */
+  editService: OntologyEditService;
+  /** A step that undo would take back (`index` into `past`), as a change set of axioms. Worked out when asked for, one at a time. */
+  changeSetOf: (index: number) => ChangeSet | undefined;
 }
 
 export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
   model: initialModel,
-  doc: loadDoc(initialModel),
+  version: initial.version,
+  doc: loadDoc(initial.version.state),
   docSeq: 0,
   libraryAutosave: (() => {
     try {
@@ -141,27 +156,25 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
       // and every relationship joined to the object property it uses, by id.
       const model = prepared(fn(s.model), s.model);
       if (model === s.model) return s;
-      return history ? { model, ...pushHistory(s) } : { model };
+      const d = committed(documentOf(s), model, history);
+      return d.model === s.model ? s : held(d);
     }),
   // Moving terms about in a subgraph changes its own layout, not the model, so there is nothing to undo.
-  checkpoint: () => set((s) => (s.subgraph.active ? s : pushHistory(s))),
+  checkpoint: () => set((s) => (s.subgraph.active ? s : held(checkpointed(documentOf(s))))),
   discardLast: () =>
     set((s) => {
-      if (!s.past.length) return s;
-      const model = s.past[s.past.length - 1];
-      return { model, past: s.past.slice(0, -1), sel: prune(s.sel, model), editing: null };
+      const d = discarded(documentOf(s));
+      return d ? { ...held(d), sel: prune(s.sel, d.model), editing: null } : s;
     }),
   undo: () =>
     set((s) => {
-      if (!s.past.length) return s;
-      const model = s.past[s.past.length - 1];
-      return { model, past: s.past.slice(0, -1), future: [s.model, ...s.future], sel: prune(s.sel, model), editing: null, highlight: [] };
+      const d = undone(documentOf(s));
+      return d ? { ...held(d), sel: prune(s.sel, d.model), editing: null, highlight: [] } : s;
     }),
   redo: () =>
     set((s) => {
-      if (!s.future.length) return s;
-      const model = s.future[0];
-      return { model, past: [...s.past, s.model], future: s.future.slice(1), sel: prune(s.sel, model), editing: null, highlight: [] };
+      const d = redone(documentOf(s));
+      return d ? { ...held(d), sel: prune(s.sel, d.model), editing: null, highlight: [] } : s;
     }),
   replaceModel: (m, docId = null) => {
     const model = prepared(m);
@@ -169,7 +182,8 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     get().endTween();
     // A different document: its history starts afresh, and it counts as unchanged until edited.
     // Another model may be of another type: the view stays only if that type has it.
-    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), model, doc: { id: docId, saved: model }, docSeq: get().docSeq + 1, past: [], future: [], sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
+    const d = opened(model);
+    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
     void get().loadExternals();
     get().fit();
   },
@@ -181,10 +195,10 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     }
     if (name?.trim() && name.trim() !== get().model.name) get().apply((m) => ({ ...m, name: name.trim() }));
     // What is saved is the model as it is now; edits made while the browser is writing stay unsaved.
-    const model = get().model;
+    const { model, version } = get();
     try {
       const info = await saveToLibraryDb(model, fresh ? undefined : (get().doc.id ?? undefined));
-      set({ doc: { id: info.id, saved: model } });
+      set({ doc: { id: info.id, saved: version.state } });
       if (!quiet) get().notify(fresh ? `Saved “${info.name}” to My Models in this browser.` : `Saved “${info.name}”.`);
       return true;
     } catch (e) {
@@ -201,7 +215,7 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
       }
       get().replaceModel(found.model, id);
       // Opening must not itself count as a change (replaceModel may have filled in missing IRIs).
-      set((s) => ({ doc: { id, saved: s.model }, view: 'graph' }));
+      set((s) => ({ doc: { id, saved: s.version.state }, view: 'graph' }));
       get().notify(`Opened “${found.info.name}”.`);
       return true;
     } catch (e) {
@@ -216,7 +230,7 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
       // The open model takes the new name too, without that counting as an unsaved change.
       const clean = !isDirty(get());
       get().apply((m) => ({ ...m, name: renamed.name }), false);
-      if (clean) set((s) => ({ doc: { ...s.doc, saved: s.model } }));
+      if (clean) set((s) => ({ doc: { ...s.doc, saved: s.version.state } }));
     }
   },
   setLibraryAutosave: (libraryAutosave) => {
@@ -227,5 +241,9 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     }
     set({ libraryAutosave });
   },
-
+  editService: createLocalEditService({
+    current: () => ({ model: get().model, ontologyId: get().doc.id ?? WORKING_COPY }),
+    commit: (next) => get().apply(() => next),
+  }),
+  changeSetOf: (index) => stepChangeSet(documentOf(get()), index, get().doc.id ?? WORKING_COPY),
 });

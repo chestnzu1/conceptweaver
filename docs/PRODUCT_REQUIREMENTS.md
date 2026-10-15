@@ -210,7 +210,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M7 Bulk import and mapping | **Partially Implemented** | `src/model/bulk.ts` | No files, no mapping screen |
 | M8 Reuse and alignment | **Existing** | `src/model/external.ts`, `alignment.ts`, `matcher.ts` | Imports not transitive or declared |
 | M9 Search and SPARQL | **Existing** | `src/entities/`, `src/model/sparql.ts` | Asserted graph only |
-| M10 Versioning | **Not implemented** | Undo only (`past` in `store.ts`) | Everything |
+| M10 Versioning | **Not implemented** | Undo only: since 2026-10-15 a history of change sets, each of which can be given as axioms (`src/editing/local.ts`); no named versions yet | Everything |
 | M11 Publishing and export | **Partially Implemented** | `src/model/files.ts`, `htmlExport.ts` | No RDF/XML export; no publishing |
 | M12 AI assistance | **Not implemented** | Matcher seam in `matcher.ts` | Everything |
 | M13 Collaboration and governance | **Partially Implemented** | `src/model/governance.ts` | No users, review or audit |
@@ -332,7 +332,7 @@ axioms, annotations on axioms, datatype facets or rules.
 | FR-M2-4 | Property chains, keys, disjoint unions, negative property assertions and general class axioms can be stated and edited. | Recommended | P1 |
 | FR-M2-5 | Annotations on axioms are kept, shown and editable. | Recommended | P1 |
 | FR-M2-6 | Datatype restrictions with facets (ranges, patterns, lengths). | Partly implemented 2026-10-14: in any data range of an expression or a range axiom (`xsd:integer[>= 0]`); not as a named datatype | P2 |
-| FR-M2-7 | Every edit goes through one rule service that accepts it or refuses it with a reason, whichever control was used. | Partially Implemented (rules exist; since 2026-10-15 one rule for moving an end from the canvas, the panel and the table, TD-06; one service for every edit is roadmap task 1.8) | P0 |
+| FR-M2-7 | Every edit goes through one rule service that accepts it or refuses it with a reason, whichever control was used. | Partially Implemented (since 2026-10-15 one rule for moving an end from the canvas, the panel and the table, TD-06; every edit is a change set of `OntologyEditService`, and one made elsewhere is held to the editor's rule functions, with a reason for each refusal; the editor's own controls still call those functions directly) | P0 |
 | FR-M2-8 | SWRL rules. | Future | P3 |
 
 **Module non-functional points.** A class expression that fails to parse is never discarded: it

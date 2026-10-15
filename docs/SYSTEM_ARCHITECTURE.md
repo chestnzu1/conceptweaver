@@ -249,7 +249,7 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | --- | --- | --- | --- |
 | `StructureService` | children, branches, paths, summary, search, compare, explain, analyze, members | `src/structure/local.ts` | **Existing** |
 | `EntityQueryService` | describe, query, options | `src/entities/local.ts` | **Existing** |
-| `OntologyEditService` | `apply(changeSet)`, `validate(changeSet)`, `entity(iri)` | `axioms.ts`, `relating.ts`, `reconnect.ts`, store actions | Recommended, Phase 1 |
+| `OntologyEditService` | `apply(changeSet)`, `validate(changeSet)`, `entity(iri)` | `src/editing/local.ts`, over the rule functions of `axioms.ts`; the document's edits are its steps | **Existing** (2026-10-15) |
 | `ReasoningService` | `start(revision, engine)`, `status(job)`, `cancel(job)`, `result(job)` | `reasoner.ts` in a worker; `reasoning.ts` for HermiT | Recommended, Phase 1 (functions exist) |
 | `ValidationService` | `start(revision, scope)`, `status`, `cancel`, `report` | `validation.ts` in a worker | Recommended, Phase 1 |
 | `GraphService` | `neighbourhood(roots, depth, filters)`, `search(text)` | `subgraph.ts` (`extractSubgraph`, `searchTerms`) | Recommended, Phase 2 |
@@ -314,6 +314,18 @@ type Axiom =
 
 `Unmapped` carries statements neither side has a typed form for yet, so that nothing is lost
 while the typed list grows.
+
+**Status, 2026-10-15 (roadmap task 1.8).** `src/editing/contracts.ts` is this contract, with the
+axiom list grown to what the editor states (declarations, class axioms with full class
+expressions, assertions, property axioms and characteristics, datatype definitions, annotations,
+the ontology's IRI, annotations and imports), and `Refusal`s with codes (`invalid`, `refused`,
+`unsupported`). The local implementation (`src/editing/local.ts`) differs from the sketch above in
+one respect, as §5.1's risk asked: an edit made in the editor is applied as the parts of the model
+it replaced (a step), and its axioms are worked out at the document boundary when they are asked
+for, because working them out costs as much as an export (half a second at 2,600 classes). A
+change set made elsewhere is applied to the ontology's statements, read back, and taken only if
+the result states exactly what was asked. Undo applies a step backwards. See the README, *Edits
+as change sets*.
 
 ### 4.4 REST sketch for the remote side
 

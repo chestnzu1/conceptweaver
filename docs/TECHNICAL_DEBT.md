@@ -394,6 +394,12 @@ governance workflows and publishing.
 server revisions with change sets (Phase 4). Design in
 [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §6.
 
+**Status, 2026-10-15.** The groundwork is there (roadmap task 1.8). The history is no longer a
+list of models but of steps, each a change set of the edit service (`src/editing/local.ts`):
+undo applies one backwards. The document has a revision of its own (`version` in the store), and
+any step can be given as axioms added and removed (`changeSetOf`), which is the difference a
+named version will show. Named versions, their storage and a view of the history are task 2.3.
+
 ### TD-13 Serialization gaps — Medium
 
 **Where.** `exportModel` in `src/model/files.ts:193`; `src/model/rdf.ts`.
@@ -511,6 +517,11 @@ discipline, an edit that is valid in one is rejected or reinterpreted in the oth
 ontologies, and a conformance suite that runs every fixture through both implementations and
 compares the result as RDF. The existing `http.test.ts` files do exactly this for two services
 already.
+
+*Status, 2026-10-15.* The contract exists (`src/editing/contracts.ts`), and the local side of the
+conformance suite with it: `src/editing/local.test.ts` takes edits made in the editor, describes
+each as a change set, applies that to the model before the edit, and compares the statements with
+those of the model after it.
 
 ### AR-02 OWL 2 DL reasoning does not finish on large or expressive ontologies
 

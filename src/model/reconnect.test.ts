@@ -273,7 +273,8 @@ describe('reconnecting from the editor', () => {
     expect(rel(st().model, 'isa').to).toBe('award');
     expect(st().model.style.anchors.isa).toBeUndefined();
     st().undo();
-    expect(st().model).toBe(before);
+    // Undo puts back the very parts the step replaced: the model is the one before, part for part.
+    for (const k of Object.keys(before) as (keyof Model)[]) expect(st().model[k]).toBe(before[k]);
     expect(rel(st().model, 'isa').to).toBe('work');
     expect(st().model.style.anchors.isa).toEqual({ to: { side: 'top', at: 0.25 } });
     st().redo();

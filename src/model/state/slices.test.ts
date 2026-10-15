@@ -36,7 +36,7 @@ describe('the slices of the store', () => {
   });
 
   it('keep the document apart from the session: the model and its history in one, what is looked at in the other', () => {
-    expect(keysOf(documentSlice).sort()).toEqual(['apply', 'checkpoint', 'discardLast', 'doc', 'docSeq', 'future', 'libraryAutosave', 'model', 'openFromLibrary', 'past', 'redo', 'replaceModel', 'saveToLibrary', 'setLibraryAutosave', 'syncDoc', 'undo', 'workingCopyAtRisk']);
+    expect(keysOf(documentSlice).sort()).toEqual(['apply', 'changeSetOf', 'checkpoint', 'discardLast', 'doc', 'docSeq', 'editService', 'future', 'libraryAutosave', 'model', 'openFromLibrary', 'past', 'redo', 'replaceModel', 'saveToLibrary', 'setLibraryAutosave', 'syncDoc', 'undo', 'version', 'workingCopyAtRisk']);
     const session = keysOf(sessionSlice);
     for (const k of ['sel', 'vp', 'view', 'dialog', 'theme', 'structure', 'entityViews', 'notify']) expect(session).toContain(k);
     for (const k of ['model', 'past', 'validation', 'ext', 'layoutBusy', 'subgraph']) expect(session).not.toContain(k);

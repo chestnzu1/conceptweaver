@@ -667,6 +667,13 @@ that *Layered* says so and uses the built-in hierarchical layout.
   `ExpressionEditor.tsx` (the blocks, and the dialog), over `manchesterEditor.ts` (the text
   editor, on CodeMirror, loaded when first opened); `ClassAxioms.tsx` and `AxiomList.tsx` use it
   for a class's axioms and a property's domain and range.
+- `src/editing` – what an edit is, and the service that makes edits (see *Edits as change sets*).
+  `contracts.ts` is the change set, by OWL 2's axiom names and IRIs, and `OntologyEditService`
+  (apply, validate, and the axioms about an entity). `axioms.ts` reads an RDF statement as an
+  axiom and writes it back, giving a typed axiom only where that is the very same statement.
+  `local.ts` is the service over the model in the editor: the history of the document as steps,
+  which undo applies backwards, and change sets made elsewhere, held to the editor's rules.
+  `boundaries.test.ts` keeps the contract free of everything else.
 - `src/entities` – the search, the sorting and the filters of the Entities page, apart from the
   page. `contracts.ts` is all the page knows: three questions (`EntityQueryService`: which sorts
   and filters a list has, a page of a list for a search, an order and some filters, and the
@@ -839,6 +846,74 @@ gives keys (locally, term ids, object property keys and relationship ids), and t
 them. With the ontology in a backend the keys would be IRIs and the rows would come with what
 they show, which is the one part of the page that would change. What is typed, chosen and open
 (`entityViews` in the store) is the page's own and no part of the model.
+
+## Edits as change sets
+
+Every edit of the document is a change set: axioms added to and removed from one revision of
+the ontology, with a line saying what was done (`src/editing/contracts.ts`). It is the one shape
+an edit has wherever it is made, so that a backend that holds the ontology as OWL API objects can
+take the same edits (roadmap tasks 3.5 and 4.3).
+
+**An axiom** has the structure OWL 2 gives it, by OWL's own names, with full IRIs:
+`Declaration`, `SubClassOf`, `ClassAssertion`, `ObjectPropertyAssertion`, `AnnotationAssertion`,
+the domains, ranges and characteristics of properties, and the rest of the list in
+`contracts.ts`, with class expressions and data ranges as the structure the expression editor
+has. What has no typed form there yet is carried as the RDF statement it is (`Unmapped`, canonical
+Turtle). `src/editing/axioms.ts` reads each statement of an ontology as an axiom and gives a typed
+form only where writing that form back gives the very same statement, so an axiom always names
+exactly one statement. Of what the app writes for its sample models and fixtures, all but plain
+relationships (an `rdf:Property` and the triples that use it, which OWL has no axiom for) is
+typed; every statement of the corpus's Turtle ontologies reads and writes back unchanged.
+
+**An edit in the editor** is applied at once and exactly, as a step of the document's history:
+the parts of the model it replaced, what they were and what they became (`src/editing/local.ts`).
+Undo applies the last step backwards and redo forwards, putting back the very parts it replaced.
+A step is applied only to the model it was made to; an edit made after an undo, recorded or
+not, means what was undone cannot be redone. What a step is as axioms is worked out when it is
+asked for (`changeSetOf(index)` in the store), not on every keystroke: for the 2,600-class model
+that takes about half a second, as much as an export, while recording and undoing a step take
+less than a millisecond.
+
+**The revision and unsaved changes.** The document has a state (a number for each state it has
+been in) and the revision of the ontology that state is. Moving a term is a new state, which has
+to be saved, but not a new revision: the ontology says the same. "Unsaved changes" compares
+states, so undoing back to what was saved makes the model saved again. Undone back to an earlier
+revision, everything worked out for it holds again: the validation results of that revision are
+current, and the Structure Explorer and the Entities lists answer from what they have.
+
+**A change set made elsewhere** is applied through `editService` in the store, which implements
+`OntologyEditService` over the model in the editor:
+
+- It is refused whole, with a reason for each change it cannot make, when it names another
+  ontology (`not-found`), a revision the ontology has moved on from (`stale-revision`), removes
+  what is not stated or adds what is (`invalid`), or adds what the editor's rules refuse
+  (`refused`: a class cannot be its own superclass, a value has to fit the property's range, a
+  membership is not stated twice; the rules are the functions of `src/model/axioms.ts` that the
+  editor's own controls use). What a rule allows but has something to say about (a circular
+  hierarchy) is answered as a note. The rules are asked of the model once the change set's
+  removals are made, so what it takes away does not stand in the way of what it adds.
+- Otherwise its statements are applied to the ontology's and read back into a model, with what
+  the statements do not say carried over from the model before: the ids of entities,
+  relationships and axioms (which the drawing, the shapes and the mappings refer to), where the
+  terms sit and their colours, and the model's settings. A term, relationship or axiom that is the
+  same as before is the very object it was.
+- It is applied only if the model read back states exactly what was asked for. Where the editor
+  would hold it otherwise, it is refused as `unsupported`, with how many statements would be lost
+  or added: a class of the ontology's own namespace declared without a label (the editor gives
+  every term a name, and states it), or disjointness among more than two classes (held two at a
+  time).
+- Applied, it is one step of the history like any other, and undo takes it back.
+
+`validate` answers the same without applying anything; `entity` gives the axioms about one
+entity in a revision: those it is the subject of, and those of no subject of their own (such as
+`owl:AllDifferent`) that name it.
+
+**Not done yet.** There is no HTTP client for this service: it is the server's in Phase 3, where
+the same change sets are put through both and compared (the conformance suite of task 3.5). The
+store's edits are synchronous, so a remote service will need the document to wait for its answer
+(Phase 4). A change set's additions are held to the rules only where they are about entities the
+model has before it is applied; an entity it declares itself is not checked. Terms that a change
+set adds are placed where the reader's layout puts them, not near what they are related to.
 
 ## OWL 2 DL reasoning (HermiT)
 

@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { it } from 'vitest';
+import { changesBetween, committed, opened, undone } from '../editing/local';
 import { runChecks } from './checks';
 import { forceLayout } from '../layout/force';
 import { graphOf, hierarchyOf } from '../layout/graph';
@@ -46,6 +47,13 @@ it.skipIf(!OUT)('times the model layer on large models', async () => {
     writeFileSync(`${OUT}.${n}.json`, json);
     lines.push(`${String(n).padStart(5)} classes  = JSON: ${(json.length / 1024).toFixed(0)} KB`);
     time('JSON open', () => normalizeModel(JSON.parse(json)));
+    // An edit as the edit service records it (a step: the parts it replaced, and the revision it
+    // makes), and the same edit as axioms, which is worked out only when it is asked for.
+    const doc = opened(m);
+    const renamed = { ...m, terms: m.terms.map((t, i) => (i === 0 ? { ...t, name: t.name + ' renamed' } : t)) };
+    time('edit: record the step', () => committed(doc, renamed));
+    time('edit: undo the step', () => undone(committed(doc, renamed)));
+    time('edit: as axioms (when asked)', () => changesBetween(m, renamed));
 
     const queries: [string, string][] = [
       ['all classes with labels', 'SELECT ?c ?l WHERE { ?c a owl:Class ; rdfs:label ?l } ORDER BY ?l'],
