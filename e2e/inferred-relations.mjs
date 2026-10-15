@@ -113,6 +113,8 @@ ok((await page.locator('.view').count()) === 0 && (await dottedFacts()).join(' |
 await page.waitForTimeout(400);
 await page.reload();
 await page.waitForSelector('.node');
+// The reasoner answers from a worker, a moment after the graph is drawn.
+await page.locator('.edge.inferred-fact').first().waitFor({ timeout: 15_000 }).catch(() => {});
 ok((await toggle.getAttribute('aria-pressed')) === 'true' && (await dottedFacts()).join(' | ') === 'has member (inferred)', 'and the choice is remembered after a reload');
 
 // ---------------------------------------------------------------- the OWL 2 DL reasoner
