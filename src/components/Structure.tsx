@@ -3,8 +3,9 @@ import { findPath } from '../model/checks';
 import { configOf, supports } from '../model/modelTypes';
 import { objectProperties } from '../model/props';
 import { ENGINES } from '../model/reasoning';
+import { useReasoning } from './reasoning';
 import { stable } from '../model/stable';
-import { useStore, type StructureMode } from '../model/store';
+import { currentReasoning, useStore, type StructureMode } from '../model/store';
 import type { HierarchyMode, Iri, OntologyRef, StructureService } from '../structure/contracts';
 import { createLocalStructureService, ontologyRef, termOfClass } from '../structure/local';
 import { openEntityTab } from './Entities';
@@ -19,7 +20,7 @@ import { StructureExplore } from './StructureExplore';
  */
 const service: StructureService = createLocalStructureService(() => {
   const s = useStore.getState();
-  return { model: s.model, docId: s.doc.id, reasoning: { engine: s.validation.engine, run: s.validation.run } };
+  return { model: s.model, docId: s.doc.id, reasoning: { engine: s.validation.engine, fast: currentReasoning(s), dl: s.reasoning.dl } };
 });
 
 /**
@@ -88,6 +89,9 @@ export function StructureView() {
   const running = useStore((s) => s.validation.running);
   const phase = useStore((s) => s.validation.phase);
   const ranAt = useStore((s) => s.validation.run?.at ?? 0);
+  // The app's own reasoner works in a worker; what the explorer asks of it is asked again once it has answered.
+  const fast = useReasoning(supports(model, 'reasoning') && engine === 'fast');
+  const dlAt = useStore((s) => s.reasoning.dl?.revisionId ?? '');
   const st = useStore.getState;
   const config = configOf(model);
   const reasons = supports(model, 'reasoning');
@@ -130,7 +134,7 @@ export function StructureView() {
         const prop = model.mode === 'skos' ? undefined : objectProperties(model).find((p) => p.iri === iri);
         if (prop) st().selectProp(prop.id);
       },
-      reasoning: reasons ? { engines: ENGINES, engine, asked: engine === 'dl', running, phase, key: `${engine} ${ranAt} ${running}` } : null,
+      reasoning: reasons ? { engines: ENGINES, engine, asked: engine === 'dl', running, phase, key: `${engine} ${ranAt} ${running} ${fast ? 'answered' : 'working'} ${dlAt}` } : null,
       chooseReasoner: (id) => {
         const next = ENGINES.find((e) => e.id === id);
         if (!next || next.id === st().validation.engine) return;
@@ -158,7 +162,7 @@ export function StructureView() {
         st().visualizeSubgraph();
       },
     };
-  }, [model, ontology, st, reasons, engine, running, phase, ranAt]);
+  }, [model, ontology, st, reasons, engine, running, phase, ranAt, fast, dlAt]);
   return (
     <div className="view structure">
       <div className="view-head">

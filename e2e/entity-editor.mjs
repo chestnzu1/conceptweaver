@@ -162,6 +162,8 @@ ok(flat(await values.locator('.assertions li').first().innerText()).startsWith('
 await values.getByLabel('Value', { exact: true }).fill('2019-05-21');
 await values.getByRole('button', { name: 'Add value' }).click();
 ok(flat(await page.locator('.toast').innerText()).includes('functional'), 'a second value of a functional property brings a warning');
+// The reasoner answers from a worker: what it says is waited for.
+await panel.locator('[data-section=inferred-types] .bad').waitFor({ timeout: 15_000 }).catch(() => {});
 ok((await panel.locator('[data-section=inferred-types] .bad').count()) === 1, 'and the editor then says the ontology is inconsistent rather than inferring from it');
 await values.getByRole('button', { name: 'Remove Release date 2019-05-21' }).click();
 ok((await panel.locator('[data-section=inferred-types] .bad').count()) === 0, 'removing the value clears it');

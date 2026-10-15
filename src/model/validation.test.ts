@@ -8,7 +8,9 @@ import { QUALITY_RULES, setRule } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
 import { importShapes, newPropertyShape, newShape, shapesToTurtle } from './shapes';
 import { emptyModel, newProp, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
-import { isStale, MODEL_DATA, owlFindings, qualityFindings, reportJson, reportTurtle, shaclFindings, validate, type DataGraph } from './validation';
+import { MODEL_DATA, owlFindings, qualityFindings, shaclFindings, validate, type DataGraph } from './validation';
+import { isStale, reportJson, reportTurtle } from '../validation/report';
+import { revisionOf } from '../structure/local';
 
 function build() {
   let m: Model = { ...emptyModel('People'), baseIri: 'http://example.org/p#', lang: 'en' };
@@ -319,37 +321,38 @@ describe('validation runs and their synchronisation with the model', () => {
     let n = withPersonShape(m, iri);
     n = { ...n, terms: n.terms.map((t) => (t.id === id.Actor ? { ...t, description: '' } : t)) };
     const phases: string[] = [];
-    const run = await validate(n, MODEL_DATA, 'all', null, async (p) => void phases.push(p));
+    const run = await validate(n, MODEL_DATA, 'all', null, { tick: async (p) => void phases.push(p), ref: { ontologyId: 'working-copy', revisionId: revisionOf(n) } });
     expect(phases.filter(Boolean)).toEqual(['Reasoning…', 'Checking quality rules…', 'Validating against the shapes…']);
     expect(run.owl!.status).toBe('consistent');
     expect(run.shacl!.violations).toBe(2);
     expect(run.quality!.suggestions).toBeGreaterThan(0);
     expect(new Set(run.findings.map((f) => f.category))).toEqual(new Set(['shacl', 'quality']));
     expect(run.findings[0].severity).toBe('error');
-    expect(run.revision).toMatch(/^[0-9a-f]{8}$/);
-    expect(isStale(run, n, MODEL_DATA)).toBe(false);
+    expect(run.fingerprint).toMatch(/^[0-9a-f]{8}$/);
+    expect(run.revisionId).toBe(revisionOf(n));
+    expect(isStale(run, revisionOf(n), MODEL_DATA)).toBe(false);
 
     // Moving a term is not a change to what was validated.
     const moved = { ...n, terms: n.terms.map((t) => (t.id === id.Ann ? { ...t, x: t.x + 40 } : t)) };
-    expect(isStale(run, moved, MODEL_DATA)).toBe(false);
+    expect(isStale(run, revisionOf(moved), MODEL_DATA)).toBe(false);
     // Giving Ann a name is: the results are stale, and are not silently kept.
     const fixed = edit(addValue(moved, id.Ann, { prop: id['has name'], value: 'Ann' }));
-    expect(isStale(run, fixed, MODEL_DATA)).toBe(true);
+    expect(isStale(run, revisionOf(fixed), MODEL_DATA)).toBe(true);
     const next = await validate(fixed, MODEL_DATA, 'shacl', run);
     expect(next.shacl!.violations).toBe(1);
     // Only SHACL was rerun, on a changed model: the other categories are absent, not shown as if current.
     expect(next.owl).toBeUndefined();
     expect(next.quality).toBeUndefined();
     expect(next.findings.every((f) => f.category === 'shacl')).toBe(true);
-    expect(next.revision).not.toBe(run.revision);
+    expect(next.fingerprint).not.toBe(run.fingerprint);
     // The same content has the same revision, whenever it is validated.
-    expect((await validate(n, MODEL_DATA, 'all', null)).revision).toBe(run.revision);
+    expect((await validate(n, MODEL_DATA, 'all', null)).fingerprint).toBe(run.fingerprint);
     // Rerunning one category on an unchanged model keeps the others.
     const partial = await validate(n, MODEL_DATA, 'quality', run);
     expect(partial.shacl).toBe(run.shacl);
     expect(partial.findings.filter((f) => f.category === 'shacl').length).toBe(2);
     // Another data graph is another thing validated.
-    expect(isStale(run, n, { source: 'imported', text: '', includeOntology: true })).toBe(true);
+    expect(isStale(run, revisionOf(n), { source: 'imported', text: '', includeOntology: true })).toBe(true);
   });
 
   it('exports the report as JSON and as RDF', async () => {
@@ -357,7 +360,7 @@ describe('validation runs and their synchronisation with the model', () => {
     const n = withPersonShape(m, iri);
     const run = await validate(n, MODEL_DATA, 'all', null);
     const json = JSON.parse(reportJson(run, n));
-    expect(json).toMatchObject({ ontology: { name: 'People', iri: 'http://example.org/p' }, revision: run.revision, owl: { status: 'consistent' }, shacl: { status: 'violations', violations: 2 }, dataGraph: { source: 'model', includesOntologyTriples: true } });
+    expect(json).toMatchObject({ ontology: { name: 'People', iri: 'http://example.org/p' }, revision: run.fingerprint, owl: { status: 'consistent' }, shacl: { status: 'violations', violations: 2 }, dataGraph: { source: 'model', includesOntologyTriples: true } });
     expect(json.findings.find((f: { category: string }) => f.category === 'SHACL').shacl.sourceConstraintComponent).toBe('sh:MinCountConstraintComponent');
     expect(json.model).toBeUndefined();
     const ttl = reportTurtle(run, n);

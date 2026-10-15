@@ -21,7 +21,6 @@ import {
 import { baseIriOf, iriCut, setIriSuffix, type IriOwner } from '../model/iri';
 import { compactIri } from '../model/prefixes';
 import { findProp, objectProperties, propLinks, type PropView } from '../model/props';
-import { reason } from '../model/reasoner';
 import { stable } from '../model/stable';
 import { entailed as entailedBy } from '../model/inferred';
 import { creditOf, entailmentsOf } from '../model/reasoning';
@@ -31,6 +30,7 @@ import { EntityPicker, type Choice } from './EntityPicker';
 import { IriCell } from './Iri';
 import { CommitInput } from './fields';
 import { Disclosure, Icon } from './Icon';
+import { useReasoning, WORKING } from './reasoning';
 import { enumOf, rangeLabel } from '../model/datatypes';
 import { propDatatype } from '../model/domains';
 
@@ -216,8 +216,10 @@ export function InferredSupers({ term }: { term: Term }) {
   const dl = useStore(currentDl);
   const st = useStore.getState;
   const isClass = term.type === 'concept';
+  // The app's own reasoner answers from a worker: until it has, the section says that it is working.
+  const reasoning = useReasoning();
   const result = useMemo(() => {
-    const reasoning = reason(model);
+    if (!reasoning) return undefined;
     const byId = new Map(model.terms.map((t) => [t.id, t]));
     const named = (id: string) => ({ id, name: byId.get(id)?.name || 'Unnamed', iri: byId.get(id)?.iri });
     if (!reasoning.consistent || dl?.consistency === 'inconsistent') return { consistent: false as const, by: reasoning.consistent ? 'The OWL 2 DL reasoner' : 'The reasoner', links: [], inherited: [], unsatisfiable: false, below: [], instances: [], same: [] };
@@ -235,16 +237,16 @@ export function InferredSupers({ term }: { term: Term }) {
       consistent: true as const,
       by: '',
       links,
-      inherited: isClass ? inheritedPropertiesOfClass(model, term.id) : [],
+      inherited: isClass ? inheritedPropertiesOfClass(model, reasoning, term.id) : [],
       unsatisfiable: !!of?.unsatisfiable,
       // The other way round, which only a complete reasoner can say: what is entailed to be below this class, or in it.
       below: sort(of && isClass ? of.subclasses.filter((x) => !x.asserted).map((x) => x.subclass) : []),
       instances: sort(of && isClass ? of.instances.filter((x) => !x.asserted).map((x) => x.individual) : []),
       same: sort(of && !isClass ? of.same : []),
     };
-  }, [model, term.id, isClass, dl]);
+  }, [model, reasoning, term.id, isClass, dl]);
   // What the individual is related to without that being stated, whichever reasoner says so.
-  const related = useMemo(() => (isClass ? [] : entailedBy(model, dl).facts.filter((f) => f.from === term.id)), [model, term.id, isClass, dl]);
+  const related = useMemo(() => (isClass ? [] : entailedBy(model, reasoning, dl).facts.filter((f) => f.from === term.id)), [model, reasoning, term.id, isClass, dl]);
   const nameOf = (id: string) => model.terms.find((t) => t.id === id)?.name || 'Unnamed';
   const what = isClass ? 'superclasses' : 'types';
   const credit = dl ? creditOf(dl) : '';
@@ -261,6 +263,14 @@ export function InferredSupers({ term }: { term: Term }) {
             </li>
           ))}
         </ul>
+      </Section>
+    );
+  if (!result)
+    return (
+      <Section id={'inferred-' + what} title={`Inferred ${what}`} count="…" inferred>
+        <p className="muted" role="status">
+          {WORKING}
+        </p>
       </Section>
     );
   return (

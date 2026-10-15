@@ -153,10 +153,15 @@ await form.getByLabel('Mapping relationship').selectOption('skos:closeMatch');
 await form.getByRole('button', { name: 'Create mapping' }).click();
 ok(flat(await mine.locator('li', { hasText: 'Actor' }).first().innerText()).includes('2 mapped'), 'mapped entities are marked in the lists, with how many mappings');
 
+// The reasoner checks the mappings away from the page; until it has, the result says that it is checking.
+const checked = async () => {
+  await page.waitForFunction(() => !/^Checking/.test(document.querySelector('.check-result')?.textContent ?? 'Checking'), undefined, { timeout: 20_000 });
+  return flat(await v.locator('.check-result').innerText());
+};
 await sub(/^Mappings/);
 let rows = await mappingRows();
 ok(rows.join(' | ') === ':Studio rdfs:subClassOf ppl:Organisation | :Person owl:equivalentClass ppl:Person | ppl:Performer rdfs:subClassOf :Actor | :Actor skos:closeMatch ppl:Performer', 'all mappings are listed in the direction stated, the reuse as superclass included: ' + rows.join(' | '));
-ok(flat(await v.locator('.check-result').innerText()).startsWith('No contradiction found by the fast reasoner.') && flat(await v.locator('.check-result').innerText()).includes('together with the 1 it imports'), 'the reasoner checks them together with the imported ontology: consistent');
+ok((await checked()).startsWith('No contradiction found by the fast reasoner.') && (await checked()).includes('together with the 1 it imports'), 'the reasoner checks them together with the imported ontology: consistent');
 // governance
 const row = await rowOf('owl:equivalentClass');
 await row.getByLabel(/^Status of/).selectOption('approved');
@@ -197,7 +202,7 @@ await supers.locator('.chip-add').click();
 await supers.getByRole('combobox').fill('Person');
 await supers.locator('.subgraph-found button', { hasText: ':Person' }).first().dispatchEvent('pointerdown');
 await tab('Align');
-const res = flat(await v.locator('.check-result').innerText());
+const res = await checked();
 ok(res.startsWith('No contradiction found, but 1 class can never have a member.') && res.includes('“Studio” can never have instances') && res.includes('“Organisation” is disjoint with “Person”'), 'a contradiction that only arises through the mappings and the imported ontology is found, with the reasoner’s justification');
 await tab(/^Validation/);
 await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
@@ -206,7 +211,7 @@ await page.waitForFunction(() => /Unsatisfiable classes: 1/.test(document.queryS
 ok(true, 'the Validation tab reasons over the imports too and reports the same unsatisfiable class');
 await page.getByRole('button', { name: 'Undo' }).click();
 await tab('Align');
-ok(flat(await v.locator('.check-result').innerText()).startsWith('No contradiction found by the fast reasoner.'), 'undoing that statement makes it consistent again');
+ok((await checked()).startsWith('No contradiction found by the fast reasoner.'), 'undoing that statement makes it consistent again');
 
 await sub('Suggestions');
 ok((await v.locator('.suggestions table').count()) === 0, 'suggestions are only looked for when asked');

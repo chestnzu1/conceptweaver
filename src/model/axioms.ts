@@ -1,7 +1,7 @@
 import { CHARACTERISTICS, assertedSuperclasses, dataDomain, findProp, isInstanceOf, objectProperties, propLinks, wouldCycle } from './props';
 import { propDatatype, propDatatypes, unionClasses, withUnionClasses } from './domains';
 import { namedClasses, type ClassAxiom } from './expressions';
-import { reason } from './reasoner';
+import type { Reasoning } from './reasoner';
 import { outsideEnumeration } from './datatypes';
 import { validateLiteral } from './literals';
 import { DATATYPES, INSTANCE_OF, isLang, newRelation, newTerm, type DataValue, type Model, type PropLink, type Term, type TermType } from './types';
@@ -249,11 +249,9 @@ export function propertiesOfClass(model: Model, classId: string): ClassProperty[
   return out.sort((a, b) => Number(a.data) - Number(b.data) || a.name.localeCompare(b.name));
 }
 
-/** The same for the classes the reasoner entails the class to be a kind of: these apply to it too. */
-export function inheritedPropertiesOfClass(model: Model, classId: string): (ClassProperty & { via: string; viaName: string })[] {
-  if (model.mode === 'skos') return [];
-  const reasoning = reason(model);
-  if (!reasoning.consistent) return [];
+/** The same for the classes the reasoner entails the class to be a kind of (by its answer, `reasoning`): these apply to it too. */
+export function inheritedPropertiesOfClass(model: Model, reasoning: Reasoning, classId: string): (ClassProperty & { via: string; viaName: string })[] {
+  if (model.mode === 'skos' || !reasoning.consistent) return [];
   const own = new Set(propertiesOfClass(model, classId).map((p) => `${p.data}|${p.ref}`));
   const out: (ClassProperty & { via: string; viaName: string })[] = [];
   for (const link of reasoning.superclasses(classId)) {

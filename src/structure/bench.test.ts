@@ -1,3 +1,4 @@
+import { reason } from '../model/reasoner';
 import { writeFileSync } from 'node:fs';
 import { it } from 'vitest';
 import { withIris } from '../model/iri';
@@ -93,7 +94,7 @@ it.skipIf(!OUT)('times the structure services on large hierarchies', async () =>
   // ---- the same through the model in the editor, with the app's own reasoner
   for (const n of [650, 2600, 5200]) {
     const m = await timed(n, 'generate a model (with its layout)', () => withIris(stressModel(n)), (x) => `${x.terms.length} terms, ${x.relations.length} relationships`);
-    const service = createLocalStructureService(() => ({ model: m, docId: null, reasoning: { engine: 'fast', run: null } }));
+    const service = createLocalStructureService(() => ({ model: m, docId: null, reasoning: { engine: 'fast', fast: reason(m) } }));
     const ref = ontologyRef(m, null);
     const top = await timed(n, 'first question: read the model, build the hierarchy', () => service.children({ ...ref, mode: 'asserted' }));
     await timed(n, 'measure the asserted hierarchy (asks the fast reasoner)', () => service.analyze({ ...ref, mode: 'asserted' }), (a) => `reasoner: ${a.reasoning.status}`);

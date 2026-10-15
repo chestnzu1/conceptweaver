@@ -92,6 +92,8 @@ const barButtons = (await page.locator('.subgraph .row').first().getByRole('butt
 ok(barButtons === 'Full graph Subgraph Settings Style Rearrange Layout options Inferred facts' && (await toggle.getAttribute('aria-pressed')) === 'false', 'the bar at the top of the graph has a button for the inferred facts, off to begin with: ' + barButtons);
 await toggle.click();
 ok((await toggle.getAttribute('aria-pressed')) === 'true', 'pressed, it stays on');
+// The reasoner answers from a worker: its lines are waited for.
+await page.locator('.edge.inferred-fact').first().waitFor({ timeout: 15_000 }).catch(() => {});
 ok((await dottedFacts()).join(' | ') === 'has member (inferred)' && flat(await toggle.innerText()) === 'Inferred facts (1)', 'asked for, the relationship that follows from the inverse property is drawn: ' + (await dottedFacts()).join(' | '));
 const line = page.locator('.edge.inferred-fact').first();
 ok((await line.locator('.edge-line').evaluate((el) => getComputedStyle(el).strokeDasharray)) !== 'none' && (await page.locator('.edge.association:not(.inferred) .edge-line').first().evaluate((el) => getComputedStyle(el).strokeDasharray)) === 'none', 'dotted, where the stated one is solid');

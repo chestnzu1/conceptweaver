@@ -194,10 +194,10 @@ describe('is instance of', () => {
     const { m, john, mary, person, employee } = people();
     let model = addIsA(m, john.id, employee.id).model!;
     const name = new Map(model.terms.map((t) => [t.id, t.name]));
-    const inferred = (x: Model) => inferredMemberships(x).memberships.map((i) => `${name.get(i.from)} → ${name.get(i.to)}`).sort();
+    const inferred = (x: Model) => inferredMemberships(x, reason(x)).memberships.map((i) => `${name.get(i.from)} → ${name.get(i.to)}`).sort();
     // John is an Employee (asserted), so a Person (inferred): only the second is listed.
     expect(inferred(model)).toEqual(['John → Person']);
-    expect(inferredMemberships(model).memberships[0].because).toBeTruthy();
+    expect(inferredMemberships(model, reason(model)).memberships[0].because).toBeTruthy();
     expect(reason(model).types(john.id).map((t) => `${name.get(t.id)}:${t.asserted}`).sort()).toEqual(['Employee:true', 'Person:false']);
     // Stated outright, it is asserted and no longer listed as inferred.
     model = addIsA(model, john.id, person.id).model!;

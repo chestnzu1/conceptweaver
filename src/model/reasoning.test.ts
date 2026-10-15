@@ -137,7 +137,7 @@ describe('the OWL 2 DL reasoner in a validation run', () => {
       explanations: [{ kind: 'unsatisfiable', subject: K + 'Hound', justifications: [{ axioms: [{ text: 'Hound SubClassOf Dog and (not (Dog))', entities: [{ iri: K + 'Hound', kind: 'Class', name: 'Hound' }, { iri: K + 'Dog', kind: 'Class', name: 'Dog' }] }] }] }],
       profile: { owl2dl: true, violations: [], violationCount: 0, undeclared: ['skos:definition'], undeclaredCount: 1 },
     });
-    const run = await validate(m, MODEL_DATA, 'owl', null, async () => {}, undefined, async () => answer);
+    const run = await validate(m, MODEL_DATA, 'owl', null, { askDl: async () => answer });
     expect(run.owl).toMatchObject({ engine: 'dl', engineName: 'HermiT 1.4.5.456', status: 'consistent', proved: true, unsatisfiable: ['hound'], asserted: 4 });
     expect(run.owl!.notes).toEqual(['1 entity is used without being declared (skos:definition). Each was read as what its use implies, which changes no axiom.']);
     expect(run.dl!.report).toBe(answer);

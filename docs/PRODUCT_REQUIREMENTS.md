@@ -378,7 +378,7 @@ service's library bundle. No progress, no cancel, no cache across sessions.
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
-| FR-M3-1 | Immediate rule-based feedback while editing, without blocking the page. | Partially Implemented (blocking) | P0 |
+| FR-M3-1 | Immediate rule-based feedback while editing, without blocking the page. | Implemented 2026-10-15: the fast reasoner runs in a worker after an edit, for what shows it; an edit on 2,600 classes has no task over 100 ms | P0 |
 | FR-M3-2 | Complete OWL 2 DL reasoning with HermiT, reporting complete, partial or failed with reasons. | Existing | P0 |
 | FR-M3-3 | Inferred statements are shown apart from asserted ones, never stored among them, and exportable on request. | Existing | P0 |
 | FR-M3-4 | Reasoning is a job: started, followed, cancelled; one result per revision and reasoner, reused until the ontology changes. | Recommended | P1 |
@@ -423,7 +423,7 @@ the application.
 | FR-M4-1 | Validate the model's individuals, or imported RDF data, against SHACL Core shapes. | Existing | P0 |
 | FR-M4-2 | Author shapes in a form for common constraints and as Turtle for the rest. | Existing | P0 |
 | FR-M4-3 | Quality rules with severity, switchable per model, with quick fixes where one is safe. | Existing | P0 |
-| FR-M4-4 | Validation is a cancellable background job with progress. | Recommended | P0 |
+| FR-M4-4 | Validation is a cancellable background job with progress. | Implemented 2026-10-15 (`ValidationService`, in a worker; *Stop*; the phase shown as it goes) | P0 |
 | FR-M4-5 | Results state the revision they are of and are marked stale after an edit. | Existing | P0 |
 | FR-M4-6 | Reports as JSON and RDF; additionally as CSV and a printable page. | Partially Implemented (JSON, RDF) | P2 |
 | FR-M4-7 | Custom quality rules written as SPARQL queries. | Recommended | P2 |

@@ -10,7 +10,8 @@ import { QUALITY_RULES, qualityDiagnostics } from './quality';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { reason } from './reasoner';
 import { emptyModel, newRelation, newTerm, type Model, type Term } from './types';
-import { owlFindings, qualityFindings, REASONER_LIMITS } from './validation';
+import { owlFindings, qualityFindings } from './validation';
+import { REASONER_LIMITS } from '../validation/report';
 
 /** Colours of a traffic light, a class "Signal", and a lamp that is not on any list. */
 const lights = (): Model => {
@@ -50,7 +51,7 @@ describe('reasoning with enumeration classes', () => {
     // Nothing is concluded of what is not on the list.
     expect(r.types('lamp')).toEqual([]);
     // On the canvas the line of the enumeration says it already: the inferred membership is not drawn beside it.
-    const { memberships } = inferredMemberships(m);
+    const { memberships } = inferredMemberships(m, reason(m));
     expect(memberships.map((x) => x.from).sort()).toEqual(['green', 'red', 'yellow']);
     expect(beyondEnumerations(memberships, enumerationEdges(m))).toEqual([]);
     expect(beyondEnumerations(memberships, [])).toHaveLength(3);

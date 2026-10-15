@@ -334,12 +334,30 @@ It runs again after every edit that changes meaning. It cannot be cancelled.
 Worker (the layout code already does this: `src/layout/run.ts`, `worker.ts`). Results become
 asynchronous and tied to a revision, which is the shape the HermiT path already has.
 
+**Status, 2026-10-15.** Done (roadmap task 1.9). `ReasoningService` (`src/reasoning`) starts,
+follows and stops jobs, each of one revision; the fast reasoner runs in a worker, HermiT through
+the reasoning service, both through the same interface. The reasoner is split in two
+(`src/model/reasoner.ts`): `derive`, the rules and the contradictions, in the worker, answering
+with plain facts; and `view`, which words them and looks up what is asked about, on the page. Its
+answer is asked for only by what shows it, through the store (`useReasoning`), and each view says
+it is working until the answer is there. On the 2,600-class model an edit's longest task went from
+533 ms to 72 ms (docs/BASELINES.md). The model-layer functions that used the reasoner take its
+answer as an argument; `reason(model)` remains for what needs it at once (an export with the
+inferred statements), and is given the worker's answer when there is one (`adopt`).
+
 ### TD-09 Validation runs on the main thread and cannot be cancelled — Medium
 
 **Where.** `validate` in `src/model/validation.ts:637`; README, *Validation: what is and is not
 covered* ("runs in the page, in steps, not in a background thread; a run cannot be cancelled").
 
 **Remediation.** Same worker and job model as TD-08.
+
+**Status, 2026-10-15.** Done (roadmap task 1.9). `ValidationService` (`src/validation`) runs the
+checks in a worker as a job, which says what it is doing as it goes and can be stopped (*Stop* in
+the workbench). A report names the revision it is of, not the model object, and a quick fix
+travels as what it does and is found again in the model when it is applied. The count in the
+header and the check of the mappings run as background jobs of the same service. A validation
+run on the 2,600-class model has no task over 50 ms (from 386 ms).
 
 ### TD-10 The canvas draws every term — High
 

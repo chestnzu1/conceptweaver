@@ -1,3 +1,4 @@
+import { reason } from '../model/reasoner';
 import { withDatatype } from '../model/domains';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { withIris } from '../model/iri';
@@ -75,7 +76,8 @@ beforeEach(() => {
   line('alice', 'employee');
   line('acme', 'org');
   line('alice', 'acme', { label: 'works for' });
-  service = createLocalEntityService(() => ({ model: st().model, docId: null, dl }));
+  // The app's own reasoner has answered, as it has in the editor once its job is done.
+  service = createLocalEntityService(() => ({ model: st().model, docId: null, dl, fast: reason(st().model) }));
 });
 
 describe('classes', () => {
@@ -150,6 +152,15 @@ describe('classes', () => {
     expect(page.rows.map((r) => r.label)).toEqual(['Employee', 'Chimera']);
     expect(page.notes).toEqual([`“Unsatisfiable” is not applied: ${unsat.unavailable}`]);
     expect((await describeKind('individual')).filters.find((f) => f.id === 'inferredType')!.unavailable).toMatch(/inconsistent/);
+  });
+
+  it('wait for the reasoner, and are not filtered by what it works out until it has answered', async () => {
+    service = createLocalEntityService(() => ({ model: st().model, docId: null, dl }));
+    const d = await describeKind('class');
+    expect(d.filters.find((f) => f.id === 'unsatisfiable')!.unavailable).toBe('the reasoner is still working out what follows; this filter is there once it has.');
+    const page = await ask('class', { filters: { unsatisfiable: [ON] } });
+    expect(page.notes).toEqual(['“Unsatisfiable” is not applied: the reasoner is still working out what follows; this filter is there once it has.']);
+    expect(page.matched).toBe(page.total);
   });
 });
 

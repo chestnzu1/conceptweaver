@@ -108,7 +108,9 @@ await node('Parasite').locator('.node-box').click();
 await add('Asserted types', 'Genre');
 ok((await inferred.count()) === 0 && (await asserted.count()) === 3, 'stating it makes it an asserted edge at once');
 await field('Asserted types').locator('.chip-x', { hasText: 'Genre' }).locator('button').last().click();
-ok((await inferred.count()) === 1 && (await asserted.count()) === 2, 'and withdrawing it brings the inferred one straight back');
+// The reasoner answers about the model as it now is from a worker: the inferred line is back once it has.
+await inferred.first().waitFor({ timeout: 15_000 }).catch(() => {});
+ok((await inferred.count()) === 1 && (await asserted.count()) === 2, 'and withdrawing it brings the inferred one back, once the reasoner has answered');
 await toggle.click();
 ok((await inferred.count()) === 0, 'switched off, only asserted memberships are drawn');
 

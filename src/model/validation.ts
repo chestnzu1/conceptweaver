@@ -6,10 +6,10 @@ import { nameKey } from './identity';
 import { objectProperties, restrictionsOf, type Restriction } from './props';
 import { QUALITY_RULES, qualityDiagnostics, ruleById, ruleEnabled, type QuickFix } from './quality';
 import { termIris, toTurtle } from './rdf';
-import { reason } from './reasoner';
-import { dlResult, entityLinks, readable, type DlReport, type EngineId, type EntityLink, type ReasoningResult } from './reasoning';
+import { reason, type Reasoning } from './reasoner';
+import { dlResult, entityLinks, readable, type DlReport, type EntityLink, type ReasoningResult } from './reasoning';
+import { MODEL_DATA, type Category, type DataGraph, type EntityRef, type EntityType, type Finding, type JustifiedEntity, type Level, type OntologyRef, type OwlSummary, type QualitySummary, type Scope, type ShaclSummary, type ValidationReport } from '../validation/contracts';
 import { SH, shapesToTurtle } from './shapes';
-import { stable } from './stable';
 import type { Model } from './types';
 import { quoted, quotedName } from './words';
 
@@ -26,145 +26,12 @@ import { quoted, quotedName } from './words';
  * Results live beside the model, never in it.
  */
 
-export type Category = 'owl' | 'shacl' | 'quality';
-export type Level = 'error' | 'warning' | 'info';
-export type EntityType = 'class' | 'object property' | 'data property' | 'individual' | 'relationship' | 'shape' | 'ontology' | 'data';
+export type { Category, DataGraph, EntityRef, EntityType, Finding, JustifiedEntity, Level, OwlSummary, QualitySummary, ShaclDetail, ShaclSummary, ValidationReport } from '../validation/contracts';
+export { MODEL_DATA } from '../validation/contracts';
 
-export interface EntityRef {
-  kind: 'term' | 'prop' | 'rel' | 'shape' | 'model' | 'external';
-  /** Term id, property key, relation id, shape id, or for something outside the model its IRI. */
-  id: string;
-  name: string;
-  type: EntityType;
-  iri?: string;
-}
+/** A run of the checks: what a validation job reports. */
+export type ValidationRun = ValidationReport;
 
-/** A SHACL validation result as the standard reports it. A field the engine did not give is absent. */
-export interface ShaclDetail {
-  focusNode: string;
-  resultPath?: string;
-  value?: string;
-  sourceShape: string;
-  sourceConstraintComponent: string;
-  resultSeverity: string;
-  resultMessage: string[];
-}
-
-export interface Finding {
-  id: string;
-  category: Category;
-  severity: Level;
-  /** The rule, constraint or kind of contradiction, in words. */
-  rule: string;
-  ruleId: string;
-  message: string;
-  /** For OWL: the reasoner's own justification. For the rest: why it matters. Absent when there is none. */
-  explanation?: string;
-  suggestion?: string;
-  entity?: EntityRef;
-  /** The property or axiom concerned, as text. */
-  property?: string;
-  /** Terms and relationships to spotlight on the canvas. */
-  terms: string[];
-  rels: string[];
-  shacl?: ShaclDetail;
-  /** The editable shape a SHACL result comes from, when it is one. */
-  shapeId?: string;
-  fix?: QuickFix;
-  /**
-   * For a finding of the OWL 2 DL reasoner: its justifications, each a smallest set of asserted
-   * axioms from which the finding follows, in Manchester syntax. They are the reasoner's own.
-   */
-  justifications?: { text: string; entities: JustifiedEntity[] }[][];
-  /** Why there is no justification, when the reasoner gave none. */
-  justificationNote?: string;
-  /** Which reasoner found it, when it was not the app's own. */
-  engine?: string;
-}
-
-/** An entity an axiom of a justification mentions, with how it is written in that axiom. */
-export type JustifiedEntity = EntityRef & { token?: string };
-
-export interface OwlSummary {
-  /** Which reasoner this is the answer of. */
-  engine: EngineId;
-  /** Its name, with its version where it has one: "HermiT 1.4.5.456". */
-  engineName: string;
-  /**
-   * not-applicable: a SKOS concept scheme has no OWL semantics to contradict.
-   * unknown: the reasoner gave no answer (it could not be reached, failed, or cannot reason over this ontology).
-   */
-  status: 'consistent' | 'inconsistent' | 'unknown' | 'not-applicable';
-  /**
-   * Whether "consistent" is proved. Only a complete reasoner that finished over all of the
-   * ontology proves it; from the app's own rules it means that no contradiction was found.
-   */
-  proved: boolean;
-  contradictions: number;
-  unsatisfiable: string[];
-  asserted: number;
-  inferred: number;
-  /** The reasoner stopped early or left something out, so "consistent" is about what it looked at. */
-  partial: boolean;
-  profile: string;
-  ms: number;
-  /** What kept the reasoner from answering, or from answering for all of the ontology. */
-  errors?: string[];
-  notes?: string[];
-}
-
-export interface ShaclSummary {
-  /** skipped: there were no shapes. failed: the shapes or data could not be read, or the engine gave up. */
-  status: 'conforms' | 'violations' | 'skipped' | 'failed';
-  error?: string;
-  violations: number;
-  warnings: number;
-  infos: number;
-  shapes: number;
-  dataTriples: number;
-  dataSource: string;
-  includesOntology: boolean;
-  /** The standard validation report, as Turtle. */
-  report?: string;
-  ms: number;
-}
-
-export interface QualitySummary {
-  errors: number;
-  warnings: number;
-  suggestions: number;
-  rulesOn: number;
-  rulesTotal: number;
-  ms: number;
-}
-
-export interface ValidationRun {
-  at: number;
-  /** A fingerprint of what was validated: the ontology as RDF, the shapes and the rule settings. */
-  revision: string;
-  /** The model that was validated; results are stale once the editor holds another. */
-  model: Model;
-  data: DataGraph;
-  entities: number;
-  owl?: OwlSummary;
-  shacl?: ShaclSummary;
-  quality?: QualitySummary;
-  findings: Finding[];
-  /** What the OWL 2 DL reasoner answered, when the run used it: its own report, and the same in the terms of the model. */
-  dl?: { report: DlReport; result: ReasoningResult };
-}
-
-/** What SHACL validates: the model's own RDF, or RDF brought in for the purpose. */
-export interface DataGraph {
-  source: 'model' | 'imported';
-  /** For imported data: its file name and Turtle. It is not part of the model and is not saved with it. */
-  name?: string;
-  text?: string;
-  /** For imported data: also give the engine the ontology's triples, so that subclasses count. */
-  includeOntology: boolean;
-}
-
-export const MODEL_DATA: DataGraph = { source: 'model', includeOntology: true };
 
 /** A short fingerprint of text (FNV-1a), to tell revisions apart at a glance. */
 export function fingerprint(text: string): string {
@@ -207,40 +74,33 @@ export const FAST_ENGINE_NAME = 'Fast reasoner';
 
 /** The rules the app's reasoner applies, for saying honestly what a "consistent" covers. */
 export const REASONER_PROFILE = 'RDFS and a subset of OWL 2 RL: class and property hierarchies, equivalence, disjointness and complements, domains and ranges, inverse, symmetric, transitive, functional and inverse-functional properties, sameAs and differentFrom, enumerations (owl:oneOf) and owl:AllDifferent';
-export const REASONER_LIMITS = [
-  'It is a rule reasoner, not a complete OWL 2 DL reasoner: it finds the contradictions its rules reach, so “consistent” means none of those was found.',
-  'Class expressions kept as text (unions, intersections, complements written as expressions, nested restrictions) are not interpreted.',
-  'Restrictions are compared only when they are on the same property and the same class or datatype; a clash that needs the fillers’ hierarchy is not found.',
-  'Literal values are compared as written: "1" and "01" count as two values.',
-  'An enumeration is not reasoned with by cases. An instance of { A, B } is concluded to be A only once it is known to be different from B; what holds for A and for B alike is not concluded of it. Nothing is counted either: a class that needs three different values out of an enumeration of two is not found unsatisfiable, and two enumerations without a common member are not found disjoint.',
-  'An enumerated datatype is used for one thing: a value an individual has for a property is checked against the list of that property’s range (a number by its value, anything else as written). Datatypes are not compared with each other, and an owl:oneOf kept as text inside another expression is not read.',
-];
 
 /**
  * Logical findings. Contradictions and unsatisfiable classes come from the reasoner, each with
  * the stated facts it rests on. Two further checks read what is asserted directly: restrictions
  * that cannot hold together, and property characteristics that exclude each other.
  */
-export function owlFindings(model: Model, fresh = false): { summary: OwlSummary; findings: Finding[] } {
+export function owlFindings(model: Model, fresh = false, given?: Reasoning): { summary: OwlSummary; findings: Finding[] } {
   // The count in the header, the Structure Explorer and anything else that asks about the model as it
-  // is are given the one answer. A run of the workbench asks afresh.
+  // is are given the one answer. A run of the workbench asks afresh. Given the reasoner's answer
+  // (from its job), it is not asked again.
   const kept = fresh ? undefined : owlFound.get(model);
-  if (kept) return kept;
-  const result = findOwl(model, fresh);
-  owlFound.set(model, result);
+  if (kept && (!given || kept.reasoning === given)) return kept.result;
+  const reasoning = given ?? reason(model, fresh);
+  const result = findOwl(model, reasoning);
+  owlFound.set(model, { reasoning, result });
   return result;
 }
 
-const owlFound = new WeakMap<Model, { summary: OwlSummary; findings: Finding[] }>();
+const owlFound = new WeakMap<Model, { reasoning: Reasoning; result: { summary: OwlSummary; findings: Finding[] } }>();
 
-function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings: Finding[] } {
+function findOwl(model: Model, reasoning: Reasoning): { summary: OwlSummary; findings: Finding[] } {
   const t0 = performance.now();
   const findings: Finding[] = [];
   const ix = entityIndex(model);
   if (model.mode === 'skos') {
     return { summary: { engine: 'fast', engineName: FAST_ENGINE_NAME, status: 'not-applicable', proved: false, contradictions: 0, unsatisfiable: [], asserted: 0, inferred: 0, partial: false, profile: REASONER_PROFILE, ms: 0 }, findings };
   }
-  const reasoning = reason(model, fresh);
   const unsatisfiable = new Set(reasoning.unsatisfiable);
   reasoning.conflicts.forEach((c, n) => {
     const inconsistent = c.severity === 'error';
@@ -265,7 +125,7 @@ function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings:
     for (const t of model.terms) {
       if (t.type !== 'concept') continue;
       const own = restrictionsOf(model, t.id).map((r) => ({ r, from: t.name || 'Unnamed' }));
-      const inherited = own.length || reasoning.superclasses(t.id).length ? inferredRestrictions(model, t.id).restrictions.map((x) => ({ r: x.restriction, from: x.sources[0]?.name ?? '' })) : [];
+      const inherited = own.length || reasoning.superclasses(t.id).length ? inferredRestrictions(model, reasoning, t.id).restrictions.map((x) => ({ r: x.restriction, from: x.sources[0]?.name ?? '' })) : [];
       const groups = new Map<string, { r: Restriction; from: string }[]>();
       for (const x of [...own, ...inherited]) {
         const k = `${x.r.data}|${x.r.data ? x.r.rel.to : (x.r.rel.prop ?? nameKey(x.r.rel.label))}|${x.r.rel.to}`;
@@ -343,16 +203,6 @@ function findOwl(model: Model, fresh: boolean): { summary: OwlSummary; findings:
 
 // ---------------------------------------------------------------- OWL 2 DL
 
-/** What an answer of the OWL 2 DL reasoner is and is not about, said where its results are shown. */
-export const DL_LIMITS = [
-  'HermiT is a complete OWL 2 DL reasoner: when it says “consistent”, that is proved for the ontology it was given.',
-  'It is given the ontology exactly as the app exports it. What the app does not keep when it reads a file (property chains, keys, negative property assertions) is not in it.',
-  'A relationship kept plain is not an OWL axiom, so it plays no part. Relationships that use an object property, restrictions, and expressions kept as text all do.',
-  'An ontology outside OWL 2 DL (a transitive property in a cardinality restriction, for one) may be refused: the status is then “unknown”, and the violations are listed.',
-  'Datatypes outside the OWL 2 datatype map (xsd:date, xsd:time, xsd:gYear, xsd:duration) have no meaning to it: their values are not checked or compared, and the result is marked partial.',
-  'An imported ontology is reasoned over only if its content is in this browser; nothing is fetched. One that is missing is named, and the result is marked partial.',
-  'Justifications are the reasoner’s own, one for each finding, worked out within a time limit; where there is none, that is said.',
-];
 
 export const DL_PROFILE = 'OWL 2 DL, by a complete reasoner: every class expression and restriction the ontology states, property characteristics and hierarchies, individuals, and the datatypes of the OWL 2 datatype map';
 
@@ -472,10 +322,13 @@ export function dlFindings(model: Model, report: DlReport): { summary: OwlSummar
 
 // ---------------------------------------------------------------- quality
 
-export function qualityFindings(model: Model): { summary: QualitySummary; findings: Finding[] } {
+/** A finding as the checks give it where they run: a quick fix can be applied there, to the model it was found in. */
+export type FixableFinding = Finding & { fix?: QuickFix };
+
+export function qualityFindings(model: Model): { summary: QualitySummary; findings: FixableFinding[] } {
   const t0 = performance.now();
   const ix = entityIndex(model);
-  const findings = qualityDiagnostics(model).map((d, n): Finding => {
+  const findings = qualityDiagnostics(model).map((d, n): FixableFinding => {
     const rule = ruleById(d.rule)!;
     const entity = (d.shape ? ix.shape(d.shape) : undefined) ?? d.terms.map(ix.term).find(Boolean) ?? (d.prop ? ix.prop(d.prop) : undefined) ?? d.rels.map(ix.rel).find(Boolean) ?? (d.model ? ix.ontology : undefined);
     return {
@@ -510,12 +363,6 @@ interface RdfTerm {
   datatype?: { value: string };
 }
 
-/** What the SHACL engine supports, said as it is. */
-export const SHACL_ENGINE = {
-  name: 'rdf-validate-shacl',
-  supports: 'SHACL Core: every Core target, property path and constraint component',
-  not: ['SHACL-SPARQL constraints and SPARQL targets (sh:sparql, sh:SPARQLTarget): shapes using them are read but those parts are not checked.', 'SHACL Advanced Features (rules, functions, node expressions).', 'Entailment regimes (sh:entailment): the data graph is validated as given. The only inference is the one SHACL itself prescribes, rdfs:subClassOf for class targets and sh:class.'],
-};
 
 const SEVERITY: Record<string, Level> = { Violation: 'error', Warning: 'warning', Info: 'info' };
 
@@ -617,48 +464,53 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
 
 // ---------------------------------------------------------------- running and reporting
 
-export type Scope = 'all' | Category;
+export type { Scope } from '../validation/contracts';
 
 /** What a run covers, as a fingerprint: the same content always gives the same one. */
-export function revisionOf(model: Model, data: DataGraph): string {
+export function fingerprintOf(model: Model, data: DataGraph): string {
   return fingerprint(toTurtle(model) + '\n' + shapesToTurtle(model) + '\n' + JSON.stringify(model.quality) + '\n' + JSON.stringify(model.governance) + '\n' + (data.source === 'imported' ? (data.text ?? '') + data.includeOntology : ''));
 }
 
-/** Whether results no longer describe what is in the editor. Moving terms on the canvas does not count. */
-export function isStale(run: ValidationRun | null, model: Model, data: DataGraph): boolean {
-  return !!run && (run.model !== stable(model) || run.data !== data);
-}
+/** Whether two data graphs are the same one. */
+export const sameData = (a: DataGraph, b: DataGraph): boolean => a === b || (a.source === b.source && a.name === b.name && a.text === b.text && a.includeOntology === b.includeOntology);
 
 /**
- * Runs the checks in `scope` and gives a run. Parts outside the scope are carried over from
- * `previous` when that was of the very same model and data; otherwise they are left out rather
- * than shown as if they were current. `tick` is awaited between parts so the page can redraw.
+ * Runs the checks of `scope` (one category, all, or a list) and reports what they find, as a
+ * report of `ref`. Categories it does not run are carried over from `previous` when that was of
+ * the very same ontology and data; otherwise they are left out rather than shown as if they were
+ * current. `tick` is awaited between parts, so that whoever waits can show how it goes.
  */
-export async function validate(
-  model: Model,
-  data: DataGraph,
-  scope: Scope,
-  previous: ValidationRun | null,
-  tick: (phase: string) => Promise<void> = async () => {},
-  withImports?: Model,
+export interface ValidateOptions {
+  /** Awaited between parts, with what comes next in words. */
+  tick?: (phase: string) => Promise<void>;
+  /** The ontology together with the ones it imports: what the OWL checks reason over, where it imports anything. */
+  withImports?: Model;
   /** Asks the OWL 2 DL reasoner, when that is the engine chosen. Without it the app's own reasoner answers. */
-  askDl?: () => Promise<DlReport>,
-): Promise<ValidationRun> {
-  const subject = stable(model);
-  const keep = previous && previous.model === subject && previous.data === data ? previous : null;
-  const run: ValidationRun = { at: Date.now(), revision: '', model: subject, data, entities: model.terms.length + model.props.length, owl: keep?.owl, dl: keep?.dl, shacl: keep?.shacl, quality: keep?.quality, findings: keep ? keep.findings.filter((f) => scope !== 'all' && f.category !== scope) : [] };
-  const wants = (c: Category) => scope === 'all' || scope === c;
+  askDl?: () => Promise<DlReport>;
+  /** The app's own reasoner's answer about the model, where it has one already: it is not asked again. */
+  reasoning?: Reasoning;
+  /** The revision the report is of. */
+  ref?: OntologyRef;
+}
+
+export async function validate(model: Model, data: DataGraph, scope: Scope | Category[], previous: ValidationReport | null, options: ValidateOptions = {}): Promise<ValidationReport> {
+  const { tick = async () => {}, withImports, askDl, reasoning, ref = { ontologyId: '', revisionId: '' } } = options;
+  const categories: Category[] = Array.isArray(scope) ? scope : scope === 'all' ? ['owl', 'shacl', 'quality'] : [scope];
+  const print = fingerprintOf(model, data);
+  const keep = previous && previous.fingerprint === print && sameData(previous.data, data) ? previous : null;
+  const run: ValidationReport = { ...ref, at: Date.now(), fingerprint: print, data, entities: model.terms.length + model.props.length, owl: keep?.owl, dl: keep?.dl, shacl: keep?.shacl, quality: keep?.quality, findings: keep ? keep.findings.filter((f) => !categories.includes(f.category)) : [] };
+  const wants = (c: Category) => categories.includes(c);
   if (wants('owl') && askDl && model.mode !== 'skos') {
     await tick('Reasoning with the OWL 2 DL reasoner…');
     const report = await askDl();
     const r = dlFindings(model, report);
     run.owl = r.summary;
-    run.dl = { report, result: r.result };
+    run.dl = { report };
     run.findings.push(...r.findings);
   } else if (wants('owl')) {
     await tick('Reasoning…');
     // An ontology that imports others is consistent only together with them, so they are reasoned over as one.
-    const r = owlFindings(withImports ?? model, true);
+    const r = withImports ? owlFindings(withImports, true) : owlFindings(model, !reasoning, reasoning);
     run.owl = r.summary;
     run.dl = undefined;
     run.findings.push(...r.findings);
@@ -676,59 +528,8 @@ export async function validate(
     run.findings.push(...r.findings);
   }
   await tick('');
-  run.revision = revisionOf(model, data);
   const rank: Record<Level, number> = { error: 0, warning: 1, info: 2 };
   const order: Record<Category, number> = { owl: 0, shacl: 1, quality: 2 };
   run.findings.sort((a, b) => rank[a.severity] - rank[b.severity] || order[a.category] - order[b.category]);
   return run;
-}
-
-const CATEGORY_LABEL: Record<Category, string> = { owl: 'OWL', shacl: 'SHACL', quality: 'Quality' };
-export const categoryLabel = (c: Category) => CATEGORY_LABEL[c];
-
-/** The run as JSON: everything shown, without the model itself. */
-export function reportJson(run: ValidationRun, model: Model): string {
-  const { model: _m, data, findings, shacl, dl, ...rest } = run;
-  return JSON.stringify(
-    {
-      ontology: { name: model.name, iri: ontologyIriOf(model) },
-      validatedAt: new Date(run.at).toISOString(),
-      ...rest,
-      at: undefined,
-      // The OWL 2 DL reasoner's own answer, as it gave it, when the run used it.
-      reasoner: dl?.report,
-      shacl: shacl ? { ...shacl, report: undefined } : undefined,
-      dataGraph: { source: data.source, name: data.name, includesOntologyTriples: data.source === 'model' || data.includeOntology },
-      findings: findings.map(({ fix, id: _id, ...f }) => ({ ...f, category: CATEGORY_LABEL[f.category], ...(fix ? { quickFix: fix.label } : {}) })),
-    },
-    null,
-    2,
-  );
-}
-
-/**
- * The run as RDF. SHACL results are the engine's own sh:ValidationReport, untouched. OWL and
- * quality findings are not SHACL results and are not dressed up as them: they are written with
- * a small vocabulary of the app's own.
- */
-export function reportTurtle(run: ValidationRun, model: Model): string {
-  const CW = 'https://conceptweaver.app/validation#';
-  const lit = (s: string) => JSON.stringify(s);
-  const node = (f: Finding) => (f.entity?.iri ? `<${f.entity.iri}>` : undefined);
-  const own = run.findings.filter((f) => f.category !== 'shacl');
-  const lines = [
-    `@prefix cw: <${CW}> .`,
-    '@prefix dcterms: <http://purl.org/dc/terms/> .',
-    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
-    '',
-    '[] a cw:ValidationRun ;',
-    `    cw:ontology <${ontologyIriOf(model)}> ;`,
-    `    dcterms:created "${new Date(run.at).toISOString()}"^^xsd:dateTime ;`,
-    `    cw:revision ${lit(run.revision)}${run.owl ? ` ;\n    cw:owlReasoner ${lit(run.owl.engineName)} ;\n    cw:owlStatus ${lit(run.owl.status)} ;\n    cw:owlStatusProved ${run.owl.proved} ;\n    cw:unsatisfiableClasses ${run.owl.unsatisfiable.length}` : ''}${own.length ? ' ;\n    cw:finding' : ' .'}`,
-    ...own.map(
-      (f, i) =>
-        `        [ a cw:Finding ; cw:category ${lit(CATEGORY_LABEL[f.category])} ; cw:severity ${lit(f.severity)} ; cw:rule ${lit(f.rule)} ; cw:message ${lit(f.message)}${f.explanation ? ` ; cw:explanation ${lit(f.explanation)}` : ''}${node(f) ? ` ; cw:entity ${node(f)}` : ''} ]${i === own.length - 1 ? ' .' : ' ,'}`,
-    ),
-  ];
-  return lines.join('\n') + '\n' + (run.shacl?.report ? '\n# ---- SHACL validation report, as the engine produced it\n\n' + run.shacl.report : '');
 }

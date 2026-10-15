@@ -5,7 +5,7 @@ import { expressionOf, FAST_CREDIT, restrictionKey } from '../model/inferred';
 import { configOf, supports } from '../model/modelTypes';
 import { compactIri } from '../model/prefixes';
 import { assertedSuperclasses, CHARACTERISTICS, dataDomain, objectProperties, propLinks, relChoice, restrictionsOf } from '../model/props';
-import { reason } from '../model/reasoner';
+import type { Reasoning } from '../model/reasoner';
 import type { ReasoningResult } from '../model/reasoning';
 import { stable } from '../model/stable';
 import type { ExtraField, Model, Term } from '../model/types';
@@ -64,8 +64,8 @@ const candidate = (model: Model, t: Pick<Term, 'id' | 'name' | 'iri'>, n?: numbe
 interface Index {
   records(kind: ListKind): EntityRecord[];
   sorts(kind: ListKind): EntitySortSpec[];
-  filters(kind: ListKind, dl: ReasoningResult | undefined): EntityFilterSpec[];
-  costly(kind: ListKind, filter: string, dl: ReasoningResult | undefined): { facts: Map<string, string[]>; note?: string } | undefined;
+  filters(kind: ListKind, dl: ReasoningResult | undefined, fast: Reasoning | undefined): EntityFilterSpec[];
+  costly(kind: ListKind, filter: string, dl: ReasoningResult | undefined, fast: Reasoning | undefined): { facts: Map<string, string[]>; note?: string } | undefined;
   candidates(kind: ListKind, filter: string): Candidate[];
 }
 
@@ -194,20 +194,18 @@ function build(model: Model): Index {
     ],
   };
 
-  // What the app's own reasoner says, asked for only by what rests on it.
-  const reasoning = () => reason(model);
   /** Who answers a question put to a reasoner, and how far that answer goes. */
   const credit = (dl: ReasoningResult | undefined) =>
     dl ? `${dl.engine.name}${dl.engine.version ? ' ' + dl.engine.version : ''} (OWL 2 DL)${dl.status === 'complete' ? '' : ', which did not finish over all of the ontology'}` : `${FAST_CREDIT}, which does not find everything an OWL 2 DL reasoner would`;
-  /** Why nothing that rests on a reasoner can be answered, when that is so. */
-  const noReasoning = (dl: ReasoningResult | undefined): string | undefined =>
-    !reasoning().consistent || dl?.consistency === 'inconsistent' ? 'the reasoner finds the ontology inconsistent, and from a contradiction anything follows. See the Validation tab.' : undefined;
+  /** Why nothing that rests on a reasoner can be answered, when that is so: it has not answered yet, or it finds a contradiction. */
+  const noReasoning = (dl: ReasoningResult | undefined, fast: Reasoning | undefined): string | undefined =>
+    !fast ? 'the reasoner is still working out what follows; this filter is there once it has.' : !fast.consistent || dl?.consistency === 'inconsistent' ? 'the reasoner finds the ontology inconsistent, and from a contradiction anything follows. See the Validation tab.' : undefined;
 
-  const filters: Record<ListKind, (dl: ReasoningResult | undefined) => EntityFilterSpec[]> = {
-    class: (dl) => {
+  const filters: Record<ListKind, (dl: ReasoningResult | undefined, fast: Reasoning | undefined) => EntityFilterSpec[]> = {
+    class: (dl, fast) => {
       const all = records('class');
       const term = config.termType.concept.label.toLowerCase();
-      const unavailable = reasoned ? noReasoning(dl) : undefined;
+      const unavailable = reasoned ? noReasoning(dl, fast) : undefined;
       return [
         {
           id: 'position',
@@ -253,8 +251,8 @@ function build(model: Model): Index {
         },
       ];
     },
-    individual: (dl) => {
-      const unavailable = reasoned ? noReasoning(dl) : undefined;
+    individual: (dl, fast) => {
+      const unavailable = reasoned ? noReasoning(dl, fast) : undefined;
       return [
         { id: 'assertedType', label: 'Asserted class', about: 'Individuals stated to be an instance of any of the classes chosen (rdf:type).', type: 'any', options: [], entities: true },
         ...(reasoned
@@ -280,15 +278,14 @@ function build(model: Model): Index {
   };
 
   // What costs a reasoner: kept for the reasoner's answer it was worked out from.
-  const costlyMade = new Map<string, { dl: ReasoningResult | undefined; answer: { facts: Map<string, string[]>; note?: string } }>();
-  const costlyMakers: Record<string, (dl: ReasoningResult | undefined) => { facts: Map<string, string[]>; note?: string }> = {
-    'class|unsatisfiable': (dl) => {
-      const found = new Set([...reasoning().unsatisfiable, ...(dl?.unsatisfiableClasses ?? [])]);
+  const costlyMade = new Map<string, { dl: ReasoningResult | undefined; fast: Reasoning; answer: { facts: Map<string, string[]>; note?: string } }>();
+  const costlyMakers: Record<string, (dl: ReasoningResult | undefined, r: Reasoning) => { facts: Map<string, string[]>; note?: string }> = {
+    'class|unsatisfiable': (dl, r) => {
+      const found = new Set([...r.unsatisfiable, ...(dl?.unsatisfiableClasses ?? [])]);
       return { facts: new Map([...found].map((id) => [id, [ON]])), note: `Unsatisfiable classes are as found by ${credit(dl)}.` };
     },
-    'class|inferredRestrictions': () => {
+    'class|inferredRestrictions': (_dl, r) => {
       // As the table's column has it: what a class inherits from the classes the app's own reasoner entails it to be a kind of.
-      const r = reasoning();
       const facts = new Map<string, string[]>();
       const own = new Map<string, { keys: string[]; texts: string[] }>();
       const stated = (id: string) => own.get(id) ?? own.set(id, { keys: restrictionsOf(model, id).map(restrictionKey), texts: (byId.get(id)?.classAxioms ?? []).map(expressionOf).filter((x): x is string => x !== undefined) }).get(id)!;
@@ -303,8 +300,7 @@ function build(model: Model): Index {
       }
       return { facts, note: `Inferred restrictions are those inherited through what ${FAST_CREDIT} entails${r.truncated ? ', which stopped early: there may be more' : ''}.` };
     },
-    'individual|inferredType': (dl) => {
-      const r = reasoning();
+    'individual|inferredType': (dl, r) => {
       const facts = new Map<string, string[]>();
       for (const t of model.terms) if (t.type === 'instance') facts.set(t.id, [...new Set([...assertedSuperclasses(model, t.id), ...r.types(t.id).map((l) => l.id)])]);
       for (const x of dl?.types ?? []) {
@@ -336,15 +332,16 @@ function build(model: Model): Index {
   return {
     records,
     sorts: (kind) => sorts[kind](),
-    filters: (kind, dl) => filters[kind](dl),
-    costly: (kind, filter, dl) => {
+    filters: (kind, dl, fast) => filters[kind](dl, fast),
+    costly: (kind, filter, dl, fast) => {
       const key = `${kind}|${filter}`;
       const maker = costlyMakers[key];
-      if (!maker) return undefined;
+      // Without the reasoner's answer the filter is unavailable, and is not applied.
+      if (!maker || !fast) return undefined;
       const hit = costlyMade.get(key);
-      if (hit && hit.dl === dl) return hit.answer;
-      const answer = maker(dl);
-      costlyMade.set(key, { dl, answer });
+      if (hit && hit.dl === dl && hit.fast === fast) return hit.answer;
+      const answer = maker(dl, fast);
+      costlyMade.set(key, { dl, fast, answer });
       return answer;
     },
     candidates: (kind, filter) => {
@@ -363,19 +360,20 @@ const indexOf = (model: Model): Index => {
 
 /**
  * The entity query service over the model in the editor: `current` gives that model when it is
- * asked, and the OWL 2 DL reasoner's answer about it where there is one, which what is inferred
- * then takes in beside the app's own reasoner.
+ * asked, the app's own reasoner's answer about it once it has one (`fast`; until then what rests
+ * on it is unavailable), and the OWL 2 DL reasoner's where there is one, which what is inferred
+ * then takes in beside it.
  */
-export function createLocalEntityService(current: () => { model: Model; docId: string | null; dl?: ReasoningResult }): EntityQueryService {
+export function createLocalEntityService(current: () => { model: Model; docId: string | null; dl?: ReasoningResult; fast?: Reasoning }): EntityQueryService {
   return createRecordService(() => {
-    const { model, docId, dl } = current();
+    const { model, docId, dl, fast } = current();
     const index = indexOf(model);
     return {
       ...ontologyRef(model, docId),
       records: index.records,
       sorts: index.sorts,
-      filters: (kind) => index.filters(kind, dl),
-      costly: (kind, filter) => index.costly(kind, filter, dl),
+      filters: (kind) => index.filters(kind, dl, fast),
+      costly: (kind, filter) => index.costly(kind, filter, dl, fast),
       candidates: index.candidates,
     };
   });

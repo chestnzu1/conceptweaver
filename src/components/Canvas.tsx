@@ -11,6 +11,7 @@ import { allowsKind, configOf, supports } from '../model/modelTypes';
 import { INSTANCE_OF, TYPE_CHOICES, typeChoice, type Model, type Relation, type RelKind, type Term } from '../model/types';
 import { isInstanceOf, kindsBetween, objectProperties, offeredChoices, plainRelationships, relChoice, relChoices } from '../model/props';
 import { entailed as entailedBy, type InferredMembership } from '../model/inferred';
+import { useReasoning } from './reasoning';
 import { activeProps, resolveModel, suggestFor } from '../model/vocab';
 import { StylePanel } from './StylePanel';
 import { SubgraphPanel } from './SubgraphPanel';
@@ -372,7 +373,8 @@ export function Canvas() {
   // What is entailed beyond what is stated, from the app's own reasoner and, when it was asked about
   // the model as it is now, the OWL 2 DL reasoner: class memberships and relationships between individuals.
   const dl = useStore(currentDl);
-  const entailed = useMemo(() => (showInferred && supports(meaning, 'reasoning') ? entailedBy(meaning, dl) : undefined), [showInferred, meaning, dl]);
+  const reasoning = useReasoning(showInferred && supports(meaning, 'reasoning'));
+  const entailed = useMemo(() => (showInferred && supports(meaning, 'reasoning') ? entailedBy(meaning, reasoning, dl) : undefined), [showInferred, meaning, reasoning, dl]);
   const inferred = useMemo(() => entailed?.memberships.filter((x) => byId.has(x.from) && byId.has(x.to)) ?? NONE, [entailed, byId]);
   const facts = useMemo(() => (entailed?.facts ?? []).filter((x) => byId.has(x.from) && byId.has(x.to)).map((x): DerivedEdge => ({ id: x.id, from: x.from, to: x.to, kind: 'fact', because: x.because, name: x.name })), [entailed, byId]);
   // What each enumeration class lists, as a line to each member: a picture of its definition, not a

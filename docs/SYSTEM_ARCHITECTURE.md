@@ -250,8 +250,8 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `StructureService` | children, branches, paths, summary, search, compare, explain, analyze, members | `src/structure/local.ts` | **Existing** |
 | `EntityQueryService` | describe, query, options | `src/entities/local.ts` | **Existing** |
 | `OntologyEditService` | `apply(changeSet)`, `validate(changeSet)`, `entity(iri)` | `src/editing/local.ts`, over the rule functions of `axioms.ts`; the document's edits are its steps | **Existing** (2026-10-15) |
-| `ReasoningService` | `start(revision, engine)`, `status(job)`, `cancel(job)`, `result(job)` | `reasoner.ts` in a worker; `reasoning.ts` for HermiT | Recommended, Phase 1 (functions exist) |
-| `ValidationService` | `start(revision, scope)`, `status`, `cancel`, `report` | `validation.ts` in a worker | Recommended, Phase 1 |
+| `ReasoningService` | `start(revision, engine)`, `status(job)`, `cancel(job)`, `result(job)` | `src/reasoning/local.ts`: `reasoner.ts` in a worker; HermiT through `reasoning.ts` | **Existing** (2026-10-15) |
+| `ValidationService` | `start(revision, scope)`, `status`, `cancel`, `report` | `src/validation/local.ts`: `validation.ts` in a worker | **Existing** (2026-10-15) |
 | `GraphService` | `neighbourhood(roots, depth, filters)`, `search(text)` | `subgraph.ts` (`extractSubgraph`, `searchTerms`) | Recommended, Phase 2 |
 | `ImportExportService` | `detect`, `read(document)`, `write(revision, syntax)` | `rdfFormats.ts`, `rdf.ts`, `files.ts` | Recommended, Phase 2 |
 | `SparqlService` | `query(revision, text, graph)` | `sparql.ts` | Recommended, Phase 2 |

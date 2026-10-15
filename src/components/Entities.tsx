@@ -12,6 +12,7 @@ import { type Model, type Relation, type Term, type TermType } from '../model/ty
 import { EntityToolbar, filtersOn } from './EntityToolbar';
 import { useEntityList } from './entityQuery';
 import { EndSelect } from './EndSelect';
+import { useReasoning, WORKING } from './reasoning';
 import { CommitInput } from './fields';
 import { RangeSelect } from './Datatypes';
 import { GovernanceView } from './Governance';
@@ -93,8 +94,10 @@ const WHERE: Partial<Record<MatchField, string>> = { iri: 'IRI', description: 'd
 
 /** A class's inferred restrictions for the table: each with the class it comes from. */
 function InferredCell({ model, id }: { model: Model; id: string }) {
-  const inferred = useMemo(() => inferredRestrictions(model, id), [model, id]);
+  const reasoning = useReasoning();
+  const inferred = useMemo(() => inferredRestrictions(model, reasoning, id), [model, reasoning, id]);
   if (inferred.status === 'inconsistent') return <span className="muted">ontology inconsistent</span>;
+  if (inferred.status === 'working') return <span className="muted">{WORKING}</span>;
   return (
     <>
       {inferred.restrictions.map(({ key, restriction: r, sources }) => (

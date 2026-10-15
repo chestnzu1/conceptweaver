@@ -11,7 +11,6 @@ import { stable } from '../model/stable';
 import { useStore } from '../model/store';
 import { classTree, ROOT } from '../model/tree';
 import { MAPPING_STATUS, type ExternalRef, type MappingMeta, type Model } from '../model/types';
-import { owlFindings } from '../model/validation';
 import { CommitInput } from './fields';
 
 /**
@@ -610,10 +609,20 @@ function Mappings({ model, loaded, mappings }: Common) {
   const used = [...new Set(mappings.map((m) => m.predicate))];
   const short = (iri: string) => compactIri(model, iri) ?? iri;
   // The reasoner over this ontology together with the ones it imports: what the mappings lead to.
+  // It works away from the page, as checks that run by themselves; until it has, that is said.
+  const revision = useStore((s) => s.version.revision);
+  const done = useStore((s) => {
+    const c = s.validation.checks.mappings;
+    return c && c.revisionId === s.version.revision && c.loaded === s.ext.loaded ? c : undefined;
+  });
+  const reported = done?.report;
+  useEffect(() => {
+    if (model.mode !== 'skos') st().requestChecks('mappings');
+  }, [revision, loaded, model.mode, st]);
   const check = useMemo(() => {
     const closure = importsClosure(model, new Map(Object.entries(loaded)));
-    return { ...owlFindings(closure.model), missing: closure.missing, issues: mappingIssues(model, mappings) };
-  }, [model, loaded, mappings]);
+    return { owl: reported?.owl, findings: reported?.findings ?? [], missing: closure.missing, issues: mappingIssues(model, mappings) };
+  }, [model, loaded, mappings, reported]);
   const open = (e: Mapping['source']) => (e.ref.kind === 'term' ? st().select([e.ref.id]) : st().selectProp(e.ref.id));
   const lookup = (iri: string) => {
     for (const ext of Object.values(loaded)) {
@@ -646,7 +655,7 @@ function Mappings({ model, loaded, mappings }: Common) {
     setError(problem);
   };
   const meta = (m: Mapping, patch: Partial<Pick<MappingMeta, 'status' | 'comment' | 'author'>>) => st().apply((x) => setMappingMeta(x, m, patch));
-  const owl = check.summary;
+  const owl = check.owl;
   const end = (e: Mapping['source']) => (
     <td className="ro">
       <button className="link" title={`${e.iri}\nOpen it`} onClick={() => open(e)}>
@@ -684,11 +693,15 @@ function Mappings({ model, loaded, mappings }: Common) {
           Export mappings
         </button>
       </div>
-      <div className={'check-result ' + (owl.status === 'inconsistent' ? 'is-bad' : owl.unsatisfiable.length || check.issues.some((i) => i.severity === 'warning') ? 'is-warn' : 'is-good')} role="status" aria-label="Consistency of the mappings">
+      <div className={'check-result ' + (!owl ? '' : owl.status === 'inconsistent' ? 'is-bad' : owl.unsatisfiable.length || check.issues.some((i) => i.severity === 'warning') ? 'is-warn' : 'is-good')} role="status" aria-label="Consistency of the mappings">
         <strong>
           {model.mode === 'skos'
             ? 'SKOS mappings assert no logic, so there is nothing for the reasoner to check.'
-            : owl.status === 'inconsistent'
+            : done?.error
+              ? `The mappings could not be checked: ${done.error}`
+              : !owl
+                ? 'Checking the mappings with the fast reasoner…'
+              : owl.status === 'inconsistent'
               ? `Inconsistent: with these mappings the ontology contradicts itself (${owl.contradictions} contradiction${owl.contradictions === 1 ? '' : 's'}).`
               : owl.unsatisfiable.length
                 ? `No contradiction found, but ${owl.unsatisfiable.length} class${owl.unsatisfiable.length === 1 ? '' : 'es'} can never have a member.`

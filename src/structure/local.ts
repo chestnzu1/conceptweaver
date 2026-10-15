@@ -3,11 +3,11 @@ import { configOf, supports } from '../model/modelTypes';
 import { classText, namingFor } from '../model/manchester';
 import { compactIri } from '../model/prefixes';
 import { assertedSuperclasses, findProp, restrictionsOf } from '../model/props';
-import { reason } from '../model/reasoner';
+import type { Reasoning } from '../model/reasoner';
 import type { EngineId, ReasoningResult } from '../model/reasoning';
 import { stable } from '../model/stable';
 import type { Model, Term } from '../model/types';
-import { owlFindings, type ValidationRun } from '../model/validation';
+import { owlFindings } from '../model/validation';
 import { resolveModel } from '../model/vocab';
 import type { ClassAxiom, Iri, OntologyRef, ReasonerRef, StructureService } from './contracts';
 import type { ClassGraphInput } from './graph';
@@ -171,20 +171,22 @@ function axiomsOf(given: Model, iris: Iri[]): Map<Iri, ClassAxiom[]> {
  */
 export interface LocalReasoning {
   engine: EngineId;
-  /** The last run of the validation workbench, which is where the OWL 2 DL reasoner's answer is kept. */
-  run: Pick<ValidationRun, 'model' | 'dl'> | null;
+  /** The app's own reasoner's answer about the model, once it has one (it works in a worker): until then it has nothing to say. */
+  fast?: Reasoning;
+  /** The OWL 2 DL reasoner's last answer, and the revision it is of. */
+  dl?: { revisionId: string; result: ReasoningResult } | null;
 }
 
 const FAST: ReasonerRef = { id: 'fast', name: 'Fast reasoner (RDFS / partial OWL RL)' };
 const FAST_LIMITS = 'It applies rules and is not a complete OWL 2 DL reasoner: what it finds holds, and there may be more that it does not find.';
 
 /**
- * The app's own rule reasoner. It is asked about the model as it is, at once, so its answer is
- * always current; it is never complete. It gives every entailed superclass of each class, from
- * which the direct ones are worked out.
+ * The app's own rule reasoner, by its answer about the model as it is; it is never complete. It
+ * gives every entailed superclass of each class, from which the direct ones are worked out. Until
+ * it has answered there is nothing to say.
  */
-function fastAnswer(model: Model, index: LocalIndex): InferredInput {
-  const reasoning = reason(model);
+function fastAnswer(model: Model, index: LocalIndex, reasoning: Reasoning | undefined): InferredInput {
+  if (!reasoning) return { provenance: { engine: FAST, revisionId: revisionOf(model), status: 'unavailable', completeness: 'incomplete', notes: ['The fast reasoner is still working out what follows.'] } };
   const notes = [FAST_LIMITS, ...(reasoning.truncated ? ['It stopped early, because the ontology gave it more facts than it keeps: some of what follows is missing.'] : [])];
   const provenance = { engine: FAST, revisionId: revisionOf(model), completeness: 'incomplete' as const, notes };
   // From a contradiction everything follows, so there is no hierarchy to speak of.
@@ -200,7 +202,7 @@ function fastAnswer(model: Model, index: LocalIndex): InferredInput {
     }
   }
   // The classes Validation lists as unsatisfiable for this reasoner: under two disjoint classes, or with restrictions that cannot hold together.
-  const unsatisfiable = owlFindings(model).summary.unsatisfiable.map((id) => index.iriOf.get(id)).filter((iri): iri is Iri => iri !== undefined);
+  const unsatisfiable = owlFindings(model, false, reasoning).summary.unsatisfiable.map((id) => index.iriOf.get(id)).filter((iri): iri is Iri => iri !== undefined);
   return {
     provenance: { ...provenance, status: 'current' },
     entailed: { subClassOf, links: 'all', equivalent, unsatisfiable },
@@ -218,12 +220,12 @@ function fastAnswer(model: Model, index: LocalIndex): InferredInput {
  * once the ontology has changed it is stale and nothing is taken from it. Where it gave none,
  * that is said, and the other reasoner's is not put in its place.
  */
-function dlAnswer(model: Model, index: LocalIndex, run: LocalReasoning['run']): InferredInput {
-  const result: ReasoningResult | undefined = run?.dl?.result;
+function dlAnswer(model: Model, index: LocalIndex, dl: LocalReasoning['dl']): InferredInput {
+  const result: ReasoningResult | undefined = dl?.result;
   const engine: ReasonerRef = { id: 'dl', name: result?.engine.name ?? 'HermiT', ...(result?.engine.version ? { version: result.engine.version } : {}) };
   const none = (status: 'unavailable' | 'stale' | 'failed' | 'inconsistent', revisionId: string, notes: string[]): InferredInput => ({ provenance: { engine, revisionId, status, completeness: 'incomplete', notes } });
-  if (!run || !result) return none('unavailable', revisionOf(model), ['The OWL 2 DL reasoner has not been asked about this ontology.']);
-  if (run.model !== stable(model)) return none('stale', revisionAt(run.model), ['Its answer is of the ontology as it was before it was last changed.']);
+  if (!dl || !result) return none('unavailable', revisionOf(model), ['The OWL 2 DL reasoner has not been asked about this ontology.']);
+  if (dl.revisionId !== revisionOf(model)) return none('stale', dl.revisionId, ['Its answer is of the ontology as it was before it was last changed.']);
   if (result.status === 'failed' || result.consistency === 'unknown') return none('failed', revisionOf(model), result.errors);
   if (result.consistency === 'inconsistent') return none('inconsistent', revisionOf(model), []);
   const iri = (id: string) => index.iriOf.get(id);
@@ -239,16 +241,16 @@ function dlAnswer(model: Model, index: LocalIndex, run: LocalReasoning['run']): 
   };
 }
 
-const answers = new WeakMap<Model, { engine: EngineId; run: LocalReasoning['run']; answer: InferredInput }>();
+const answers = new WeakMap<Model, { engine: EngineId; from: Reasoning | LocalReasoning['dl'] | undefined; answer: InferredInput }>();
 
-/** What the chosen reasoner entails of the model as it is: the same object until the model, the choice or the answer changes. */
+/** What the chosen reasoner entails of the model as it is: the same object until the model, the choice or the reasoner's answer changes. */
 function inferredOf(given: Model, reasoning: LocalReasoning): InferredInput {
   const model = stable(given);
   const hit = answers.get(model);
-  // The fast reasoner's answer follows from the model alone; the other one's is whatever it last said.
-  if (hit && hit.engine === reasoning.engine && (reasoning.engine === 'fast' || hit.run === reasoning.run)) return hit.answer;
-  const answer = reasoning.engine === 'fast' ? fastAnswer(model, indexOf(model)) : dlAnswer(model, indexOf(model), reasoning.run);
-  answers.set(model, { engine: reasoning.engine, run: reasoning.run, answer });
+  const from = reasoning.engine === 'fast' ? reasoning.fast : reasoning.dl;
+  if (hit && hit.engine === reasoning.engine && hit.from === from) return hit.answer;
+  const answer = reasoning.engine === 'fast' ? fastAnswer(model, indexOf(model), reasoning.fast) : dlAnswer(model, indexOf(model), reasoning.dl);
+  answers.set(model, { engine: reasoning.engine, from, answer });
   return answer;
 }
 

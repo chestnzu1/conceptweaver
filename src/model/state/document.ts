@@ -12,6 +12,7 @@ import { withoutIris } from '../unmapped';
 import { MODEL_DATA } from '../validation';
 import { noEntityViews, type Selection } from './session';
 import { AUTOSAVE_KEY, DOC_KEY, MODEL_KEY, stored } from './storage';
+import { NO_REASONING } from './reasoning';
 import { NO_SUBGRAPH } from './subgraph';
 import type { Slice, State } from './types';
 
@@ -180,10 +181,12 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     const model = prepared(m);
     get().cancelLayout();
     get().endTween();
+    get().cancelReasoning();
+    get().cancelValidation();
     // A different document: its history starts afresh, and it counts as unchanged until edited.
     // Another model may be of another type: the view stays only if that type has it.
     const d = opened(model);
-    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, data: MODEL_DATA, shapeId: null, tab: 'results' } });
+    set({ view: viewFor(model, get().view), showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, running: false, phase: '', job: null, checks: {}, data: MODEL_DATA, shapeId: null, tab: 'results' }, reasoning: NO_REASONING });
     void get().loadExternals();
     get().fit();
   },

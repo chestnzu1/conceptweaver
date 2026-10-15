@@ -21,7 +21,12 @@ const panel = page.locator('.inspector');
 const side = page.locator('.term-list');
 const flat = (s) => s.replace(/\s+/g, ' ').trim();
 const pick = async (name) => { await side.locator('.tree-line .label', { has: page.locator('.name', { hasText: new RegExp('^' + name + '$') }) }).first().click(); await page.waitForFunction((n) => document.querySelector('.inspector input')?.value === n, name); };
-const inferred = async () => (await panel.locator('.restrictions.inferred li').allInnerTexts()).map(flat);
+// The reasoner answers from a worker: what the panel says of it is read once it has.
+const settled = () => page.waitForFunction(() => !/Working out what follows|Inferred restrictions \(…\)/.test(document.querySelector('.inspector')?.textContent ?? ''), undefined, { timeout: 15_000 }).catch(() => {});
+const inferred = async () => {
+  await settled();
+  return (await panel.locator('.restrictions.inferred li').allInnerTexts()).map(flat);
+};
 const asserted = async () => (await panel.locator('.restrictions:not(.inferred) li').evaluateAll((els) => els.map((li) => `${li.querySelector('.link').textContent} ${li.querySelector('select').value}${li.querySelector('input') ? ' ' + li.querySelector('input').value : ''} ${li.querySelector('span:last-of-type').textContent}`)));
 const tab = (name) => page.locator('.header').getByRole('tab', { name, exact: name === 'RDF' }).click();
 const row = (name) => page.locator('.view tbody tr', { has: page.locator(`input[value="${name}"]`) });
@@ -82,6 +87,7 @@ ok((await page.locator('.view thead th').allInnerTexts()).map(flat).join(' | ').
 await page.screenshot({ path: shots + 'inferred-table.png' });
 await row('Working actor').getByRole('button', { name: 'Remove superclass Actor' }).click();
 await row('Working actor').getByRole('button', { name: 'Remove superclass Employee' }).click();
+await page.waitForFunction(() => !/Working out what follows/.test(document.querySelector('.view tbody')?.textContent ?? ''), undefined, { timeout: 15_000 }).catch(() => {});
 ok(flat(await row('Working actor').locator('.restrictions-cell.inferred').innerText()) === '', 'with both superclasses removed nothing is inferred any more');
 await page.getByRole('button', { name: 'Undo' }).click();
 ok(flat(await row('Working actor').locator('.restrictions-cell.inferred').innerText()) === 'produces min 2 Film ← Person', 'undo brings the inference back');
@@ -117,6 +123,7 @@ await tab('Vocabulary');
 await page.locator('.vocab tbody tr', { hasText: 'excludes' }).locator('select').selectOption('owl:disjointWith');
 await tab('Graph');
 await pick('Documentary');
+await settled();
 ok((await panel.locator('h3', { hasText: 'Inferred restrictions (—)' }).count()) === 1 && (await panel.locator('.bad', { hasText: 'inconsistent' }).count()) >= 1 && (await inferred()).length === 0, 'when the ontology is inconsistent, no inferred restrictions are listed and the panel says why');
 
 console.log('console errors:', errors.length ? errors.slice(0, 3) : 'none');

@@ -1,3 +1,4 @@
+import { reason } from './reasoner';
 import { individual, objectProperty } from './expressions';
 import { withDatatype } from './domains';
 import { describe, expect, it } from 'vitest';
@@ -30,7 +31,7 @@ function build(lines: string[], patch: (m: Model, id: Record<string, string>) =>
   patch(m, id);
   return { m, id };
 }
-const show = (m: Model, classId: string) => inferredRestrictions(m, classId).restrictions.map((r) => `${r.restriction.text} ← ${r.sources.map((s) => s.name + (s.equivalent ? ' (equivalent)' : '')).join(', ')}`);
+const show = (m: Model, classId: string) => inferredRestrictions(m, reason(m), classId).restrictions.map((r) => `${r.restriction.text} ← ${r.sources.map((s) => s.name + (s.equivalent ? ' (equivalent)' : '')).join(', ')}`);
 
 describe('inferred restrictions', () => {
   it('shows a subclass the restrictions of its superclass, on data and object properties', () => {
@@ -38,7 +39,7 @@ describe('inferred restrictions', () => {
     expect(show(m, id.Actor)).toEqual(['hasName some xsd:string ← Person', 'livesIn some Place ← Person']);
     // The class they are stated on has them as asserted, not as inferred.
     expect(show(m, id.Person)).toEqual([]);
-    expect(inferredRestrictions(m, id.Actor).status).toBe('ok');
+    expect(inferredRestrictions(m, reason(m), id.Actor).status).toBe('ok');
     // Nothing was added to the model.
     expect(m.relations).toHaveLength(3);
   });
@@ -47,7 +48,7 @@ describe('inferred restrictions', () => {
     const { m, id } = build(['LivingThing has hasStatus:xsd:string', 'Person < LivingThing', 'Actor < Person', 'Actress < Actor', 'Person -hasParent exactly 2-> Person', 'Actor -actsIn only-> Film', 'Person -owns max 3-> Film']);
     expect(show(m, id.Actress)).toEqual(['actsIn only Film ← Actor', 'hasParent exactly 2 Person ← Person', 'owns max 3 Film ← Person', 'hasStatus some xsd:string ← LivingThing']);
     // The reasoner's own justification comes with each source.
-    const status = inferredRestrictions(m, id.Actress).restrictions.find((r) => r.restriction.property === 'hasStatus')!;
+    const status = inferredRestrictions(m, reason(m), id.Actress).restrictions.find((r) => r.restriction.property === 'hasStatus')!;
     expect(status.sources[0]).toMatchObject({ name: 'LivingThing', asserted: false });
     expect(status.sources[0].because).toBe('“Actress” is a kind of “Actor”; “Actor” is a kind of “Person”; “Person” is a kind of “LivingThing”.');
     expect(status.sources[0].rels).toHaveLength(3);
@@ -68,7 +69,7 @@ describe('inferred restrictions', () => {
     // Performer is equivalent to Actor, so it has Actor's restriction, and Person's through Actor.
     expect(show(m, id.Performer).sort()).toEqual(['actsIn some Film ← Actor (equivalent)', 'hasName some xsd:string ← Person']);
     expect(show(m, id.Actor).sort()).toEqual(['hasAgent some Person ← Performer (equivalent)', 'hasName some xsd:string ← Person']);
-    expect(inferredRestrictions(m, id.Performer).restrictions.find((r) => r.restriction.property === 'hasName')!.sources[0].because).toContain('is equivalent to');
+    expect(inferredRestrictions(m, reason(m), id.Performer).restrictions.find((r) => r.restriction.property === 'hasName')!.sources[0].because).toContain('is equivalent to');
     // With RDFS & OWL properties switched off the equivalence means nothing, so nothing is inherited through it.
     expect(show({ ...m, vocab: { ...m.vocab, enabled: false } }, id.Performer)).toEqual([]);
   });
@@ -93,9 +94,9 @@ describe('inferred restrictions', () => {
         { id: 'c', kind: 'DisjointClasses', expression: { type: 'Class', iri: 'http://x.org/C' } },
       ];
     });
-    const got = inferredRestrictions(m, id.Actor);
+    const got = inferredRestrictions(m, reason(m), id.Actor);
     expect(got.expressions.map((e) => `${e.text} ← ${e.sources.map((s) => s.name)}`)).toEqual(['<http://x.org/A> or <http://x.org/B> ← Person', '<http://x.org/p> value <http://x.org/v> ← Person']);
-    expect(inferredRestrictions(m, id.Person).expressions).toEqual([]);
+    expect(inferredRestrictions(m, reason(m), id.Person).expressions).toEqual([]);
   });
 
   it('says so instead of listing anything when the ontology is inconsistent, and flags an unsatisfiable class', () => {
@@ -104,18 +105,18 @@ describe('inferred restrictions', () => {
       model.terms.push(rex);
       model.relations.push(newRelation({ from: ids.Person, to: ids.Robot, predicate: 'owl:disjointWith' }), newRelation({ from: rex.id, to: ids.Person, kind: 'generalization' }), newRelation({ from: rex.id, to: ids.Robot, kind: 'generalization' }));
     });
-    expect(inferredRestrictions(m, id.Actor)).toEqual({ status: 'inconsistent', restrictions: [], expressions: [] });
+    expect(inferredRestrictions(m, reason(m), id.Actor)).toEqual({ status: 'inconsistent', restrictions: [], expressions: [] });
     const unsat = build(['Person -knows some-> Person', 'Robot', 'Cyborg < Person', 'Cyborg < Robot'], (model, ids) => {
       model.relations.push(newRelation({ from: ids.Person, to: ids.Robot, predicate: 'owl:disjointWith' }));
     });
-    expect(inferredRestrictions(unsat.m, unsat.id.Cyborg).status).toBe('unsatisfiable');
+    expect(inferredRestrictions(unsat.m, reason(unsat.m), unsat.id.Cyborg).status).toBe('unsatisfiable');
     expect(show(unsat.m, unsat.id.Cyborg)).toEqual(['knows some Person ← Person']);
   });
 
   it('has nothing to say about individuals, properties, or a SKOS concept scheme', () => {
     const { m, id } = build(['Person has hasName:xsd:string', 'Actor < Person']);
-    expect(inferredRestrictions(m, id.hasName).status).toBe('none');
-    expect(inferredRestrictions({ ...m, mode: 'skos' }, id.Actor).status).toBe('none');
-    expect(inferredRestrictions(m, 'no-such-id').status).toBe('none');
+    expect(inferredRestrictions(m, reason(m), id.hasName).status).toBe('none');
+    expect(inferredRestrictions({ ...m, mode: 'skos' }, reason({ ...m, mode: 'skos' }), id.Actor).status).toBe('none');
+    expect(inferredRestrictions(m, reason(m), 'no-such-id').status).toBe('none');
   });
 });

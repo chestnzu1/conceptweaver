@@ -3,11 +3,13 @@ import { download } from '../model/files';
 import { objectProperties } from '../model/props';
 import { QUALITY_RULES, ruleEnabled, setRule, type RuleGroup } from '../model/quality';
 import { asTurtle, fileText, FORMAT_LABEL, ONTOLOGY_FILES } from '../model/rdfFormats';
-import { reason } from '../model/reasoner';
-import { stable } from '../model/stable';
-import { useStore } from '../model/store';
+import { useReasoning, WORKING } from './reasoning';
+import type { Inference } from '../model/store';
+import { currentDl, useStore } from '../model/store';
 import { creditOf, ENGINES, reasonerHealth, type ReasoningResult } from '../model/reasoning';
-import { categoryLabel, DL_LIMITS, isStale, MODEL_DATA, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../model/validation';
+import { MODEL_DATA, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../validation/contracts';
+import { fixOf } from '../validation/local';
+import { categoryLabel, DL_LIMITS, isStale, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE } from '../validation/report';
 import { ShapesPanel } from './Shapes';
 import { CommitInput } from './fields';
 import { Disclosure } from './Icon';
@@ -24,11 +26,11 @@ const fileBase = (name: string) => name.trim().replace(/[^\p{L}\p{N}]+/gu, '-').
 
 export function ValidationView() {
   const model = useStore((s) => s.model);
-  const meaning = stable(model);
-  const { run, running, phase, data, tab, engine } = useStore((s) => s.validation);
+  const { run, running, phase, data, tab } = useStore((s) => s.validation);
   const st = useStore.getState;
   const dataRef = useRef<HTMLInputElement>(null);
-  const stale = isStale(run, model, data);
+  const revision = useStore((s) => s.version.revision);
+  const stale = isStale(run, revision, data);
 
   // The first time the workbench is opened for a model there is nothing to show, so it runs once.
   // After that it runs when asked: the results say what was validated, and when.
@@ -41,7 +43,9 @@ export function ValidationView() {
 
   const findings = run?.findings ?? [];
   const count = (c: Category, l?: Level) => findings.filter((f) => f.category === c && (!l || f.severity === l)).length;
-  const inferences = useMemo(() => (tab === 'inferences' ? reason(meaning).inferences : []), [meaning, tab]);
+  const reasoning = useReasoning(tab === 'inferences');
+  // What the OWL 2 DL reasoner entails, when it is the one chosen and was asked about the model as it is.
+  const dl = useStore(currentDl);
 
   const importData = async (file: File) => {
     try {
@@ -70,9 +74,14 @@ export function ValidationView() {
           {runButton('owl', 'OWL')}
           {runButton('shacl', 'SHACL')}
           {runButton('quality', 'Quality')}
+          {running && (
+            <button className="btn" title="Stops the checks under way: the results shown stay those of the last run" onClick={() => st().cancelValidation()}>
+              Stop
+            </button>
+          )}
         </div>
         <span className="muted run-state" role="status" aria-live="polite">
-          {running ? phase || 'Working…' : run ? `Validated ${new Date(run.at).toLocaleTimeString()} · revision ${run.revision} · ${run.entities} entities` : 'Not validated yet.'}
+          {running ? phase || 'Working…' : run ? `Validated ${new Date(run.at).toLocaleTimeString()} · revision ${run.fingerprint} · ${run.entities} entities` : 'Not validated yet.'}
         </span>
         <div className="row">
           <button className="btn small" disabled={!run} title="The results as JSON" onClick={() => run && download(`${fileBase(model.name)}-validation.json`, reportJson(run, model), 'application/json')}>
@@ -86,7 +95,7 @@ export function ValidationView() {
 
       {stale && !running && (
         <p className="stale" role="alert">
-          The model has changed since these results (revision {run!.revision}). They may no longer hold.{' '}
+          The model has changed since these results (revision {run!.fingerprint}). They may no longer hold.{' '}
           <button className="link" onClick={() => void st().runValidation('all')}>
             Run all checks again
           </button>
@@ -229,7 +238,7 @@ export function ValidationView() {
               Show inferred facts in the graph
             </button>
           </p>
-          {run?.dl && engine === 'dl' && !stale && run.dl.result.status !== 'failed' ? <DlInferences result={run.dl.result} /> : <Inferences inferences={inferences} />}
+          {dl ? <DlInferences result={dl} /> : <Inferences inferences={reasoning?.inferences} />}
         </>
       )}
 
@@ -539,11 +548,13 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
     st().setHighlight([...f.terms, ...f.rels], `${categoryLabel(f.category)}: ${f.rule}`);
   };
   const applyFix = (f: Finding) => {
-    if (!f.fix) return;
-    st().apply(f.fix.apply);
+    // A finding comes with what its fix does; the fix itself is found again in the model as it is.
+    const fix = fixOf(st().model, f);
+    if (!fix) return st().notify('That fix no longer applies: the model has changed. Run the checks again.');
+    st().apply(fix.apply);
     setFixing(null);
     setOpen(null);
-    st().notify(`Done: ${f.fix.label}. Undo takes it back.`);
+    st().notify(`Done: ${fix.label}. Undo takes it back.`);
     // What was found before the fix no longer describes the model, so it is looked at again.
     void st().runValidation('all');
   };
@@ -891,7 +902,8 @@ function DlInferences({ result }: { result: ReasoningResult }) {
   );
 }
 
-function Inferences({ inferences }: { inferences: ReturnType<typeof reason>['inferences'] }) {
+/** What the app's own reasoner derives, once it has answered; undefined while it works. */
+function Inferences({ inferences }: { inferences: Inference[] | undefined }) {
   const st = useStore.getState;
   const [limit, setLimit] = useState(PAGE);
   const show = (terms: string[], rels: string[]) => {
@@ -902,8 +914,13 @@ function Inferences({ inferences }: { inferences: ReturnType<typeof reason>['inf
   return (
     <div className="issues">
       <p className="muted note">What the reasoner derives from the model, each with the stated facts it rests on. These are not stored: “Add to model” states one explicitly.</p>
-      {!inferences.length && <p className="muted note">Nothing new follows from the model yet.</p>}
-      {inferences.slice(0, limit).map((i) => (
+      {!inferences && (
+        <p className="muted note" role="status">
+          {WORKING}
+        </p>
+      )}
+      {inferences && !inferences.length && <p className="muted note">Nothing new follows from the model yet.</p>}
+      {(inferences ?? []).slice(0, limit).map((i) => (
         <div key={i.key} className="issue inference">
           <span className="sev inferred">inferred</span>
           <button className="issue-rule link" onClick={() => show(i.terms, i.rels)} title="Show what this rests on">
@@ -919,7 +936,7 @@ function Inferences({ inferences }: { inferences: ReturnType<typeof reason>['inf
           )}
         </div>
       ))}
-      {inferences.length > limit && (
+      {inferences && inferences.length > limit && (
         <p className="pager">
           Showing {limit} of {inferences.length} inferred facts.
           <button className="btn small" onClick={() => setLimit(limit + 500)}>

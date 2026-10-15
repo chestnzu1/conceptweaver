@@ -179,9 +179,28 @@ export { PROP_LINKS };
  * follows the classes it is attached to (`attached`, by term id, whichever it is).
  */
 export function dataDomain(model: Model, t: Term): { axioms: ClassAxiom[]; auto: boolean; attached: string[] } {
+  return { axioms: t.domains ?? [], auto: !t.domains, attached: [...(attachedClasses(model).get(t.id) ?? [])] };
+}
+
+const attachments = new WeakMap<Model['relations'], { terms: Model['terms']; byProp: Map<string, string[]> }>();
+
+/**
+ * For each data property, the classes a "has data property" relationship attaches to it, in the
+ * order of the relationships: worked out in one pass for a model's terms and relationships, so
+ * that asking it of every data property costs no more than asking it of one.
+ */
+function attachedClasses(model: Model): Map<string, string[]> {
+  const hit = attachments.get(model.relations);
+  if (hit && hit.terms === model.terms) return hit.byProp;
   const known = new Set(model.terms.filter((x) => x.type === 'concept').map((x) => x.id));
-  const attached = [...new Set(model.relations.filter((r) => r.kind === 'property' && r.to === t.id && known.has(r.from)).map((r) => r.from))];
-  return { axioms: t.domains ?? [], auto: !t.domains, attached };
+  const byProp = new Map<string, string[]>();
+  for (const r of model.relations) {
+    if (r.kind !== 'property' || !known.has(r.from)) continue;
+    const list = byProp.get(r.to) ?? byProp.set(r.to, []).get(r.to)!;
+    if (!list.includes(r.from)) list.push(r.from);
+  }
+  attachments.set(model.relations, { terms: model.terms, byProp });
+  return byProp;
 }
 
 /**

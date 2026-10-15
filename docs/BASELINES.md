@@ -43,6 +43,36 @@ that runs after every edit: the model benchmark below times that reasoner at 472
 same model, outside the browser. Every operation measured is over the target, by a factor of 3.5
 to 5.5 for the three that Phase 1 commits to.
 
+### After roadmap task 1.9 (2026-10-15): reasoning and validation as jobs
+
+The fast reasoner and the checks now run in Web Workers, asked about a revision and answered for
+it (see README, *Reasoning and validation as jobs*); a data property's domain is looked up in one
+index for the model rather than worked out by a pass over every relationship. The same script,
+the same model and the same machine, two runs agreeing to within a few milliseconds:
+
+| Operation | Longest task, 2026-10-14 | Longest task, 2026-10-15 | Phase 1 target |
+| --- | ---: | ---: | ---: |
+| Edit: rename a class | 533 ms | **72 ms** | under 100 ms |
+| Reasoner run (OWL checks, built-in reasoner) | 357 ms | **under 50 ms** | under 100 ms |
+| Validation run (all checks) | 386 ms | **under 50 ms** | under 100 ms |
+| Select a class in the sidebar | 117 ms | 67 ms | (NFR-3: 100 ms) |
+| Open the model (JSON) | 697 ms | 575 ms | (NFR-3: 100 ms) |
+
+The three operations Phase 1 commits to are under the target. A reasoner run and a validation
+run are shown on screen a little sooner than before (0.38 s and 0.57 s, from 0.55 s and 0.84 s),
+the work no longer queuing behind the page's. Opening a model is still over NFR-3's 100 ms: the
+canvas draws every term (TD-10), which is Phase 2.
+
+```
+Main thread, 2600 classes, Chromium 151.0.7922.34, 2026-10-15
+operation                                     longest task  long tasks  blocking (>50 ms)  on screen after
+open bench.txt.2600.json                            574 ms           1             524 ms           880 ms
+select a class (sidebar)                             66 ms           1              16 ms           214 ms
+edit: rename the class                               74 ms           1              24 ms           218 ms
+reasoner run (OWL checks, built-in reasoner)       < 50 ms           0               0 ms           375 ms
+validation run (all checks)                        < 50 ms           0               0 ms           576 ms
+```
+
 ## The model layer and the structure services
 
 The figures that bear most on the targets, from the raw output below:

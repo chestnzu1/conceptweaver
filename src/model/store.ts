@@ -4,6 +4,7 @@ import { editsSlice } from './state/edits';
 import { externalsSlice } from './state/externals';
 import { layoutSlice } from './state/layout';
 import { keepWorkingCopy } from './state/persistence';
+import { reasoningSlice } from './state/reasoning';
 import { sessionSlice } from './state/session';
 import { subgraphSlice } from './state/subgraph';
 import type { State } from './state/types';
@@ -18,7 +19,7 @@ import { emptyModel, type ModelMode } from './types';
  *   history, and which saved model it is. It is what will one day talk to an edit service;
  * - the session (`session.ts`, and the subgraph in `subgraph.ts`): what is selected and looked
  *   at, the panels, the dialogs, the preferences. Nothing of it is part of the ontology;
- * - the jobs: validation and reasoning (`validation.ts`), the other ontologies
+ * - the jobs: validation (`validation.ts`), reasoning (`reasoning.ts`), the other ontologies
  *   (`externals.ts`), arranging the graph (`layout.ts`);
  * - and, attached once the store exists, the working copy kept in the browser (`persistence.ts`).
  *
@@ -31,7 +32,8 @@ export type { SubgraphState } from './state/subgraph';
 export { layoutOf, viewOf, type GraphScope } from './state/view';
 export type { Tween } from './state/layout';
 export { isDirty, type Doc } from './state/document';
-export { currentDl } from './state/validation';
+export { currentDl, problemCount, type CheckKind } from './state/validation';
+export { currentReasoning, type Inference, type Reasoning } from './state/reasoning';
 
 export const useStore = create<State>()((...a) => ({
   ...documentSlice(...a),
@@ -39,6 +41,7 @@ export const useStore = create<State>()((...a) => ({
   ...sessionSlice(...a),
   ...subgraphSlice(...a),
   ...validationSlice(...a),
+  ...reasoningSlice(...a),
   ...externalsSlice(...a),
   ...layoutSlice(...a),
 }));

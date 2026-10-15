@@ -1,8 +1,8 @@
+import { reason } from '../model/reasoner';
 import { withDatatype } from '../model/domains';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { withIris } from '../model/iri';
-import type { DlReport, ReasoningResult } from '../model/reasoning';
-import { stable } from '../model/stable';
+import type { ReasoningResult } from '../model/reasoning';
 import { useStore } from '../model/store';
 import { stressModel } from '../model/stress';
 import { newProp, emptyModel, newRelation, newTerm, type Model } from '../model/types';
@@ -230,8 +230,14 @@ describe('revisions of the model in the editor', () => {
 });
 
 describe('what the reasoners entail of the model in the editor', () => {
-  const FAST: LocalReasoning = { engine: 'fast', run: null };
-  const reasoned = (model: () => Model, reasoning: () => LocalReasoning) => createLocalStructureService(() => ({ model: model(), docId: null, reasoning: reasoning() }));
+  const FAST: LocalReasoning = { engine: 'fast' };
+  /** The fast reasoner's answer, as the editor gives it once its job is done, unless one is given. */
+  const answered = (m: Model, r: LocalReasoning): LocalReasoning => (r.engine === 'fast' && !('fast' in r) ? { ...r, fast: reason(m) } : r);
+  const reasoned = (model: () => Model, reasoning: () => LocalReasoning) =>
+    createLocalStructureService(() => {
+      const m = model();
+      return { model: m, docId: null, reasoning: answered(m, reasoning()) };
+    });
   const inferredOf = (m: Model, extra: Partial<HierarchyQuery> = {}): HierarchyQuery => ({ ...ontologyRef(m, null), mode: 'inferred', ...extra });
   const under = async (service: StructureService, m: Model, name?: string) => labels(await service.children(inferredOf(m, name ? { parentIri: m.terms.find((t) => t.name === name)!.iri! } : {})));
   const add = (m: Model, build: (id: (name: string, patch?: Parameters<typeof newTerm>[0]) => string, m: Model) => void): Model => {
@@ -332,8 +338,8 @@ describe('what the reasoners entail of the model in the editor', () => {
     expect(refused).toMatchObject({ nodes: [], total: 0, provenance: { status: 'inconsistent', engine: { id: 'fast' } } });
   });
 
-  /** An answer of the OWL 2 DL reasoner, as the validation workbench keeps it. Its report is not read here. */
-  const dlRun = (m: Model, id: Record<string, string>, patch: Partial<ReasoningResult> = {}): LocalReasoning['run'] => {
+  /** An answer of the OWL 2 DL reasoner about the model as it is, as the editor keeps it. Its report is not read here. */
+  const dlRun = (m: Model, id: Record<string, string>, patch: Partial<ReasoningResult> = {}): LocalReasoning['dl'] => {
     const link = (subclass: string, superclass: string, direct = true) => ({ subclass: id[subclass], superclass: id[superclass], asserted: true, direct });
     const result: ReasoningResult = {
       engine: { id: 'dl', name: 'HermiT', version: '1.4.5.456' },
@@ -353,13 +359,13 @@ describe('what the reasoners entail of the model in the editor', () => {
       ms: 12,
       ...patch,
     };
-    return { model: stable(m), dl: { report: {} as DlReport, result } };
+    return { revisionId: revisionOf(m), result };
   };
 
   it('builds the inferred hierarchy from the OWL 2 DL reasoner’s answer, credited to it', async () => {
     const { m, id } = cast();
-    const run = dlRun(m, id);
-    const service = reasoned(() => m, () => ({ engine: 'dl', run }));
+    const dl = dlRun(m, id);
+    const service = reasoned(() => m, () => ({ engine: 'dl', dl }));
     const top = await service.children(inferredOf(m));
     expect(labels(top)).toEqual(['Agent', 'owl:Nothing']);
     expect(top.provenance).toEqual({ engine: { id: 'dl', name: 'HermiT', version: '1.4.5.456' }, revisionId: revisionOf(m), status: 'current', completeness: 'complete', notes: [] });
@@ -371,15 +377,15 @@ describe('what the reasoners entail of the model in the editor', () => {
     const employee = (await service.children(inferredOf(m, { parentIri: 'http://vocab.org/v#Agent' }))).nodes[0];
     expect(employee).toMatchObject({ class: { label: 'Employee' }, entailedOnly: true });
     // An answer that left something out says so.
-    const partial = reasoned(() => m, () => ({ engine: 'dl', run: dlRun(m, id, { status: 'partial', warnings: ['xsd:date values were not compared.'] }) }));
+    const partial = reasoned(() => m, () => ({ engine: 'dl', dl: dlRun(m, id, { status: 'partial', warnings: ['xsd:date values were not compared.'] }) }));
     expect((await partial.children(inferredOf(m))).provenance).toMatchObject({ completeness: 'incomplete', notes: ['xsd:date values were not compared.'] });
   });
 
   it('withdraws that answer once the ontology has changed, and puts nothing in its place', async () => {
     const { m, id } = cast();
-    const run = dlRun(m, id);
+    const dl = dlRun(m, id);
     let current = m;
-    const service = reasoned(() => current, () => ({ engine: 'dl', run }));
+    const service = reasoned(() => current, () => ({ engine: 'dl', dl }));
     expect(labels(await service.children(inferredOf(m)))).toEqual(['Agent', 'owl:Nothing']);
 
     // Dragging a term about changes nothing the reasoner was asked: its answer stands.
@@ -408,25 +414,27 @@ describe('what the reasoners entail of the model in the editor', () => {
   it('says why there is no answer: not asked, failed, or an inconsistent ontology', async () => {
     const { m, id } = cast();
     const statusOf = async (reasoning: LocalReasoning) => (await reasoned(() => m, () => reasoning).children(inferredOf(m))).provenance;
-    expect(await statusOf({ engine: 'dl', run: null })).toMatchObject({ status: 'unavailable', engine: { id: 'dl', name: 'HermiT' } });
-    expect(await statusOf({ engine: 'dl', run: { model: stable(m) } })).toMatchObject({ status: 'unavailable' });
-    expect(await statusOf({ engine: 'dl', run: dlRun(m, id, { status: 'failed', consistency: 'unknown', errors: ['The reasoning service did not answer.'] }) })).toMatchObject({ status: 'failed', notes: ['The reasoning service did not answer.'] });
-    expect(await statusOf({ engine: 'dl', run: dlRun(m, id, { consistency: 'inconsistent' }) })).toMatchObject({ status: 'inconsistent' });
+    expect(await statusOf({ engine: 'dl', dl: null })).toMatchObject({ status: 'unavailable', engine: { id: 'dl', name: 'HermiT' } });
+    expect(await statusOf({ engine: 'dl', dl: { ...dlRun(m, id)!, revisionId: 'an earlier one' } })).toMatchObject({ status: 'stale', revisionId: 'an earlier one' });
+    expect(await statusOf({ engine: 'dl', dl: dlRun(m, id, { status: 'failed', consistency: 'unknown', errors: ['The reasoning service did not answer.'] }) })).toMatchObject({ status: 'failed', notes: ['The reasoning service did not answer.'] });
+    expect(await statusOf({ engine: 'dl', dl: dlRun(m, id, { consistency: 'inconsistent' }) })).toMatchObject({ status: 'inconsistent' });
+    // The fast reasoner works in a worker: until it has answered, it has nothing to say, and says so.
+    expect(await statusOf({ engine: 'fast', fast: undefined })).toMatchObject({ status: 'unavailable', notes: ['The fast reasoner is still working out what follows.'] });
   });
 
   it('uses the reasoner that is chosen and only that one', async () => {
     const { m, id } = cast();
-    const run = dlRun(m, id);
-    let reasoning: LocalReasoning = { engine: 'dl', run };
+    const dl = dlRun(m, id);
+    let reasoning: LocalReasoning = { engine: 'dl', dl };
     const service = reasoned(() => m, () => reasoning);
     expect(await under(service, m, 'Agent')).toEqual(['Employee', 'Person']);
     expect((await service.children(inferredOf(m))).provenance.engine?.id).toBe('dl');
     // The fast reasoner is chosen: the hierarchy is its own, and nothing of the other's answer is in it.
-    reasoning = { engine: 'fast', run };
+    reasoning = { engine: 'fast', dl };
     expect(await under(service, m, 'Agent')).toEqual(['Person']);
     expect(await under(service, m)).toEqual(['Agent', 'Film']);
     expect((await service.children(inferredOf(m))).provenance.engine?.id).toBe('fast');
-    reasoning = { engine: 'dl', run };
+    reasoning = { engine: 'dl', dl };
     expect(await under(service, m)).toEqual(['Agent', 'owl:Nothing']);
   });
 
@@ -499,7 +507,7 @@ describe('comparing two classes of the model in the editor', () => {
     const unchecked = await compare(serve(() => cut), cut, 'Party', 'Organisation');
     expect(unchecked.axioms[2]).toMatchObject({ relations: [], unverified: [unchecked.axioms[1].axiom.key] });
     // With the fast reasoner asked, it is not left open: the reasoner does not relate the two fillers.
-    const checked = await compare(createLocalStructureService(() => ({ model: cut, docId: null, reasoning: { engine: 'fast', run: null } })), cut, 'Party', 'Organisation');
+    const checked = await compare(createLocalStructureService(() => ({ model: cut, docId: null, reasoning: { engine: 'fast', fast: reason(cut) } })), cut, 'Party', 'Organisation');
     expect(checked.axioms[2]).toMatchObject({ relations: [], unverified: [] });
     expect(checked.reasoning).toMatchObject({ engine: { id: 'fast' }, status: 'current', completeness: 'incomplete' });
     expect(checked.relationship.verified).toBe(true);
@@ -539,14 +547,14 @@ describe('comparing two classes of the model in the editor', () => {
     next.relations.push(newRelation({ from: red.id, to: colour.id, kind: 'generalization' }));
     const model = withIris(next);
     const query = { ...ontologyRef(model, null), subClassIri: iriOf(model, 'Traffic light colour'), superClassIri: iriOf(model, 'Colour') };
-    const fast = await createLocalStructureService(() => ({ model, docId: null, reasoning: { engine: 'fast', run: null } })).explain(query);
+    const fast = await createLocalStructureService(() => ({ model, docId: null, reasoning: { engine: 'fast', fast: reason(model) } })).explain(query);
     expect(fast).toMatchObject({ available: true, basis: 'entailed', provenance: { engine: { id: 'fast' } } });
     expect(fast.statements.join(' | ')).toBe('“Traffic light colour” is defined as the enumeration of “Red” | “Red” is an instance of “Colour”');
     // Asked of a reasoner that was not run: nothing is known beyond what is stated, and nothing is made up.
-    const none = await createLocalStructureService(() => ({ model, docId: null, reasoning: { engine: 'dl', run: null } })).explain(query);
+    const none = await createLocalStructureService(() => ({ model, docId: null, reasoning: { engine: 'dl', dl: null } })).explain(query);
     expect(none).toMatchObject({ available: false, statements: [], provenance: { engine: { id: 'dl' }, status: 'unavailable' } });
     // A stated chain is explained by its links, whichever reasoner is in use.
-    const stated = await createLocalStructureService(() => ({ model, docId: null, reasoning: { engine: 'dl', run: null } })).explain({ ...ontologyRef(model, null), subClassIri: NS + 'WorkingActor', superClassIri: NS + 'Person' });
+    const stated = await createLocalStructureService(() => ({ model, docId: null, reasoning: { engine: 'dl', dl: null } })).explain({ ...ontologyRef(model, null), subClassIri: NS + 'WorkingActor', superClassIri: NS + 'Person' });
     expect(stated).toMatchObject({ available: true, basis: 'asserted-chain', statements: ['WorkingActor SubClassOf Actor', 'Actor SubClassOf Person'] });
   });
 });

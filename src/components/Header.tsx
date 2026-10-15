@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { owlFindings, qualityFindings } from '../model/validation';
 import { exportModel, readModelFile } from '../model/files';
 import { fileText, FORMAT_LABEL, MODEL_FILES } from '../model/rdfFormats';
 import { sampleModel, skosSample } from '../model/sample';
@@ -7,7 +6,7 @@ import { universitySample } from '../model/sampleUniversity';
 import { stressModel } from '../model/stress';
 import { stable } from '../model/stable';
 import { configOf, supports, VIEW_LABEL, viewFor } from '../model/modelTypes';
-import { confirmDiscard, isDirty, layoutOf, useStore } from '../model/store';
+import { confirmDiscard, isDirty, layoutOf, problemCount, useStore } from '../model/store';
 import { LAYOUT_KINDS, LAYOUTS } from '../layout/types';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { CommitInput } from './fields';
@@ -60,14 +59,19 @@ export function Header() {
   const closeMenu = useCallback(() => setMenu(null), []);
   // Moving terms around doesn't change what the checks find.
   const meaning = stable(model);
-  // The count comes a moment after an edit, so that checking a large model never holds up the edit itself.
-  const [problems, setProblems] = useState(0);
+  // The count comes from checks that run by themselves away from the page, asked for a moment after
+  // an edit, so that checking a large model never holds up the edit itself. Until they have
+  // answered about the model as it is, the last count stays.
+  const revision = useStore((s) => s.version.revision);
+  const checked = useStore((s) => s.validation.checks.problems?.report);
+  const validated = supports(meaning, 'validation');
+  const problems = validated ? problemCount(checked) : 0;
   useEffect(() => {
     // Nothing is checked for a type of model that has no validation.
-    if (!supports(meaning, 'validation')) return setProblems(0);
-    const id = setTimeout(() => setProblems([...owlFindings(meaning).findings, ...qualityFindings(meaning).findings].filter((f) => f.severity !== 'info').length), meaning.terms.length > 300 ? 400 : 0);
+    if (!validated) return;
+    const id = setTimeout(() => useStore.getState().requestChecks('problems'), meaning.terms.length > 300 ? 400 : 0);
     return () => clearTimeout(id);
-  }, [meaning]);
+  }, [revision, validated, meaning.terms.length]);
 
   const dropdown = (e: React.MouseEvent, items: MenuItem[]) => {
     const r = e.currentTarget.getBoundingClientRect();

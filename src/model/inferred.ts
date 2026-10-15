@@ -2,7 +2,7 @@ import type { ClassExpressionAxiom } from './expressions';
 import { nameKey } from './identity';
 import { classText, namingFor } from './manchester';
 import { objectProperties, restrictionsOf, type Restriction } from './props';
-import { reason, type SuperLink } from './reasoner';
+import type { Reasoning, SuperLink } from './reasoner';
 import { creditOf, type ReasoningResult } from './reasoning';
 import type { Model, Relation } from './types';
 import { resolveModel } from './vocab';
@@ -40,9 +40,9 @@ export interface InferredRestrictions {
    * ok: the lists are what the reasoner entails. partial: the reasoner stopped early, so there
    * may be more. inconsistent: the ontology contradicts itself, so nothing reliable can be said.
    * unsatisfiable: this class cannot have members, so everything trivially holds of it.
-   * none: not a class of an ontology.
+   * none: not a class of an ontology. working: the reasoner has not answered yet.
    */
-  status: 'ok' | 'partial' | 'inconsistent' | 'unsatisfiable' | 'none';
+  status: 'ok' | 'partial' | 'inconsistent' | 'unsatisfiable' | 'none' | 'working';
   restrictions: InferredRestriction[];
   expressions: InferredExpression[];
 }
@@ -62,15 +62,16 @@ export const expressionOf = (a: ClassExpressionAxiom): string | undefined => (a.
 const EMPTY = { restrictions: [], expressions: [] };
 
 /**
- * `more` is what another reasoner (the OWL 2 DL one) entails beyond the app's own: further
- * superclasses to inherit from in the same way, and whether the class is unsatisfiable.
+ * `reasoning` is the app's own reasoner's answer about the model, or nothing while it works.
+ * `more` is what another reasoner (the OWL 2 DL one) entails beyond it: further superclasses to
+ * inherit from in the same way, and whether the class is unsatisfiable.
  */
-export function inferredRestrictions(model: Model, classId: string, more?: { supers: SuperLink[]; unsatisfiable: boolean }): InferredRestrictions {
+export function inferredRestrictions(model: Model, reasoning: Reasoning | undefined, classId: string, more?: { supers: SuperLink[]; unsatisfiable: boolean }): InferredRestrictions {
   const m = resolveModel(model);
   const byId = new Map(m.terms.map((t) => [t.id, t]));
   const self = byId.get(classId);
   if (m.mode === 'skos' || self?.type !== 'concept') return { status: 'none', ...EMPTY };
-  const reasoning = reason(model);
+  if (!reasoning) return { status: 'working', ...EMPTY };
   // From a contradiction anything follows, so nothing is worth listing.
   if (!reasoning.consistent) return { status: 'inconsistent', ...EMPTY };
 
@@ -128,10 +129,9 @@ export interface InferredMembership extends Pick<Relation, 'id' | 'from' | 'to'>
  * value are, and so on. Nothing here is in the model. An inconsistent ontology entails anything,
  * so it gives none.
  */
-export function inferredMemberships(model: Model): { consistent: boolean; truncated: boolean; memberships: InferredMembership[] } {
+export function inferredMemberships(model: Model, reasoning: Reasoning): { consistent: boolean; truncated: boolean; memberships: InferredMembership[] } {
   const m = resolveModel(model);
   if (m.mode === 'skos') return { consistent: true, truncated: false, memberships: [] };
-  const reasoning = reason(model);
   if (!reasoning.consistent) return { consistent: false, truncated: reasoning.truncated, memberships: [] };
   const memberships: InferredMembership[] = [];
   for (const t of m.terms) {
@@ -157,10 +157,9 @@ export interface InferredFact extends Pick<Relation, 'id' | 'from' | 'to'> {
 }
 
 /** The relationships between individuals that the app's own reasoner works out beyond the stated ones. */
-export function inferredFacts(model: Model): { consistent: boolean; truncated: boolean; facts: InferredFact[] } {
+export function inferredFacts(model: Model, reasoning: Reasoning): { consistent: boolean; truncated: boolean; facts: InferredFact[] } {
   const m = resolveModel(model);
   if (m.mode === 'skos') return { consistent: true, truncated: false, facts: [] };
-  const reasoning = reason(model);
   if (!reasoning.consistent) return { consistent: false, truncated: reasoning.truncated, facts: [] };
   const individuals = new Set(m.terms.filter((t) => t.type === 'instance').map((t) => t.id));
   const names = new Map(objectProperties(model).map((p) => [p.id, p.name]));
@@ -185,6 +184,8 @@ export interface Entailed {
   by: string;
   memberships: InferredMembership[];
   facts: InferredFact[];
+  /** The app's own reasoner has not answered yet: what is here is the other one's alone, if anything. */
+  working?: boolean;
 }
 
 export const FAST_CREDIT = 'the fast reasoner (RDFS / partial OWL RL)';
@@ -195,12 +196,12 @@ export const FAST_CREDIT = 'the fast reasoner (RDFS / partial OWL RL)';
  * well. Both are sound, so what either finds holds; each is there once, and never if it is
  * stated. From an inconsistent ontology nothing is inferred.
  */
-export function entailed(model: Model, dl?: ReasoningResult): Entailed {
-  const own = inferredMemberships(model);
-  const facts = inferredFacts(model);
+export function entailed(model: Model, reasoning: Reasoning | undefined, dl?: ReasoningResult): Entailed {
+  const own = reasoning ? inferredMemberships(model, reasoning) : { consistent: true, truncated: false, memberships: [] };
+  const facts = reasoning ? inferredFacts(model, reasoning) : { facts: [] };
   const by = dl ? `${dl.engine.name}${dl.engine.version ? ' ' + dl.engine.version : ''} (OWL 2 DL)` : FAST_CREDIT;
   if (!own.consistent || (dl && dl.consistency !== 'consistent')) return { consistent: false, partial: false, by, memberships: [], facts: [] };
-  const out: Entailed = { consistent: true, partial: own.truncated || (!!dl && dl.status !== 'complete'), by, memberships: [...own.memberships], facts: [...facts.facts] };
+  const out: Entailed = { consistent: true, partial: own.truncated || (!!dl && dl.status !== 'complete'), by, memberships: [...own.memberships], facts: [...facts.facts], ...(reasoning ? {} : { working: true }) };
   if (!dl) return out;
   const credit = creditOf(dl);
   const haveTypes = new Set(out.memberships.map((x) => `${x.from}|${x.to}`));

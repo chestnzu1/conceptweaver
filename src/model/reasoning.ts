@@ -1,3 +1,4 @@
+import type { AxiomEntity, DlReport, EngineId } from '../reasoning/contracts';
 import { assertedSuperclasses, objectProperties } from './props';
 import { entityIris, toTurtle } from './rdf';
 import type { Model } from './types';
@@ -16,7 +17,7 @@ import { resolveModel } from './vocab';
  * does not have to know which engine made them. Results are never written into the model.
  */
 
-export type EngineId = 'fast' | 'dl';
+export type { EngineId } from '../reasoning/contracts';
 
 export interface EngineInfo {
   id: EngineId;
@@ -34,71 +35,7 @@ export const DEFAULT_REASONER_URL = 'http://localhost:5190';
 
 // ---------------------------------------------------------------- what the service says
 
-/** An entity that an axiom mentions, as the service names it. */
-export interface AxiomEntity {
-  iri: string;
-  /** Class, ObjectProperty, DataProperty, NamedIndividual, Datatype, AnnotationProperty. */
-  kind: string;
-  name: string;
-}
-
-/** An asserted axiom, in Manchester syntax, with what it is about. */
-export interface AxiomText {
-  text: string;
-  type?: string;
-  entities: AxiomEntity[];
-}
-
-/** One smallest set of asserted axioms from which the conclusion follows. */
-export interface Justification {
-  axioms: AxiomText[];
-}
-
-export interface DlExplanation {
-  kind: 'unsatisfiable' | 'inconsistent';
-  /** IRI of the class, for an unsatisfiable one. */
-  subject?: string;
-  justifications: Justification[];
-  /** Why there is no justification, when there is none. */
-  note?: string;
-}
-
-export interface DlViolation {
-  rule: string;
-  text: string;
-  entities: AxiomEntity[];
-}
-
-/** The answer of the reasoning service, as it sends it: IRIs throughout. */
-export interface DlReport {
-  engine: string;
-  engineVersion: string;
-  owlapi?: string;
-  /** complete: reasoned as OWL 2 DL. partial: reasoned, with something left out or taken loosely. failed: no result. */
-  status: 'complete' | 'partial' | 'failed';
-  consistency: 'consistent' | 'inconsistent' | 'unknown';
-  /** How long the service worked. */
-  ms: number;
-  axioms?: number;
-  logicalAxioms?: number;
-  profile?: { owl2dl: boolean; violations: DlViolation[]; violationCount: number; undeclared: string[]; undeclaredCount: number };
-  imports?: { resolved: string[]; missing: string[] };
-  unsatisfiable?: string[];
-  /** Each class with the classes directly above it in the inferred hierarchy. */
-  subclasses?: { sub: string; sup: string }[];
-  equivalents?: string[][];
-  /** Each individual with the most specific classes it is entailed to be an instance of. */
-  types?: { individual: string; class: string }[];
-  same?: string[][];
-  relations?: { subject: string; property: string; object: string }[];
-  explanations?: DlExplanation[];
-  errors: string[];
-  warnings: string[];
-  /** Added here, not by the service: where it was asked, how long the round trip took, and whether it answered at all. */
-  url?: string;
-  roundTripMs?: number;
-  unreachable?: boolean;
-}
+export type { AxiomEntity, AxiomText, DlExplanation, DlReport, DlViolation, Justification } from '../reasoning/contracts';
 
 export interface DlRequest {
   ontology: string;
@@ -113,6 +50,16 @@ export interface DlOptions {
   /** Justifications for each unsatisfiable class or for the inconsistency; 0 asks for none. */
   justifications?: number;
   fetch?: typeof fetch;
+  /** Gives the question up: the request is stopped, and the answer is a refusal rather than a report. */
+  signal?: AbortSignal;
+}
+
+/** The question to the reasoning service was given up before it answered. */
+export class ReasonerCancelled extends Error {
+  constructor() {
+    super('The question to the reasoning service was given up.');
+    this.name = 'ReasonerCancelled';
+  }
 }
 
 /**
@@ -151,6 +98,9 @@ export async function askReasoner(url: string, request: DlRequest, options: DlOp
   const base = url.replace(/\/+$/, '');
   const ask = options.fetch ?? fetch;
   const abort = new AbortController();
+  if (options.signal?.aborted) throw new ReasonerCancelled();
+  const giveUp = () => abort.abort();
+  options.signal?.addEventListener('abort', giveUp, { once: true });
   // The service stops the reasoner itself after `timeoutMs`; this is for a service that has stopped answering.
   const timer = setTimeout(() => abort.abort(), request.timeoutMs + 15_000);
   try {
@@ -166,10 +116,12 @@ export async function askReasoner(url: string, request: DlRequest, options: DlOp
     if (!report || typeof report !== 'object' || !Array.isArray(report.errors) || !report.status || !report.consistency) return failed(base, `What answered at ${base} is not the reasoning service (HTTP ${response.status}).`, false, t0);
     return { ...(report as DlReport), warnings: report.warnings ?? [], url: base, roundTripMs: Math.round(performance.now() - t0) };
   } catch (e) {
+    if (options.signal?.aborted) throw new ReasonerCancelled();
     if (abort.signal.aborted) return failed(base, `The reasoning service at ${base} did not answer within ${Math.round((request.timeoutMs + 15_000) / 1000)} seconds.`, false, t0);
     return failed(base, startHint(base) + (e instanceof Error && e.message && !/fetch|network|load failed/i.test(e.message) ? ` (${e.message})` : ''), true, t0);
   } finally {
     clearTimeout(timer);
+    options.signal?.removeEventListener('abort', giveUp);
   }
 }
 

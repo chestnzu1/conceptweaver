@@ -4,6 +4,7 @@ import { documentSlice } from './document';
 import { editsSlice } from './edits';
 import { externalsSlice } from './externals';
 import { layoutSlice } from './layout';
+import { reasoningSlice } from './reasoning';
 import { sessionSlice } from './session';
 import { subgraphSlice } from './subgraph';
 import type { Slice } from './types';
@@ -20,6 +21,7 @@ const SLICES: Record<string, Slice<object>> = {
   session: sessionSlice,
   subgraph: subgraphSlice,
   validation: validationSlice,
+  reasoning: reasoningSlice,
   externals: externalsSlice,
   layout: layoutSlice,
 };
@@ -40,6 +42,7 @@ describe('the slices of the store', () => {
     const session = keysOf(sessionSlice);
     for (const k of ['sel', 'vp', 'view', 'dialog', 'theme', 'structure', 'entityViews', 'notify']) expect(session).toContain(k);
     for (const k of ['model', 'past', 'validation', 'ext', 'layoutBusy', 'subgraph']) expect(session).not.toContain(k);
-    expect(keysOf(validationSlice).sort()).toEqual(['runValidation', 'setValidation', 'validation']);
+    expect(keysOf(validationSlice).sort()).toEqual(['cancelValidation', 'requestChecks', 'runValidation', 'setValidation', 'validation', 'validationService']);
+    expect(keysOf(reasoningSlice).sort()).toEqual(['cancelReasoning', 'reasonWithDl', 'reasoning', 'reasoningService', 'requestReasoning']);
   });
 });

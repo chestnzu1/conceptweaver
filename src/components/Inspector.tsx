@@ -13,6 +13,7 @@ import { hasCardinality, isInstanceOf, nextSpec, offeredChoices, relChoice, rest
 import { activeProps, automaticMeaning, resolveModel } from '../model/vocab';
 import { Swatches } from './ContextMenu';
 import { EndSelect } from './EndSelect';
+import { useReasoning, WORKING } from './reasoning';
 import { CommitInput, CommitTextarea } from './fields';
 import { SuperclassEditor } from './Iri';
 import { CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
@@ -582,19 +583,20 @@ export function Sources({ sources }: { sources: RestrictionSource[] }) {
 function InferredRestrictionsPanel({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
   const dl = useStore(currentDl);
+  const reasoning = useReasoning();
   const inferred = useMemo(() => {
-    if (!dl || dl.consistency !== 'consistent') return inferredRestrictions(model, term.id);
+    if (!dl || dl.consistency !== 'consistent') return inferredRestrictions(model, reasoning, term.id);
     // Superclasses that only the OWL 2 DL reasoner finds are inherited from in the same way.
     const of = entailmentsOf(dl, term.id);
-    return inferredRestrictions(model, term.id, { unsatisfiable: of.unsatisfiable, supers: of.superclasses.map((x) => ({ id: x.superclass, asserted: x.asserted, equivalent: of.equivalents.includes(x.superclass), because: creditOf(dl), rels: [] })) });
-  }, [model, term.id, dl]);
+    return inferredRestrictions(model, reasoning, term.id, { unsatisfiable: of.unsatisfiable, supers: of.superclasses.map((x) => ({ id: x.superclass, asserted: x.asserted, equivalent: of.equivalents.includes(x.superclass), because: creditOf(dl), rels: [] })) });
+  }, [model, reasoning, term.id, dl]);
   const count = inferred.restrictions.length + inferred.expressions.length;
   const [open, setOpen] = useState(true);
   return (
     <>
       <h3>
         <button className="section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <Disclosure open={open} /> Inferred restrictions ({inferred.status === 'inconsistent' ? '—' : count})
+          <Disclosure open={open} /> Inferred restrictions ({inferred.status === 'inconsistent' ? '—' : inferred.status === 'working' ? '…' : count})
         </button>
       </h3>
       {open && (
@@ -610,7 +612,12 @@ function InferredRestrictionsPanel({ term }: { term: Term }) {
             </p>
           )}
           {inferred.status === 'partial' && <p className="muted">The reasoner stopped early on this large model; there may be more.</p>}
-          {inferred.status !== 'inconsistent' && count === 0 && <p className="muted">None. Nothing is inherited from a superclass or an equivalent class.</p>}
+          {inferred.status === 'working' && (
+            <p className="muted" role="status">
+              {WORKING}
+            </p>
+          )}
+          {inferred.status !== 'inconsistent' && inferred.status !== 'working' && count === 0 && <p className="muted">None. Nothing is inherited from a superclass or an equivalent class.</p>}
           <ul className="restrictions inferred">
             {inferred.restrictions.map(({ key, restriction: r, sources }) => (
               <li key={key}>

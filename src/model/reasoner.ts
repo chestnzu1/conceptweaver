@@ -1,3 +1,4 @@
+import type { Conflict, Derivation } from '../reasoning/contracts';
 import { ENUM_RANGE, type DataValue, type Model, type Relation } from './types';
 import { termOfIri } from './domains';
 import { impliedClasses, type ClassAxiom } from './expressions';
@@ -41,14 +42,7 @@ export interface Inference {
   add?: Pick<Relation, 'from' | 'to' | 'kind'> & { predicate?: string; label?: string };
 }
 
-export interface Conflict {
-  severity: 'error' | 'warning';
-  rule: string;
-  message: string;
-  because: string;
-  terms: string[];
-  rels: string[];
-}
+export type { Conflict, Derivation } from '../reasoning/contracts';
 
 export interface Reasoning {
   consistent: boolean;
@@ -99,24 +93,107 @@ const MAX_FACTS = 150_000;
 
 let last: { relations: Relation[]; props: Model['props']; datatypes: Model['datatypes']; sig: string; result: Reasoning } | undefined;
 
+/** What decides the reasoner's answer, apart from the relationships, properties and datatypes: what each term is and states. */
+const signature = (m: Model) =>
+  (m.vocab.enabled ? '1' : '0') +
+  m.mode +
+  m.terms
+    .map((t) => `${t.id}:${t.type}:${t.name}${t.functional ? ':f' : ''}${t.domains ? ':' + JSON.stringify(t.domains) : ''}${t.values ? ':' + JSON.stringify(t.values) : ''}${t.oneOf ? ':o' + t.oneOf.join(',') : ''}${t.allDifferent ? ':ad' : ''}${t.ranges ? ':r' + JSON.stringify(t.ranges) : ''}`)
+    .join('|');
+
 /** `fresh` skips the cached result and reasons from scratch. */
 export function reason(model: Model, fresh = false): Reasoning {
   // Each relationship joined to the property it uses (identity.ts), and read with the standard properties in force.
   const m = resolveModel(linkProps(model));
   // Dragging terms around changes the model on every frame but not what it means.
-  const sig =
-    (m.vocab.enabled ? '1' : '0') +
-    m.mode +
-    m.terms
-      .map((t) => `${t.id}:${t.type}:${t.name}${t.functional ? ':f' : ''}${t.domains ? ':' + JSON.stringify(t.domains) : ''}${t.values ? ':' + JSON.stringify(t.values) : ''}${t.oneOf ? ':o' + t.oneOf.join(',') : ''}${t.allDifferent ? ':ad' : ''}${t.ranges ? ':r' + JSON.stringify(t.ranges) : ''}`)
-      .join('|');
+  const sig = signature(m);
   if (!fresh && last && last.relations === m.relations && last.props === m.props && last.datatypes === m.datatypes && last.sig === sig) return last.result;
-  const result = run(m);
+  const result = view(model, derive(model));
   last = { relations: m.relations, props: m.props, datatypes: m.datatypes, sig, result };
   return result;
 }
 
-function run(m: Model): Reasoning {
+/**
+ * Takes a derivation worked out elsewhere (in a worker) as the reasoner's answer about `model`,
+ * which it must be of: `reason(model)` then gives it without reasoning again.
+ */
+export function adopt(model: Model, d: Derivation): Reasoning {
+  const m = resolveModel(linkProps(model));
+  const result = view(model, d);
+  last = { relations: m.relations, props: m.props, datatypes: m.datatypes, sig: signature(m), result };
+  return result;
+}
+
+/** How the reasoner says what it knows: a fact in words, and the stated facts a conclusion rests on. */
+function wordingOf(byId: Map<string, { name: string }>, propLabel: Map<string, string>, members: Map<string, string[]>) {
+  const name = (id: string) => byId.get(id)?.name || propLabel.get(id) || (id.startsWith('p:') ? id.slice(2) : '(unnamed)');
+  const list = (ids: string[]) => ids.map((id) => `“${name(id)}”`).join(', ');
+  const say = (f: Fact): string => {
+    const [a, b] = [`“${name(f.s)}”`, `“${name(f.o)}”`];
+    switch (f.p) {
+      case 'enum':
+        return `${a} is defined as the enumeration of ${list(members.get(f.s)!)}`;
+      case 'alldiff':
+        return `the members of ${a} are declared to be all different`;
+      case 'drange':
+        return `${a} takes its values from ${b}`;
+      case 'sub':
+        return `${a} is a kind of ${b}`;
+      case 'type':
+        return `${a} is an instance of ${b}`;
+      case 'eqc':
+        return `${a} is equivalent to ${b}`;
+      case 'disj':
+        return `${a} is disjoint with ${b}`;
+      case 'compl':
+        return `${a} is the complement of ${b}`;
+      case 'subp':
+        return `${a} is a sub-property of ${b}`;
+      case 'eqp':
+        return `${a} is an equivalent property to ${b}`;
+      case 'dom':
+        return `${a} applies to ${b}`;
+      case 'rng':
+        return `${a} points to ${b}`;
+      case 'same':
+        return `${a} is the same as ${b}`;
+      case 'diff':
+        return `${a} is different from ${b}`;
+      case 'is':
+        return `${a} is ${CHARACTERISTICS.find((c) => c.id === f.o)?.label.toLowerCase() ?? f.o}`;
+      case 'inv':
+        return `${a} is the inverse of ${b}`;
+      case 'pdisj':
+        return `${a} is a disjoint property with ${b}`;
+      default:
+        return f.o.startsWith('lit:') ? `${a} has ${name(f.p)} ${propLabel.get(f.o)}` : `${a} ${propLabel.get(f.p) ?? byId.get(f.p)?.name ?? f.p.slice(2)} ${b}`;
+    }
+  };
+  /** Picks one direction of a symmetric pair, by name so that the wording is stable. */
+  const leads = (a: string, b: string) => name(a).localeCompare(name(b)) < 0 || (name(a) === name(b) && a < b);
+  /** The stated facts a conclusion ultimately rests on. */
+  const grounds = (fs: Fact[]): Fact[] => {
+    const out = new Set<Fact>();
+    const seen = new Set<Fact>();
+    const walk = (f: Fact) => {
+      if (seen.has(f)) return;
+      seen.add(f);
+      if (f.from) f.from.forEach(walk);
+      else out.add(f);
+    };
+    fs.forEach(walk);
+    return [...out];
+  };
+  const because = (fs: Fact[]) => {
+    const g = grounds(fs);
+    return { because: g.map(say).join('; ') + '.', rels: [...new Set(g.map((f) => f.rel!).filter(Boolean))] };
+  };
+  return { name, list, say, leads, because };
+}
+
+/** Applies the rules to what the model states until nothing more follows, and finds what contradicts itself. */
+export function derive(model: Model): Derivation {
+  const m = resolveModel(linkProps(model));
   const byId = new Map(m.terms.map((t) => [t.id, t]));
   const propLabel = new Map<string, string>();
   const facts = new Map<string, Fact>();
@@ -333,69 +410,7 @@ function run(m: Model): Reasoning {
     }
   }
 
-  // ---- wording
-  const name = (id: string) => byId.get(id)?.name || propLabel.get(id) || (id.startsWith('p:') ? id.slice(2) : '(unnamed)');
-  const list = (ids: string[]) => ids.map((id) => `“${name(id)}”`).join(', ');
-  const say = (f: Fact): string => {
-    const [a, b] = [`“${name(f.s)}”`, `“${name(f.o)}”`];
-    switch (f.p) {
-      case 'enum':
-        return `${a} is defined as the enumeration of ${list(members.get(f.s)!)}`;
-      case 'alldiff':
-        return `the members of ${a} are declared to be all different`;
-      case 'drange':
-        return `${a} takes its values from ${b}`;
-      case 'sub':
-        return `${a} is a kind of ${b}`;
-      case 'type':
-        return `${a} is an instance of ${b}`;
-      case 'eqc':
-        return `${a} is equivalent to ${b}`;
-      case 'disj':
-        return `${a} is disjoint with ${b}`;
-      case 'compl':
-        return `${a} is the complement of ${b}`;
-      case 'subp':
-        return `${a} is a sub-property of ${b}`;
-      case 'eqp':
-        return `${a} is an equivalent property to ${b}`;
-      case 'dom':
-        return `${a} applies to ${b}`;
-      case 'rng':
-        return `${a} points to ${b}`;
-      case 'same':
-        return `${a} is the same as ${b}`;
-      case 'diff':
-        return `${a} is different from ${b}`;
-      case 'is':
-        return `${a} is ${CHARACTERISTICS.find((c) => c.id === f.o)?.label.toLowerCase() ?? f.o}`;
-      case 'inv':
-        return `${a} is the inverse of ${b}`;
-      case 'pdisj':
-        return `${a} is a disjoint property with ${b}`;
-      default:
-        return f.o.startsWith('lit:') ? `${a} has ${name(f.p)} ${propLabel.get(f.o)}` : `${a} ${propLabel.get(f.p) ?? byId.get(f.p)?.name ?? f.p.slice(2)} ${b}`;
-    }
-  };
-  /** Picks one direction of a symmetric pair, by name so that the wording is stable. */
-  const leads = (a: string, b: string) => name(a).localeCompare(name(b)) < 0 || (name(a) === name(b) && a < b);
-  /** The stated facts a conclusion ultimately rests on. */
-  const grounds = (fs: Fact[]): Fact[] => {
-    const out = new Set<Fact>();
-    const seen = new Set<Fact>();
-    const walk = (f: Fact) => {
-      if (seen.has(f)) return;
-      seen.add(f);
-      if (f.from) f.from.forEach(walk);
-      else out.add(f);
-    };
-    fs.forEach(walk);
-    return [...out];
-  };
-  const because = (fs: Fact[]) => {
-    const g = grounds(fs);
-    return { because: g.map(say).join('; ') + '.', rels: [...new Set(g.map((f) => f.rel!).filter(Boolean))] };
-  };
+  const { name, list, leads, because } = wordingOf(byId, propLabel, members);
 
   // ---- contradictions
   const conflicts: Conflict[] = [];
@@ -485,44 +500,90 @@ function run(m: Model): Reasoning {
     }
   }
 
-  // ---- conclusions worth showing: new knowledge about classes and individuals
-  const inferences: Inference[] = [];
-  const vocab = m.vocab.enabled;
-  for (const f of facts.values()) {
-    if (!f.from) continue;
-    const a = byId.get(f.s);
-    const b = byId.get(f.o);
-    if (!a || !b) continue;
-    let add_: Inference['add'];
-    if (f.p === 'sub') {
-      // Already implied by an equivalence that is shown, or stated, in its own right.
-      if (has(f.s, 'eqc', f.o)) continue;
-      add_ = { from: f.s, to: f.o, kind: 'generalization', ...(a.type === 'concept' && b.type === 'concept' ? {} : vocab ? { predicate: 'rdfs:subClassOf' } : {}) };
-    } else if (f.p === 'type') {
-      add_ = { from: f.s, to: f.o, kind: 'generalization', ...(a.type === 'instance' && b.type === 'concept' ? {} : vocab ? { predicate: 'rdf:type' } : {}) };
-    } else if (f.p === 'eqc' || f.p === 'same' || f.p === 'eqp') {
-      // Symmetric: show one direction, and only when neither was stated.
-      if (!leads(f.s, f.o) || !facts.get(`${f.o}|${f.p}|${f.s}`)?.from) continue;
-      const predicate = f.p === 'eqc' ? 'owl:equivalentClass' : f.p === 'same' ? 'owl:sameAs' : 'owl:equivalentProperty';
-      if (vocab) add_ = { from: f.s, to: f.o, kind: 'association', predicate };
-    } else if (f.p.startsWith('p:')) {
-      add_ = { from: f.s, to: f.o, kind: 'association', label: name(f.p) } as Inference['add'];
-    } else {
-      continue;
+  const all = [...facts.values()];
+  const at = new Map(all.map((f, i) => [f, i]));
+  return {
+    facts: all.map((f) => [f.s, f.p, f.o, f.rel ?? '', f.from ? f.from.map((x) => at.get(x)!) : null]),
+    labels: [...propLabel],
+    members: [...members],
+    asserted,
+    truncated,
+    conflicts: conflicts.sort((x, y) => (x.severity === y.severity ? 0 : x.severity === 'error' ? -1 : 1)),
+  };
+}
+
+/**
+ * The reasoner's answer about a model, from its derivation: what is entailed of each class and
+ * individual, the conclusions worth listing, and why each holds, in words. What it entails is
+ * looked up when asked for; the list of conclusions is made the first time it is wanted.
+ */
+export function view(model: Model, d: Derivation): Reasoning {
+  const m = resolveModel(linkProps(model));
+  const byId = new Map(m.terms.map((t) => [t.id, t]));
+  const propLabel = new Map(d.labels);
+  const members = new Map(d.members);
+  const all: Fact[] = d.facts.map(([s, p, o, rel]) => (rel ? { s, p: p as Pred, o, rel } : { s, p: p as Pred, o }));
+  d.facts.forEach(([, , , , from], i) => {
+    if (from) all[i].from = from.map((j) => all[j]);
+  });
+  let index: { facts: Map<string, Fact>; bySP: Map<string, Fact[]> } | undefined;
+  const indexed = () => {
+    if (index) return index;
+    const facts = new Map<string, Fact>();
+    const bySP = new Map<string, Fact[]>();
+    for (const f of all) {
+      facts.set(`${f.s}|${f.p}|${f.o}`, f);
+      (bySP.get(`${f.p}|${f.s}`) ?? bySP.set(`${f.p}|${f.s}`, []).get(`${f.p}|${f.s}`)!).push(f);
     }
-    inferences.push({ key: `${f.s}|${f.p}|${f.o}`, text: say(f), terms: [f.s, f.o], add: add_, ...because([f]) });
-  }
-  const order = (i: Inference) => (i.key.includes('|type|') ? 0 : i.key.includes('|sub|') ? 2 : 1);
-  inferences.sort((x, y) => order(x) - order(y) || x.text.localeCompare(y.text));
+    return (index = { facts, bySP });
+  };
+  const has = (s: string, p: Pred, o: string) => indexed().facts.has(`${s}|${p}|${o}`);
+  const sp = (p: Pred, s: string) => indexed().bySP.get(`${p}|${s}`) ?? [];
+  const { say, leads, because, name } = wordingOf(byId, propLabel, members);
+
+  // ---- conclusions worth showing: new knowledge about classes and individuals
+  const list = (): Inference[] => {
+    const inferences: Inference[] = [];
+    const vocab = m.vocab.enabled;
+    for (const f of all) {
+      if (!f.from) continue;
+      const a = byId.get(f.s);
+      const b = byId.get(f.o);
+      if (!a || !b) continue;
+      let add_: Inference['add'];
+      if (f.p === 'sub') {
+        // Already implied by an equivalence that is shown, or stated, in its own right.
+        if (has(f.s, 'eqc', f.o)) continue;
+        add_ = { from: f.s, to: f.o, kind: 'generalization', ...(a.type === 'concept' && b.type === 'concept' ? {} : vocab ? { predicate: 'rdfs:subClassOf' } : {}) };
+      } else if (f.p === 'type') {
+        add_ = { from: f.s, to: f.o, kind: 'generalization', ...(a.type === 'instance' && b.type === 'concept' ? {} : vocab ? { predicate: 'rdf:type' } : {}) };
+      } else if (f.p === 'eqc' || f.p === 'same' || f.p === 'eqp') {
+        // Symmetric: show one direction, and only when neither was stated.
+        if (!leads(f.s, f.o) || !indexed().facts.get(`${f.o}|${f.p}|${f.s}`)?.from) continue;
+        const predicate = f.p === 'eqc' ? 'owl:equivalentClass' : f.p === 'same' ? 'owl:sameAs' : 'owl:equivalentProperty';
+        if (vocab) add_ = { from: f.s, to: f.o, kind: 'association', predicate };
+      } else if (f.p.startsWith('p:')) {
+        add_ = { from: f.s, to: f.o, kind: 'association', label: name(f.p) } as Inference['add'];
+      } else {
+        continue;
+      }
+      inferences.push({ key: `${f.s}|${f.p}|${f.o}`, text: say(f), terms: [f.s, f.o], add: add_, ...because([f]) });
+    }
+    const order = (i: Inference) => (i.key.includes('|type|') ? 0 : i.key.includes('|sub|') ? 2 : 1);
+    return inferences.sort((x, y) => order(x) - order(y) || x.text.localeCompare(y.text));
+  };
+  let inferences: Inference[] | undefined;
 
   return {
-    consistent: !conflicts.some((c) => c.severity === 'error'),
-    conflicts: conflicts.sort((x, y) => (x.severity === y.severity ? 0 : x.severity === 'error' ? -1 : 1)),
-    inferences,
-    asserted,
-    inferred: facts.size - asserted,
-    truncated,
-    unsatisfiable: new Set(conflicts.filter((c) => c.rule === 'Unsatisfiable class').flatMap((c) => c.terms)),
+    consistent: !d.conflicts.some((c) => c.severity === 'error'),
+    conflicts: d.conflicts,
+    get inferences() {
+      return (inferences ??= list());
+    },
+    asserted: d.asserted,
+    inferred: all.length - d.asserted,
+    truncated: d.truncated,
+    unsatisfiable: new Set(d.conflicts.filter((c) => c.rule === 'Unsatisfiable class').flatMap((c) => c.terms)),
     superclasses: (classId) =>
       sp('sub', classId)
         .filter((f) => f.o !== classId && byId.get(f.o)?.type === 'concept')

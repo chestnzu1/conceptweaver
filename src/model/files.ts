@@ -4,6 +4,7 @@ import { beyondEnumerations, enumerationEdges } from './edgeKinds';
 import { bounds } from './geometry';
 import { htmlPage, LIGHT_TOKENS, viewerData, type Tokens } from './htmlExport';
 import { entailed as entailedBy } from './inferred';
+import { reason } from './reasoner';
 import { supports } from './modelTypes';
 import { hasCardinality } from './props';
 import { fromTurtle, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
@@ -159,7 +160,7 @@ function interactivePage(): string {
   // The picture is of what the canvas shows, which in a subgraph is part of the model. The page says so, and lists all of it.
   const shown = new Set(viewOf(store).terms.map((t) => t.id));
   // What the reasoner works out is in the picture when it was asked for on the canvas: the same, from the same reasoners.
-  const entailed = store.showInferred && supports(store.model, 'reasoning') ? entailedBy(stable(store.model), currentDl(store)) : undefined;
+  const entailed = store.showInferred && supports(store.model, 'reasoning') ? entailedBy(stable(store.model), reason(stable(store.model)), currentDl(store)) : undefined;
   // Where the line of an enumeration is in the picture, the canvas leaves out the inferred membership it would repeat.
   const drawn = new Set(Array.from((graph?.svg ?? '').matchAll(/data-rel="([^"]+)"/g), (x) => x[1]));
   const inferred = beyondEnumerations(entailed?.memberships ?? [], enumerationEdges(store.model).filter((e) => drawn.has(e.id)));
@@ -182,7 +183,7 @@ export async function inferredTurtle(): Promise<{ text: string; count: number } 
     if (!currentDl(store)) return { error: `The OWL 2 DL reasoner gave no answer, so there are no inferred assertions to export. ${store.validation.run?.owl?.errors?.[0] ?? ''}`.trim() };
   }
   const dl = currentDl(store);
-  const found = entailedBy(stable(store.model), dl);
+  const found = entailedBy(stable(store.model), reason(stable(store.model)), dl);
   if (!found.consistent) return { error: 'The ontology is inconsistent. From a contradiction everything follows, so nothing is exported as inferred. See the Validation tab.' };
   const notes = [...(found.partial ? ['The reasoning was partial, so more may follow than is written here.'] : []), ...(dl?.warnings ?? [])];
   const text = toTurtleWithInferred(store.model, { types: found.memberships.map((x) => ({ individual: x.from, class: x.to })), facts: found.facts.map((x) => ({ from: x.from, prop: x.prop, to: x.to })), by: found.by, notes });

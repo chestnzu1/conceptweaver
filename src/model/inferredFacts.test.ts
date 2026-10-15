@@ -1,3 +1,4 @@
+import { reason } from './reasoner';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { enumerationEdges } from './edgeKinds';
 import { viewerData } from './htmlExport';
@@ -6,10 +7,9 @@ import { withIris } from './iri';
 import { objectProperties } from './props';
 import { fromTurtle, toTurtle, toTurtleWithInferred } from './rdf';
 import { dlResult, type DlReport } from './reasoning';
-import { stable } from './stable';
 import { currentDl, useStore } from './store';
 import { emptyModel, newProp, newRelation, newTerm, PROP_LINKS, type Model, type ObjProp } from './types';
-import { dlFindings, MODEL_DATA } from './validation';
+import { dlFindings } from './validation';
 
 /**
  * Relationships between individuals that follow from what an object property is: its inverse,
@@ -41,7 +41,7 @@ const world = (props: ObjProp[], facts: [string, string, string][]): Model => {
   return withIris(m);
 };
 const p = (name: string, more: Partial<ObjProp> = {}): ObjProp => newProp({ name, ...more });
-const said = (m: Model) => inferredFacts(m).facts.map((f) => `${f.from} ${f.name} ${f.to}`).sort();
+const said = (m: Model) => inferredFacts(m, reason(m)).facts.map((f) => `${f.from} ${f.name} ${f.to}`).sort();
 const report = (over: Partial<DlReport> = {}): DlReport => ({ engine: 'HermiT', engineVersion: '1.4.5.456', status: 'complete', consistency: 'consistent', ms: 1, errors: [], warnings: [], ...over });
 
 describe('the example: an inverse property', () => {
@@ -59,7 +59,7 @@ describe('the example: an inverse property', () => {
   it('entails that the company has John as a member, by the app’s own reasoner', () => {
     const m = fromTurtle(EXAMPLE);
     const name = (id: string) => m.terms.find((t) => t.id === id)!.name;
-    const facts = inferredFacts(m).facts;
+    const facts = inferredFacts(m, reason(m)).facts;
     expect(facts.map((f) => `${name(f.from)} ${f.name} ${name(f.to)}`)).toEqual(['Company A has member John']);
     expect(facts[0].because).toContain('is the inverse of');
     // Known by the property's id, which does not change when the property is renamed.
@@ -91,7 +91,7 @@ describe('what the app’s own reasoner entails between individuals', () => {
     );
     // d has member c is stated, and a and b know each other both ways already: none of those is given as inferred.
     expect(said(m)).toEqual(['c knows b', 'd has member a', 'd has member b']);
-    expect(new Set(inferredFacts(m).facts.map((f) => f.id)).size).toBe(3);
+    expect(new Set(inferredFacts(m, reason(m)).facts.map((f) => f.id)).size).toBe(3);
   });
 
   it('a relationship kept plain has no meaning to follow from, and nothing is inferred from an inconsistent ontology', () => {
@@ -99,8 +99,8 @@ describe('what the app’s own reasoner entails between individuals', () => {
     plain.relations[0].plain = true;
     expect(said(plain)).toEqual([]);
     const broken = world([p('above', { chars: ['asymmetric', 'symmetric'] })], [['a', 'above', 'b']]);
-    expect(inferredFacts(broken)).toMatchObject({ consistent: false, facts: [] });
-    expect(entailed(broken)).toMatchObject({ consistent: false, memberships: [], facts: [] });
+    expect(inferredFacts(broken, reason(broken))).toMatchObject({ consistent: false, facts: [] });
+    expect(entailed(broken, reason(broken))).toMatchObject({ consistent: false, memberships: [], facts: [] });
   });
 });
 
@@ -127,26 +127,26 @@ describe('one account of what is entailed, whichever reasoner found it', () => {
   });
 
   it('gives each inferred relationship once, credited to whoever found it', () => {
-    const fast = entailed(m);
+    const fast = entailed(m, reason(m));
     expect(fast).toMatchObject({ consistent: true, partial: false, by: 'the fast reasoner (RDFS / partial OWL RL)' });
     expect(fast.facts.map((f) => [f.from, f.name, f.to])).toEqual([[company, 'has member', john]]);
     // Both reasoners find it: it is still there once, and what is stated is not there at all.
-    const both = entailed(m, dlResult(m, answer));
+    const both = entailed(m, reason(m), dlResult(m, answer));
     expect(both.by).toBe('HermiT 1.4.5.456 (OWL 2 DL)');
     expect(both.facts.map((f) => [f.from, f.name, f.to])).toEqual([[company, 'has member', john]]);
     // What only the OWL 2 DL reasoner finds is there too, and says whose it is.
-    const more = entailed(m, dlResult(m, report({ relations: [{ subject: N + 'John', property: N + 'hasMember', object: N + 'John' }] })));
+    const more = entailed(m, reason(m), dlResult(m, report({ relations: [{ subject: N + 'John', property: N + 'hasMember', object: N + 'John' }] })));
     expect(more.facts.map((f) => [f.from, f.name, f.to, f.because])).toEqual([
       [company, 'has member', john, expect.stringContaining('is the inverse of')],
       [john, 'has member', john, 'Entailed, according to HermiT 1.4.5.456 (OWL 2 DL).'],
     ]);
     // Reasoned over only in part, or inconsistent: said, and in the second case nothing is inferred.
-    expect(entailed(m, dlResult(m, report({ status: 'partial' }))).partial).toBe(true);
-    expect(entailed(m, dlResult(m, report({ consistency: 'inconsistent' })))).toMatchObject({ consistent: false, facts: [], memberships: [] });
+    expect(entailed(m, reason(m), dlResult(m, report({ status: 'partial' }))).partial).toBe(true);
+    expect(entailed(m, reason(m), dlResult(m, report({ consistency: 'inconsistent' })))).toMatchObject({ consistent: false, facts: [], memberships: [] });
   });
 
   it('is what the exported page lists, as inferred', () => {
-    const { facts } = entailed(m);
+    const { facts } = entailed(m, reason(m));
     const rels = viewerData(m, new Date(), { facts }).rels;
     expect(rels.find((r) => r.id === facts[0].id)).toMatchObject({ from: company, to: john, label: 'has member (inferred)', kind: 'inferred relationship', head: 'filled' });
     expect(enumerationEdges(m)).toEqual([]);
@@ -161,13 +161,13 @@ describe('switching reasoners', () => {
     const m = st().model;
     const answer = report({ relations: [{ subject: N + 'CompanyA', property: N + 'hasMember', object: N + 'John' }] });
     const run = dlFindings(m, answer);
-    // A run of the OWL 2 DL reasoner over the model as it is now.
-    useStore.setState((s) => ({ validation: { ...s.validation, engine: 'dl', run: { at: 1, revision: 'r', model: stable(s.model), data: MODEL_DATA, entities: 4, owl: run.summary, findings: run.findings, dl: { report: answer, result: run.result } } } }));
+    // An answer of the OWL 2 DL reasoner about the model as it is now.
+    useStore.setState((s) => ({ validation: { ...s.validation, engine: 'dl' }, reasoning: { ...s.reasoning, dl: { revisionId: s.version.revision, report: answer, result: run.result } } }));
     expect(currentDl(st())?.relations).toHaveLength(1);
     // The other engine chosen: its answer is not used any longer, though the run is still on the page until the next one.
     st().setValidation({ engine: 'fast' });
     expect(currentDl(st())).toBeUndefined();
-    expect(entailed(st().model, currentDl(st())).by).toBe('the fast reasoner (RDFS / partial OWL RL)');
+    expect(entailed(st().model, reason(st().model), currentDl(st())).by).toBe('the fast reasoner (RDFS / partial OWL RL)');
     // Chosen again, with the model unchanged, it holds again.
     st().setValidation({ engine: 'dl' });
     expect(currentDl(st())?.relations).toHaveLength(1);
@@ -184,7 +184,7 @@ describe('RDF with and without inferred assertions', () => {
       :John a :Member .`);
     return base;
   })();
-  const found = entailed(m);
+  const found = entailed(m, reason(m));
   const materialized = { types: found.memberships.map((x) => ({ individual: x.from, class: x.to })), facts: found.facts.map((x) => ({ from: x.from, prop: x.prop, to: x.to })), by: found.by, at: new Date('2026-10-12T00:00:00Z') };
 
   it('by default writes what is asserted, and nothing else', () => {
@@ -226,7 +226,7 @@ describe('RDF with and without inferred assertions', () => {
     expect(toTurtle(back)).toContain(':CompanyA a owl:NamedIndividual ;');
     expect(toTurtle(back)).toMatch(/:John a owl:NamedIndividual , :Member , :Person|:John a owl:NamedIndividual , :Person , :Member/);
     // So nothing is left to infer from them, and nothing is there twice.
-    expect(entailed(back)).toMatchObject({ consistent: true, facts: [], memberships: [] });
+    expect(entailed(back, reason(back))).toMatchObject({ consistent: true, facts: [], memberships: [] });
     expect(back.terms).toHaveLength(m.terms.length);
     expect(back.props.map((x) => x.name).sort()).toEqual(['has member', 'is member of']);
     // Written out again without asking for inferences, they are in it, as the assertions they now are.

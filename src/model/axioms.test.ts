@@ -148,7 +148,7 @@ describe('class axioms', () => {
     expect(block(toTurtle(n), ':title')).toContain('rdfs:domain :Work');
     // Subclasses get them by inference only.
     expect(propertiesOfClass(n, id.Documentary)).toEqual([]);
-    expect(inheritedPropertiesOfClass(n, id.Documentary).map((p) => `${p.name} via ${p.viaName}`).sort()).toEqual(['Release date via Film', 'Title via Work', 'directed by via Work']);
+    expect(inheritedPropertiesOfClass(n, reason(n), id.Documentary).map((p) => `${p.name} via ${p.viaName}`).sort()).toEqual(['Release date via Film', 'Title via Work', 'directed by via Work']);
     expect(removeFromDomain(n, id.Film, { ref: id['Release date'], data: true }).error).toMatch(/follows the classes the property is attached to/);
     expect(propertiesOfClass(ok(removeFromDomain(n, id.Work, { ref: id.Title, data: true })), id.Work).map((p) => p.name)).toEqual(['directed by']);
   });
@@ -367,7 +367,7 @@ describe('inferred and asserted information stay apart', () => {
     const { m, id } = build();
     const before = JSON.stringify(m);
     const r = reason(m);
-    const inferred = inferredRestrictions(m, id.Documentary);
+    const inferred = inferredRestrictions(m, reason(m), id.Documentary);
     expect(inferred.restrictions.map((x) => x.restriction.text)).toEqual(['Release date some xsd:date']);
     expect(r.superclasses(id.Documentary).map((l) => [names(m, [l.id])[0], l.asserted])).toEqual([['Film', true], ['Work', false]]);
     expect(r.types(id.Parasite).map((l) => [names(m, [l.id])[0], l.asserted])).toEqual([['Film', true], ['Work', false]]);

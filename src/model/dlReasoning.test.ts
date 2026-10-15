@@ -1,3 +1,4 @@
+import { reason } from './reasoner';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startReasoner, unavailable } from '../../reasoner/run.mjs';
 import { entailed } from './inferred';
@@ -289,8 +290,8 @@ describe.skipIf(!!why)('OWL 2 DL reasoning with HermiT', () => {
       expect(stated).toEqual(['John is member of Company A']);
       expect(inferred).toEqual(['Company A has member John']);
       // The one account both reasoners feed: there once, though both find it, and not what is stated.
-      const fast = entailed(model);
-      const both = entailed(model, result);
+      const fast = entailed(model, reason(model));
+      const both = entailed(model, reason(model), result);
       expect(fast.facts.map((f) => f.id)).toEqual(both.facts.map((f) => f.id));
       expect(both.facts).toHaveLength(1);
       expect(both.by).toBe('HermiT 1.4.5.456 (OWL 2 DL)');
@@ -320,7 +321,7 @@ describe.skipIf(!!why)('OWL 2 DL reasoning with HermiT', () => {
       expect(r.inferred).toEqual(['c knows b', 'd has member a', 'd has member b']);
       expect(new Set(r.result.relations.map((x) => `${x.subject}|${x.property}|${x.object}`)).size).toBe(r.result.relations.length);
       // The app's own reasoner agrees on every one of them.
-      expect(entailed(r.model).facts.map((f) => f.id).sort()).toEqual(entailed(r.model, r.result).facts.map((f) => f.id).sort());
+      expect(entailed(r.model, reason(r.model)).facts.map((f) => f.id).sort()).toEqual(entailed(r.model, reason(r.model), r.result).facts.map((f) => f.id).sort());
     });
 
     it('finds what the app’s own rules cannot: a relationship that follows from a class', async () => {
@@ -330,14 +331,14 @@ describe.skipIf(!!why)('OWL 2 DL reasoning with HermiT', () => {
         :Staff a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :worksFor ; owl:hasValue :acme ] .
         :ann a owl:NamedIndividual , :Staff .`);
       expect(r.inferred).toEqual(['ann works for acme']);
-      expect(entailed(r.model).facts).toEqual([]);
-      const found = entailed(r.model, r.result).facts;
+      expect(entailed(r.model, reason(r.model)).facts).toEqual([]);
+      const found = entailed(r.model, reason(r.model), r.result).facts;
       expect(found.map((f) => [f.name, f.because])).toEqual([['works for', 'Entailed, according to HermiT 1.4.5.456 (OWL 2 DL).']]);
     });
 
     it('written out with the inferred assertions, and read back, HermiT has nothing left to add', async () => {
       const { model, result } = await through(EXAMPLE);
-      const found = entailed(model, result);
+      const found = entailed(model, reason(model), result);
       const ttl = toTurtleWithInferred(model, { types: found.memberships.map((x) => ({ individual: x.from, class: x.to })), facts: found.facts.map((x) => ({ from: x.from, prop: x.prop, to: x.to })), by: found.by });
       expect(ttl).toContain('# exported from. Worked out by HermiT 1.4.5.456 (OWL 2 DL) on');
       expect(ttl).toContain(':CompanyA :hasMember :John .');
@@ -348,7 +349,7 @@ describe.skipIf(!!why)('OWL 2 DL reasoning with HermiT', () => {
       const back = fromTurtle(ttl);
       const reread = dlResult(back, await askReasoner(service.url, dlRequest(back)));
       expect(reread.relations.map((x) => x.asserted)).toEqual([true, true]);
-      expect(entailed(back, reread).facts).toEqual([]);
+      expect(entailed(back, reason(back), reread).facts).toEqual([]);
     });
   });
 

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { EntityQueryError, type EntityDescription, type EntityPage, type EntityQueryService, type EntityRow, type ListKind, type OntologyRef } from '../entities/contracts';
 import { createLocalEntityService } from '../entities/local';
 import { MAX_PAGE } from '../entities/service';
-import { currentDl, useStore, type EntityViewState } from '../model/store';
+import { currentDl, currentReasoning, useStore, type EntityViewState } from '../model/store';
+import { useReasoning } from './reasoning';
 import { ontologyRef } from '../structure/local';
 
 /**
@@ -13,7 +14,7 @@ import { ontologyRef } from '../structure/local';
  */
 export const entityService: EntityQueryService = createLocalEntityService(() => {
   const s = useStore.getState();
-  return { model: s.model, docId: s.doc.id, dl: currentDl(s) };
+  return { model: s.model, docId: s.doc.id, dl: currentDl(s), fast: currentReasoning(s) };
 });
 
 /** How long the search waits for the typing to pause before it asks. */
@@ -52,8 +53,9 @@ export interface EntityList {
 export function useEntityList(kind: ListKind | null, view: EntityViewState, limit: number): EntityList {
   const model = useStore((s) => s.model);
   const docId = useStore((s) => s.doc.id);
-  // What a reasoner found is part of what some filters answer with.
+  // What a reasoner found is part of what some filters answer with: the classes and individuals ask the app's own reasoner for it.
   const dl = useStore(currentDl);
+  const fast = useReasoning(kind === 'class' || kind === 'individual');
   const ontology = ontologyRef(model, docId);
   const { ontologyId, revisionId } = ontology;
   const search = useSettled(view.search, TYPING_PAUSE);
@@ -76,7 +78,7 @@ export function useEntityList(kind: ListKind | null, view: EntityViewState, limi
       () => undefined,
     );
     return () => gone.abort();
-  }, [kind, ontologyId, revisionId, dl]);
+  }, [kind, ontologyId, revisionId, dl, fast]);
 
   useEffect(() => {
     if (!kind) return;
@@ -107,7 +109,7 @@ export function useEntityList(kind: ListKind | null, view: EntityViewState, limi
     return () => gone.abort();
     // The order and the filters are read as they are when the question is put; `asked` says when anything of it changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asked, dl]);
+  }, [asked, dl, fast]);
 
   // The last answer stays on show until the next is there, but not under another tab.
   const mine = answer && answer.page.kind === kind ? answer : null;

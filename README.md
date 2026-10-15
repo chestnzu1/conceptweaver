@@ -371,8 +371,9 @@ More on what the advanced reasoner does and does not cover is under
     is marked *inferred*; the mark can be switched off.
   - The inferred hierarchy always says which reasoner it is from, whether that reasoner's answer
     may be incomplete (the fast reasoner's always may; HermiT's when it left something out, which
-    *why* spells out), and that it is of the ontology as it is now. The fast reasoner is asked at
-    once. HermiT answers when it is run, and its answer is withdrawn as soon as the ontology
+    *why* spells out), and that it is of the ontology as it is now. The fast reasoner is asked
+    when the explorer is open, in a worker, and the hierarchy is there once it has answered (until
+    then the view says it is working). HermiT answers when it is run, and its answer is withdrawn as soon as the ontology
     changes: then, or when it gave none, or when the ontology is inconsistent, there is no inferred
     hierarchy and the view says why. The asserted hierarchy is never shown in its place, and one
     reasoner's answer is never filled in with the other's.
@@ -507,8 +508,8 @@ More on what the advanced reasoner does and does not cover is under
   are about, and are marked stale as soon as the model changes.
   - *OWL consistency*: answered by one of two reasoners, chosen in the card (**Reasoning
     engine**), which always says which one answered.
-    The **fast reasoner** is the built-in RDFS / OWL RL rule reasoner: in the page, at once,
-    and incomplete. It reports the contradictions and unsatisfiable classes its rules reach,
+    The **fast reasoner** is the built-in RDFS / OWL RL rule reasoner: in the browser, in a
+    worker, in a fraction of a second, and incomplete. It reports the contradictions and unsatisfiable classes its rules reach,
     each with the stated facts it derived them from; when it finds none it says "No
     contradiction found", which is not a proof of consistency.
     The **advanced reasoner** is HermiT, a complete OWL 2 DL reasoner, run by a service beside
@@ -619,8 +620,8 @@ is done once for a revision and takes 0.08 s (0.5 s). *Expand all* to 10,000 lin
 questions to the service, one for each level, not one for each branch.
 
 What does not scale with it is the rest of the app, which holds the whole model in the page. The
-fast reasoner takes 0.13 s for 650 classes and 1.3 s for 5,200, and runs after every edit; the
-canvas draws every term. So that the second of these does not slow the other views down, the
+fast reasoner takes 0.13 s for 650 classes and 1.3 s for 5,200, in a worker since 2026-10-15
+(see *Reasoning and validation as jobs*); the canvas draws every term. So that the second of these does not slow the other views down, the
 canvas is not laid out or painted while a view covers it: on 5,200 classes that took a click in
 *Structure* from about 600 ms to under 70 ms. In the browser, with the 5,200-class generated
 ontology open, *Expand all* (7,325 lines, 40 of them drawn) takes 0.2 s, what is said of a class
@@ -667,6 +668,14 @@ that *Layered* says so and uses the built-in hierarchical layout.
   `ExpressionEditor.tsx` (the blocks, and the dialog), over `manchesterEditor.ts` (the text
   editor, on CodeMirror, loaded when first opened); `ClassAxioms.tsx` and `AxiomList.tsx` use it
   for a class's axioms and a property's domain and range.
+- `src/reasoning` and `src/validation` – reasoning and the checks as jobs (see *Reasoning and
+  validation as jobs*). Each has its `contracts.ts` (`ReasoningService`, `ValidationService`:
+  start, status, cancel and the answer, of a named revision), a local implementation `local.ts`
+  that runs the work in a Web Worker (`worker.ts`), and a boundary test. `src/validation/report.ts`
+  is what the workbench shows of a report and writes of it. The views never import the reasoner
+  or the validation engine (`src/components/boundaries.test.ts`): they read the answers through
+  the store (`state/reasoning.ts`, `state/validation.ts`, and `useReasoning` in
+  `src/components/reasoning.ts`).
 - `src/editing` – what an edit is, and the service that makes edits (see *Edits as change sets*).
   `contracts.ts` is the change set, by OWL 2's axiom names and IRIs, and `OntologyEditService`
   (apply, validate, and the axioms about an entity). `axioms.ts` reads an RDF statement as an
@@ -915,6 +924,44 @@ store's edits are synchronous, so a remote service will need the document to wai
 model has before it is applied; an entity it declares itself is not checked. Terms that a change
 set adds are placed where the reader's layout puts them, not near what they are related to.
 
+## Reasoning and validation as jobs
+
+Reasoning and the checks are jobs (`src/reasoning`, `src/validation`): asked about one revision
+of the ontology, worked out away from the page, stopped whenever they are no longer wanted, and
+answered for that revision only. So the page is never held up by them: on the 2,600-class
+generated ontology the longest main-thread task of an edit went from 533 ms to about 70 ms, and
+a reasoner run or a validation run no longer has a task over 50 ms (from 357 ms and 386 ms; see
+docs/BASELINES.md).
+
+**The fast reasoner** runs in a Web Worker, one for each job, and is asked only when something
+on show wants its answer: the inferred sections of the entity editor and the panel, the inferred
+column of the classes table and the filters that rest on it, the Structure Explorer, the inferred
+facts on the canvas, the list under Validation. Until it has answered about the model as it is,
+each of these says that it is working out what follows. The worker sends back what it derived,
+fact by fact with what each fact was derived from (`derive` in `src/model/reasoner.ts`), and the
+page words it, and works out the superclasses and types of what is asked about, when it is asked
+(`view`). The whole answer in words would be 36 MB at 2,600 classes, and copying it to the page
+would itself hold the page up for a quarter of a second. A job about a revision the model has
+moved on from is stopped; the answers of the last few revisions are kept, so that an undo finds
+its answer there.
+
+**The OWL 2 DL reasoner** is a job of the same service, asked through the reasoning service beside
+the app (`engine: 'dl'`); stopping the job gives the request up. Its answer is kept with the
+revision it is of, whichever view asked for it.
+
+**The checks** run in a worker too. The workbench's run says what it is doing as it goes and can
+be stopped (*Stop*); the results shown are then those of the run before. A quick fix travels as
+what it does, in words, and is found again in the model when it is applied. The count of problems
+in the header comes from the OWL and quality checks run by themselves a moment after each edit,
+and the check of the mappings under *Align* from the OWL checks over the ontology with what it
+imports, both in the background.
+
+**Not done.** The reasoner is run once for the views and again inside a validation job, each in
+a worker of its own. Applying a quick fix finds it again by running the quality rules on the page
+(about 0.2 s at 2,600 classes). Opening a large model, and selecting a term in it, are still
+slower than the 100 ms of NFR-3: that is the canvas, which draws every term (TD-10, Phase 2).
+There is no HTTP client for either service yet; a backend implements the same contracts (Phase 3).
+
 ## OWL 2 DL reasoning (HermiT)
 
 The app runs in the browser, and there is no complete OWL 2 DL reasoner for the browser: HermiT
@@ -1011,7 +1058,8 @@ together in `src/model/inferred.ts`.
   imported as Turtle and validated the same.
 - OWL restrictions are never turned into shapes, and reasoner-inferred types are not added to
   the data graph.
-- Validation runs in the page, in steps, not in a background thread; a run cannot be cancelled.
+- Validation runs as a job in a worker, and a run can be stopped (*Stop*, while it runs); the
+  results shown are then those of the run before. See *Reasoning and validation as jobs*.
   A full run takes about a second on 3,000 terms.
 - Imported data used for SHACL is kept for the session only.
 
