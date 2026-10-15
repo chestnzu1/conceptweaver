@@ -3,18 +3,14 @@ unchanged, then compared with the original by the OWL API: axioms by structure, 
 ontology's IRI, annotations and imports.
 
 Original: 551 axioms. Saved: 557 axioms.
-Lost: 2 (AnnotationAssertion 2).
-Added: 9 (Declaration 6, AnnotationAssertion 2, Annotation 1).
+Lost: 0.
+Added: 7 (Declaration 6, Annotation 1).
 Kept as it was, not editable here: 95 statements.
 
 Lost: in the original, not in what was saved
-  AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/maker> "An agent that  made this thing.")
-  AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/mbox> "A  personal mailbox, ie. an Internet mailbox associated with exactly one owner, the first owner of this mailbox. This is a 'static inverse functional property', in that  there is (across time and change) at most one individual that ever has any particular value for foaf:mbox.")
 
 Added: in what was saved, not in the original
   Annotation(rdfs:label "foaf"^^xsd:string)
-  AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/maker> "An agent that \nmade this thing."^^xsd:string)
-  AnnotationAssertion(rdfs:comment <http://xmlns.com/foaf/0.1/mbox> "A \npersonal mailbox, ie. an Internet mailbox associated with exactly one owner, the first owner of this mailbox. This is a 'static inverse functional property', in that  there is (across time and change) at most one individual that ever has any particular value for foaf:mbox."^^xsd:string)
   Declaration(Class(<http://purl.org/dc/terms/Agent>))
   Declaration(Class(<http://schema.org/CreativeWork>))
   Declaration(Class(<http://schema.org/ImageObject>))

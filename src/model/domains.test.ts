@@ -327,7 +327,7 @@ describe('saved in format 3', () => {
   });
 
   it('gives a data property’s domain stated by hand, and one that follows its classes, apart', () => {
-    const m = fromTurtle(`${P}:A a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :d ; owl:someValuesFrom xsd:string ] . :d a owl:DatatypeProperty ; rdfs:domain :B . :B a owl:Class .`);
+    const m = fromTurtle(`${P}:A a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :d ; owl:someValuesFrom xsd:string ] . :d a owl:DatatypeProperty ; rdfs:domain :B ; rdfs:range xsd:string . :B a owl:Class .`);
     expect(dataDomain(m, term(m, 'd'))).toMatchObject({ auto: false, axioms: [{ expression: cls('B') }], attached: [term(m, 'A').id] });
   });
 });

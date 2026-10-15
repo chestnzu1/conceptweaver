@@ -207,9 +207,9 @@ describe('a change set made elsewhere', () => {
     const unnamed = await refusalOf(changeSet([add({ type: 'Declaration', entity: 'Class', iri: S + 'Unnamed' })]));
     expect(unnamed.refusals[0].code).toBe('unsupported');
     expect(unnamed.refusals[0].message).toMatch(/0 statement\(s\) would be lost and 1 added/);
-    // The model holds disjointness two classes at a time.
-    const three = await refusalOf(changeSet([add({ type: 'DisjointClasses', classes: [cls('Film'), cls('Award'), cls('Work')] })]));
-    expect(three.refusals[0].code).toBe('unsupported');
+    // Disjointness among three classes is held as the one axiom it is, and written so.
+    await st().editService.apply(changeSet([add({ type: 'DisjointClasses', classes: [cls('Film'), cls('Award'), cls('Work')] })]));
+    expect(toTurtle(st().model)).toMatch(/a owl:AllDisjointClasses ;\s+owl:members \( :Film :Award :Work \)/);
     // With its name it is held.
     await st().editService.apply(changeSet([add({ type: 'Declaration', entity: 'Class', iri: S + 'Genre' }), add({ type: 'AnnotationAssertion', property: RDFS + 'label', subject: S + 'Genre', value: { value: 'Genre' } })]));
     expect(st().model.terms.map((t) => t.name)).toContain('Genre');

@@ -280,7 +280,7 @@ per model. Refactoring is limited to moving a namespace.
 | FR-M1-5 | Labels, definitions and notes in several languages per entity; a display language for the whole interface. | Partially Implemented (annotation fields carry a language tag; one display language) | P1 |
 | FR-M1-6 | Refactoring: merge two entities, move entities to another namespace, replace one entity by another everywhere, deprecate with a successor. | Partially Implemented (`moveNamespace`) | P2 |
 | FR-M1-7 | For any entity, list every axiom that mentions it. | Partially Implemented (relationships and restrictions are listed) | P1 |
-| FR-M1-8 | Statements with no editor are preserved and written back unchanged. | Implemented 2026-10-14 (kept whole as read, `src/model/unmapped.ts`; the corpus loses 24 statements of nine ontologies, n-ary axioms among them) | P0 |
+| FR-M1-8 | Statements with no editor are preserved and written back unchanged. | Implemented 2026-10-14 (kept whole as read, `src/model/unmapped.ts`); since 2026-10-15 the corpus of nine ontologies loses nothing | P0 |
 | FR-M1-9 | Namespace prefixes and the ontology IRI are managed in one place and kept on import and export. | Existing | P0 |
 
 **Module non-functional points.** NFR-1 is decided here. Identity changes need a file-format

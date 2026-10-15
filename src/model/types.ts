@@ -182,7 +182,11 @@ export interface ExtraField {
   lang?: string;
   /** Datatype of a value that is not text: "xsd:date", "xsd:decimal", "xsd:boolean" and the like. */
   dt?: string;
-  /** The value is an IRI (an entity of this model or a resource elsewhere), not text. */
+  /**
+   * true: the value is an IRI (an entity of this model or a resource elsewhere), not text. false:
+   * it is text, though it looks like a link (as it was read). Not set: text, unless it is a link
+   * under a property whose values are links (rdfs:seeAlso and the like), as one typed in is taken.
+   */
   iri?: boolean;
   /** A quality measurement: the property names the metric that was measured (dqv:isMeasurementOf). */
   measure?: boolean;
@@ -292,6 +296,15 @@ export interface Relation {
   prop?: string;
   /** Kept as a plain relationship even though its label is the name of an object property. */
   plain?: boolean;
+  /**
+   * The axiom of many members this relationship was read from (owl:AllDisjointClasses,
+   * owl:AllDifferent): it is one of the pairs of it. Relationships that share it are written back
+   * as that one axiom while every two of its members are still stated to be disjoint (or
+   * different); otherwise each is written as the pair it is.
+   */
+  group?: string;
+  /** Of a relationship of a `group`: the pair was stated on its own as well, and is written so beside the axiom. */
+  statedAlone?: boolean;
 }
 
 export type Quantifier = 'some' | 'only' | 'min' | 'max' | 'exactly';
@@ -617,7 +630,7 @@ const fieldList = (v: unknown): ExtraField[] =>
           value: str(f.value),
           ...(LANG.test(str(f.lang)) ? { lang: str(f.lang).toLowerCase() } : {}),
           ...(/^(xsd|rdf):[A-Za-z]+$/.test(str(f.dt)) ? { dt: str(f.dt) } : {}),
-          ...(f.iri === true ? { iri: true } : {}),
+          ...(f.iri === true ? { iri: true } : f.iri === false ? { iri: false } : {}),
           ...(f.measure === true ? { measure: true } : {}),
         }))
     : [];
@@ -798,6 +811,8 @@ export function normalizeModel(raw: unknown): Model {
       ...(moreSpecs(r.more).length ? { more: moreSpecs(r.more) } : {}),
       ...(str(r.prop) ? { prop: str(r.prop) } : {}),
       ...(r.plain === true ? { plain: true } : {}),
+      ...(str(r.group) ? { group: str(r.group) } : {}),
+      ...(r.statedAlone === true ? { statedAlone: true } : {}),
       description: str(r.description),
       fromCard: str(r.fromCard),
       toCard: str(r.toCard),

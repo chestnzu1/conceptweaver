@@ -394,7 +394,8 @@ function carriedOver(old: Model, read: Model): Model {
     datatypes,
     externals: equal(externals, old.externals) ? old.externals : externals,
     prefixes: old.prefixes,
-    vocab: old.vocab,
+    // The settings are the model's, but statements of the RDFS and OWL properties need those properties in force.
+    vocab: read.vocab.enabled && !old.vocab.enabled ? { ...old.vocab, enabled: true } : old.vocab,
     style: { ...old.style, nodes: pick(old.style.nodes, termSet), edges: pick(old.style.edges, relSet), anchors: pick(old.style.anchors, relSet) },
     layout: old.layout,
     shapes: old.shapes,

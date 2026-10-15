@@ -181,6 +181,48 @@ model (`owl:Thing`), were kept as statements before and are the model's now. Not
 lost or added (24 and 1,764 over the nine); 5 statements fewer are kept as text (FOAF 95, RO 10
 other statements, OWL-Time 55).
 
+**Since then: nothing lost** (Phase 1's last acceptance criterion, 2026-10-15). The 24 are
+written back. Over the nine, no statement is lost and 521 are added:
+
+| Ontology | Axioms, original → saved | Lost | Added | Kept as it was, not editable here |
+| --- | ---: | ---: | ---: | --- |
+| Pizza (2016) | 801 → 815 | 0 | 14 | 24 statements |
+| Wine | 747 → 1,159 | 0 | 412 | 135 statements |
+| Koala | 70 → 107 | 0 | 38 | nothing |
+| PROV-O | 973 → 973 | 0 | 1 | 13 property chains, 8 annotations on axioms, 60 other statements |
+| SKOS | 205 → 205 | 0 | 0 | 92 statements |
+| OWL-Time | 1,064 → 1,078 | 0 | 14 | 55 statements |
+| FOAF | 551 → 557 | 0 | 7 | 95 statements |
+| OWL 2 Primer example | 93 → 126 | 0 | 34 | 2 property chains, 1 key, 1 annotation on an axiom, 3 negative property assertions, 26 other statements |
+| Relation Ontology, core | 372 → 372 | 0 | 1 | 2 property chains, 2 annotations on axioms, 4 SWRL rules, 10 other statements |
+
+- **Disjointness and difference among more than two** (16 lost; 1,235 pairs added: Pizza 403,
+  Wine 829, the Primer 3). The pairs a reader draws from an `owl:AllDisjointClasses` or
+  `owl:AllDifferent` remember the axiom (`Relation.group`), and the writer writes it as that one
+  axiom while every pair of it is still stated (`wholeGroups` in `rdf.ts`); a pair the file
+  also stated on its own (`Relation.statedAlone`) is written on its own too. With a pair
+  deleted, the rest is written pair by pair, which is what it then says. The edit service holds
+  `DisjointClasses` of three or more as well, where it refused them before.
+  `owl:AllDisjointProperties`, which no ontology of the corpus has, is still written as pairs.
+- **A restriction to another datatype than the property's range** (OWL-Time, 3). A data property
+  restriction is drawn only where its filler is the property's one named range, or
+  `rdfs:Literal` where the property has none, since that is what a drawn one is written with.
+  OWL-Time's `DataAllValuesFrom(:day xsd:gDay)` on a property with no range is an axiom of the
+  class now, with its datatype.
+- **Text that looks like a link** (RO, 3). A literal is read with `iri: false` when it looks
+  like a URL, and the writer makes a link of an `rdfs:seeAlso` and the like only when it was not
+  read as text.
+- **White space in RDF/XML attributes** (FOAF, 2). A line break or a tab in a quoted attribute
+  value is a space to an XML parser (XML 1.0, 3.3.3), and to the OWL API; the browser's RDF
+  engine kept them. `attributesNormalized` in `rdfFormats.ts` makes them spaces before it parses.
+
+What is still added: an `rdfs:label` for each entity that had none, a declaration where OWL 1
+used an entity without one, a name for the ontology, and three axioms that say more than the
+original: a domain for Pizza's `hasSpiciness` (the union of the 33 toppings it is used from) and
+a domain and range for Wine's `hasMaker`. Neither property states a domain (nor `hasMaker` a
+range), and a property that states none is read as following its uses, which the writer then
+states.
+
 The rest of this section describes the baseline as it was before these tasks.
 
 Only Koala comes back with nothing lost. What is lost, by cause, from the lists:

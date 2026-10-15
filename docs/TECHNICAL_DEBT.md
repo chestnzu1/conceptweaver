@@ -126,6 +126,14 @@ is listed in BASELINES.md. Step 2 (the OWL API as the canonical form) is Phase 3
 (PROV-O's `prov:hadActivity` and `prov:hadRole`); each is now an axiom of its own. The corpus
 loses 24 statements.
 
+**Status, 2026-10-15.** The corpus loses nothing (Phase 1's acceptance criterion, MS-2). What it
+lost is written back: disjointness and difference among more than two are drawn as pairs that
+remember the axiom they came from and written as that axiom while all its pairs stand; a data
+restriction to another datatype than the property's range is an axiom of the class; text that
+looks like a link stays text; and RDF/XML attribute values are read with XML's white space
+rules. What it still adds that says more than the original is a domain or range that follows a
+property's uses where the file states none (3 axioms over the nine). Step 2 is Phase 3.
+
 ### TD-02 Class expressions are kept as raw Turtle text — High
 
 **Where.** `Term.axioms` in `src/model/types.ts`; written back at `src/model/rdf.ts:293`.

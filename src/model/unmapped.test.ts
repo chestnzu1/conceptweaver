@@ -9,7 +9,7 @@ import { sampleModel, skosSample } from './sample';
 import { universitySample } from './sampleUniversity';
 import { useStore } from './store';
 import { stressModel } from './stress';
-import { normalizeModel, type Model } from './types';
+import { newRelation, normalizeModel, type Model } from './types';
 import { keptSummary, renameIris, statementsOf, withoutIris } from './unmapped';
 
 /**
@@ -140,5 +140,66 @@ describe('kept statements follow the model', () => {
     st().undo();
     expect(lines(st().model)).toEqual(before);
     expect(withoutIris('<http://x/a> <http://x/p> <http://x/b> .\n', new Set(['http://x/b']))).toBeUndefined();
+  });
+});
+
+describe('what the model holds is written back as it was read', () => {
+  const O = 'http://example.org/o#';
+  const texts = (ttl: string) => new Set(statementsOf(ttl).map((s) => s.text));
+  /** The statements of a file that are not in what the model read from it writes back. */
+  const lost = (ttl: string, m = fromTurtle(ttl)) => {
+    const back = texts(toTurtle(m));
+    return [...texts(ttl)].filter((t) => !back.has(t));
+  };
+  const id = (m: Model, name: string) => m.terms.find((t) => t.name === name)!.id;
+  const disjoint = (a: string, b: string) => `<${O}${a}> <http://www.w3.org/2002/07/owl#disjointWith> <${O}${b}> .`;
+
+  it('disjointness among many classes: drawn as its pairs, written as the one axiom while every pair is stated', () => {
+    const ttl = `${P}:A a owl:Class . :B a owl:Class . :C a owl:Class . :A owl:disjointWith :B . [] a owl:AllDisjointClasses ; owl:members ( :A :B :C ) .`;
+    const m = fromTurtle(ttl);
+    const pairs = m.relations.filter((r) => r.predicate === 'owl:disjointWith');
+    expect(pairs).toHaveLength(3);
+    expect(new Set(pairs.map((r) => r.group)).size).toBe(1);
+    // The pair that was also stated on its own is written on its own too.
+    expect(pairs.filter((r) => r.statedAlone).map((r) => [r.from, r.to])).toEqual([[id(m, 'A'), id(m, 'B')]]);
+    expect(lost(ttl, m)).toEqual([]);
+    expect([...texts(toTurtle(m))].filter((t) => t.includes('disjointWith'))).toEqual([disjoint('A', 'B')]);
+    // Saved and opened again it is the same.
+    expect(lost(ttl, normalizeModel(JSON.parse(JSON.stringify(m))))).toEqual([]);
+
+    // A pair taken away, what is left is no longer the axiom: it is written as the pairs it is.
+    const less = { ...m, relations: m.relations.filter((r) => !(r.from === id(m, 'B') && r.to === id(m, 'C'))) };
+    const written = [...texts(toTurtle(less))];
+    expect(written.some((t) => t.includes('AllDisjointClasses'))).toBe(false);
+    expect(written.filter((t) => t.includes('disjointWith')).sort()).toEqual([disjoint('A', 'B'), disjoint('A', 'C')]);
+    // And stated again by hand, it is the axiom again.
+    const again = { ...less, relations: [...less.relations, newRelation({ from: id(m, 'C'), to: id(m, 'B'), predicate: 'owl:disjointWith' })] };
+    expect(lost(ttl, again)).toEqual([]);
+  });
+
+  it('that individuals are all different, as one axiom', () => {
+    const ttl = `${P}:C a owl:Class . :a a owl:NamedIndividual , :C . :b a owl:NamedIndividual , :C . :c a owl:NamedIndividual , :C . :d a owl:NamedIndividual , :C .
+[] a owl:AllDifferent ; owl:members ( :a :b :c ) .`;
+    const m = fromTurtle(ttl);
+    expect(m.relations.filter((r) => r.predicate === 'owl:differentFrom')).toHaveLength(3);
+    expect(lost(ttl, m)).toEqual([]);
+  });
+
+  it('text that looks like a link is text, and a link a link', () => {
+    const ttl = `${P}:A a owl:Class ; rdfs:seeAlso "http://example.org/text" , <http://example.org/link> .`;
+    expect(lost(ttl)).toEqual([]);
+    expect(lost(ttl, normalizeModel(JSON.parse(JSON.stringify(fromTurtle(ttl)))))).toEqual([]);
+  });
+
+  it('a restriction to another datatype than the property’s range stays an axiom of the class, with its datatype', () => {
+    const ttl = `${P}:A a owl:Class . :d a owl:DatatypeProperty ; rdfs:range xsd:integer . :e a owl:DatatypeProperty ; rdfs:range xsd:integer .
+:A rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :d ; owl:someValuesFrom xsd:string ] , [ a owl:Restriction ; owl:onProperty :e ; owl:someValuesFrom xsd:integer ] .`;
+    const m = fromTurtle(ttl);
+    expect(m.terms.find((t) => t.name === 'A')!.classAxioms?.map((x) => x.expression)).toEqual([
+      { type: 'DataSomeValuesFrom', property: { type: 'DataProperty', iri: O + 'd' }, filler: { type: 'Datatype', iri: 'http://www.w3.org/2001/XMLSchema#string' } },
+    ]);
+    // The one to the range is drawn.
+    expect(m.relations.filter((r) => r.kind === 'property').map((r) => r.to)).toEqual([id(m, 'e')]);
+    expect(lost(ttl, m)).toEqual([]);
   });
 });

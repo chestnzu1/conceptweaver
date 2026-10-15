@@ -215,6 +215,64 @@ function prefixLines(prefixes: Iterable<[string, string]>): string {
 /** A name for an ontology that gives none, to resolve its relative IRIs against. */
 const fallbackBase = (source: DocumentSource) => source.url ?? `http://example.org/${(source.name ?? 'ontology').replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'ontology'}`;
 
+/**
+ * RDF/XML with its attribute values as an XML parser gives them (XML 1.0, 3.3.3): a line break or
+ * a tab written in an attribute value is a space there. A literal given as an attribute
+ * (rdfs:comment="…") is read so by every other RDF/XML reader, the OWL API among them; the
+ * engine here leaves the line breaks in. A character reference (&#10;) is left as it is, as it
+ * should be. Comments, CDATA sections, processing instructions and the document type are not
+ * touched.
+ */
+export function attributesNormalized(xml: string): string {
+  let out = '';
+  let i = 0;
+  const skip = (open: string, close: string) => {
+    if (!xml.startsWith(open, i)) return false;
+    const end = xml.indexOf(close, i + open.length);
+    const to = end < 0 ? xml.length : end + close.length;
+    out += xml.slice(i, to);
+    i = to;
+    return true;
+  };
+  while (i < xml.length) {
+    const lt = xml.indexOf('<', i);
+    if (lt < 0) {
+      out += xml.slice(i);
+      break;
+    }
+    out += xml.slice(i, lt);
+    i = lt;
+    if (skip('<!--', '-->') || skip('<![CDATA[', ']]>') || skip('<?', '?>')) continue;
+    if (xml.startsWith('<!', i)) {
+      // A document type declaration, with its internal subset if it has one.
+      const bracket = xml.indexOf('[', i);
+      const close = xml.indexOf('>', i);
+      if (bracket >= 0 && bracket < close) skip('<!', ']>');
+      else skip('<!', '>');
+      continue;
+    }
+    // A tag: whitespace in a quoted value is a space, a line break written as CR LF one space.
+    let quote = '';
+    for (; i < xml.length; i++) {
+      const c = xml[i];
+      if (quote) {
+        if (c === quote) quote = '';
+        else if (c === '\r' && xml[i + 1] === '\n') continue;
+        else if (c === '\n' || c === '\r' || c === '\t') {
+          out += ' ';
+          continue;
+        }
+      } else if (c === '"' || c === "'") quote = c;
+      out += c;
+      if (!quote && c === '>') {
+        i++;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 async function rdfToTurtle(text: string, format: 'rdfxml' | 'jsonld', source: DocumentSource): Promise<string> {
   const prefixes: [string, string][] = [];
   let base = fallbackBase(source);
@@ -253,7 +311,7 @@ async function rdfToTurtle(text: string, format: 'rdfxml' | 'jsonld', source: Do
   const ox = await loadOxigraph();
   let quads: OxQuad[];
   // By now the document is text, whatever it was encoded in; its declaration is made to say so, for an engine that reads UTF-8 only.
-  const document = format === 'rdfxml' ? text.replace(/^(\uFEFF?\s*<\?xml[^>]*?\sencoding\s*=\s*)(["'])[^"']*\2/i, '$1$2UTF-8$2') : text;
+  const document = format === 'rdfxml' ? attributesNormalized(text.replace(/^(\uFEFF?\s*<\?xml[^>]*?\sencoding\s*=\s*)(["'])[^"']*\2/i, '$1$2UTF-8$2')) : text;
   try {
     // Parsed and no more: a store would put the statements in an order of its own and rewrite numbers (9.50 as 9.5).
     quads = ox.parse(document, { format: format === 'rdfxml' ? 'application/rdf+xml' : 'application/ld+json', base_iri: base });

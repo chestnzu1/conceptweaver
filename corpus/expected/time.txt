@@ -3,14 +3,11 @@ unchanged, then compared with the original by the OWL API: axioms by structure, 
 ontology's IRI, annotations and imports.
 
 Original: 1064 axioms. Saved: 1078 axioms.
-Lost: 3 (SubClassOf 3).
-Added: 17 (Declaration 14, SubClassOf 3).
+Lost: 0.
+Added: 14 (Declaration 14).
 Kept as it was, not editable here: 55 statements.
 
 Lost: in the original, not in what was saved
-  SubClassOf(:DateTimeDescription DataAllValuesFrom(:day xsd:gDay))
-  SubClassOf(:DateTimeDescription DataAllValuesFrom(:month xsd:gMonth))
-  SubClassOf(:DateTimeDescription DataAllValuesFrom(:year xsd:gYear))
 
 Added: in what was saved, not in the original
   Declaration(NamedIndividual(:Friday))
@@ -27,6 +24,3 @@ Added: in what was saved, not in the original
   Declaration(NamedIndividual(:unitSecond))
   Declaration(NamedIndividual(:unitWeek))
   Declaration(NamedIndividual(:unitYear))
-  SubClassOf(:DateTimeDescription DataAllValuesFrom(:day rdfs:Literal))
-  SubClassOf(:DateTimeDescription DataAllValuesFrom(:month rdfs:Literal))
-  SubClassOf(:DateTimeDescription DataAllValuesFrom(:year rdfs:Literal))

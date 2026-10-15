@@ -26,7 +26,10 @@ const XSD = 'http://www.w3.org/2001/XMLSchema#';
 /** How each list of related object properties is written. */
 const LINK_PREDICATE: Record<PropLink, string> = { parents: 'rdfs:subPropertyOf', inverses: 'owl:inverseOf', equivalents: 'owl:equivalentProperty', disjoints: 'owl:propertyDisjointWith' };
 
-/** Annotation properties whose value is written as a link when it is a URL. */
+/** Text that is a URL. */
+const LINK_TEXT = /^https?:\/\/[^\s<>"]+$/;
+
+/** Annotation properties whose value is written as a link when it is a URL, unless it was read as text. */
 const LINKS = new Set(['skos:exactMatch', 'skos:closeMatch', 'skos:broadMatch', 'skos:narrowMatch', 'skos:relatedMatch', 'rdfs:seeAlso', 'rdfs:isDefinedBy', 'dcterms:source', 'owl:priorVersion', 'owl:backwardCompatibleWith', 'owl:incompatibleWith']);
 
 // ---------------------------------------------------------------- export
@@ -114,7 +117,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       }
       if (f.iri && isAbsoluteIri(value)) n.props.push([pred, { id: short(value) }]);
       else if (pred === 'owl:deprecated' && /^(true|false)$/i.test(value)) n.props.push([pred, { lit: value.toLowerCase(), bool: true }]);
-      else if (LINKS.has(pred) && /^https?:\/\/[^\s<>"]+$/.test(value)) n.props.push([pred, { id: `<${value}>` }]);
+      else if (LINKS.has(pred) && f.iri !== false && LINK_TEXT.test(value)) n.props.push([pred, { id: `<${value}>` }]);
       // Text is written as it was given, spaces and all: only an empty one is left out.
       else n.props.push([pred, literalOf(f, f.value)]);
     }
@@ -321,6 +324,8 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
           : [[q === 'min' ? 'owl:minQualifiedCardinality' : q === 'max' ? 'owl:maxQualifiedCardinality' : 'owl:qualifiedCardinality', count], [data ? 'owl:onDataRange' : 'owl:onClass', target]];
     return { bnode: { id: '', props: [['rdf:type', { id: 'owl:Restriction' }], ['owl:onProperty', { id: property }], ...body] } };
   };
+  // Axioms of many members that were read as one are written as one, while every pair of them is still stated.
+  const whole = wholeGroups(m);
   // Relationship labels that are not object properties are plain RDF properties: stated as they
   // are drawn, with no claim about their kind, domain or range.
   const plain = new Map<string, string>();
@@ -332,6 +337,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     const A = nodes.get(a.id)!;
     const bRef = { id: ref.get(b.id)! };
     if (r.predicate) {
+      if (r.group && whole.has(r.group) && !r.statedAlone) continue;
       A.props.push([r.predicate, bRef]);
     } else if (r.kind === 'generalization') {
       const pred =
@@ -409,8 +415,33 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     // That the members are different individuals is said only where it was asked for.
     if (t.allDifferent && members.length > 1) allDifferent.push({ id: '', props: [['rdf:type', { id: 'owl:AllDifferent' }], ['owl:distinctMembers', { list: members }]] });
   }
+  for (const g of whole.values()) allDifferent.push({ id: '', props: [['rdf:type', { id: g.predicate === 'owl:disjointWith' ? 'owl:AllDisjointClasses' : 'owl:AllDifferent' }], ['owl:members', { list: g.members.map((id): Val => ({ id: ref.get(id)! })) }]] });
   const of = (type: Term['type']) => m.terms.filter((t) => t.type === type).map((t) => nodes.get(t.id)!);
   return { base, nodes: [ontology, ...annProps, ...of('concept'), ...objProps, ...datatypeNodes, ...of('property'), ...of('instance'), ...allDifferent], ref, propRef };
+}
+
+/**
+ * The axioms of many members (Relation.group) that can be written as the one axiom they were read
+ * as: those of more than two members of which every two are still stated to be disjoint (or
+ * different), by a relationship of the group or by another one. Written so, they say exactly what
+ * their pairs say. A group an edit has left a pair short of is written as its pairs.
+ */
+function wholeGroups(m: Model): Map<string, { predicate: string; members: string[] }> {
+  const byGroup = new Map<string, Relation[]>();
+  for (const r of m.relations) if (r.group && (r.predicate === 'owl:disjointWith' || r.predicate === 'owl:differentFrom') && r.from !== r.to) (byGroup.get(r.group) ?? byGroup.set(r.group, []).get(r.group)!).push(r);
+  const out = new Map<string, { predicate: string; members: string[] }>();
+  if (!byGroup.size) return out;
+  const pair = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const stated = new Map<string, Set<string>>();
+  for (const r of m.relations) if (r.predicate) (stated.get(r.predicate) ?? stated.set(r.predicate, new Set()).get(r.predicate)!).add(pair(r.from, r.to));
+  for (const [group, rels] of byGroup) {
+    const predicate = rels[0].predicate!;
+    if (rels.some((r) => r.predicate !== predicate)) continue;
+    const members = [...new Set(rels.flatMap((r) => [r.from, r.to]))];
+    const said = stated.get(predicate)!;
+    if (members.length > 2 && members.every((a, i) => members.slice(i + 1).every((b) => said.has(pair(a, b))))) out.set(group, { predicate, members });
+  }
+  return out;
 }
 
 function ttlBody(n: RdfNode, indent: string): string {
@@ -731,6 +762,12 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     // Exactly one filler, and it has to be a name: a nested expression cannot be drawn as one line.
     if (fillers.length !== 1 || fillers[0].termType !== 'NamedNode') return false;
     if (dataProps.has(prop.value)) {
+      // A line to a data property says nothing of the values but the property's range: it is written
+      // back with that range, or rdfs:Literal where there is none. A restriction to another datatype
+      // than that is not one, and stays an axiom of the class with its own filler.
+      const ranges = objs(prop.value, NS.rdfs + 'range');
+      const said = ranges.length === 1 && ranges[0].termType === 'NamedNode' ? ranges[0].value : ranges.length ? undefined : NS.rdfs + 'Literal';
+      if (fillers[0].value !== said) return false;
       ensure(prop.value, 'property');
       return restrictBy(c, prop.value, 'property', '', how);
     }
@@ -977,6 +1014,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     }
     return [...new Set(out)];
   };
+  /** The relationships that are pairs of an axiom of many members, by the IRIs of their ends and their property. */
+  const grouped = new Map<string, Relation>();
   const pairwise = (type: string, predicate: string, ...lists: string[]) => {
     for (const node of [...spo.keys()].filter((n) => objs(n, NS.rdf + 'type').some((o) => o.value === NS.owl + type))) {
       const all = members(node, ...lists.map((l) => NS.owl + l));
@@ -992,13 +1031,20 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
           continue;
         }
       }
+      // The pairs of an axiom of more than two members remember it, so that it is written back as the one axiom it was.
+      const group = all.length > 2 && predicate !== 'owl:propertyDisjointWith' ? uid() : undefined;
       for (let i = 0; i < all.length; i++) {
         for (let j = i + 1; j < all.length; j++) {
           const [a, b] = [propEntries.get(all[i]), propEntries.get(all[j])];
           if (a && b && predicate === 'owl:propertyDisjointWith') {
             if (a !== b && !a.disjoints?.includes(b.id) && !b.disjoints?.includes(a.id)) a.disjoints = [...(a.disjoints ?? []), b.id];
           } else if (terms.has(all[i]) && terms.has(all[j]) && !relKeys.has(`${all[j]}|${all[i]}|association||${predicate}|`)) {
+            const before = m.relations.length;
             if (relate(all[i], all[j], 'association', '', predicate)) m.vocab.enabled = true;
+            if (group && m.relations.length > before) {
+              m.relations[before].group = group;
+              grouped.set(`${all[i]}|${all[j]}|${predicate}`, m.relations[before]);
+            }
           }
         }
       }
@@ -1040,6 +1086,13 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       for (const o of named(preds.get(full(sp.id)) ?? [])) {
         // Said already as a sub-property, or the other way round for a symmetric one: taken, once.
         if (sp.id === 'rdfs:subPropertyOf' && relKeys.has(`${s}|${o}|generalization|||`)) {
+          mark(s, full(sp.id), o);
+          continue;
+        }
+        // A pair of an axiom of many members, stated on its own as well: it is written so too.
+        const pairOf = grouped.get(`${s}|${o}|${sp.id}`) ?? (sp.symmetric ? grouped.get(`${o}|${s}|${sp.id}`) : undefined);
+        if (pairOf) {
+          pairOf.statedAlone = true;
           mark(s, full(sp.id), o);
           continue;
         }
@@ -1095,7 +1148,9 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     if (o.termType === 'NamedNode') return { iri: true };
     if (o.language) return { lang: o.language };
     const dt = o.datatype?.value.startsWith(XSD) ? 'xsd:' + o.datatype.value.slice(XSD.length) : undefined;
-    return dt && dt !== 'xsd:string' ? { dt } : {};
+    if (dt && dt !== 'xsd:string') return { dt };
+    // Text that looks like a link is text all the same: it is written back as text, not as the link it looks like.
+    return LINK_TEXT.test(o.value) ? { iri: false } : {};
   };
   /**
    * A property a field was read with: its declaration is taken, and so is its label where the

@@ -6,7 +6,7 @@ import { loadOxigraph } from './oxigraph';
 import { relChoice, restrictionsOf } from './props';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { keptSummary } from './unmapped';
-import { ACCEPT, asTurtle, convertWithService, decodeDocument, detectFormat, fetchDocument, fileText } from './rdfFormats';
+import { ACCEPT, asTurtle, attributesNormalized, convertWithService, decodeDocument, detectFormat, fetchDocument, fileText } from './rdfFormats';
 import { sampleModel, skosSample } from './sample';
 import { universitySample } from './sampleUniversity';
 import { withIris } from './iri';
@@ -216,6 +216,18 @@ describe('an ontology in RDF/XML', () => {
     expect((await readModelFile(PIZZA + '\n<!-- saved by an editor -->\n', 'pizza.owl')).model.terms).toHaveLength(7);
     await expect(readModelFile('<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>', 'empty.owl')).rejects.toThrow(/No classes, concepts, properties or individuals were found/);
     await expect(readModelFile('<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:owl="http://www.w3.org/2002/07/owl#"><owl:Class rdf:about="http://example.org/A"/>', 'cut.owl')).rejects.toThrow(/ends before its root element <rdf:RDF> is closed/);
+  });
+
+  it('reads a line break in an attribute value as a space, as XML has it and every other reader does', async () => {
+    const xml = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://example.org/A" rdfs:label="A" rdfs:comment="one\r\ntwo\tthree\nfour&#10;five"/>
+</rdf:RDF>`;
+    const read = await readModelFile(xml, 'a.owl');
+    expect(read.model.terms[0].description).toBe('one two three four\nfive');
+    // Only quoted values are touched: not the text between tags, a comment, a CDATA section, a processing instruction or the document type.
+    const untouched = '<!DOCTYPE r [\n<!ENTITY e "a\nb">\n]>\n<?pi a="x\ny"?>\n<!-- a="x\ny" -->\n<r a="x\ny" b=\'p\tq\'>\ntext\n<![CDATA[ c="x\ny" ]]></r>';
+    expect(attributesNormalized(untouched)).toBe('<!DOCTYPE r [\n<!ENTITY e "a\nb">\n]>\n<?pi a="x\ny"?>\n<!-- a="x\ny" -->\n<r a="x y" b=\'p q\'>\ntext\n<![CDATA[ c="x\ny" ]]></r>');
   });
 });
 

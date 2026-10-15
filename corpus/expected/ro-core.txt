@@ -3,17 +3,11 @@ unchanged, then compared with the original by the OWL API: axioms by structure, 
 ontology's IRI, annotations and imports.
 
 Original: 372 axioms. Saved: 372 axioms.
-Lost: 3 (AnnotationAssertion 3).
-Added: 4 (AnnotationAssertion 3, Annotation 1).
+Lost: 0.
+Added: 1 (Annotation 1).
 Kept as it was, not editable here: 2 property chains, 2 annotations on axioms, 4 SWRL rules, 10 other statements.
 
 Lost: in the original, not in what was saved
-  AnnotationAssertion(rdfs:seeAlso <http://purl.obolibrary.org/obo/BFO_0000050> "http://www.obofoundry.org/ro/#OBO_REL:part_of")
-  AnnotationAssertion(terms:source <http://purl.obolibrary.org/obo/RO_0000057> "http://www.obofoundry.org/ro/#OBO_REL:has_participant")
-  AnnotationAssertion(terms:source <http://purl.obolibrary.org/obo/RO_0001025> "http://www.obofoundry.org/ro/#OBO_REL:located_in")
 
 Added: in what was saved, not in the original
   Annotation(rdfs:label "ro-core"@en)
-  AnnotationAssertion(rdfs:seeAlso <http://purl.obolibrary.org/obo/BFO_0000050> <http://www.obofoundry.org/ro/#OBO_REL:part_of>)
-  AnnotationAssertion(terms:source <http://purl.obolibrary.org/obo/RO_0000057> <http://www.obofoundry.org/ro/#OBO_REL:has_participant>)
-  AnnotationAssertion(terms:source <http://purl.obolibrary.org/obo/RO_0001025> <http://www.obofoundry.org/ro/#OBO_REL:located_in>)

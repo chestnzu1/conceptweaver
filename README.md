@@ -916,8 +916,7 @@ current, and the Structure Explorer and the Entities lists answer from what they
 - It is applied only if the model read back states exactly what was asked for. Where the editor
   would hold it otherwise, it is refused as `unsupported`, with how many statements would be lost
   or added: a class of the ontology's own namespace declared without a label (the editor gives
-  every term a name, and states it), or disjointness among more than two classes (held two at a
-  time).
+  every term a name, and states it).
 - Applied, it is one step of the history like any other, and undo takes it back.
 
 `validate` answers the same without applying anything; `entity` gives the axioms about one
@@ -1201,7 +1200,9 @@ it, and nothing was replaced):
 - **How it is read.** Everything is made Turtle first and then read by the one reader the app
   has always had (`src/model/rdfFormats.ts`, then `fromTurtle` in `rdf.ts`). RDF/XML and JSON-LD
   are parsed by the RDF engine the app already had for SPARQL (oxigraph, 4 MB, fetched when
-  first needed); the syntaxes that are not RDF go through the OWL API in the local service.
+  first needed), RDF/XML with a line break or a tab in an attribute value read as a space, as XML
+  and every other reader have it; the syntaxes that are not RDF go through the OWL API in the
+  local service.
   Tried on the Pizza, Wine, Koala, PROV-O, SKOS and OWL-Time ontologies and FOAF as published:
   each opens in under 50 ms (Wine: 238 terms, 1,257 relationships), and written out and read
   again gives the same terms and relationships.
@@ -1211,7 +1212,10 @@ it, and nothing was replaced):
   expression (see *Domains and ranges are axioms*); any other class expression stated as a
   superclass, an equivalent class or a disjoint class (an intersection, a union, a nested
   restriction) is an axiom of its class, of that kind, with its structure (see *Class
-  expressions*): shown, edited, exported and sent to the reasoner.
+  expressions*): shown, edited, exported and sent to the reasoner. A restriction by a data
+  property is drawn only where its datatype is the property's range (or `rdfs:Literal`, where
+  the property has none), as a drawn one is written; one to another datatype is an axiom of the
+  class, with its datatype.
 - **What the model has no place for is kept, not editable here**: SWRL rules, property chains
   (`owl:propertyChainAxiom`), keys (`owl:hasKey`), negative property assertions, annotations on
   axioms, an ontology's version IRI and its annotations beyond name and description, a class
@@ -1224,22 +1228,25 @@ it, and nothing was replaced):
   statement the reader took into the model is never kept a second time: deleting a class
   deletes it, without a copy left behind; and a kept statement that mentions a deleted entity
   goes with it, as it would in any other editor, while one that mentions an entity given a new
-  IRI follows it. `owl:AllDisjointClasses` and `owl:AllDifferent` are read, as pairs, and
-  written as pairs.
+  IRI follows it. `owl:AllDisjointClasses` and `owl:AllDifferent` of more than two members are
+  drawn as their pairs, each of which can be edited or deleted on its own, and written back as
+  the one axiom they were while every pair of them is still stated; with one taken away, what is
+  left is written pair by pair. A pair the file also stated on its own is written so too.
+  `owl:AllDisjointProperties` is still read, and written, as pairs.
 - **Written back as read**: a description with the property it came from (`rdfs:comment`,
   `skos:definition` or `dcterms:description`), a name or description in the language it had (or
   none), an annotation of another vocabulary by its own IRI, a value with its own XML Schema
-  datatype.
+  datatype, text that looks like a link as text (a link of `rdfs:seeAlso` and the like as a link).
 - **What a round trip loses, measured.** `src/model/corpus.test.ts` opens each ontology of a
   fixed corpus (`corpus/corpus.mjs`: the seven above, the OWL 2 Primer's example and the core of
   the Relation Ontology), saves it as Turtle unchanged, and has the OWL API compare the two
-  statement by statement. Over the nine, 24 statements are lost (790 before what is not
-  understood was kept, and the above written back as read; 28 before domains and ranges were
-  axioms): disjointness and difference among more than two, which come back pair by pair (16);
-  a restriction to a datatype the editor does not offer (OWL-Time, 3); text that looks like a
-  link, written as a link (RO, 3); and white space in two comments, read differently by the
-  browser and by the OWL API (FOAF, 2). SKOS comes back exactly, and nothing of Koala or PROV-O
-  is lost. What is added is mostly an `rdfs:label` for each entity that had none. The lists are
+  statement by statement. Over the nine, nothing is lost (790 statements were before what is not
+  understood was kept, and 24 before the n-ary axioms, the data restrictions, the text that looks
+  like a link and the RDF/XML white space above). SKOS comes back exactly. What is added (521
+  statements) is an `rdfs:label` for each entity that had none, a declaration where OWL 1 used
+  an entity without one, the ontology's name, and, for a property of which the file states no
+  domain or range, the one that follows its uses (Pizza's `hasSpiciness`, Wine's `hasMaker`):
+  the only additions that say more than the original. The lists are
   in `corpus/expected/`, one file for each ontology, and the test fails when one changes: a fix
   shows there as statements no longer lost. `pnpm corpus` fetches the corpus once.
 - **Imports are not followed.** What an ontology imports is listed under *Align* by its IRI;
