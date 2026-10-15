@@ -21,8 +21,10 @@ import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
 import { AxiomList } from './AxiomList';
 import { ClassAxioms } from './ClassAxioms';
+import { definedClasses } from '../model/axioms';
 import { datatypeAxiom } from '../model/domains';
-import { classesOfUnion, type ClassAxiom, type ClassExpression, type DataRangeAxiom } from '../model/expressions';
+import { classesOfUnion, type ClassAxiom, type ClassExpression, type DataRange, type DataRangeAxiom } from '../model/expressions';
+import { domainInWords, rangeInWords } from '../model/inWords';
 import { allOf, classText, namingFor, type Naming } from '../model/manchester';
 import { RangeEnumeration, RangeSelect } from './Datatypes';
 import { ClassDefinition } from './Enumeration';
@@ -193,6 +195,7 @@ function TermPanel({ term }: { term: Term }) {
   const related = resolveModel(model).relations.filter((r) => r.from === term.id || r.to === term.id);
 
   const kind = config.termType[term.type].label;
+  const defined = term.type === 'concept' && definedClasses(model).has(term.id);
   const annotations = (
     <Section id="annotations" title="Annotations" count={term.fields.length + (term.description ? 1 : 0) + term.synonyms.split(',').filter((x) => x.trim()).length}>
       <label className="field">
@@ -214,7 +217,7 @@ function TermPanel({ term }: { term: Term }) {
 
   return (
     <>
-      <EditorHead kind={term.external !== undefined ? `External ${kind.toLowerCase()}` : kind} />
+      <EditorHead kind={term.external !== undefined ? `External ${kind.toLowerCase()}` : defined ? `Defined ${kind.toLowerCase()}` : kind} />
       {term.external !== undefined && <ExternalNote id={term.external} />}
       <label className="field">
         <span>
@@ -410,6 +413,7 @@ function PropertyFields({ term }: { term: Term }) {
           follows={{ text: expressionsOf(model, [], true, domain.attached).map((e) => classText(e, naming)).join(''), what: 'the classes it is attached to' }}
           onChange={(axioms) => st().updateTerm(term.id, { domains: axioms as ClassAxiom[] })}
           onFollow={{ label: 'Follow the attached classes again', run: () => st().updateTerm(term.id, { domains: undefined }) }}
+          inWords={(e) => domainInWords(term.name, true, e as ClassExpression, naming)}
         />
         {domain.auto && !domain.attached.length && <small>A domain is not a requirement: it says what anything that has the property is.</small>}
         {outside.map(({ r, out }) => (
@@ -429,7 +433,7 @@ function PropertyFields({ term }: { term: Term }) {
       <RangeEnumeration term={term} />
       <div className="field">
         <span>Further range axioms: each holds as well</span>
-        <AxiomList kind="data" which="range" of={term.name} axioms={others} empty={chosen ? 'None besides the datatype.' : 'None.'} onChange={(next) => withOthers(next as DataRangeAxiom[])} />
+        <AxiomList kind="data" which="range" of={term.name} axioms={others} empty={chosen ? 'None besides the datatype.' : 'None.'} onChange={(next) => withOthers(next as DataRangeAxiom[])} inWords={(r) => rangeInWords(term.name, { data: r as DataRange }, naming)} />
       </div>
     </>
   );
@@ -675,6 +679,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
           follows={{ text: derived, what: 'the classes it is used between' }}
           onChange={(axioms) => set({ [key]: axioms as ClassAxiom[] })}
           onFollow={{ label: 'Follow the relationships again', run: () => set({ [key]: undefined }) }}
+          inWords={(e) => (which === 'domain' ? domainInWords(prop.name, false, e as ClassExpression, naming) : rangeInWords(prop.name, { class: e as ClassExpression }, naming))}
         />
       </div>
     );

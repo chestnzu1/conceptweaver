@@ -400,6 +400,23 @@ export function addFact(model: Model, id: string, key: string, other: string): E
  */
 export const isEnumeration = (t: Pick<Term, 'type' | 'oneOf'>): boolean => t.type === 'concept' && t.oneOf !== undefined;
 
+/**
+ * The defined classes: those with something they are equivalent to, which is a definition of
+ * them, enough for a reasoner to classify by. An expression stated as Equivalent To, another
+ * class drawn as the same class, or a list of members (an enumeration with members): what
+ * Protégé marks as defined.
+ */
+export function definedClasses(model: Model): Set<string> {
+  const out = new Set<string>();
+  for (const t of model.terms) if (t.type === 'concept' && (t.classAxioms?.some((a) => a.kind === 'EquivalentClasses') || (isEnumeration(t) && t.oneOf!.length > 0))) out.add(t.id);
+  for (const r of resolveModel(model).relations) {
+    if (r.predicate !== 'owl:equivalentClass' || r.from === r.to) continue;
+    out.add(r.from);
+    out.add(r.to);
+  }
+  return out;
+}
+
 /** Makes a class an enumeration (with no members yet), or an ordinary class again. Nothing else about it changes. */
 export function setEnumeration(model: Model, classId: string, on: boolean): Edit {
   const c = model.terms.find((t) => t.id === classId);

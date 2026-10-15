@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CLASS_AXIOM_KINDS, same, type ClassAxiomKind, type ClassExpression, type ClassExpressionAxiom } from '../model/expressions';
+import { classAxiomInWords } from '../model/inWords';
 import { formatClass, hasUnparsed, namingFor } from '../model/manchester';
 import { useStore } from '../model/store';
 import { uid, type Term } from '../model/types';
@@ -64,6 +65,7 @@ export function ClassAxioms({ term }: { term: Term }) {
       label={`${editing === 'new' ? 'New' : 'Changed'} class axiom of ${name}`}
       before={kindChoice}
       blocked={kind ? undefined : 'Choose what kind of axiom it is.'}
+      inWords={kind ? (e) => classAxiomInWords(kind, term.name, e as ClassExpression, naming) : undefined}
       onSave={(e) => save(e as ClassExpression)}
       onCancel={() => setEditing(undefined)}
       saveLabel={editing === 'new' ? 'Add the axiom' : 'Save the axiom'}
@@ -86,6 +88,7 @@ export function ClassAxioms({ term }: { term: Term }) {
                   {
                     <>
                       <pre className="axiom">{formatClass(a.expression, naming, 60)}</pre>
+                      <p className="axiom-words">{classAxiomInWords(a.kind, term.name, a.expression, naming)}</p>
                       <span className="row">
                         {hasUnparsed(a.expression) ? (
                           <small className="tag" title="Part of it is kept exactly as it was read, in a form this editor has no structure for. It is written back as it was. It can be taken away, not changed here.">

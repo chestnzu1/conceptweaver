@@ -1,8 +1,9 @@
 // Drives the built app in a headless browser to check the class expression editor: an axiom of a
 // class built as nested blocks, and one written in Manchester syntax with completion and errors
 // in place; the two modes showing one expression; an operator changed without losing what it
-// had; the kind of axiom chosen, never assumed; nothing unfinished or not allowed saved; the
-// same editor for a property's domain; and all of it exported as OWL and kept after a reload.
+// had; the kind of axiom chosen, never assumed; nothing unfinished or not allowed saved; each
+// read out in words; a class with a definition marked as defined; the same editor for a
+// property's domain; and all of it exported as OWL and kept after a reload.
 // Needs the preview server:  pnpm build && pnpm exec vite preview --port 5181
 import { chromium } from 'playwright-core';
 import fs, { globSync } from 'node:fs';
@@ -106,9 +107,15 @@ await kindOf(blocks().first(), 'and');
 await kindOf(blocks().nth(2), 'only');
 ok((await preview()) === 'Person and (hasAge only xsd:integer[>= 18])', 'SOME changed to ONLY keeps the property and the filler: ' + (await preview()));
 await kindOf(blocks().nth(2), 'some');
+const subWords = 'Every “AdultPerson” is a “Person” and has at least one “hasAge” value that is a whole number that is at least 18.';
+ok(flat(await editor.locator('.xe-words').innerText()) === 'In words: ' + subWords, 'under the blocks it is read out in words, as a sentence of the kind of axiom chosen: ' + flat(await editor.locator('.xe-words').innerText()));
 await page.screenshot({ path: shots + 'class-expression-blocks.png' });
 await save.click();
 ok(flat(await section.locator('[data-axiom-kind=SubClassOf] pre.axiom').innerText()) === 'Person and (hasAge some xsd:integer[>= 18])', 'it is added as a SubClass Of axiom of the class');
+ok(flat(await section.locator('[data-axiom-kind=SubClassOf] .axiom-words').innerText()) === subWords, 'and listed with its reading in words');
+const head = () => panel.locator('.editor-head h2').textContent().then(flat);
+const treeTag = () => page.locator('.term-list .tree-line', { has: page.locator('.name', { hasText: /^AdultPerson$/ }) }).locator('.tag.defined').count();
+ok((await head()) === 'Class' && (await treeTag()) === 0, 'a superclass alone does not define a class: ' + (await head()));
 let ttl = await turtle();
 ok(block(ttl, ':AdultPerson').includes('rdfs:subClassOf [ a owl:Class ; owl:intersectionOf ( :Person [ a owl:Restriction ; owl:onProperty :hasAge ; owl:someValuesFrom [ a rdfs:Datatype ; owl:onDatatype xsd:integer ; owl:withRestrictions ( [ xsd:minInclusive "18"^^xsd:integer ] ) ] ] ) ]'), 'and written as the OWL it is: ' + block(ttl, ':AdultPerson'));
 
@@ -143,8 +150,13 @@ await editor.getByRole('tab', { name: 'Manchester syntax' }).click();
 await editor.locator('.cm-content').waitFor();
 await page.waitForTimeout(400);
 await page.screenshot({ path: shots + 'class-expression-text.png' });
+const eqWords = 'Something is an “AdultPerson” exactly when it is a “Person” and is related by “hasChild” to at least one “Person” that is a “Student”.';
+ok(flat(await editor.locator('.xe-words').innerText()) === 'In words: ' + eqWords, 'written as text, it is read out in words too: ' + flat(await editor.locator('.xe-words').innerText()));
 await editor.getByRole('button', { name: 'Add the axiom' }).click();
 ok(flat(await section.locator('[data-axiom-kind=EquivalentClasses] pre.axiom').innerText()) === 'Person and (hasChild some (Person and Student))', 'it is added as an Equivalent To axiom, apart from the SubClass Of one');
+ok((await head()) === 'Defined class' && (await treeTag()) === 1, 'with a definition the class is a defined class, so the panel says and the class tree marks it ≡: ' + (await head()));
+const definedAs = panel.getByLabel('Class definition');
+ok(flat(await definedAs.locator('option:checked').innerText()) === 'By what it is equivalent to (below)', 'and its definition says what defines it: ' + flat(await definedAs.locator('option:checked').innerText()));
 ttl = await turtle();
 ok(block(ttl, ':AdultPerson').includes('owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( :Person [ a owl:Restriction ; owl:onProperty :hasChild ; owl:someValuesFrom [ a owl:Class ; owl:intersectionOf ( :Person :Student ) ] ] ) ]') && block(ttl, ':AdultPerson').includes('rdfs:subClassOf [ a owl:Class ; owl:intersectionOf'), 'both are in the RDF, each with its own predicate');
 
@@ -157,6 +169,7 @@ await editor.getByRole('button', { name: 'Save the axiom' }).click();
 ok(flat(await section.locator('[data-axiom-kind=EquivalentClasses] pre.axiom').innerText()) === 'Person or (hasChild some (Person and Student))', 'an axiom is changed on its own');
 await section.getByRole('button', { name: /^Remove the Equivalent To axiom/ }).click();
 ok((await section.locator('[data-axiom-kind=EquivalentClasses]').count()) === 0 && (await section.locator('[data-axiom-kind=SubClassOf]').count()) === 1, 'and removed on its own, the other staying');
+ok((await head()) === 'Class' && (await treeTag()) === 0, 'its definition removed, it is a class like any other again');
 
 // ---------------------------------------------------------------- the same editor for a domain
 await select('hasChild', 'Object properties');
@@ -168,6 +181,7 @@ await page.keyboard.type('Person or Organization');
 await page.waitForTimeout(300);
 await editor.getByRole('button', { name: 'Add' }).click();
 ok(flat(await domain.locator('code.axiom').first().innerText()) === 'Person or Organization', 'a property’s domain is written in the same editor');
+ok(flat(await domain.locator('.axiom-words').first().innerText()) === 'Anything that is related by “hasChild” to something is either a “Person” or an “Organization”.', 'and read out as what it says of the property: ' + flat(await domain.locator('.axiom-words').first().innerText()));
 ttl = await turtle();
 ok(block(ttl, ':hasChild').includes('rdfs:domain [ a owl:Class ; owl:unionOf ( :Person :Organization ) ]'), 'and exported as one union: ' + block(ttl, ':hasChild'));
 

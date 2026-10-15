@@ -394,7 +394,11 @@ class Reader {
     if (tok.kind === 'iri') found = { iri: tok.text, kind: this.n.kindsOf(tok.text).find((k) => kinds.includes(k)) ?? kinds[0] };
     else if (tok.kind === 'name') {
       const all = this.n.find(tok.text).filter((e) => kinds.includes(e.kind));
-      if (all.length > 1 && !kinds.includes('object')) this.fail(`More than one ${KIND_WORD[kinds[0]].replace(/^an? /, '')} is called “${tok.text}”: write its prefixed name or IRI instead.`, tok);
+      if (all.length > 1) {
+        // Two of one kind, or an object and a data property: which is meant cannot be told from the name.
+        const what = all.every((e) => e.kind === all[0].kind) ? `More than one ${KIND_WORD[all[0].kind].replace(/^an? /, '')} is` : `${[...new Set(all.map((e) => KIND_WORD[e.kind]))].join(' and ').replace(/^a/, 'A')} are both`;
+        this.fail(`${what} called “${tok.text}”: write its prefixed name or IRI instead.`, tok);
+      }
       found = all[0];
       if (!found && tok.text.includes(':')) {
         const iri = this.n.expand(tok.text);

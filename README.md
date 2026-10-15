@@ -216,9 +216,22 @@ More on what the advanced reasoner does and does not cover is under
     classes, properties, individuals, datatypes and keywords each as what they are, suggests
     the names and keywords that fit where the cursor is (Ctrl+Space), closes and matches
     brackets, lays a long expression out over lines (*Format*), and marks at its place what does
-    not read: a syntax error, a name that is nothing in the ontology, or a name of the wrong kind
+    not read: a syntax error, a name that is nothing in the ontology, a name of the wrong kind
     (“xsd:integer” is a datatype; hasChild is an object property, whose values are individuals of
-    a class). Prefixed names and full IRIs are read too.
+    a class), or a name two entities share, properties as well as classes (FOAF has two object
+    properties called “account”: write the one meant by its prefixed name). Prefixed names and
+    full IRIs are read too.
+  - *In words*: under either, the expression read out as a sentence of the kind of axiom it is,
+    for whoever does not read Manchester syntax: `Person and (hasChild some Student)` as Equivalent
+    To of Parent is "Something is a “Parent” exactly when it is a “Person” and is related by
+    “hasChild” to at least one “Student”". Each axiom listed in the class's editor has its sentence
+    under it, as do a property's domain and range axioms ("Anything that is related by “hasChild”
+    to something is a “Person”."). The wording is the same whatever a property is called, and says
+    what OWL means: *some* is at least one, *only* allows none at all ("only to members of
+    “Student” (or to nothing)"), a number counts different things, and a negated restriction is
+    said the way round that reads (`not (hasChild only Student)` is "related by “hasChild” to at
+    least one thing that is not a “Student”"). Where a long part of an *and* or *or* comes before
+    another, a semicolon sets it apart (`src/model/inWords.ts`).
 
   Both edit one structured expression (`src/model/expressions.ts`), so switching between them
   changes how it is shown and never what it says; a text that does not read yet is not turned
@@ -236,6 +249,16 @@ More on what the advanced reasoner does and does not cover is under
   expression for (a restriction with two quantifiers, an empty list) is kept as it was read,
   shown, written back, and can be removed but not changed. What the editor does not do yet is
   listed in [docs/EXPRESSION_EDITOR_LIMITATIONS.md](docs/EXPRESSION_EDITOR_LIMITATIONS.md).
+
+  A class with something it is equivalent to (an Equivalent To expression, another class drawn
+  as the same class, or an enumeration with members) is a **defined class**, as Protégé calls
+  it: being what it is equivalent to is enough to be one, and a reasoner classifies by it. The
+  class tree marks it ≡, its editor is headed *Defined class*, and its *Class definition* says
+  what defines it. Tested against the corpus: each of Pizza's definitions typed again in the
+  editor, as Manchester syntax and then as blocks, is the same expression, and HermiT finds each
+  equivalent to Protégé's, with the same subclasses (`expressionConformance.test.ts`); every
+  class expression of the nine ontologies opens as structure, reads back the same from its text
+  and its blocks, and survives renaming and describing its class (`corpusExpressions.test.ts`).
 - **Domains and ranges are axioms** (model format 3, from 2026-10-14; `src/model/expressions.ts`).
   Each `rdfs:domain` or `rdfs:range` statement is one axiom, with a class expression of its own
   (for a data property's range, a data range): a class, or a union, intersection or complement of
@@ -668,9 +691,10 @@ that *Layered* says so and uses the built-in hierarchical layout.
   `rdf.ts`) tells what it took. Class expressions and data ranges are one structure,
   `expressions.ts` (read from RDF, written in OWL functional syntax as the OWL API has them,
   followed through renames and deletions), with nothing of React in it: `manchester.ts` reads and
-  writes them as Manchester syntax and says what to complete and highlight, `expressionDraft.ts`
-  is an expression as the visual editor builds it, `expressionCheck.ts` what OWL 2 DL allows of
-  it, and `domains.ts` the edits of domains and ranges.
+  writes them as Manchester syntax and says what to complete and highlight, `inWords.ts` reads
+  them out in words, `expressionDraft.ts` is an expression as the visual editor builds it,
+  `expressionCheck.ts` what OWL 2 DL allows of it, and `domains.ts` the edits of domains and
+  ranges.
 - `src/components` – the SVG canvas, side panels, views and menus. The expression editor is
   `ExpressionEditor.tsx` (the blocks, and the dialog), over `manchesterEditor.ts` (the text
   editor, on CodeMirror, loaded when first opened); `ClassAxioms.tsx` and `AxiomList.tsx` use it

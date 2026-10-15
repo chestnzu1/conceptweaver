@@ -1,4 +1,4 @@
-import { addEnumMember, createEnumMember, declareAllDifferent, enumerationExpression, enumMembers, isEnumeration, removeEnumMember, setEnumeration } from '../model/axioms';
+import { addEnumMember, createEnumMember, declareAllDifferent, definedClasses, enumerationExpression, enumMembers, isEnumeration, removeEnumMember, setEnumeration } from '../model/axioms';
 import { compactIri } from '../model/prefixes';
 import { useStore } from '../model/store';
 import type { Term } from '../model/types';
@@ -6,15 +6,18 @@ import { Section } from './EntityEditor';
 import { EntityPicker } from './EntityPicker';
 
 /**
- * How a class is defined, where it is defined by more than its place in the hierarchy. The one
- * definition there is an editor for is the enumeration: the class is exactly the individuals
- * listed (owl:equivalentClass with owl:oneOf). The class stays a class; its other axioms and its
- * annotations are edited where they always were.
+ * How a class is defined, where it is defined by more than its place in the hierarchy. The
+ * definition edited here is the enumeration: the class is exactly the individuals listed
+ * (owl:equivalentClass with owl:oneOf). A class defined by what else it is equivalent to (a class,
+ * or an expression) says so, and points to where those are edited. The class stays a class; its
+ * other axioms and its annotations are edited where they always were.
  */
 export function ClassDefinition({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
   const st = useStore.getState;
   const on = isEnumeration(term);
+  // Defined otherwise: by an equivalent class or an Equivalent To expression.
+  const byEquivalents = !on && definedClasses(model).has(term.id);
   const members = enumMembers(model, term);
   const locked = term.external !== undefined;
   const short = (iri?: string) => (iri ? (compactIri(model, iri) ?? `<${iri}>`) : undefined);
@@ -26,9 +29,10 @@ export function ClassDefinition({ term }: { term: Term }) {
       <label className="field">
         <span>Defined as</span>
         <select aria-label="Class definition" value={on ? 'oneOf' : ''} disabled={locked} onChange={(e) => say(st().edit((m) => setEnumeration(m, term.id, e.target.value === 'oneOf')))}>
-          <option value="">No definition (an ordinary class)</option>
+          <option value="">{byEquivalents ? 'By what it is equivalent to (below)' : 'No definition (an ordinary class)'}</option>
           <option value="oneOf">Enumeration (ObjectOneOf)</option>
         </select>
+        {byEquivalents && <small>A defined class: being what it is equivalent to, under Equivalent classes or Class expressions below, is enough to be one, and a reasoner classifies by it.</small>}
         {!on && <small>An enumeration is a class that is exactly a list of individuals, such as the colours of a traffic light.</small>}
       </label>
       {on && (

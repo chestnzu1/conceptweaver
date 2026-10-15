@@ -80,7 +80,7 @@ ok((await css(oneOf.first().locator('.edge-line'), 'strokeDasharray')) !== 'none
 ttl = await turtle();
 ok(ttl.match(/owl:oneOf \(/g).length === 1 && !/owl:oneOf :/.test(ttl) && !block(ttl, ':Drama').includes('Genre'), 'the lines are a picture of the definition: no triple from the class to an individual is written for them');
 await oneOf.first().locator('.edge-label-bg').click();
-ok(flat(await panel.locator('h2').first().innerText()).toLowerCase() === 'class' && (await panel.locator('.field input').first().inputValue()) === 'Genre', 'clicking such a line opens the class, where the list is');
+ok(flat(await panel.locator('h2').first().innerText()).toLowerCase() === 'defined class' && (await panel.locator('.field input').first().inputValue()) === 'Genre', 'clicking such a line opens the class, where the list is: a defined class, by its members');
 await node('Drama').locator('.node-box').click();
 ok(flat(await panel.locator('h2').first().innerText()).toLowerCase() === 'individual', 'and clicking a member in the graph opens its individual editor');
 const toggle = page.locator('.zoom').getByRole('button', { name: 'Enumerations' });

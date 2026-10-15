@@ -26,6 +26,7 @@ export function AxiomList({
   of,
   which,
   empty = 'Stated as none: anything.',
+  inWords,
 }: {
   kind: 'class' | 'data';
   axioms: Axiom[] | undefined;
@@ -37,6 +38,8 @@ export function AxiomList({
   which: 'domain' | 'range';
   /** What is said where the list is stated and empty. */
   empty?: string;
+  /** An axiom as a sentence about the property: "Anything that is related by “p” to something is a “Person”." */
+  inWords?: (e: ClassExpression | DataRange) => string;
 }) {
   const model = useStore((s) => s.model);
   const naming = useMemo(() => namingFor(model), [model]);
@@ -54,7 +57,7 @@ export function AxiomList({
     setEditing(undefined);
     return undefined;
   };
-  const editor = (label: string, initial?: Axiom) => <ExpressionDialog title={label} sort={kind} initial={initial && body(initial)} label={label} onSave={save} onCancel={() => setEditing(undefined)} saveLabel={editing === 'new' ? 'Add' : 'Save'} />;
+  const editor = (label: string, initial?: Axiom) => <ExpressionDialog title={label} sort={kind} initial={initial && body(initial)} label={label} onSave={save} onCancel={() => setEditing(undefined)} saveLabel={editing === 'new' ? 'Add' : 'Save'} inWords={inWords} />;
 
   let note: ReactNode;
   if (!axioms) note = follows?.text ? <>Follows {follows.what}: {follows.text}. Add an axiom to state it yourself.</> : <>Not stated: anything. Add an axiom to state it.</>;
@@ -84,6 +87,7 @@ export function AxiomList({
                   <button className="link" aria-label={`Remove the ${which} axiom ${text(a)}`} onClick={() => onChange(list_.filter((x) => x.id !== a.id))}>
                     Remove
                   </button>
+                  {inWords && <p className="axiom-words">{inWords(body(a))}</p>}
                 </>
               }
             </li>

@@ -124,6 +124,32 @@ describe('Manchester syntax: what is wrong, said in the terms of the ontology', 
     expect(error('xsd:integer[length 3, size 4]', true).message).toMatch(/“size” is not a facet/);
   });
 
+  it('refuses a name two entities share, properties as well as classes, and reads them by prefixed name', () => {
+    const shared = fromTurtle(`@prefix : <${M}> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+:A a owl:Class ; rdfs:label "Thing one" . :B a owl:Class ; rdfs:label "Thing one" .
+:account a owl:ObjectProperty ; rdfs:label "account" . :holdsAccount a owl:ObjectProperty ; rdfs:label "account" .
+:size a owl:ObjectProperty ; rdfs:label "size" . :sizeValue a owl:DatatypeProperty ; rdfs:label "size" .`);
+    const sn = namingFor(shared);
+    const refused = (text: string) => {
+      try {
+        parseClass(text, sn);
+      } catch (e) {
+        return (e as Error).message;
+      }
+      return 'read';
+    };
+    expect(refused("'Thing one'")).toBe('More than one class is called “Thing one”: write its prefixed name or IRI instead.');
+    // FOAF has two object properties called "account" (foaf:account and foaf:holdsAccount).
+    expect(refused("account some ':A'")).toBe('More than one object property is called “account”: write its prefixed name or IRI instead.');
+    expect(refused('size some owl:Thing')).toBe('A data property and an object property are both called “size”: write its prefixed name or IRI instead.');
+    // Printed, each is its prefixed name, which reads back as it was.
+    const e: ClassExpression = { type: 'ObjectSomeValuesFrom', property: objectProperty(M + 'holdsAccount'), filler: { type: 'Class', iri: M + 'B' } };
+    expect(classText(e, sn)).toBe(':holdsAccount some :B');
+    expect(parseClass(classText(e, sn), sn)).toEqual(e);
+  });
+
   it('finds, in an expression that reads, what OWL 2 DL does not allow of its entities', () => {
     const iri = (s: string) => s;
     expect(checkExpression({ type: 'DataSomeValuesFrom', property: dataProperty(M + 'hasChild'), filler: { type: 'Datatype', iri: XSD + 'integer' } }, n)).toEqual([{ severity: 'error', message: 'hasChild is an object property: its values are individuals, not literals.' }]);

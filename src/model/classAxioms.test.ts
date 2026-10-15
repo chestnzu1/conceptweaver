@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { definedClasses } from './axioms';
 import { classExpressionAxiomFrom, functionalSyntax, type ClassExpressionAxiom } from './expressions';
 import { setIriSuffix } from './iri';
 import { classText, namingFor, parseClass } from './manchester';
@@ -134,5 +135,20 @@ describe('editing class axioms', () => {
     open();
     const moved = setIriSuffix(st().model, { prop: st().model.props.find((p) => p.iri === M + 'hasMember')!.id }, 'hasPart').model!;
     expect(functionalSyntax(term(moved, 'Member')!.classAxioms![0].expression)).toBe(`ObjectSomeValuesFrom(ObjectInverseOf(<${M}hasPart>) <${M}Organization>)`);
+  });
+});
+
+describe('defined classes', () => {
+  it('are those equivalent to something: an expression, another class, or a list of members', () => {
+    const m = fromTurtle(`${SOURCE}
+:Human a owl:Class ; rdfs:label "Human" ; owl:equivalentClass :Person .
+:Light a owl:Class ; rdfs:label "Light" ; owl:equivalentClass [ a owl:Class ; owl:oneOf ( :Red :Green ) ] .`);
+    const names = (ids: Set<string>) => m.terms.filter((t) => ids.has(t.id)).map((t) => t.name).sort();
+    // Adult by its definition, Human and Person by being the same class, Light by its members; AdultPerson only has a superclass.
+    expect(names(definedClasses(m))).toEqual(['Adult', 'Human', 'Light', 'Person']);
+    // A definition taken away, it is a class like any other again.
+    const adult = term(m, 'Adult')!;
+    const without = { ...m, terms: m.terms.map((t) => (t === adult ? { ...t, classAxioms: undefined } : t)) };
+    expect(definedClasses(without).has(adult.id)).toBe(false);
   });
 });

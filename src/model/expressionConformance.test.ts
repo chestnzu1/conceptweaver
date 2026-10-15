@@ -1,8 +1,13 @@
+import fs from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CORPUS, corpusFile } from '../../corpus/corpus.mjs';
 import { startReasoner, unavailable } from '../../reasoner/run.mjs';
+import { fromDraft, toDraft } from './expressionDraft';
 import { CLASS_AXIOM_KINDS, type ClassAxiomKind } from './expressions';
-import { localName } from './iri';
-import { namingFor, parseClass } from './manchester';
+import { readModelFile } from './files';
+import { localName, withIris } from './iri';
+import { classText, namingFor, parseClass } from './manchester';
+import { decodeDocument } from './rdfFormats';
 import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { askReasoner, dlRequest } from './reasoning';
 import { loadOxigraph } from './oxigraph';
@@ -183,4 +188,30 @@ describe.skipIf(!!why)('class expressions, measured against the OWL API and Herm
     const wrong = await ask(`<${M}ann> a <${M}Person> , <${M}Lonely> ; <${M}hasChild> <${M}Red> .`);
     expect(wrong.consistency).toBe('inconsistent');
   }, 60_000);
+
+  const pizza = CORPUS.find((e) => e.id === 'pizza')!;
+  it.skipIf(!fs.existsSync(corpusFile(pizza)))('classifies a defined class written in the editor as HermiT classifies the one Protégé wrote (Pizza)', async () => {
+    const { model } = await readModelFile(decodeDocument(new Uint8Array(fs.readFileSync(corpusFile(pizza)))), pizza.file, { serviceUrl: service.url });
+    const m = withIris(model);
+    const n = namingFor(m);
+    const defined = m.terms.filter((t) => t.classAxioms?.some((a) => a.kind === 'EquivalentClasses'));
+    expect(defined.length).toBeGreaterThanOrEqual(10);
+    // Each of Pizza's definitions written again in the editor, as a class of its own: its text
+    // typed in Manchester syntax, and that shown as blocks and saved from there.
+    const twins = defined.map((t) => {
+      const original = t.classAxioms!.find((a) => a.kind === 'EquivalentClasses')!.expression;
+      const typed = fromDraft(toDraft(parseClass(classText(original, n), n)), 'class').value!;
+      expect(typed).toEqual(original);
+      const iri = t.iri + 'Typed';
+      return { of: t.iri!, iri, term: newTerm({ name: `${t.name} typed`, iri, classAxioms: [{ id: uid(), kind: 'EquivalentClasses', expression: typed }] }) };
+    });
+    const report = await askReasoner(service.url, { ...dlRequest({ ...m, terms: [...m.terms, ...twins.map((x) => x.term)] }), timeoutMs: 60_000 });
+    expect(report).toMatchObject({ status: 'complete', consistency: 'consistent', errors: [] });
+    // Each is the same class as Protégé's, so it sits where that one does in the hierarchy HermiT works out.
+    for (const x of twins) expect(report.equivalents?.some((g) => g.includes(x.of) && g.includes(x.iri)), `${x.term.name} is equivalent to ${x.of}`).toBe(true);
+    const below = (iri: string) => (report.subclasses ?? []).filter((s) => s.sup === iri).map((s) => s.sub).filter((s) => !s.endsWith('Typed')).sort();
+    const vegetarian = twins.find((x) => x.of.endsWith('#VegetarianPizza'))!;
+    expect(below(vegetarian.iri)).toEqual(below(vegetarian.of));
+    expect(below(vegetarian.of).length).toBeGreaterThan(0);
+  }, 120_000);
 });

@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'rea
 import { checkExpression, type ExpressionIssue } from '../model/expressionCheck';
 import { addOperand, draftText, fromDraft, hasFiller, hole, isCounted, isRestriction, removeNode, toDraft, unwrapNode, updateNode, withKind, withProperty, wrapNode, type DraftKind, type DraftNode, type Problem, type Sort } from '../model/expressionDraft';
 import { OWL, XSD, type ClassExpression, type DataRange, type Literal } from '../model/expressions';
+import { classInWords, dataRangeInWords } from '../model/inWords';
 import { FACETS, facetIri, facetText, formatClass, dataText, literalText, namingFor, parseClass, parseDataRange, parseLiteral, ParseError, type Naming } from '../model/manchester';
 import { useStore } from '../model/store';
 import { DATATYPES, type Model } from '../model/types';
@@ -340,6 +341,7 @@ export function ExpressionEditor({
   saveLabel = 'Save',
   before,
   blocked,
+  inWords,
 }: {
   sort: Sort;
   initial?: Expression;
@@ -352,6 +354,8 @@ export function ExpressionEditor({
   before?: ReactNode;
   /** Why it cannot be saved yet, whatever the expression (no kind of axiom chosen). */
   blocked?: string;
+  /** The expression as a sentence about what it is stated of ("Every “Pizza” is …"); without it, as a phrase. */
+  inWords?: (e: Expression) => string;
 }) {
   const model = useStore((s) => s.model);
   const naming = useMemo(() => namingFor(model), [model]);
@@ -365,6 +369,7 @@ export function ExpressionEditor({
   const problems = new Map(finished.problems.map((p) => [p.key, p.message]));
   const issues: ExpressionIssue[] = finished.value ? checkExpression(finished.value, naming) : [];
   const errors = issues.filter((i) => i.severity === 'error');
+  const reading = finished.value && !(mode === 'text' && textError) ? (inWords ? inWords(finished.value) : sort === 'class' ? classInWords(finished.value as ClassExpression, naming) : dataRangeInWords(finished.value as DataRange, naming)) : undefined;
   const why = blocked ?? (mode === 'text' && textError ? 'The text does not read as an expression yet.' : finished.problems.length ? 'The expression is not finished: see the blocks.' : errors.length ? 'OWL 2 DL does not allow this expression: see below.' : undefined);
 
   const fromBlocks = (d: DraftNode) => {
@@ -427,6 +432,11 @@ export function ExpressionEditor({
             </small>
           )}
         </div>
+      )}
+      {reading && (
+        <p className="xe-words" aria-live="polite">
+          <span className="muted">In words:</span> {reading}
+        </p>
       )}
       {issues.map((i, k) => (
         <small key={k} className={i.severity === 'error' ? 'bad' : 'warn'} role="status">

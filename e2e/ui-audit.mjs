@@ -1,6 +1,6 @@
 // Measures the built app against a few checkable UI rules, view by view and in both themes:
 // text contrast (WCAG AA 4.5:1, 3:1 for large text), pointer target size (24 by 24 CSS px), text
-// under 12px, and controls that stick out of the panel they belong to.
+// under 12px, and controls that stick out of the panel they belong to (a dialog being a panel of its own).
 // Needs a server:  pnpm exec vite preview --port 5181   (or pass another base URL)
 import { chromium } from 'playwright-core';
 import { globSync } from 'node:fs';
@@ -76,10 +76,12 @@ const measure = () => {
     if (el.matches('input[type="checkbox"], input[type="radio"]') && (el.closest('label') || el.parentElement?.tagName === 'TD')) continue;
     if (r.width < 23.5 || r.height < 23.5) add('target', name(el), `${Math.round(r.width)}×${Math.round(r.height)}`);
   }
-  for (const panel of document.querySelectorAll('.header, .sidebar, .stage, .inspector, .view-head')) {
+  // A dialog is a panel of its own, wherever it sits in the page: what is in it belongs to it, not to the panel it opened from.
+  for (const panel of document.querySelectorAll('.header, .sidebar, .stage, .inspector, .view-head, .dialog')) {
     const p = panel.getBoundingClientRect();
+    const own = panel.matches('.dialog') ? panel : null;
     for (const el of panel.querySelectorAll('button, input, select, [role="tab"]')) {
-      if (!visible(el) || el.closest('.table-wrap, .tree-wrap, .gov-detail, svg, table')) continue;
+      if (!visible(el) || el.closest('.table-wrap, .tree-wrap, .gov-detail, svg, table') || el.closest('.dialog') !== own) continue;
       const r = el.getBoundingClientRect();
       if (r.right > p.right + 1 || r.left < p.left - 1) add('overflow', name(el), `sticks out of .${panel.className.split(' ')[0]} by ${Math.round(Math.max(r.right - p.right, p.left - r.left))}px`);
     }
@@ -288,6 +290,25 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await datatype.getByLabel('New value', { exact: true }).fill('short');
     await datatype.getByRole('button', { name: 'Add value' }).click();
     report('Enumerated datatype', await page.evaluate(measure));
+    // The class expression editor: a definition with a name that is not there, then written out and
+    // read in words, the same as blocks, and the class it makes a defined class.
+    await node('Documentary').locator('.node-box').click();
+    await inspector.locator('[data-section="class-expressions"]').getByRole('button', { name: 'Add a class axiom' }).click();
+    const xe = page.locator('.xe-dialog');
+    await xe.getByLabel(/^Equivalent To/).check();
+    await xe.getByRole('tab', { name: 'Manchester syntax' }).click();
+    await xe.locator('.cm-content').click();
+    await page.keyboard.type('Film and (wins some Nobody');
+    await xe.locator('.xe-text small.bad').waitFor();
+    report('Class expression · an error in the text', await page.evaluate(measure));
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Film and (wins some Award');
+    await xe.locator('.xe-words').waitFor();
+    report('Class expression · written, and in words', await page.evaluate(measure));
+    await xe.getByRole('tab', { name: 'Blocks' }).click();
+    report('Class expression · as blocks', await page.evaluate(measure));
+    await xe.getByRole('button', { name: 'Add the axiom' }).click();
+    report('Class expression · a defined class', await page.evaluate(measure));
     // The sidebar folded away to its strip, with and without a search on.
     await page.locator('.term-list').getByLabel('Search terms').fill('film');
     await page.locator('.term-list').getByRole('button', { name: 'Hide the sidebar' }).click();

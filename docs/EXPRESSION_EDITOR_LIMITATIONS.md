@@ -1,7 +1,8 @@
 # Limitations of the Expression Editing Framework
 
 What the class expression editor, and the domains and ranges built on the same model, do not do
-today (2026-10-14, model format 4, branch `instance-of-and-iri-suffix`). Companion documents:
+today (2026-10-14, model format 4, branch `instance-of-and-iri-suffix`; brought up to date
+2026-10-15, roadmap task 2.1: three of them are done, and keep their numbers). Companion documents:
 [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) (TD-01, TD-02), [BASELINES.md](BASELINES.md) (what a round
 trip of the corpus loses), and the README sections *Class expressions* and *Domains and ranges
 are axioms*.
@@ -10,6 +11,7 @@ The framework is:
 
 - `src/model/expressions.ts`: the structured expression model, shared by every editor;
 - `src/model/manchester.ts`: Manchester syntax, read and written;
+- `src/model/inWords.ts`: an expression, and an axiom, read out in words;
 - `src/model/expressionDraft.ts` and `src/model/expressionCheck.ts`: the visual editor's draft,
   and what OWL 2 DL allows;
 - `src/components/ExpressionEditor.tsx` and `src/components/manchesterEditor.ts`: the editor;
@@ -30,6 +32,7 @@ Each limitation says:
 | **By design** | A choice, made on purpose and with a reason. It would be changed only by deciding otherwise. |
 | **Gap** | Not done yet. Nothing in the design stands in its way. |
 | **External** | Comes from a library or tool the app depends on. |
+| **Done** | Was a gap; is not any more. Kept here, with what was done, so that the numbers stay. |
 
 ## 2. Summary
 
@@ -40,13 +43,13 @@ Each limitation says:
 | 3 | The OWL API reads one facet value differently from the app | External | — |
 | 4 | Deleting a class inside a restriction removes the whole axiom | By design | changed by the user's action |
 | 5 | The app's own reasoner does not interpret expressions | Gap | — |
-| 6 | No rendering of an expression in words | Gap | — |
+| 6 | No rendering of an expression in words | Done | — |
 | 7 | A stated empty domain or range reads back as one that follows the uses | By design | changed |
 | 8 | A domain equal to the uses reads back as one that follows them | By design | changed |
 | 9 | One edit that deletes an entity and adds another may leave a reference to the deleted one | Gap | kept, as a dangling IRI |
 | 10 | A data property's datatype list edits the first datatype axiom only | By design | — |
 | 11 | Complex domains and ranges are not editable in the Entities table | By design | — |
-| 12 | Two properties with one label: a typed name takes the first | Gap | — |
+| 12 | Two properties with one label: a typed name takes the first | Done | — |
 | 13 | Only class expressions are laid out over lines | Gap | — |
 | 14 | Validation judges only named classes, unions and intersections | Gap | — |
 | 15 | Facets and literals are checked for the XML Schema datatypes only | Gap | — |
@@ -57,7 +60,7 @@ Each limitation says:
 | 20 | A format-3 model's disjoint-class expressions stay uneditable until re-imported | Gap | kept |
 | 21 | A named superclass typed as an expression is not drawn until the file is read again | Gap | changed |
 | 22 | JSON-LD exports are checked with the RDF engine, not the OWL API | External | — |
-| 23 | The accessibility audit does not cover the expression dialog | Gap | — |
+| 23 | The accessibility audit does not cover the expression dialog | Done | — |
 
 ## 3. Editing
 
@@ -134,13 +137,21 @@ unsatisfiable classes and classifies by definitions (`expressionConformance.test
 
 **Next.** Not planned for the in-page reasoner. The roadmap's backend takes OWL reasoning server-side.
 
-### 6. No rendering of an expression in words
+### 6. No rendering of an expression in words (done)
 
 **What.** FR-M2-3 asks for an expression rendered in words ("everything that has a child who is a
-student"). The editor shows Manchester syntax, and the blocks name each operator (`SOME ·
-existential`), but there is no sentence form.
+student"). The editor showed Manchester syntax, and the blocks named each operator (`SOME ·
+existential`), but there was no sentence form.
 
-**Next.** A printer beside `classText`, over the same model.
+**Done, 2026-10-15.** `src/model/inWords.ts` reads an expression out, beside `classText` and over
+the same model: under the editor as it is written, and under each class, domain and range axiom
+listed, as a sentence of its kind ("Every “Margherita” is …", "Something is a “MeatyPizza”
+exactly when it …", "No “Pizza” is …"). One wording serves every property ("is related by “p”
+to"), whatever it is called; it does not make English of a property's own name, so `hasChild
+some Student` is "related by “hasChild” to at least one “Student”", not "has a child who is a
+student". A long part of an *and* or *or* before another is set apart with a semicolon; past
+three levels of nesting a sentence can still be hard to follow, and the Manchester syntax above
+it is the exact form.
 
 ## 4. Domains and ranges
 
@@ -196,17 +207,16 @@ two axioms, or an expression, is shown as text with an *edit* link to the side p
 
 ## 5. Manchester syntax
 
-### 12. Two properties with one label: a typed name takes the first
+### 12. Two properties with one label: a typed name takes the first (done)
 
 **What.** A name is matched against labels, exactly and then ignoring case. Two classes, two
-individuals or two datatypes with one label are refused, with a request for the prefixed name or
-IRI. Two properties with one label (FOAF has two called "account") are not refused: the first is
+individuals or two datatypes with one label were refused, with a request for the prefixed name
+or IRI. Two properties with one label (FOAF has two called "account") were not: the first was
 taken.
 
-**Data.** What is printed is never ambiguous: a shared label is written as the prefixed name or
-IRI. The risk is only in what is typed.
-
-**Next.** Refuse for properties as for the other kinds.
+**Done, 2026-10-15.** Properties are refused as the other kinds are, and so is a name an object
+property and a data property share. What is printed was never ambiguous: a shared label is
+written as the prefixed name or IRI.
 
 ### 13. Only class expressions are laid out over lines
 
@@ -286,11 +296,14 @@ say the same is checked with Oxigraph, statement for statement.
 
 ## 8. Verification
 
-### 23. The accessibility audit does not cover the expression dialog
+### 23. The accessibility audit does not cover the expression dialog (done)
 
 **What.** `e2e/ui-audit.mjs` checks contrast, target size and overflow on a fixed set of screens,
-and the expression dialog is not among them. Its buttons and controls are styled for 24-pixel
-targets, and the highlighting colours are chosen for contrast in both themes. The editor's
-CodeMirror completion list is CodeMirror's own.
+and the expression dialog was not among them.
 
-**Next.** Add the dialog, in both modes and both themes, to the audit's screens.
+**Done, 2026-10-15.** The dialog is measured with an error in its text, with an expression read
+out in words, as blocks, and the class it defines after it is added, in both themes and at both
+window sizes. It found text under 12 pixels (the hint under the text, the *and* between blocks),
+which is 12 pixels now. A dialog is measured as a panel of its own: one opened from the side
+panel used to count as sticking out of it. The CodeMirror completion list, which is CodeMirror's
+own, is not a screen of its own in the audit.

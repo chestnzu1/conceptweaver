@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
+import { definedClasses } from '../model/axioms';
 import { compactIri } from '../model/prefixes';
 import { stable } from '../model/stable';
 import { SIDEBAR_WIDTH, useStore } from '../model/store';
@@ -203,6 +204,7 @@ function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> })
   const searching = filter.trim() !== '';
   const rows = useMemo(() => treeRows(tree, open, searching ? new Set([...matches, ...ancestorsOf(tree, matches)]) : undefined), [tree, open, searching, matches]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
+  const defined = useMemo(() => definedClasses(model), [model]);
   const selectedSet = useMemo(() => new Set(selected), [selectedKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const flat = useMemo(() => {
@@ -254,6 +256,7 @@ function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> })
                 hasChildren={r.hasChildren}
                 open={r.open}
                 cycle={r.cycle}
+                defined={defined.has(r.id)}
                 term={byId.get(r.id)}
                 rootLabel={skos ? 'Concept scheme' : 'owl:Thing'}
                 selected={selectedSet.has(r.id)}
@@ -305,6 +308,8 @@ interface RowProps {
   hasChildren: boolean;
   open: boolean;
   cycle: boolean;
+  /** A defined class: it is equivalent to something (see definedClasses). */
+  defined: boolean;
   term: Term | undefined;
   rootLabel: string;
   selected: boolean;
@@ -317,7 +322,7 @@ interface RowProps {
 
 /** One line of the tree. Memoised, so selecting a class redraws two lines, not the whole tree. */
 const TreeRowView = memo(
-  function TreeRowView({ id, depth, hasChildren, open, cycle, term, rootLabel, selected, match, frozen, iri, onToggle }: RowProps) {
+  function TreeRowView({ id, depth, hasChildren, open, cycle, defined, term, rootLabel, selected, match, frozen, iri, onToggle }: RowProps) {
     const root = id === ROOT;
     const name = root ? rootLabel : term?.name || 'Unnamed';
     const color = term?.color || 'default';
@@ -335,9 +340,15 @@ const TreeRowView = memo(
             {name}
           </span>
         ) : (
-          <button className="label" title={`${name}${iri ? '\n' + iri : ''}${cycle ? '\nThis class is one of its own superclasses.' : ''}`} onClick={() => choose(id)}>
+          <button className="label" title={`${name}${iri ? '\n' + iri : ''}${defined ? '\nA defined class.' : ''}${cycle ? '\nThis class is one of its own superclasses.' : ''}`} onClick={() => choose(id)}>
             <span className="dot concept" style={{ background: `var(--nc-${color}-fill)`, borderColor: `var(--nc-${color}-stroke)` }} />
             <span className="name">{name}</span>
+            {/* Said in the line's title, so that the class's name stays its name. */}
+            {defined && (
+              <span className="tag defined" aria-hidden="true" title="A defined class: it is equivalent to something, so being that is enough to be one of these, and a reasoner classifies by it">
+                ≡
+              </span>
+            )}
             {term?.external !== undefined && <span className="tag auto" title="An entity of another ontology, referred to here under its own IRI">ext</span>}
             {cycle && <span className="tag warn">cycle</span>}
           </button>
@@ -346,5 +357,5 @@ const TreeRowView = memo(
     );
   },
   // `onToggle` is a new function each time but always does the same thing.
-  (a, b) => a.id === b.id && a.depth === b.depth && a.hasChildren === b.hasChildren && a.open === b.open && a.cycle === b.cycle && a.term === b.term && a.rootLabel === b.rootLabel && a.selected === b.selected && a.match === b.match && a.frozen === b.frozen && a.iri === b.iri,
+  (a, b) => a.id === b.id && a.depth === b.depth && a.hasChildren === b.hasChildren && a.open === b.open && a.cycle === b.cycle && a.defined === b.defined && a.term === b.term && a.rootLabel === b.rootLabel && a.selected === b.selected && a.match === b.match && a.frozen === b.frozen && a.iri === b.iri,
 );

@@ -179,6 +179,15 @@ expression for (`Unparsed`, read-only); general class axioms, property chains, k
 does not interpret expressions (`REASONER_LIMITS`); HermiT does. The limits that remain are listed in
 [EXPRESSION_EDITOR_LIMITATIONS.md](EXPRESSION_EDITOR_LIMITATIONS.md).
 
+**Status, 2026-10-15: roadmap task 2.1 done.** What 2.1 asked for beyond the above: an expression
+is read out in words (`src/model/inWords.ts`), in the editor and under every class, domain and
+range axiom; a class with something it is equivalent to is a defined class, marked ≡ in the class
+tree and named so in its editor; a name two properties share is refused in Manchester syntax as
+one two classes share is. Phase 2's acceptance for it is tested: every class expression of the
+corpus opens as structure, reads back the same from its text and its blocks, and survives an
+edit of its class (`corpusExpressions.test.ts`); each of Pizza's definitions typed again in the
+editor is classified by HermiT as Protégé's is (`expressionConformance.test.ts`).
+
 ### TD-03 Object properties are identified by lower-cased name — High
 
 **Where.** `propKey` in `src/model/props.ts:20` (`labelKey(name) || DEFAULT_PROP`), `labelKey`

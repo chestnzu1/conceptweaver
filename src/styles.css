@@ -2001,6 +2001,13 @@ td.ro {
   border-style: dashed;
 }
 
+/* A defined class: ≡, as Protégé marks one. */
+.tag.defined {
+  margin-left: 6px;
+  padding: 0 6px;
+  font-weight: 600;
+}
+
 fieldset.checks {
   margin: 0;
   padding: 0;
@@ -2179,10 +2186,27 @@ code.axiom.auto {
   overflow-wrap: anywhere;
 }
 
+/* The expression read out in words, under it. */
+.xe-words,
+.axiom-words {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.axiom-list .axiom-words {
+  flex-basis: 100%;
+}
+
 .xe-preview code,
 .xb-summary,
 pre.axiom {
   font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.xe small {
   font-size: 12px;
 }
 
@@ -2278,7 +2302,7 @@ pre.axiom {
 }
 
 .xb-joint {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
