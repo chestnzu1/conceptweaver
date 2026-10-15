@@ -134,7 +134,8 @@ ok(block(ttl, ':code').includes('rdfs:range [ a rdfs:Datatype ; owl:onDatatype x
 
 // ---------------------------------------------------------------- kept in the browser
 await page.waitForTimeout(500);
-const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('conceptweaver:model:v1') ?? 'null'));
+// The working copy, as it is kept in this browser (IndexedDB).
+const saved = await page.evaluate(() => new Promise((resolve, reject) => { const r = indexedDB.open('conceptweaver'); r.onerror = () => reject(r.error); r.onsuccess = () => { const db = r.result; if (!db.objectStoreNames.contains('working')) { db.close(); return resolve(null); } const g = db.transaction('working', 'readonly').objectStore('working').get('current'); g.onsuccess = () => { db.close(); resolve(g.result?.model ?? null); }; g.onerror = () => reject(g.error); }; }));
 ok(saved?.version === 4 && saved.props.find((p) => p.name === 'had activity')?.domains?.length === 2, 'the working copy is saved in the format of today (4), with the axioms');
 await page.reload();
 await page.waitForSelector('.node', { state: 'attached' });

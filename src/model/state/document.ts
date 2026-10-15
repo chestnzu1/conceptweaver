@@ -4,14 +4,14 @@ import { WORKING_COPY } from '../../structure/local';
 import { withoutEntities } from '../domains';
 import { linkProps } from '../identity';
 import { withIris } from '../iri';
-import { loadModel as loadSaved, saveModel as saveToLibraryDb } from '../library';
+import { loadModel as loadSaved, saveModel as saveToLibraryDb, type WorkingCopy } from '../library';
 import { supports, viewFor } from '../modelTypes';
 import { sampleModel } from '../sample';
 import { normalizeModel, type Model } from '../types';
 import { withoutIris } from '../unmapped';
 import { MODEL_DATA } from '../validation';
 import { noEntityViews, type Selection } from './session';
-import { AUTOSAVE_KEY, DOC_KEY, MODEL_KEY, stored } from './storage';
+import { AUTOSAVE_KEY } from './storage';
 import { NO_REASONING } from './reasoning';
 import { NO_SUBGRAPH } from './subgraph';
 import type { Slice, State } from './types';
@@ -50,16 +50,6 @@ export const prepared = (m: Model, before?: Model): Model => {
   return unmapped ? { ...rest, unmapped } : rest;
 };
 
-function loadModel(): Model {
-  try {
-    const raw = stored(MODEL_KEY);
-    if (raw) return prepared(normalizeModel(JSON.parse(raw)));
-  } catch {
-    // Unreadable autosave: fall through to the example.
-  }
-  return prepared(sampleModel());
-}
-
 /**
  * How the model in the editor relates to the library of saved models. `saved` is the state of
  * the document that was last saved or opened (`Version.state`), so "has unsaved changes" is
@@ -74,16 +64,6 @@ export interface Doc {
 
 export const isDirty = (s: { version: Version; doc: Doc }) => s.version.state !== s.doc.saved;
 
-function loadDoc(state: number): Doc {
-  try {
-    const d = JSON.parse(localStorage.getItem(DOC_KEY) ?? 'null') as { id?: unknown; dirty?: unknown } | null;
-    if (d) return { id: typeof d.id === 'string' ? d.id : null, saved: d.dirty === true ? null : state };
-  } catch {
-    // Unreadable: treat the working copy as an unsaved model.
-  }
-  return { id: null, saved: state };
-}
-
 /** The document as the edit service has it, and the parts of the store that hold it. */
 const documentOf = (s: State): DocumentState => ({ model: s.model, version: s.version, past: s.past, future: s.future });
 const held = (d: DocumentState) => ({ model: d.model, version: d.version, past: d.past, future: d.future });
@@ -94,7 +74,11 @@ export const prune = (sel: Selection, m: Model): Selection => {
   return { terms: sel.terms.filter((id) => t.has(id)), rels: sel.rels.filter((id) => r.has(id)) };
 };
 
-export const initialModel = loadModel();
+/**
+ * What the editor starts with: the example, until the working copy kept in this browser has been
+ * read (`openWorkingCopy`, before the app is shown; see persistence.ts).
+ */
+export const initialModel = prepared(sampleModel());
 const initial = opened(initialModel);
 
 export interface DocumentSlice {
@@ -108,6 +92,10 @@ export interface DocumentSlice {
   libraryAutosave: boolean;
   /** The working copy could not be kept in the browser, so closing the page would lose unsaved changes. */
   workingCopyAtRisk: boolean;
+  /** Whether the browser keeps what this site stores even when space runs low; undefined where it has not said. */
+  storageKept: boolean | undefined;
+  /** Puts the working copy kept in this browser in the editor, as the model it is and with what it was saved as. */
+  openWorkingCopy: (copy: WorkingCopy) => void;
   /** The steps undo takes back, the last one last; each a change set made in the editor. */
   past: Step[];
   future: Step[];
@@ -139,7 +127,7 @@ export interface DocumentSlice {
 export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
   model: initialModel,
   version: initial.version,
-  doc: loadDoc(initial.version.state),
+  doc: { id: null, saved: initial.version.state },
   docSeq: 0,
   libraryAutosave: (() => {
     try {
@@ -149,6 +137,12 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     }
   })(),
   workingCopyAtRisk: false,
+  storageKept: undefined,
+  openWorkingCopy: (copy) => {
+    get().replaceModel(normalizeModel(copy.model), copy.doc.id);
+    // A copy with changes not saved to My Models opens as one; otherwise it is the saved model.
+    if (copy.doc.dirty) set((s) => ({ doc: { ...s.doc, saved: null } }));
+  },
   past: [],
   future: [],
   apply: (fn, history = true) =>

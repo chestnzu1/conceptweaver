@@ -37,8 +37,8 @@ integration**: connections, credentials, schema snapshots, mappings and their ve
 | Store | Where in code | Contents | Limits |
 | --- | --- | --- | --- |
 | In-memory model | `Model` in `src/model/types.ts` | Everything: terms, relationships, object properties, shapes, mappings, external references, governance set-up, style, layout, enumerated datatypes. | Capped at 50,000 terms and 100,000 relationships (`MAX_TERMS`, `MAX_RELATIONS`). |
-| `localStorage` | `MODEL_KEY` in `src/model/store.ts` | The working copy: the whole model as one JSON string, rewritten 300 ms after each change. Also theme, panel state, saved graph styles. | About 5 MB per origin (TD-11). |
-| IndexedDB, database `conceptweaver` | `src/model/library.ts` | Object stores `models` (name, dates), `data` (the model JSON), `externals` (the Turtle of each added external ontology). | Per browser; can be evicted (AR-09). |
+| `localStorage` | `src/model/state/storage.ts` | Theme, panel state, saved graph styles, the reasoner's address. Until 2026-10-15 also the working copy, as one JSON string (TD-11); one left there is moved to IndexedDB when the app starts. | About 5 MB per origin. |
+| IndexedDB, database `conceptweaver` | `src/model/library.ts` | Object stores `models` (name, dates), `data` (the model JSON), `externals` (the Turtle of each added external ontology), and since 2026-10-15 (database version 3) `working`: the working copy, as the model itself with which saved model it is, written 300 ms after each change. | Per browser, as much as the browser gives the site; can be evicted (AR-09) unless the browser agrees to persistent storage, which is asked for once something has been edited. |
 | Undo history | `past`, `future` in `src/model/store.ts` | Up to 100 earlier models, in memory. | Lost on reload (TD-12). |
 | Files | `src/model/files.ts`, `rdfFormats.ts` | Read: own JSON, Turtle, N-Triples, N-Quads, TriG, RDF/XML, JSON-LD, and through the Java service OWL/XML, functional, Manchester, OBO. Write: own JSON, Turtle (OWL, SKOS, with inferred assertions), JSON-LD, CSV, SVG, PNG, HTML. | No RDF/XML or OWL/XML export (TD-13). |
 | Java service | `reasoner/ReasonerService.java` | Nothing. It keeps no state between requests. | — |
@@ -493,7 +493,7 @@ derived is ever the only copy of anything.
 | --- | --- | --- |
 | `models`, `data` | Local projects: listing and content | **Existing** |
 | `externals` | Fetched external ontologies, as Turtle | **Existing** |
-| `working` | The working copy of the open project (replacing the `localStorage` string) | Recommended, Phase 2 (TD-11) |
+| `working` | The working copy of the open project (replacing the `localStorage` string) | **Existing** (2026-10-15, TD-11) |
 | `versions` | Saved versions of local projects | Recommended, Phase 2 |
 | `drafts` | For a server project: change sets made but not yet pushed, with the revision they are based on | Recommended, Phase 4 |
 | `cache` | Answers from the server keyed by revision (a page of entities, a branch of the hierarchy) | Recommended, Phase 4 |

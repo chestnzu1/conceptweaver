@@ -59,7 +59,8 @@ const drop = async (end, to) => { await take(end, to); await page.mouse.up(); };
 const within = (b, p, slack = 6) => p.x >= b.x - slack && p.x <= b.x + b.width + slack && p.y >= b.y - slack && p.y <= b.y + b.height + slack;
 const toast = () => page.locator('.toast');
 /** The model as the browser keeps it, once it has been written there (a little after each change). */
-const kept = async () => { await page.waitForTimeout(380); return page.evaluate(() => JSON.parse(localStorage.getItem('conceptweaver:model:v1') ?? 'null')); };
+// The working copy, as it is kept in this browser (IndexedDB), a moment after a change.
+const kept = async () => { await page.waitForTimeout(450); return page.evaluate(() => new Promise((resolve, reject) => { const r = indexedDB.open('conceptweaver'); r.onerror = () => reject(r.error); r.onsuccess = () => { const db = r.result; if (!db.objectStoreNames.contains('working')) { db.close(); return resolve(null); } const g = db.transaction('working', 'readonly').objectStore('working').get('current'); g.onsuccess = () => { db.close(); resolve(g.result?.model ?? null); }; g.onerror = () => reject(g.error); }; })); };
 const anchors = async () => (await kept())?.style?.anchors ?? null;
 /** The relationship between two terms, by their names, as the model has it. */
 const relOf = async (from, to) => {

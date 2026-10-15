@@ -398,6 +398,17 @@ not in the model file.
 ask for persistent storage (`navigator.storage.persist()`, not called anywhere today), and write
 changes rather than the whole document once change sets exist (TD-12).
 
+**Status, 2026-10-15.** Done but for the last part (roadmap task 1.10). The working copy is a
+record in IndexedDB (database version 3, store `working`): the model itself, with which saved model
+it is and whether it has changes not saved there. It is written 300 ms after a change, one write at
+a time and the latest last, and at once when the page is hidden. The app reads it before it is
+shown, so the example it starts with never takes its place; a copy an earlier version left in
+`localStorage` is moved over and taken out of there. Once something has been edited, the browser
+is asked once to keep the site's data when space runs low; *My Models* says how much is kept and
+whether it has agreed. `e2e/working-copy.mjs` keeps and reopens a 5,200-class model of 6.5 million
+characters, which `localStorage` refuses. Still the whole model is written each time, not the
+change (about 15 ms of copying at 2,600 classes); undo history is still in memory only.
+
 ### TD-12 No version history, diff or audit trail — High
 
 **Where.** `past: Model[]` and `future: Model[]` in `src/model/store.ts`. The only "revision" in

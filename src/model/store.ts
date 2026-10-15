@@ -3,7 +3,7 @@ import { documentSlice, isDirty } from './state/document';
 import { editsSlice } from './state/edits';
 import { externalsSlice } from './state/externals';
 import { layoutSlice } from './state/layout';
-import { keepWorkingCopy } from './state/persistence';
+import { startWorkingCopy as start } from './state/persistence';
 import { reasoningSlice } from './state/reasoning';
 import { sessionSlice } from './state/session';
 import { subgraphSlice } from './state/subgraph';
@@ -21,7 +21,7 @@ import { emptyModel, type ModelMode } from './types';
  *   at, the panels, the dialogs, the preferences. Nothing of it is part of the ontology;
  * - the jobs: validation (`validation.ts`), reasoning (`reasoning.ts`), the other ontologies
  *   (`externals.ts`), arranging the graph (`layout.ts`);
- * - and, attached once the store exists, the working copy kept in the browser (`persistence.ts`).
+ * - and, once the app starts, the working copy kept in the browser (`persistence.ts`).
  *
  * Each slice reaches the others through the store (`get()`), never by importing their state.
  */
@@ -46,7 +46,16 @@ export const useStore = create<State>()((...a) => ({
   ...layoutSlice(...a),
 }));
 
-keepWorkingCopy(useStore);
+// An edit can add or remove what the subgraph shows.
+useStore.subscribe((s, prev) => {
+  if (s.model !== prev.model && s.subgraph.active) s.refreshSubgraph();
+});
+
+/**
+ * Opens the working copy kept in this browser and keeps it from then on (state/persistence.ts).
+ * The app is shown once this is done.
+ */
+export const startWorkingCopy = () => start(useStore);
 
 /**
  * Asks before the model in the editor is replaced by another, if it has changes that are not
@@ -65,4 +74,3 @@ export const createModel = (spec: { name: string; mode: ModelMode; baseIri?: str
   useStore.getState().setView('graph');
 };
 
-void useStore.getState().loadExternals();

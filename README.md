@@ -595,7 +595,14 @@ More on what the advanced reasoner does and does not cover is under
   under Validation; when that one has no answer, or finds the ontology inconsistent, no file is
   made and the reason is given. The model is not changed by it. RDF cannot mark a triple as
   inferred, so a tool that reads the file, this app included, takes them for assertions.
-- Whatever is in the editor is also kept as a working copy in the browser, so a reload loses nothing.
+- Whatever is in the editor is also kept as a working copy in the browser, so a reload or a crash
+  loses nothing: in IndexedDB, a moment after each change (and at once when the page is hidden),
+  with no limit but the space the browser gives the site; a model of 5,200 classes and 6.5 million
+  characters is kept and reopened whole. Once something has been edited the browser is asked to
+  keep the site's data even when space runs low (`navigator.storage.persist()`); browsers decide
+  this for themselves. *My Models* says how much the site keeps and whether the browser has agreed.
+  A working copy an earlier version kept in `localStorage` is moved over when the app starts. If
+  the copy cannot be kept, that is said, and closing the page asks first.
 
 ## Size
 
@@ -649,7 +656,7 @@ that *Layered* says so and uses the built-in hierarchical layout.
 ## Layout of the code
 
 - `src/model` – everything that isn't UI: types, the zustand store (`store.ts`, made of slices in
-  `state/`: the document and its edits, the session, and one slice per job; the working copy in `state/persistence.ts`),
+  `state/`: the document and its edits, the session, and one slice per job; the working copy, kept in IndexedDB, in `state/persistence.ts`),
   checks, RDF import/export, file handling. What two terms can be related by
   is in `props.ts`, `relating.ts` and `axioms.ts`, and `reconnect.ts` asks them whether an end
   of a relationship can be moved to another term. How a line runs is `geometry.ts`, including

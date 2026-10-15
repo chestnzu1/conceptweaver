@@ -26,7 +26,7 @@ export interface SavedInfo {
 
 const DB_NAME = 'conceptweaver';
 /** Version of the database layout (which stores exist). */
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 /** Version of a record's layout (which fields it has). */
 const RECORD_SCHEMA = 1;
 
@@ -75,6 +75,8 @@ function open(): Promise<IDBDatabase> {
       }
       // Version 2: the content of external ontologies, cached so that it is there in a later session.
       if (ev.oldVersion < 2) db.createObjectStore('externals', { keyPath: 'id' });
+      // Version 3: the working copy, what is in the editor, kept as it is edited (it was one string in localStorage).
+      if (ev.oldVersion < 3) db.createObjectStore('working', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(explain(req.error));
@@ -218,16 +220,17 @@ export interface CachedOntology {
   cached: number;
 }
 
-async function externals<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+/** Runs one transaction over one store and waits until it is safely written. */
+async function single<T>(name: 'externals' | 'working', mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
   const db = await open();
   try {
-    const t = db.transaction(['externals'], mode);
+    const t = db.transaction([name], mode);
     const finished = new Promise<void>((resolve, reject) => {
       t.oncomplete = () => resolve();
       t.onerror = () => reject(explain(t.error));
       t.onabort = () => reject(explain(t.error));
     });
-    const result = await work(t.objectStore('externals'));
+    const result = await work(t.objectStore(name));
     await finished;
     return result;
   } finally {
@@ -235,8 +238,62 @@ async function externals<T>(mode: IDBTransactionMode, work: (store: IDBObjectSto
   }
 }
 
+const externals = <T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>) => single('externals', mode, work);
+
 export const cacheOntology = (id: string, iri: string, text: string) => externals('readwrite', async (store) => void store.put({ id, iri, text, cached: Date.now() } satisfies CachedOntology));
 export const cachedOntology = (id: string) => externals('readonly', (store) => done(store.get(id) as IDBRequest<CachedOntology | undefined>));
 /** One cached under another id but with the same ontology IRI: the same ontology, added to another model. */
 export const cachedOntologyByIri = (iri: string) => externals('readonly', async (store) => ((await done(store.getAll())) as CachedOntology[]).find((c) => c.iri === iri && !!iri));
 export const uncacheOntology = (id: string) => externals('readwrite', async (store) => void store.delete(id));
+
+// ---------------------------------------------------------------- the working copy
+
+/**
+ * What is in the editor, kept in this browser as it is edited, saved to My Models or not, so that
+ * a reload or a crash loses nothing: the model, which saved model it is, and whether it has
+ * changes that are not saved there. Kept as the model itself, with no limit on its size but the
+ * browser's space for the site.
+ */
+export interface WorkingCopy {
+  model: Model;
+  doc: { id: string | null; dirty: boolean };
+  /** When it was kept. */
+  kept: number;
+}
+
+const CURRENT = 'current';
+
+export const writeWorkingCopy = (copy: Omit<WorkingCopy, 'kept'>): Promise<void> => single('working', 'readwrite', async (store) => void store.put({ id: CURRENT, ...copy, kept: Date.now() }));
+
+/** The working copy kept in this browser, if there is one. Its model is as it was kept: it is brought up to date where it is opened. */
+export const readWorkingCopy = (): Promise<WorkingCopy | undefined> =>
+  single('working', 'readonly', async (store) => {
+    const r = (await done(store.get(CURRENT))) as (WorkingCopy & { id: string }) | undefined;
+    return r ? { model: r.model, doc: { id: r.doc?.id ?? null, dirty: r.doc?.dirty === true }, kept: r.kept ?? 0 } : undefined;
+  });
+
+/**
+ * Asks the browser to keep this site's data even when space runs low, which it may otherwise
+ * clear: the working copy, My Models, the ontologies kept for alignment. Resolves to whether it
+ * does; nothing where the browser does not say.
+ */
+export async function keepStorage(): Promise<boolean | undefined> {
+  const storage = typeof navigator === 'undefined' ? undefined : navigator.storage;
+  if (!storage?.persist) return undefined;
+  try {
+    return (await storage.persisted?.()) || (await storage.persist());
+  } catch {
+    return undefined;
+  }
+}
+
+/** How much the site keeps in this browser, how much it may, and whether the browser keeps it when space runs low. */
+export async function storageUse(): Promise<{ usage?: number; quota?: number; persisted?: boolean }> {
+  const storage = typeof navigator === 'undefined' ? undefined : navigator.storage;
+  try {
+    const [estimate, persisted] = await Promise.all([storage?.estimate?.(), storage?.persisted?.()]);
+    return { usage: estimate?.usage, quota: estimate?.quota, persisted };
+  } catch {
+    return {};
+  }
+}

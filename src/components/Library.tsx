@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
-import { deleteModel, duplicateModel, listModels, renameModel, type SavedInfo } from '../model/library';
+import { deleteModel, duplicateModel, listModels, renameModel, storageUse, type SavedInfo } from '../model/library';
 import { confirmDiscard, isDirty, useStore } from '../model/store';
 
 const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+/** A number of bytes as a person reads it: 3.2 MB, 120 GB. */
+const size = (bytes: number) => {
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+  let n = bytes;
+  let u = 0;
+  for (; n >= 1000 && u < units.length - 1; u++) n /= 1000;
+  return `${u ? n.toFixed(n < 10 ? 1 : 0) : n} ${units[u]}`;
+};
 
 /** My Models: the ontology models saved in this browser, to open, rename, duplicate or delete. */
 export function LibraryDialog() {
@@ -14,6 +22,9 @@ export function LibraryDialog() {
   const [models, setModels] = useState<SavedInfo[] | null>(null);
   const [error, setError] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  // How much the site keeps in this browser, and whether the browser keeps it when space runs low.
+  const [use, setUse] = useState<Awaited<ReturnType<typeof storageUse>>>({});
+  const kept = useStore((s) => s.storageKept);
   const close = () => st().setDialog(null);
   const refresh = () =>
     listModels().then(setModels, (e: unknown) => {
@@ -23,7 +34,8 @@ export function LibraryDialog() {
   // Loaded when the dialog opens, and again whenever the open model is saved.
   useEffect(() => {
     void refresh();
-  }, [doc]);
+    void storageUse().then(setUse);
+  }, [doc, kept]);
   const run = async (work: () => Promise<unknown>) => {
     try {
       await work();
@@ -65,6 +77,17 @@ export function LibraryDialog() {
           Models saved in this browser. They stay here between sessions, but only in this browser on this computer, and are removed if the browser's site data is cleared. Keep a
           file of anything important: File → Download as JSON, or an OWL/SKOS export.
         </p>
+        {use.usage !== undefined && (
+          <p className="muted storage-use" role="status">
+            In this browser now: {size(use.usage)}
+            {use.quota ? ` of the ${size(use.quota)} it allows this site` : ''}, the model in the editor included.{' '}
+            {use.persisted
+              ? 'The browser has agreed to keep it even when space runs low.'
+              : kept === false
+                ? 'The browser was asked to keep it even when space runs low and has not agreed (browsers decide this for themselves, often by how much a site is used): it may clear it then.'
+                : 'The browser may clear it when space runs low; it is asked not to once something has been edited.'}
+          </p>
+        )}
 
         <div className="library-current">
           <span>
