@@ -85,6 +85,7 @@ export function Header() {
     { label: 'Open a file…', onClick: () => confirmDiscard() && fileRef.current?.click(), hint: 'OWL, RDF, JSON' },
     { label: 'Open from a URL…', onClick: () => st().setDialog('openurl'), hint: 'an ontology on the web' },
     { label: 'My Models…', onClick: () => st().setDialog('library'), hint: 'saved in this browser' },
+    { label: 'Versions…', onClick: () => st().setDialog('versions'), hint: 'named, compared, restored' },
     { label: 'Ontology settings…', onClick: () => st().setDialog('settings'), hint: 'IRI, prefixes' },
     { label: 'Load the SKOS example', onClick: () => confirmDiscard() && st().replaceModel(skosSample()) },
     { label: 'Load the ontology example', onClick: () => confirmDiscard() && st().replaceModel(sampleModel()) },

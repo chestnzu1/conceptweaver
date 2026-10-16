@@ -256,7 +256,7 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `ImportExportService` | `detect`, `read(document)`, `write(revision, syntax)` | `rdfFormats.ts`, `rdf.ts`, `files.ts` | Recommended, Phase 2 |
 | `SparqlService` | `query(revision, text, graph)` | `sparql.ts` | Recommended, Phase 2 |
 | `AlignmentService` | external ontologies, mappings, suggestions | `external.ts`, `alignment.ts`, `matcher.ts` | Recommended, Phase 2 |
-| `ProjectService` | list, open, save, versions, diff | `library.ts` | Recommended, Phase 2 |
+| `ProjectService` | versions, save a version, a version's model, diff, restore; list, open and save | `src/projects/local.ts` over `library.ts` | **Existing** for versions (2026-10-16); list, open and save are still `library.ts` called directly |
 | `DataSourceService` | list, create, update, remove, test; never answers with a secret | None: backend only | Recommended, Phase 3 |
 | `SchemaService` | refresh (job), snapshot, objects (paged search), table detail, relationships, sample rows, difference of two snapshots | A cached snapshot, read-only | Recommended, Phase 3 |
 | `MappingService` | get, apply a mapping change, coverage, validate (job), import and export R2RML, revisions | Editing and static checks over a cached snapshot | Recommended, Phase 4 |

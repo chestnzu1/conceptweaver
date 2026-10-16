@@ -3023,6 +3023,143 @@ table.prefixes small {
   width: min(460px, 100%);
 }
 
+/* The versions of a model: saved, listed, compared and restored. */
+.dialog.versions {
+  width: min(960px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.version-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.version-save .field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.version-save .field.grow {
+  flex: 3 1 260px;
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.version {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.version.on {
+  border-color: var(--accent);
+}
+
+.version .seq {
+  flex: none;
+  min-width: 26px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.version .what {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.version .what .muted {
+  overflow-wrap: anywhere;
+}
+
+.version-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-compare select {
+  max-width: 320px;
+  height: 30px;
+}
+
+.difference {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.difference h3,
+.difference h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.difference p {
+  margin: 0;
+}
+
+.difference .nothing {
+  font-weight: 600;
+}
+
+.diff-entities,
+.diff-plain {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diff-entities > li {
+  margin-bottom: 6px;
+}
+
+.diff-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-head .link {
+  min-height: 24px;
+  font-weight: 600;
+}
+
+.diff-entities ul {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  list-style: none;
+}
+
+.diff-entities li.add code {
+  color: var(--accent);
+}
+
+.diff-entities li.remove code {
+  color: var(--danger);
+}
+
+.diff-entities code {
+  overflow-wrap: anywhere;
+}
+
 /* Shapes proposed from the ontology: each with its axiom, its shape, and what the two mean. */
 .dialog.proposals {
   width: min(960px, 100%);

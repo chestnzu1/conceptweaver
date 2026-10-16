@@ -423,12 +423,15 @@ reasoner gave no answer" today, and never reports that as consistent).
 
 ### 6.4 In the Local profile (Phase 2, before any server)
 
-The same model, kept in IndexedDB:
+The same model, kept in IndexedDB (**Existing** since 2026-10-16, roadmap task 2.3):
 
-- object store `versions`: one record per saved version of a local project, with its summary,
-  time, content hash and the model JSON (compressed);
-- the diff between two versions is computed in the page by exporting both to triples
-  (`toTriples` in `src/model/rdf.ts`) and comparing, presented by entity.
+- object store `versions` (database version 5, indexed by `project`): one record per saved
+  version of a model in My Models, with its number, name, summary, time, content hash and the
+  model JSON, gzip-compressed where the browser has `CompressionStream`; deleting the model
+  deletes its versions;
+- the diff between two versions is computed in the page by comparing what each states, statement
+  by statement (`changesBetween` in `src/editing/local.ts`, over `toTurtle`), presented by entity
+  (`src/projects/difference.ts`), with the shape sets' statements and the data graphs beside it.
 
 This gives named versions and a readable diff to every user of the app long before Phase 4, and
 its user interface is the one the server-backed history reuses.

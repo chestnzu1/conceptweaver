@@ -280,7 +280,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | SH-1 | **Shapes as a first-class editor.** A *Shapes* view beside Graph, Entities and Structure, no longer a tab of *Validation*: shapes listed, searched and grouped by what they target. **Shape sets**: several named constraint models in one project, each with its own purpose (an application, a source), shapes graph and file (model format 5; a model of format 4 opens with its shapes as one set). Every SHACL 1.0 Core construct in the form: logical constraints (`sh:and`, `sh:or`, `sh:not`, `sh:xone`), qualified value shapes, property pair constraints (`sh:equals`, `sh:disjoint`, `sh:lessThan`, `sh:lessThanOrEquals`), property paths (sequence, alternative, inverse, zero or more, one or more, zero or one), nested and referenced shapes, `sh:closed` with its ignored properties. A shape set imported and exported as Turtle with nothing lost; SHACL-SPARQL kept as written and written back. A class's and a property's editor list the shapes that target or constrain them, with *Add a shape for this class*; one class, any number of shapes. Shape edits are change sets, undone like any other. | FR-M4-2, FR-M4-12, FR-M4-13 | L |
 | SH-2 | **Validation one can act on.** Data graphs kept with the project in IndexedDB, not for one session: several, each named and replaced on demand. A run validates a chosen shape set against a chosen data graph (or the model's own individuals). A finding opens the property shape at the constraint it failed (`sh:sourceConstraintComponent`), shows the value and the path, and for data read from a file the line its focus node is on. The W3C SHACL 1.0 Core test suite as a conformance suite, run in CI: each test's expected report. | FR-M4-1, FR-M4-14 | M |
 | SH-3 | **Shapes proposed from the ontology.** *Propose shapes* for a class, a set of classes or the ontology: from restrictions, domains and ranges, functional properties, datatypes, enumerations and keys. Each proposal says what the axiom means in OWL, what the shape would check, and where the two differ (ADR-020); none is selected to begin with. Accepted, edited or dismissed one by one or by kind, into a chosen shape set, as one change set; an accepted shape keeps its origin and is marked stale when that axiom changes or goes. | FR-M4-15, ADR-020 | M |
-| 2.3 | **Versions and differences, locally.** Named versions in IndexedDB; an axiom-level difference shown by entity, the shape sets' changes with it; restore as a new version. `ProjectService`. | TD-12, FR-M10-1 to FR-M10-3 | L |
+| 2.3 | **Versions and differences, locally.** Named versions in IndexedDB; an axiom-level difference shown by entity, the shape sets' changes with it; restore as a new version. `ProjectService`. Done 2026-10-16. | TD-12, FR-M10-1 to FR-M10-3 | L |
 | 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
 | 2.5 | **Export in every OWL syntax** through the conversion the service already performs in the other direction. `ImportExportService`. | TD-13, FR-M11-2 | S |
 | 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. | FR-M3-5 | M |
@@ -612,10 +612,9 @@ purpose:
 Phase 1 is done, and 2.1 and 2.2 with it (see [BASELINES.md](BASELINES.md) and
 [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for what each measured and left).
 
-**2026-10-16: SH-1, SH-2 and SH-3 are done, and milestone MS-12 with them** (each with its
-status below). The next task is 2.3, versions and differences locally, which now covers the shape
-sets and the data graphs' references as well; this section gives its scope when it starts. What
-follows is SH-1 as it was set out, and the status of each stage.
+**2026-10-16: SH-1, SH-2 and SH-3 are done, and milestone MS-12 with them, and then 2.3** (each
+with its status below). The next task is 2.4, tabular import; this section gives its scope when
+it starts. What follows is SH-1 as it was set out, and the status of each stage and of 2.3.
 
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.
@@ -700,6 +699,22 @@ why. For Pizza: 198 proposals and 2 not proposed, worked out in about 20 ms (`pr
 `e2e/proposals.mjs` in the browser). What it left: dismissals last while the proposals are open; a
 stale axiom is shown in functional syntax, as it is no longer in the ontology to be read out in
 Manchester syntax.
+
+**Status, 2026-10-16: 2.3 done** (TD-12, FR-M10-1 to FR-M10-3). *File → Versions…* keeps named
+versions of a model in My Models, in IndexedDB (`versions`, database version 5): each the whole
+model, gzip-compressed, with a name, a line about it, its number and a content hash, listed newest
+first and deleted with the model (`src/projects/local.ts`, the `ProjectService` contract in
+`src/projects/contracts.ts`). Two versions, or a version and the model now, are compared over what
+each states, statement by statement (`changesBetween`), and told entity by entity, the axioms
+added and removed under each in Manchester syntax, with the shape sets' statements, the data
+graphs, the settings that are no part of the ontology, and whether the drawing changed
+(`src/projects/difference.ts`). A version is restored as a new version, never by taking one away;
+restoring is one edit, which undo takes back. `src/projects/local.test.ts` checks the three
+acceptance criteria (a term moved is no change to the ontology; a superclass added and a
+restriction removed are two changes under the class; of five, the sixth after restoring the third
+is the third), and `e2e/versions.mjs` the same in the browser, across a reload. What it left: the
+history of one entity (FR-M10-4), list, open and save still going to `library.ts` directly rather
+than through `ProjectService`, and versions kept whole rather than as change sets.
 
 **The data-integration track does not change this.** Its first task is 3.8, after the backend
 exists; from SH-2 it can validate what a mapping previews against a chosen shape set (4.11).

@@ -371,6 +371,27 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     report('Class expression · as blocks', await page.evaluate(measure));
     await xe.getByRole('button', { name: 'Add the axiom' }).click();
     report('Class expression · a defined class', await page.evaluate(measure));
+    // Versions: asked to be in My Models first, then saved, listed and compared with the model now.
+    const versions = page.locator('.dialog.versions');
+    const openVersions = async () => {
+      await page.locator('.header').getByRole('button', { name: /^File/ }).click();
+      await page.getByRole('menuitem', { name: /^Versions…/ }).click();
+      await versions.waitFor();
+    };
+    await openVersions();
+    report('Versions · not in My Models', await page.evaluate(measure));
+    await versions.getByRole('button', { name: 'Save to My Models…' }).click();
+    await page.locator('.dialog.saveas input').fill('Audit');
+    await page.locator('.dialog.saveas').getByRole('button', { name: /^Save/ }).click();
+    await page.waitForFunction(() => document.querySelector('.header .save-state')?.textContent === 'Saved');
+    await openVersions();
+    await versions.getByLabel('Name of the version').fill('Before the audit');
+    await versions.getByRole('button', { name: 'Save a version' }).click();
+    await versions.locator('.version').waitFor();
+    await versions.getByRole('button', { name: 'Compare with now' }).click();
+    await versions.locator('.difference').waitFor();
+    report('Versions · compared with now', await page.evaluate(measure));
+    await versions.getByRole('button', { name: 'Close' }).click();
     // The sidebar folded away to its strip, with and without a search on.
     await page.locator('.term-list').getByLabel('Search terms').fill('film');
     await page.locator('.term-list').getByRole('button', { name: 'Hide the sidebar' }).click();

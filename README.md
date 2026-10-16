@@ -140,6 +140,16 @@ More on what the advanced reasoner does and does not cover is under
 - **My Models** – save models in this browser (IndexedDB) and reopen them later: Save, Save as,
   and a list to open, rename, duplicate and delete. The header shows whether the model in the
   editor has unsaved changes. Browser storage is local and can be cleared, so export files too.
+- **Versions** (since 2026-10-16; `src/projects/`) – *File → Versions…*: named versions of a model
+  in My Models, kept in this browser. A version is saved with a name and a line about it, and
+  keeps the whole model: the ontology, its shape sets, the data graphs it names, the drawing.
+  Versions are listed newest first. Any two, or one and the model now, are compared over what each
+  states, axiom by axiom, and the difference is told entity by entity: the axioms added and
+  removed under each, in Manchester syntax, each entity a link to its editor; then the shape sets'
+  statements, the data graphs, and the settings that are no part of the ontology. Moving terms
+  on the canvas is no change to the ontology, and is said to be only the drawing. *Restore…* makes
+  the model what a version was, as one edit that undo takes back, and saves that as a new version:
+  no version is ever taken away. Deleting a model from My Models deletes its versions.
 - **Ontology settings** – File → Ontology settings: the ontology IRI, the default namespace new
   IRIs are made in, and namespace prefixes. Prefixes only change how an IRI is written (`ex:Actor`
   in tables, Turtle, SPARQL and search); they are kept on import and written on export.
@@ -787,6 +797,9 @@ that *Layered* says so and uses the built-in hierarchical layout.
   or the validation engine (`src/components/boundaries.test.ts`): they read the answers through
   the store (`state/reasoning.ts`, `state/validation.ts`, and `useReasoning` in
   `src/components/reasoning.ts`).
+- `src/projects` – the versions of the models in My Models (`ProjectService` in `contracts.ts`):
+  `local.ts` keeps them in IndexedDB, compressed, and restores one as a new version;
+  `difference.ts` says what differs between two models, entity by entity, over `changesBetween`.
 - `src/editing` – what an edit is, and the service that makes edits (see *Edits as change sets*).
   `contracts.ts` is the change set, by OWL 2's axiom names and IRIs, and `OntologyEditService`
   (apply, validate, and the axioms about an entity). `axioms.ts` reads an RDF statement as an

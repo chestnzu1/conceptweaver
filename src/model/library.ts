@@ -26,7 +26,7 @@ export interface SavedInfo {
 
 const DB_NAME = 'conceptweaver';
 /** Version of the database layout (which stores exist). */
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 /** Version of a record's layout (which fields it has). */
 const RECORD_SCHEMA = 1;
 
@@ -79,6 +79,8 @@ function open(): Promise<IDBDatabase> {
       if (ev.oldVersion < 3) db.createObjectStore('working', { keyPath: 'id' });
       // Version 4: the content of data graphs, which a model names (Model.dataGraphs) and SHACL validates.
       if (ev.oldVersion < 4) db.createObjectStore('datagraphs', { keyPath: 'id' });
+      // Version 5: the named versions of the models in My Models, by the model they are of.
+      if (ev.oldVersion < 5) db.createObjectStore('versions', { keyPath: 'id' }).createIndex('project', 'project');
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(explain(req.error));
@@ -205,11 +207,13 @@ export async function duplicateModel(id: string): Promise<SavedInfo | undefined>
   });
 }
 
+/** Deletes a saved model, and its versions with it. */
 export async function deleteModel(id: string): Promise<void> {
   await tx('readwrite', async (models, data) => {
     models.delete(id);
     data.delete(id);
   });
+  await deleteVersions(id);
 }
 
 // ---------------------------------------------------------------- external ontologies
@@ -223,7 +227,7 @@ export interface CachedOntology {
 }
 
 /** Runs one transaction over one store and waits until it is safely written. */
-async function single<T>(name: 'externals' | 'working' | 'datagraphs', mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+async function single<T>(name: 'externals' | 'working' | 'datagraphs' | 'versions', mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
   const db = await open();
   try {
     const t = db.transaction([name], mode);
@@ -265,6 +269,39 @@ export const keepDataGraph = (id: string, text: string) => single('datagraphs', 
 export const keptDataGraph = (id: string) => single('datagraphs', 'readonly', async (store) => ((await done(store.get(id))) as KeptDataGraph | undefined)?.text);
 /** Which of these data graphs have their content in this browser. */
 export const dataGraphsKept = (ids: string[]) => single('datagraphs', 'readonly', async (store) => new Set(((await done(store.getAllKeys())) as string[]).filter((id) => ids.includes(id))));
+
+// ---------------------------------------------------------------- versions
+
+/**
+ * A named version of a model in My Models: what it was called and why, when, a fingerprint of
+ * what it states, and the model itself, compressed where the browser can (`packed`). Versions
+ * are only ever added: restoring one adds another.
+ */
+export interface StoredVersion {
+  id: string;
+  /** The saved model it is a version of. */
+  project: string;
+  /** 1, 2, 3, … for that model. */
+  seq: number;
+  name: string;
+  summary: string;
+  created: number;
+  /** A fingerprint of what the ontology and the shapes state: equal fingerprints, equal content. */
+  hash: string;
+  entities: number;
+  /** The model, as gzip-compressed JSON or as JSON. */
+  packed: 'gzip' | 'json';
+  data: ArrayBuffer | string;
+}
+
+export const putVersion = (v: StoredVersion) => single('versions', 'readwrite', async (store) => void store.put(v));
+export const storedVersion = (id: string) => single('versions', 'readonly', (store) => done(store.get(id) as IDBRequest<StoredVersion | undefined>));
+/** The versions of a model, oldest first. */
+export const storedVersions = (project: string) => single('versions', 'readonly', async (store) => ((await done(store.index('project').getAll(project))) as StoredVersion[]).sort((a, b) => a.seq - b.seq));
+export const deleteVersions = (project: string) =>
+  single('versions', 'readwrite', async (store) => {
+    for (const key of (await done(store.index('project').getAllKeys(project))) as string[]) store.delete(key);
+  });
 
 // ---------------------------------------------------------------- the working copy
 

@@ -478,6 +478,15 @@ a shape is one step, undone and redone like any other. A change set lists ontolo
 so such a step has none, and says in its summary that it changed the SHACL shapes. What a step
 changed in a shape set, statement by statement, is for 2.3, when a version has to show it.
 
+**Status, 2026-10-16: named versions and differences, locally (roadmap task 2.3).** A model in My
+Models has versions in IndexedDB (`src/projects/local.ts`): each the whole model, compressed,
+with a content hash. Two versions, or a version and the model now, are compared over what each
+states (`changesBetween`), entity by entity, with the shape sets' statements and the data graphs
+(`src/projects/difference.ts`); a version is restored as a new one, which undo takes back. Left:
+the history of one entity (FR-M10-4), who changed what, and revisions on a server (Phase 4).
+Versions are kept whole, not as change sets: a version of a large model costs its compressed size
+each time.
+
 ### TD-13 Serialization gaps — Medium
 
 **Where.** `exportModel` in `src/model/files.ts:193`; `src/model/rdf.ts`.

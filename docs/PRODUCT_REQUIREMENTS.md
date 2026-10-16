@@ -210,7 +210,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M7 Bulk import and mapping | **Partially Implemented** | `src/model/bulk.ts` | No files, no mapping screen |
 | M8 Reuse and alignment | **Existing** | `src/model/external.ts`, `alignment.ts`, `matcher.ts` | Imports not transitive or declared |
 | M9 Search and SPARQL | **Existing** | `src/entities/`, `src/model/sparql.ts` | Asserted graph only |
-| M10 Versioning | **Not implemented** | Undo only: since 2026-10-15 a history of change sets, each of which can be given as axioms (`src/editing/local.ts`); no named versions yet | Everything |
+| M10 Versioning | **Partially Implemented** | `src/projects/` (named versions, differences, restore, in this browser; 2026-10-16) | No history of one entity, no server revisions, no releases |
 | M11 Publishing and export | **Partially Implemented** | `src/model/files.ts`, `htmlExport.ts` | No RDF/XML export; no publishing |
 | M12 AI assistance | **Not implemented** | Matcher seam in `matcher.ts` | Everything |
 | M13 Collaboration and governance | **Partially Implemented** | `src/model/governance.ts` | No users, review or audit |
@@ -666,9 +666,12 @@ across axioms and annotations as such.
 
 **Description.** Knowing what an ontology was, what it is, and what changed in between.
 
-**Status: Not implemented.** There is an undo history of 100 steps in memory, lost on reload,
-and a content fingerprint that marks results stale. There are no saved versions, no difference
-view and no record of who changed what (TD-12).
+**Status: Partially Implemented (2026-10-16, roadmap task 2.3).** A model in My Models has named
+versions, kept in this browser (`src/projects/local.ts`, IndexedDB): saved with a name and a
+line, listed newest first, compared with each other or with the model now entity by entity (the
+axioms added and removed under each, the shape sets' statements, the data graphs), and restored
+as a new version. Undo is still a history of 100 steps in memory. There is no history of one
+entity, no record of who changed what, and no release (TD-12).
 
 **User stories.**
 
@@ -679,9 +682,9 @@ view and no record of who changed what (TD-12).
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
-| FR-M10-1 | Save a named version with a summary; list versions newest first. | Recommended | P0 |
-| FR-M10-2 | Show the difference between any two versions, or a version and now: entities added, removed, changed; for each, the axioms added and removed. | Recommended | P0 |
-| FR-M10-3 | Restore a version, as a new version, never by deleting history. | Recommended | P0 |
+| FR-M10-1 | Save a named version with a summary; list versions newest first. | Implemented 2026-10-16 (`src/projects/local.ts`, `Versions.tsx`) | P0 |
+| FR-M10-2 | Show the difference between any two versions, or a version and now: entities added, removed, changed; for each, the axioms added and removed. | Implemented 2026-10-16 (`src/projects/difference.ts`) | P0 |
+| FR-M10-3 | Restore a version, as a new version, never by deleting history. | Implemented 2026-10-16 (`restore` in `src/projects/local.ts`) | P0 |
 | FR-M10-4 | The history of one entity: every change that touched it. | Recommended | P1 |
 | FR-M10-5 | On a server, every saved change is an immutable revision with its author and time. | Recommended | P1 |
 | FR-M10-6 | A release: a tagged revision with `owl:versionIRI` and `owl:versionInfo`, exportable and comparable. | Recommended | P1 |

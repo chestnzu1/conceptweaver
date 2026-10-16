@@ -1,0 +1,214 @@
+import type { Axiom, ClassExpression, DataRange } from '../editing/contracts';
+import { changesBetween } from '../editing/local';
+import { namedClasses, type ClassExpression as ModelClassExpression, type DataRange as ModelDataRange } from '../model/expressions';
+import { classText, dataText, literalText, namingFor, type Naming } from '../model/manchester';
+import { setTurtle, shapeNaming } from '../model/shapes';
+import type { Model } from '../model/types';
+import { statementsOf } from '../model/unmapped';
+import type { AxiomLine, DataGraphDifference, Difference, EntityDifference, EntityKind, ShapeSetDifference } from './contracts';
+
+/**
+ * What differs between two states of a project (roadmap task 2.3, FR-M10-2): the axioms one
+ * states and the other does not (`changesBetween`, which compares what each states, statement by
+ * statement, so that the order of a file or where a term sits is never a change), told by the
+ * entity each is about; the shape sets' statements, set by set; the data graphs; the settings
+ * that are no part of the ontology; and whether the drawing alone changed.
+ */
+export function difference(before: Model, after: Model): Difference {
+  const was = namingFor(before);
+  const now = namingFor(after);
+  const changes = changesBetween(before, after);
+  const byEntity = new Map<string, EntityDifference>();
+  const kinds = new Map<string, EntityKind>();
+  for (const m of [before, after]) {
+    for (const t of m.terms) if (t.iri) kinds.set(t.iri, t.type === 'concept' ? 'class' : t.type === 'instance' ? 'individual' : 'data property');
+    for (const p of m.props) if (p.iri) kinds.set(p.iri, 'object property');
+    for (const d of m.datatypes) if (d.iri) kinds.set(d.iri, 'datatype');
+  }
+  const nameOf = (iri: string) => after.terms.find((t) => t.iri === iri)?.name || after.props.find((p) => p.iri === iri)?.name || before.terms.find((t) => t.iri === iri)?.name || before.props.find((p) => p.iri === iri)?.name || now.name(iri, 'class');
+  for (const c of changes) {
+    const about = aboutOf(c.axiom);
+    const key = about.iri || about.kind;
+    const e = byEntity.get(key) ?? { iri: about.iri, name: about.iri ? nameOf(about.iri) : about.kind === 'ontology' ? 'The ontology' : 'Statements about no entity', kind: about.iri ? (kinds.get(about.iri) ?? declaredKind(c.axiom) ?? 'other') : about.kind, status: 'changed' as const, changes: [] };
+    e.changes.push({ op: c.op, text: axiomText(c.axiom, c.op === 'add' ? now : was), axiom: c.axiom });
+    byEntity.set(key, e);
+  }
+  for (const e of byEntity.values()) {
+    const declared = (op: 'add' | 'remove') => e.changes.some((c) => c.op === op && c.axiom.type === 'Declaration');
+    e.status = declared('add') && !declared('remove') ? 'added' : declared('remove') && !declared('add') ? 'removed' : 'changed';
+    // What is added first, then what is removed, each in the order the editor writes them.
+    e.changes.sort((a, b) => (a.op === b.op ? a.text.localeCompare(b.text) : a.op === 'add' ? -1 : 1));
+  }
+  const order: Record<EntityDifference['status'], number> = { changed: 0, added: 1, removed: 2 };
+  const entities = [...byEntity.values()].sort((a, b) => Number(b.kind === 'ontology') - Number(a.kind === 'ontology') || order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+
+  // The shape sets, set by set: their statements, and what each is called.
+  const shapeSets: ShapeSetDifference[] = [];
+  for (const id of new Set([...before.shapeSets, ...after.shapeSets].map((s) => s.id))) {
+    const a = before.shapeSets.find((s) => s.id === id);
+    const b = after.shapeSets.find((s) => s.id === id);
+    const texts = (m: Model, set: typeof a) => (set ? statementsOf(setTurtle(m, set)).map((x) => x.text) : []);
+    const ta = new Set(texts(before, a));
+    const tb = new Set(texts(after, b));
+    const naming = shapeNaming(after, b ?? a);
+    const short = (t: string) => t.replace(/<([^>]*)>/g, (m, iri: string) => (/^_:/.test(iri) ? m : naming.name(iri))).replace(/"(-?\d+)"\^\^xsd:integer/g, '$1');
+    const lines = [...[...tb].filter((t) => !ta.has(t)).map((t) => ({ op: 'add' as const, text: short(t) })), ...[...ta].filter((t) => !tb.has(t)).map((t) => ({ op: 'remove' as const, text: short(t) }))];
+    const renamed = a && b && (a.name !== b.name || a.description !== b.description || a.namespace !== b.namespace) ? (a.name !== b.name ? `renamed from “${a.name}”` : 'its purpose or namespace changed') : undefined;
+    if (!a || !b || lines.length || renamed) shapeSets.push({ id, name: (b ?? a)!.name || 'Shapes', status: !a ? 'added' : !b ? 'removed' : 'changed', changes: lines, ...(renamed ? { renamed } : {}) });
+  }
+
+  // The data graphs the project names: their content is in the browser, and is told apart by its fingerprint.
+  const dataGraphs: DataGraphDifference[] = [];
+  for (const id of new Set([...before.dataGraphs, ...after.dataGraphs].map((g) => g.id))) {
+    const a = before.dataGraphs.find((g) => g.id === id);
+    const b = after.dataGraphs.find((g) => g.id === id);
+    const status = !a ? 'added' : !b ? 'removed' : a.fingerprint !== b.fingerprint ? 'replaced' : a.name !== b.name || a.includeOntology !== b.includeOntology ? 'changed' : undefined;
+    if (status) dataGraphs.push({ id, name: (b ?? a)!.name, status });
+  }
+
+  const same = (x: unknown, y: unknown) => x === y || JSON.stringify(x) === JSON.stringify(y);
+  const settings = (
+    [
+      ['quality', 'the quality rules'],
+      ['governance', 'the metadata fields'],
+      ['mappings', 'the mappings'],
+      ['rejected', 'the mappings turned down'],
+      ['externals', 'the other ontologies'],
+      ['vocab', 'the standard properties'],
+      ['prefixes', 'the prefixes'],
+    ] as const
+  )
+    .filter(([k]) => !same(before[k], after[k]))
+    .map(([, label]) => label);
+  const drawing = !same(before.style, after.style) || !same(before.layout, after.layout) || !same(positions(before), positions(after));
+  return { entities, shapeSets, dataGraphs, settings, drawing, axioms: { added: changes.filter((c) => c.op === 'add').length, removed: changes.filter((c) => c.op === 'remove').length } };
+}
+
+const positions = (m: Model) => m.terms.map((t) => `${t.id} ${Math.round(t.x)} ${Math.round(t.y)}`).join('\n');
+
+/** Whether a difference has anything to tell but the drawing. */
+export const nothingChanged = (d: Difference): boolean => !d.entities.length && !d.shapeSets.length && !d.dataGraphs.length && !d.settings.length;
+
+const DECLARED: Record<string, EntityKind> = { Class: 'class', ObjectProperty: 'object property', DataProperty: 'data property', AnnotationProperty: 'annotation property', NamedIndividual: 'individual', Datatype: 'datatype' };
+const declaredKind = (a: Axiom): EntityKind | undefined => (a.type === 'Declaration' ? DECLARED[a.entity] : undefined);
+
+/** The entity an axiom is about, the one it is told under: its subject, as a frame of Manchester syntax has it. */
+function aboutOf(a: Axiom): { iri: string; kind: EntityKind } {
+  const first = (e: ClassExpression) => (e.type === 'Class' ? e.iri : namedClasses(e as ModelClassExpression)[0]);
+  const of = (iri: string | undefined) => (iri ? { iri, kind: 'other' as const } : { iri: '', kind: 'other' as const });
+  switch (a.type) {
+    case 'Declaration':
+      return of(a.iri);
+    case 'SubClassOf':
+      return of(first(a.sub) ?? first(a.sup));
+    case 'EquivalentClasses':
+    case 'DisjointClasses':
+      return of(a.classes.map(first).find(Boolean));
+    case 'ClassAssertion':
+      return of(a.individual);
+    case 'ObjectPropertyAssertion':
+    case 'DataPropertyAssertion':
+      return of(a.source);
+    case 'SameIndividual':
+    case 'DifferentIndividuals':
+      return of(a.individuals[0]);
+    case 'SubObjectPropertyOf':
+    case 'SubDataPropertyOf':
+    case 'SubAnnotationPropertyOf':
+      return of(a.sub);
+    case 'EquivalentObjectProperties':
+    case 'DisjointObjectProperties':
+    case 'EquivalentDataProperties':
+    case 'DisjointDataProperties':
+      return of(a.properties[0]);
+    case 'InverseObjectProperties':
+      return of(a.first);
+    case 'DatatypeDefinition':
+      return of(a.datatype);
+    case 'AnnotationAssertion':
+      return of(a.subject);
+    case 'Ontology':
+    case 'OntologyAnnotation':
+    case 'Import':
+      return { iri: '', kind: 'ontology' };
+    case 'Unmapped':
+      return of(/^<([^>]+)>/.exec(a.turtle)?.[1]);
+    default:
+      return of('property' in a ? a.property : undefined);
+  }
+}
+
+/** An axiom as the editor writes it: Manchester syntax, its entities by name. */
+export function axiomText(a: Axiom, n: Naming): string {
+  const c = (e: ClassExpression) => classText(e as ModelClassExpression, n);
+  const d = (r: DataRange) => dataText(r as ModelDataRange, n);
+  const obj = (iri: string) => n.name(iri, 'object');
+  const dat = (iri: string) => n.name(iri, 'data');
+  const ind = (iri: string) => n.name(iri, 'individual');
+  const any = (iri: string) => {
+    const kinds = n.kindsOf(iri);
+    return n.name(iri, kinds[0] ?? 'class');
+  };
+  const value = (v: { iri: string } | { value: string; lang?: string; datatype?: string }) => ('iri' in v ? any(v.iri) : literalText(v, n));
+  switch (a.type) {
+    case 'Declaration':
+      return `${a.entity === 'NamedIndividual' ? 'Individual' : a.entity}: ${n.name(a.iri, a.entity === 'Class' ? 'class' : a.entity === 'ObjectProperty' ? 'object' : a.entity === 'DataProperty' ? 'data' : a.entity === 'NamedIndividual' ? 'individual' : a.entity === 'Datatype' ? 'datatype' : 'object')}`;
+    case 'SubClassOf':
+      return `${c(a.sub)} SubClassOf ${c(a.sup)}`;
+    case 'EquivalentClasses':
+      return a.classes.length === 2 ? `${c(a.classes[0])} EquivalentTo ${c(a.classes[1])}` : `EquivalentClasses: ${a.classes.map(c).join(', ')}`;
+    case 'DisjointClasses':
+      return a.classes.length === 2 ? `${c(a.classes[0])} DisjointWith ${c(a.classes[1])}` : `DisjointClasses: ${a.classes.map(c).join(', ')}`;
+    case 'ClassAssertion':
+      return `${ind(a.individual)} Type ${c(a.class)}`;
+    case 'ObjectPropertyAssertion':
+      return `${ind(a.source)} ${obj(a.property)} ${ind(a.target)}`;
+    case 'DataPropertyAssertion':
+      return `${ind(a.source)} ${dat(a.property)} ${literalText(a.value, n)}`;
+    case 'SameIndividual':
+      return `SameIndividual: ${a.individuals.map(ind).join(', ')}`;
+    case 'DifferentIndividuals':
+      return `DifferentIndividuals: ${a.individuals.map(ind).join(', ')}`;
+    case 'SubObjectPropertyOf':
+      return `${obj(a.sub)} SubPropertyOf ${obj(a.sup)}`;
+    case 'SubDataPropertyOf':
+      return `${dat(a.sub)} SubPropertyOf ${dat(a.sup)}`;
+    case 'SubAnnotationPropertyOf':
+      return `${any(a.sub)} SubPropertyOf ${any(a.sup)}`;
+    case 'EquivalentObjectProperties':
+    case 'DisjointObjectProperties':
+      return `${a.type.startsWith('Equivalent') ? 'EquivalentProperties' : 'DisjointProperties'}: ${a.properties.map(obj).join(', ')}`;
+    case 'EquivalentDataProperties':
+    case 'DisjointDataProperties':
+      return `${a.type.startsWith('Equivalent') ? 'EquivalentProperties' : 'DisjointProperties'}: ${a.properties.map(dat).join(', ')}`;
+    case 'InverseObjectProperties':
+      return `${obj(a.first)} InverseOf ${obj(a.second)}`;
+    case 'ObjectPropertyDomain':
+      return `${obj(a.property)} Domain ${c(a.domain)}`;
+    case 'DataPropertyDomain':
+      return `${dat(a.property)} Domain ${c(a.domain)}`;
+    case 'ObjectPropertyRange':
+      return `${obj(a.property)} Range ${c(a.range)}`;
+    case 'DataPropertyRange':
+      return `${dat(a.property)} Range ${d(a.range)}`;
+    case 'FunctionalDataProperty':
+      return `${dat(a.property)} Characteristics: Functional`;
+    case 'DatatypeDefinition':
+      return `Datatype: ${n.name(a.datatype, 'datatype')} EquivalentTo ${d(a.range)}`;
+    case 'AnnotationAssertion':
+      return `${any(a.subject)} ${n.name(a.property, 'object')} ${value(a.value)}`;
+    case 'Ontology':
+      return `Ontology: <${a.iri}>`;
+    case 'OntologyAnnotation':
+      return `Ontology annotation: ${n.name(a.property, 'object')} ${value(a.value)}`;
+    case 'Import':
+      return `Import: <${a.iri}>`;
+    case 'Unmapped':
+      return a.turtle.replace(/<([^>]*)>/g, (_m, iri: string) => any(iri));
+    default:
+      return `${obj(a.property)} Characteristics: ${a.type.replace(/ObjectProperty$/, '')}`;
+  }
+}
+
+/** The lines of a difference that are about one entity, by its IRI: for telling where an edit went. */
+export const changesOf = (d: Difference, iri: string): AxiomLine[] => d.entities.find((e) => e.iri === iri)?.changes ?? [];
