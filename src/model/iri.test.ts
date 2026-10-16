@@ -1,3 +1,4 @@
+import { importIntoSet, newSetFor } from './shapes';
 import { describe, expect, it } from 'vitest';
 import { setIriSuffix, withIris } from './iri';
 import { fromTurtle, toTurtle } from './rdf';
@@ -66,20 +67,30 @@ describe('IRI suffix', () => {
     const model = {
       ...m,
       terms: m.terms.map((t) => (t.id === award.id ? { ...t, classAxioms: [{ id: 'x', kind: 'SubClassOf' as const, expression: { type: 'ObjectComplementOf' as const, operand: { type: 'Class' as const, iri: old } } }] } : t)),
-      shapes: {
-        extra: `<http://example.org/s#X> <http://www.w3.org/ns/shacl#targetClass> <${old}> .`,
-        nodes: [{ id: 's1', iri: 'http://example.org/s#FilmShape', name: 'Film shape', targetClass: [old], targetNode: [], targetSubjectsOf: [], targetObjectsOf: [], properties: [{ id: 'p1', path: 'http://example.org/films#wins', class: old, in: [{ v: old, iri: true }, { v: old }] }] }],
-      },
+      shapeSets: [
+        importIntoSet(
+          newSetFor('Shapes'),
+          `@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<http://example.org/s#FilmShape> a sh:NodeShape ; rdfs:label "Film shape" ; sh:targetClass <${old}> ;
+  sh:property [ sh:path <http://example.org/films#wins> ; sh:class <${old}> ; sh:in ( <${old}> "${old}" ) ] .
+<http://example.org/s#Group> a sh:PropertyGroup ; rdfs:seeAlso <${old}> .`,
+        ).set,
+      ],
       mappings: [{ source: old, predicate: 'skos:exactMatch', target: 'http://schema.org/Movie', created: 0, method: 'manual' as const, status: 'approved' as const }],
       rejected: [`${old}|http://schema.org/Film`],
     };
     const next = setIriSuffix(model, { term: film.id }, 'Movie').model!;
     const iri = 'http://example.org/films#Movie';
     expect(next.terms.find((t) => t.id === award.id)!.classAxioms![0].expression).toEqual({ type: 'ObjectComplementOf', operand: { type: 'Class', iri } });
-    expect(next.shapes.extra).toContain(`<${iri}>`);
-    expect(next.shapes.nodes[0]).toMatchObject({ iri: 'http://example.org/s#FilmShape', targetClass: [iri] });
+    // In what is kept as written too.
+    expect(next.shapeSets[0].extra).toContain(iri);
+    expect(next.shapeSets[0].extra).not.toContain(old);
+    const [shape, property] = next.shapeSets[0].shapes;
+    expect(shape).toMatchObject({ iri: 'http://example.org/s#FilmShape' });
+    expect(shape.props.find((x) => x.p.endsWith('#targetClass'))!.v).toEqual({ iri });
     // A literal that happens to read like the IRI is a literal, and stays.
-    expect(next.shapes.nodes[0].properties[0]).toMatchObject({ path: 'http://example.org/films#wins', class: iri, in: [{ v: iri, iri: true }, { v: old }] });
+    expect(property.props.find((x) => x.p.endsWith('#class'))!.v).toEqual({ iri });
+    expect(property.props.find((x) => x.p.endsWith('#in'))!.v).toEqual({ list: [{ iri }, { lit: old }] });
     expect(next.mappings[0]).toMatchObject({ source: iri, target: 'http://schema.org/Movie' });
     expect(next.rejected).toEqual([`${iri}|http://schema.org/Film`]);
   });
@@ -107,9 +118,9 @@ describe('an IRI from the moment an entity exists', () => {
 
   it('takes what referred to the stand-in along when it is replaced', () => {
     const { m, id } = base();
-    const shaped: Model = { ...m, shapes: { extra: '', nodes: [{ id: 's', iri: 'http://example.org/films#Shape', name: 'Shape', targetClass: ['http://example.org/films#NewClass'], targetNode: [], targetSubjectsOf: [], targetObjectsOf: [], properties: [] }] } };
+    const shaped: Model = { ...m, shapeSets: [importIntoSet(newSetFor('Shapes'), '<http://example.org/films#Shape> <http://www.w3.org/ns/shacl#targetClass> <http://example.org/films#NewClass> .').set] };
     const n = named(shaped, id, 'Documentary');
-    expect(n.shapes.nodes[0].targetClass).toEqual(['http://example.org/films#Documentary']);
+    expect(n.shapeSets[0].shapes[0].props[0].v).toEqual({ iri: 'http://example.org/films#Documentary' });
   });
 
   it('is no longer a stand-in once it is set by hand', () => {

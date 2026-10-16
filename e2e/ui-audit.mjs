@@ -249,6 +249,27 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     report('Structure · Analyze, inferred', await page.evaluate(measure));
     await structure.locator('.st-which').getByRole('button', { name: 'Asserted', exact: true }).click();
     await structure.getByRole('tab', { name: 'Explore' }).click();
+    // The Shapes view: with no shapes, then a set with a shape whose property shape and sh:or are
+    // open in place, with a path that does not read. The set goes again, so the views after are as they were.
+    await tab('Shapes');
+    const shapes = page.locator('.view.shapes-view');
+    report('Shapes · none yet', await page.evaluate(measure));
+    await shapes.getByRole('button', { name: 'New shape set' }).click();
+    await shapes.getByLabel('Shape set name').fill('Catalogue');
+    await shapes.getByLabel('Shape set name').press('Enter');
+    await shapes.getByRole('button', { name: 'New shape', exact: true }).click();
+    const form = shapes.locator('.shape-editor .shape-form').first();
+    await shapes.locator('.add-property .chip-add').first().click();
+    await shapes.locator('.add-property input[type=search]').first().fill('Release');
+    await shapes.locator('.add-property .subgraph-found button').first().dispatchEvent('pointerdown');
+    const property = form.locator('.param-shape.property .shape-form.nested').first();
+    await property.locator(':scope > .row select').first().selectOption({ label: 'Min count (sh:minCount)' });
+    await form.locator(':scope > .row select').first().selectOption({ label: 'Or (sh:or)' });
+    await property.getByLabel('Path').fill(':releaseDate / (');
+    await property.getByLabel('Path').press('Enter');
+    await property.locator('[data-param=path] [role=alert]').waitFor();
+    report('Shapes · a shape, open in place', await page.evaluate(measure));
+    await shapes.getByRole('button', { name: 'Delete set' }).click();
     await tab('Validation');
     await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
     report('Validation', await page.evaluate(measure));

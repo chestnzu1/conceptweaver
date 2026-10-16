@@ -8,8 +8,8 @@ import { INSTANCE_OF, type ModelMode, type TermType } from './types';
  */
 
 /** The main functions of the app, as they appear in the navigation. */
-export type View = 'graph' | 'table' | 'structure' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
-export const VIEW_LABEL: Record<View, string> = { graph: 'Graph', table: 'Entities', structure: 'Structure', checks: 'Validation', align: 'Align', rdf: 'RDF', sparql: 'SPARQL', vocab: 'Vocabulary' };
+export type View = 'graph' | 'table' | 'structure' | 'shapes' | 'checks' | 'align' | 'rdf' | 'sparql' | 'vocab';
+export const VIEW_LABEL: Record<View, string> = { graph: 'Graph', table: 'Entities', structure: 'Structure', shapes: 'Shapes', checks: 'Validation', align: 'Align', rdf: 'RDF', sparql: 'SPARQL', vocab: 'Vocabulary' };
 
 /** The sections of the Entities view. */
 export type EntityTab = 'concept' | 'object' | 'property' | 'instance' | 'relations' | 'governance';
@@ -73,7 +73,7 @@ const OWL: ModelTypeConfig = {
   id: 'ontology',
   label: 'OWL ontology',
   about: 'Advanced ontology modelling with classes, properties, restrictions and reasoning.',
-  views: ['graph', 'table', 'structure', 'checks', 'align', 'rdf', 'sparql', 'vocab'],
+  views: ['graph', 'table', 'structure', 'shapes', 'checks', 'align', 'rdf', 'sparql', 'vocab'],
   entityTabs: ['concept', 'object', 'property', 'instance', 'relations', 'governance'],
   entityColumns: ['name', 'iri', 'hierarchy', 'restrictions', 'inferred', 'description', 'synonyms', 'relations'],
   termTypes: ['concept', 'property', 'instance'],

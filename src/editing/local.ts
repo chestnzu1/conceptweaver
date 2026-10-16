@@ -227,7 +227,7 @@ export function stepChangeSet(d: DocumentState, index: number, ontologyId: strin
 const PARTS: Partial<Record<keyof Model, string>> = {
   style: 'how the graph is drawn',
   layout: 'the layout',
-  shapes: 'the SHACL shapes',
+  shapeSets: 'the SHACL shapes',
   quality: 'the quality rules',
   governance: 'the metadata fields',
   vocab: 'the standard properties',
@@ -398,7 +398,7 @@ function carriedOver(old: Model, read: Model): Model {
     vocab: read.vocab.enabled && !old.vocab.enabled ? { ...old.vocab, enabled: true } : old.vocab,
     style: { ...old.style, nodes: pick(old.style.nodes, termSet), edges: pick(old.style.edges, relSet), anchors: pick(old.style.anchors, relSet) },
     layout: old.layout,
-    shapes: old.shapes,
+    shapeSets: old.shapeSets,
     quality: old.quality,
     governance: old.governance,
     mappings: old.mappings,

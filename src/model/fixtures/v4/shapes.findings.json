@@ -1,0 +1,49 @@
+{
+ "status": "violations",
+ "editable": 2,
+ "kept": 1,
+ "findings": [
+  {
+   "severity": "error",
+   "rule": "MinCount",
+   "message": "A person has a name.",
+   "shape": "http://example.org/staff#PersonShape",
+   "focusNode": ":bob",
+   "resultPath": ":name",
+   "sourceShape": "a property shape of :PersonShape",
+   "sourceConstraintComponent": "sh:MinCountConstraintComponent",
+   "resultSeverity": "sh:Violation",
+   "resultMessage": [
+    "A person has a name."
+   ]
+  },
+  {
+   "severity": "error",
+   "rule": "Datatype",
+   "message": "Value does not have datatype <http://www.w3.org/2001/XMLSchema#integer>",
+   "shape": "http://example.org/staff#PersonShape",
+   "focusNode": ":bob",
+   "resultPath": ":age",
+   "value": "\"unknown\"",
+   "sourceShape": "a property shape of :PersonShape",
+   "sourceConstraintComponent": "sh:DatatypeConstraintComponent",
+   "resultSeverity": "sh:Violation",
+   "resultMessage": [
+    "Value does not have datatype <http://www.w3.org/2001/XMLSchema#integer>"
+   ]
+  },
+  {
+   "severity": "warning",
+   "rule": "Class",
+   "message": "Does not conform to sh:ClassConstraintComponent.",
+   "shape": "http://example.org/staff#PersonShape",
+   "focusNode": ":bob",
+   "resultPath": ":worksFor",
+   "value": ":ann",
+   "sourceShape": "a property shape of :PersonShape",
+   "sourceConstraintComponent": "sh:ClassConstraintComponent",
+   "resultSeverity": "sh:Warning",
+   "resultMessage": []
+  }
+ ]
+}

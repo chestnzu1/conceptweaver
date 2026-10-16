@@ -1,0 +1,52 @@
+@prefix : <http://example.org/staff#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:PersonShape a sh:NodeShape ;
+    rdfs:label "Person shape" ;
+    sh:targetClass :Person ;
+    sh:property [
+        sh:path :name ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "A person has a name."
+    ] ;
+    sh:property [
+        sh:path :age ;
+        sh:datatype xsd:integer ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path :worksFor ;
+        sh:class :Organisation ;
+        sh:severity sh:Warning
+    ] .
+
+:OrganisationShape a sh:NodeShape ;
+    rdfs:label "OrganisationShape" ;
+    sh:targetClass :Organisation ;
+    sh:property [
+        sh:path :name ;
+        sh:minCount 1 ;
+        sh:maxLength 40
+    ] .
+
+
+# ---- shapes kept as written
+
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+
+<http://example.org/staff#ContactShape> a sh:NodeShape;
+    sh:targetClass <http://example.org/staff#Person>.
+_:n3-4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:n3-5.
+_:n3-5 sh:path <http://example.org/staff#name>;
+    sh:minCount 1.
+_:n3-4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:n3-6.
+_:n3-6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:n3-7.
+_:n3-7 sh:path <http://example.org/staff#worksFor>;
+    sh:minCount 1.
+_:n3-6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>.
+<http://example.org/staff#ContactShape> sh:or _:n3-4.

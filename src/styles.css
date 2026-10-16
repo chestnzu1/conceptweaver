@@ -4096,78 +4096,33 @@ code.pred {
   margin: 0;
 }
 
+/* Name, IRI and the button to delete: on one line while there is room, the button below when not. */
 .shape-head {
-  display: grid;
-  grid-template-columns: minmax(160px, 1.2fr) minmax(140px, 1.5fr) 190px auto;
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   align-items: end;
+}
+
+.shape-head > .field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.shape-head > .btn {
+  flex: none;
 }
 
 .shape-head code {
   overflow-wrap: anywhere;
 }
 
-.shape-targets {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.shape-prop {
-  margin: 0;
-  padding: 8px 12px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.shape-prop legend {
-  padding: 0 6px;
-  font-weight: 600;
-}
-
-.shape-prop-head {
-  display: flex;
-  align-items: flex-end;
-  gap: 14px;
-}
-
-.shape-prop-head .field {
-  flex: 1;
-}
-
-.shape-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px 12px;
-}
-
-.shape-grid label,
-.shape-grid .field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  color: var(--ink-2);
-}
-
-.shape-grid .wide {
-  grid-column: span 2;
-}
-
-.shape-grid label.check {
-  flex-direction: row;
-  align-items: center;
-  align-self: end;
-  min-height: 30px;
-}
-
-.shape-grid input:not([type='checkbox']),
-.shape-grid select,
 .shape-head input,
-.shape-head select {
+.shape-set-head input,
+.param-value input:not([type='checkbox']),
+.param-value select,
+.shape-form > .row select,
+.shape-list input[type='search'] {
   width: 100%;
   height: 30px;
   padding: 0 8px;
@@ -4175,6 +4130,211 @@ code.pred {
   border-radius: 7px;
   background: var(--panel);
   color: var(--ink);
+}
+
+/* The Shapes view: the shape sets, and the open set with its shapes and the shape's form. */
+.shapes-view .view-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.shapes-view .view-head small {
+  font-size: 12px;
+}
+
+.shapes-body {
+  flex: 1;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 16px 16px;
+  align-items: start;
+}
+
+.shape-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shape-sets ul,
+.shape-group ul,
+.shapes-about ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shape-sets li button {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shape-sets li button.on {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shape-sets li button .muted {
+  font-size: 12px;
+}
+
+.shape-set {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.shape-set .shapes {
+  padding: 0;
+}
+
+.shape-set-head {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(160px, 1.4fr) minmax(160px, 1.4fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.shape-group h4,
+.shape-params h4,
+.shape-properties h4 {
+  margin: 6px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+
+.shape-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* A shape inside another, written in place: drawn inside it. */
+.shape-form.nested {
+  padding: 6px 0 2px 12px;
+  border-left: 2px solid var(--line-strong);
+}
+
+.shape-form.nested.focused {
+  border-left-color: var(--accent);
+}
+
+.shape-params {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.param-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.param-row > code {
+  grid-column: span 2;
+  overflow-wrap: anywhere;
+}
+
+.param-name {
+  font-size: 12.5px;
+}
+
+.param-value {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.param-value .chips-inline,
+.member .chips-inline {
+  flex-wrap: wrap;
+}
+
+.param-value .chip-x,
+.member .chip-x {
+  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.param-shape,
+.param-shapes {
+  margin: 0;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.param-shape.property {
+  border-color: var(--line-strong);
+}
+
+.param-shape legend,
+.param-shapes legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.param-shapes > .link {
+  align-self: flex-start;
+  min-height: 24px;
+}
+
+.param-member {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.member-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.shape-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shapes-about ul {
+  margin-bottom: 6px;
 }
 
 .shape-preview {
@@ -4197,12 +4357,10 @@ code.pred {
 
 @media (max-width: 1100px) {
   .validation .summary,
-  .shapes {
+  .shapes,
+  .shapes-body,
+  .shape-set-head {
     grid-template-columns: 1fr;
-  }
-
-  .shape-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

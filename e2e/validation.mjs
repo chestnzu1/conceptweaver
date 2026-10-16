@@ -79,25 +79,25 @@ await sub(/^Results/);
 ok(before > 0 && (await rowTexts()).filter((r) => r.includes('Missing definition')).length === 0 && (await v.locator('.stale').count()) === 0, `switching a rule off removes its ${before} results after a rerun`);
 ok((await revision()) !== rev0, 'and the revision that was validated is a different one');
 
-// ---------------------------------------------------------------- a shape, made in the form
+// ---------------------------------------------------------------- a shape, made in the form (the Shapes view)
 await pick('Film');
-await sub(/^SHACL shapes/);
-await v.getByRole('button', { name: 'New shape' }).click();
-const ed = v.locator('.shape-editor');
-ok((await ed.getByLabel('Shape name').inputValue()) === 'Film' && (await field('Target classes', ed).locator('.chip-x .link').allInnerTexts()).join() === 'Film', 'a new shape starts from the selected class: named Film, targeting Film');
-await ed.getByRole('button', { name: 'Add a property constraint' }).click();
-ok(flat(await ed.locator('.shape-prop [role=alert]').innerText()).includes('Choose the property'), 'a constraint without a property says what is missing');
-const prop = ed.locator('.shape-prop').first();
-await prop.locator('.chip-add').first().click();
-await prop.getByLabel('Search for a property').fill('Release');
-await prop.locator('.subgraph-found button').first().dispatchEvent('pointerdown');
-await prop.getByLabel('Minimum count of Release date').fill('1');
-await prop.getByLabel('Minimum count of Release date').blur();
-await prop.getByLabel('Maximum count of Release date').fill('1');
-await prop.getByLabel('Maximum count of Release date').blur();
-await prop.getByLabel('Datatype of Release date').selectOption('xsd:date');
-const shacl = await ed.locator('.shape-preview').innerText();
-ok(shacl.includes(':FilmShape a sh:NodeShape') && shacl.includes('sh:targetClass :Film') && /sh:property \[\s+sh:path :releaseDate ;\s+sh:datatype xsd:date ;\s+sh:minCount 1 ;\s+sh:maxCount 1\s+\]/.test(shacl), 'the form writes the SHACL: ' + flat(shacl).slice(0, 200));
+await panel.locator('[data-section=shapes]').getByRole('button', { name: 'Add a shape for this class' }).click();
+const sv = page.locator('.view.shapes-view');
+const ed = sv.locator('.shape-editor');
+ok((await ed.getByLabel('Shape name').inputValue()) === 'Film' && (await ed.locator('[data-param=targetClass] .chip-x .link').allInnerTexts()).join() === 'Film', 'a shape added from a class is named after it and targets it, in the Shapes view');
+await ed.locator('.add-property .chip-add').click();
+await ed.getByLabel('Search for a property to constrain').fill('Release');
+await ed.locator('.add-property .subgraph-found button').first().dispatchEvent('pointerdown');
+const prop = ed.locator('.param-shape.property').first();
+const addTo = (what) => prop.locator('.shape-form.nested > .row select').selectOption({ label: what });
+await addTo('Min count (sh:minCount)');
+await addTo('Max count (sh:maxCount)');
+await addTo('Datatype (sh:datatype)');
+await prop.locator('.adding .chip-add').click();
+await prop.locator('.adding input[type=search]').fill('xsd:date');
+await prop.locator('.adding .subgraph-found button').first().dispatchEvent('pointerdown');
+const shacl = await ed.locator('.shape-preview').textContent();
+ok(/:FilmShape\s+a sh:NodeShape ;/.test(shacl) && shacl.includes('sh:targetClass :Film') && /sh:property \[\s+sh:path :releaseDate ;\s+sh:minCount 1 ;\s+sh:maxCount 1 ;\s+sh:datatype xsd:date\s+\]/.test(shacl), 'the form writes the SHACL: ' + flat(shacl).slice(0, 220));
 await page.screenshot({ path: shots + 'validation-shape.png' });
 await tab('RDF');
 ok(!(await page.locator('.rdf-code').innerText()).includes('sh:'), 'the shape is not part of the ontology’s RDF');
@@ -175,20 +175,22 @@ await page.getByRole('button', { name: 'Redo' }).click();
 fs.writeFileSync(tmp + '/more.ttl', `@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <http://example.org/film-knowledge-graph#> .
 :GenreShape a sh:NodeShape ; sh:targetClass :Genre ; sh:property [ sh:path :belongsTo ; sh:maxCount 0 ; sh:severity sh:Warning ] .
 :EitherShape a sh:NodeShape ; sh:targetClass :Film ; sh:or ( [ sh:path :releaseDate ; sh:minCount 1 ] [ sh:path :runningTime ; sh:minCount 1 ] ) .`);
-await sub(/^SHACL shapes/);
-await v.locator('.shape-list input[type=file]').setInputFiles(tmp + '/more.ttl');
-await page.waitForFunction(() => /Imported from/.test(document.querySelector('.toast')?.textContent ?? ''));
-ok(flat(await page.locator('.toast').innerText()).includes('1 shape you can edit here, 1 kept as Turtle (:EitherShape: uses sh:or on a node shape)'), 'importing: what the form can show becomes editable, the rest is kept as Turtle, and it says which and why: ' + flat(await page.locator('.toast').innerText()));
-ok((await v.locator('.shape-list li strong').allInnerTexts()).join(' | ') === 'Film | GenreShape | Shapes as Turtle', 'both editable shapes are listed');
-await v.locator('.shape-list li button', { hasText: 'Shapes as Turtle' }).click();
-ok((await v.locator('.shapes-text').inputValue()).includes('sh:or'), 'the kept shape is there as Turtle');
-await v.locator('.shapes-text').fill('this is not turtle');
-ok((await v.locator('.shape-editor [role=alert]').count()) === 1 && (await v.getByRole('button', { name: 'Save the Turtle' }).isDisabled()), 'Turtle that does not parse cannot be saved, and says why');
-await v.getByRole('button', { name: 'Discard changes' }).click();
-const [shapesFile] = await Promise.all([page.waitForEvent('download'), v.getByRole('button', { name: 'Export', exact: true }).click()]);
+await tab('Shapes');
+await sv.locator('.shape-set-head input[type=file]').setInputFiles(tmp + '/more.ttl');
+await page.waitForFunction(() => /^Read more.ttl/.test(document.querySelector('.toast')?.textContent ?? ''));
+ok(flat(await page.locator('.toast').innerText()).startsWith('Read more.ttl into “Shapes”: 5 shapes'), 'importing: every shape becomes a shape of the set, the one with sh:or too, and those inside them: ' + flat(await page.locator('.toast').innerText()));
+ok((await sv.locator('.shape-list li strong').allInnerTexts()).join(' | ') === 'Film | EitherShape | GenreShape | Turtle kept as written', 'the shapes are listed by the class they target: ' + (await sv.locator('.shape-list li strong').allInnerTexts()).join(' | '));
+await sv.locator('.shape-list li button', { hasText: 'EitherShape' }).click();
+ok((await ed.locator('[data-param=or] .param-member').count()) === 2 && (await ed.locator('[data-param=or] .shape-form.nested').count()) === 2, 'a shape with sh:or is edited like any other: its two alternatives are shapes of their own, in place');
+await sv.locator('.shape-list li button', { hasText: 'Turtle kept as written' }).click();
+await sv.locator('.shapes-text').fill('this is not turtle');
+ok((await sv.locator('.shape-editor [role=alert]').count()) === 1 && (await sv.getByRole('button', { name: 'Save the Turtle' }).isDisabled()), 'Turtle that does not parse cannot be saved, and says why');
+await sv.getByRole('button', { name: 'Discard changes' }).click();
+const [shapesFile] = await Promise.all([page.waitForEvent('download'), sv.getByRole('button', { name: 'Export', exact: true }).click()]);
 await shapesFile.saveAs(tmp + '/shapes.ttl');
 const exported = fs.readFileSync(tmp + '/shapes.ttl', 'utf8');
-ok(exported.includes(':FilmShape a sh:NodeShape') && exported.includes(':GenreShape a sh:NodeShape') && exported.includes('sh:or'), 'shapes export as one Turtle file with all three');
+ok(/:FilmShape\s+a sh:NodeShape/.test(exported) && /:GenreShape\s+a sh:NodeShape/.test(exported) && exported.includes('sh:or'), 'the set exports as one Turtle file with all three');
+await tab(/^Validation/);
 
 // imported data as the data graph
 fs.writeFileSync(tmp + '/data.ttl', `@prefix : <http://example.org/film-knowledge-graph#> . @prefix d: <http://data.example/> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -231,8 +233,9 @@ await page.locator('.dialog.library').getByRole('button', { name: /^Open/ }).fir
 await page.waitForSelector('.node');
 await tab(/^Validation/);
 await settled();
-await sub(/^SHACL shapes/);
-ok((await v.locator('.shape-list li strong').allInnerTexts()).join(' | ') === 'Film | GenreShape | Shapes as Turtle' && flat(await v.locator('.shape-list').innerText()).includes('1 shape kept as written'), 'reopened from My Models, the shapes are all there');
+await tab('Shapes');
+ok((await sv.locator('.shape-list li strong').allInnerTexts()).join(' | ') === 'Film | EitherShape | GenreShape | Turtle kept as written', 'reopened from My Models, the shapes are all there');
+await tab(/^Validation/);
 await sub('Quality rules');
 ok(!(await v.locator('.rule', { hasText: 'Missing definition' }).locator('input').isChecked()), 'and so is the choice of quality rules');
 await sub('Inferred facts');

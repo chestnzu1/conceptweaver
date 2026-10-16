@@ -6,7 +6,8 @@ import { withIris } from './iri';
 import { loadModel, saveModel } from './library';
 import { QUALITY_RULES, setRule } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
-import { importShapes, newPropertyShape, newShape, shapesToTurtle } from './shapes';
+import { SH, type ShaclValue } from './shacl';
+import { importIntoSet, newPropertyShape, newSetFor, setTurtle, shapesToTurtle } from './shapes';
 import { emptyModel, newProp, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
 import { MODEL_DATA, owlFindings, qualityFindings, shaclFindings, validate, type DataGraph } from './validation';
 import { isStale, reportJson, reportTurtle } from '../validation/report';
@@ -43,15 +44,15 @@ const edit = (e: { model?: Model; error?: string }) => {
   expect(e.error).toBeUndefined();
   return e.model!;
 };
+/** The model with one shape set, read from Turtle. */
+const withShapes = (m: Model, ttl: string): Model => ({ ...m, shapeSets: [importIntoSet(newSetFor('Shapes'), `@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix : <${m.baseIri}> .\n${ttl}`).set] });
 /** A Person shape: exactly one name that is text, and an age that is a whole number of at least 0. */
-function withPersonShape(m: Model, iri: (n: string) => string): Model {
-  const shape = newShape(m, 'Person', iri('Person'));
-  shape.properties = [
-    { ...newPropertyShape(iri('has name')), datatype: 'xsd:string', minCount: 1, maxCount: 1 },
-    { ...newPropertyShape(iri('has age')), datatype: 'xsd:integer', minInclusive: { v: '0', dt: 'xsd:integer' } },
-  ];
-  return { ...m, shapes: { nodes: [shape], extra: '' } };
+function withPersonShape(m: Model, iri: (n: string) => string, name = 'sh:minCount 1 ; ', age = ''): Model {
+  return withShapes(m, `:PersonShape a sh:NodeShape ; rdfs:label "Person" ; sh:targetClass <${iri('Person')}> ;
+  sh:property [ sh:path <${iri('has name')}> ; sh:datatype xsd:string ; ${name}sh:maxCount 1 ] ;
+  sh:property [ sh:path <${iri('has age')}> ; sh:datatype xsd:integer ; sh:minInclusive 0 ${age}] .`);
 }
+const personShape = (m: Model) => m.shapeSets[0].shapes.find((s) => s.iri)!;
 
 describe('OWL logical consistency', () => {
   it('reports a consistent ontology as consistent, with the reasoner’s profile', () => {
@@ -150,7 +151,7 @@ describe('SHACL validation', () => {
     expect(summary).toMatchObject({ status: 'violations', violations: 2 });
     // Ann is an Employee: the target class reaches her through rdfs:subClassOf in the data graph.
     const ann = findings.find((f) => f.entity?.name === 'Ann')!;
-    expect(ann).toMatchObject({ category: 'shacl', severity: 'error', rule: 'MinCount', property: ':hasName', entity: { kind: 'term', id: id.Ann, type: 'individual' }, shapeId: n.shapes.nodes[0].id });
+    expect(ann).toMatchObject({ category: 'shacl', severity: 'error', rule: 'MinCount', property: ':hasName', entity: { kind: 'term', id: id.Ann, type: 'individual' }, shapeId: personShape(n).id });
     expect(ann.shacl).toMatchObject({ focusNode: ':Ann', resultPath: ':hasName', sourceShape: 'a property shape of :PersonShape', sourceConstraintComponent: 'sh:MinCountConstraintComponent', resultSeverity: 'sh:Violation' });
     // A missing value has no sh:value, and none is invented.
     expect(ann.shacl).not.toHaveProperty('value');
@@ -161,8 +162,7 @@ describe('SHACL validation', () => {
 
   it('reports datatype and range violations, and severities other than Violation', async () => {
     const { m, id, iri } = build();
-    let n = withPersonShape(m, iri);
-    n = { ...n, shapes: { ...n.shapes, nodes: n.shapes.nodes.map((s) => ({ ...s, properties: s.properties.map((p, i) => (i === 1 ? { ...p, severity: 'Warning' as const, message: 'An age is a whole number, 0 or more.' } : { ...p, minCount: undefined })) })) } };
+    let n = withPersonShape(m, iri, '', '; sh:severity sh:Warning ; sh:message "An age is a whole number, 0 or more." ');
     // The property says integer, but the value states its own datatype: the data is what is validated.
     n = { ...n, terms: n.terms.map((t) => (t.id === id.Ann ? { ...t, values: [{ prop: id['has age'], value: '-3' }] } : t.id === id.Bob ? { ...t, values: [{ prop: id['has age'], value: '41.5', dt: 'xsd:decimal' }] } : t)) };
     const { summary, findings } = await shaclFindings(n);
@@ -188,47 +188,67 @@ describe('SHACL validation', () => {
     expect((await shaclFindings(n, { source: 'imported', text: 'this is not turtle', includeOntology: false })).summary).toMatchObject({ status: 'failed' });
   });
 
-  it('writes the editor’s shapes as SHACL and reads them back unchanged', () => {
+  it('writes a shape set as SHACL and reads it back as the same shapes', () => {
     const { m, iri } = build();
     const n = withPersonShape(m, iri);
-    const shape = n.shapes.nodes[0];
-    shape.properties.push({ ...newPropertyShape(iri('has name')), inverse: true, nodeKind: 'IRI', pattern: '^[A-Z]', flags: 'i', in: [{ v: 'a' }, { v: iri('Ann'), iri: true }, { v: '3', dt: 'xsd:integer' }], severity: 'Info', class: iri('Person'), languageIn: ['en', 'nl'], uniqueLang: true, minLength: 1, maxLength: 80, hasValue: { v: 'x', lang: 'en' } });
-    shape.targetNode = [iri('Ann')];
-    shape.targetSubjectsOf = [iri('has age')];
-    shape.closed = true;
-    const ttl = shapesToTurtle(n);
-    expect(ttl).toContain(':PersonShape a sh:NodeShape');
+    const set = n.shapeSets[0];
+    const shape = personShape(n);
+    // A property shape with much of SHACL Core in it, made as the form makes it.
+    const p = newPropertyShape(iri('has name'));
+    const lit = (l: string, dt?: string): ShaclValue => ({ lit: l, ...(dt ? { dt: 'http://www.w3.org/2001/XMLSchema#' + dt } : {}) });
+    p.props = [
+      { p: SH + 'path', v: { path: { inverse: { iri: iri('has name') } } } },
+      { p: SH + 'nodeKind', v: { iri: SH + 'IRI' } },
+      { p: SH + 'pattern', v: lit('^[A-Z]') },
+      { p: SH + 'flags', v: lit('i') },
+      { p: SH + 'in', v: { list: [lit('a'), { iri: iri('Ann') }, lit('3', 'integer')] } },
+      { p: SH + 'severity', v: { iri: SH + 'Info' } },
+      { p: SH + 'class', v: { iri: iri('Person') } },
+      { p: SH + 'languageIn', v: { list: [lit('en'), lit('nl')] } },
+      { p: SH + 'uniqueLang', v: lit('true', 'boolean') },
+      { p: SH + 'hasValue', v: { lit: 'x', lang: 'en' } },
+    ];
+    const next = { ...set, shapes: [...set.shapes.map((s) => (s.id === shape.id ? { ...s, props: [...s.props, { p: SH + 'property', v: { shape: p.id } }, { p: SH + 'targetNode', v: { iri: iri('Ann') } }, { p: SH + 'closed', v: lit('true', 'boolean') }] } : s)), p] };
+    const ttl = setTurtle(n, next);
+    expect(ttl).toContain(':PersonShape\n    a sh:NodeShape ;');
     expect(ttl).toContain('sh:targetClass :Person');
-    expect(ttl).toMatch(/sh:property \[\n\s+sh:path :hasName ;\n\s+sh:datatype xsd:string ;\n\s+sh:minCount 1 ;\n\s+sh:maxCount 1\n\s+\]/);
-    expect(ttl).toContain('sh:minInclusive "0"^^xsd:integer');
+    expect(ttl).toContain('sh:minInclusive 0');
     expect(ttl).toContain('sh:path [ sh:inversePath :hasName ]');
-    expect(ttl).toContain('sh:in ( "a" :Ann "3"^^xsd:integer )');
-    const back = importShapes(m, ttl, { nodes: [], extra: '' });
-    expect(back).toMatchObject({ editable: 1, kept: 0 });
-    const strip = (s: unknown) => JSON.parse(JSON.stringify(s, (k, v) => (k === 'id' ? undefined : v)));
-    expect(strip(back.shapes.nodes)).toEqual(strip(n.shapes.nodes));
-    expect(shapesToTurtle({ ...m, shapes: back.shapes })).toBe(ttl);
+    expect(ttl).toContain('sh:in ( "a" :Ann 3 )');
+    expect(ttl).toContain('sh:hasValue "x"@en');
+    const back = importIntoSet(newSetFor('Back'), ttl).set;
+    expect(back.extra).toBe('');
+    expect(setTurtle(n, back)).toBe(ttl);
   });
 
-  it('keeps an imported shape it has no fields for as written, and still validates with it', async () => {
+  it('reads every construct of SHACL Core into a set as shapes, and validates with them', async () => {
     const { m } = build();
     const ttl = `@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <http://example.org/p#> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 :SimpleShape a sh:NodeShape ; sh:targetClass :Organisation ; sh:property [ sh:path :hasName ; sh:minCount 1 ] .
 :EitherShape a sh:NodeShape ; sh:targetClass :Person ; sh:or ( [ sh:path :hasName ; sh:minCount 1 ] [ sh:path :hasAge ; sh:minCount 1 ] ) .`;
-    const got = importShapes(m, ttl);
-    expect(got).toMatchObject({ editable: 1, kept: 1 });
-    expect(got.reasons[0]).toBe(':EitherShape: uses sh:or on a node shape');
-    expect(got.shapes.nodes.map((s) => s.name)).toEqual(['SimpleShape']);
-    expect(got.shapes.extra).toContain('sh:or');
-    expect(got.shapes.extra).not.toContain('SimpleShape');
-    const n = { ...m, shapes: got.shapes };
+    const got = importIntoSet(newSetFor('Shapes'), ttl);
+    expect(got).toMatchObject({ shapes: 5, replaced: 0, kept: 0 });
+    // The shape with sh:or is a shape like the other, with its two alternatives as shapes of their own.
+    expect(got.set.shapes.filter((s) => s.iri).map((s) => s.iri!.split('#')[1])).toEqual(['SimpleShape', 'EitherShape']);
+    expect(got.set.extra).toBe('');
+    const n = { ...m, shapeSets: [got.set] };
     const { findings, summary } = await shaclFindings(n);
     expect(summary.shapes).toBe(2);
     expect(findings.map((f) => `${f.entity?.name}:${f.rule}`).sort()).toEqual(['Acme:MinCount', 'Ann:Or', 'Bob:Or']);
-    // Importing the same file again changes nothing.
-    const again = importShapes(n, ttl);
-    expect(again.shapes.nodes.length).toBe(1);
-    expect((again.shapes.extra.match(/sh:or/g) ?? []).length).toBe(1);
+    // Read again, the same shapes take the place of those with their IRIs: nothing is there twice.
+    const again = importIntoSet(got.set, ttl);
+    expect(again.replaced).toBe(2);
+    expect(again.set.shapes.filter((s) => s.iri)).toHaveLength(2);
+    expect(again.set.shapes.filter((s) => s.iri).map((s) => s.id)).toEqual(got.set.shapes.filter((s) => s.iri).map((s) => s.id));
+  });
+
+  it('says so, in words, when a shape refers to itself, which SHACL leaves undefined', async () => {
+    const { m, iri } = build();
+    // A Person conforms if it is an Organisation, or if it conforms to the shape: the engine goes round it.
+    const n = withShapes(m, `:LoopShape a sh:NodeShape ; sh:targetClass <${iri('Person')}> ; sh:or ( [ sh:class <${iri('Organisation')}> ] :LoopShape ) .`);
+    const { summary } = await shaclFindings(n);
+    expect(summary.status).toBe('failed');
+    expect(summary.error).toMatch(/^A shape refers to itself/);
   });
 
   it('does not turn OWL restrictions into shapes', async () => {
@@ -310,7 +330,8 @@ describe('ontology quality', () => {
     const { m, iri } = build();
     const n = withPersonShape(m, iri);
     expect(rules(n)).not.toContain('unresolved-reference');
-    n.shapes.nodes[0].targetClass = ['http://example.org/p#Persn'];
+    const shape = personShape(n);
+    n.shapeSets[0].shapes = n.shapeSets[0].shapes.map((x) => (x === shape ? { ...x, props: x.props.map((y) => (y.p === SH + 'targetClass' ? { ...y, v: { iri: 'http://example.org/p#Persn' } } : y)) } : x));
     expect(qualityFindings(n).findings.find((f) => f.ruleId === 'unresolved-reference')).toMatchObject({ severity: 'info', entity: { kind: 'shape', name: 'Person' } });
   });
 });
@@ -376,14 +397,14 @@ describe('persistence of shapes and rule settings', () => {
   it('keeps them through the app’s own file format, a model without them, and My Models', async () => {
     const { m, iri } = build();
     const n = { ...withPersonShape(m, iri), quality: { off: ['missing-definition'], on: ['root-class'] } };
-    n.shapes.extra = '@prefix sh: <http://www.w3.org/ns/shacl#> .\n<http://example.org/p#X> a sh:NodeShape .\n';
+    n.shapeSets[0].extra = '@prefix sh: <http://www.w3.org/ns/shacl#> .\n<http://example.org/p#Details> a sh:PropertyGroup .\n';
     expect(normalizeModel(JSON.parse(JSON.stringify(n)))).toEqual(n);
     // A model saved before there were shapes opens with none.
-    const { shapes: _s, quality: _q, ...old } = JSON.parse(JSON.stringify(n));
-    expect(normalizeModel(old)).toMatchObject({ shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] } });
+    const { shapeSets: _s, quality: _q, ...old } = JSON.parse(JSON.stringify(n));
+    expect(normalizeModel(old)).toMatchObject({ shapeSets: [], quality: { off: [], on: [] } });
     const info = await saveModel(n);
     const back = (await loadModel(info.id))!.model;
-    expect(back.shapes).toEqual(n.shapes);
+    expect(back.shapeSets).toEqual(n.shapeSets);
     expect(back.quality).toEqual(n.quality);
     expect(shapesToTurtle(back)).toBe(shapesToTurtle(n));
   });

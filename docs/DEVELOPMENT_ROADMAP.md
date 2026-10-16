@@ -156,8 +156,8 @@ is planned. The overlaps stay where they are; what is new is the track below.
 
 | Stage | Contents | Needs | Placed in |
 | --- | --- | --- | --- |
-| **SH-1** Shapes as a first-class editor | A *Shapes* view; shape sets; every SHACL Core construct in the form; lossless Turtle per set; links with classes and properties. | 1.4, 1.8, 1.9 | Phase 2, next: before 2.3 |
-| **SH-2** Validation one can act on | Data graphs kept with the project; a shape set validated against a data graph; findings to the constraint and the data's source; the W3C SHACL Core tests as the conformance suite. | SH-1 | Phase 2, before 2.3 |
+| **SH-1** Shapes as a first-class editor | A *Shapes* view; shape sets; every SHACL Core construct in the form; lossless Turtle per set; links with classes and properties. | 1.4, 1.8, 1.9 | Phase 2: done 2026-10-16 |
+| **SH-2** Validation one can act on | Data graphs kept with the project; a shape set validated against a data graph; findings to the constraint and the data's source; the W3C SHACL Core tests as the conformance suite. | SH-1 | Phase 2, next: before 2.3 |
 | **SH-3** Shapes proposed from the ontology | Proposals from axioms, reviewed one by one, with their meaning stated; origin kept; stale when the axiom changes. | SH-1; 2.1 (structured expressions) | Phase 2, before 2.3 |
 | **SH-4** Jena SHACL on the server | `ValidationService` answered by the companion; the same reports as the browser on the conformance suite; data graphs too large for the page. | SH-2; 3.2 | Phase 3, after 3.2 |
 | **SH-5** SHACL-SPARQL and the inferred graph | SPARQL-based constraints and constraint components; validation against the inferred graph; the browser naming what it cannot run. | SH-4 | Phase 3, after SH-4 |
@@ -646,6 +646,20 @@ sets from the start, and SH-2 and SH-3 build on it.
   same findings.
 
 **Then.** SH-2 and SH-3, and with them milestone MS-12; then 2.3.
+
+**Status, 2026-10-16: SH-1 done.** Model format 5 holds the shape sets (`src/model/shacl.ts`); a
+format-4 model opens as one set, "Shapes", with the same statements and findings
+(`migration.test.ts`, `fixtures/v4`). The 105 shapes graphs of the W3C SHACL 1.0 Core suite's 113
+tests (`corpus/shacl.mjs`, at a fixed commit) read into the form and write back statement for
+statement, every Core construct as structure; only `sh:sparql` and the two paths the suite makes
+ill-formed on purpose are kept as text (`shacl.test.ts`). `e2e/shapes.mjs` checks two sets with a
+shape for one class each, exported apart, across a reload, an undo and a redo, and validated
+together. What it left: every set is still validated at once, and a finding opens its shape, not
+the constraint (both SH-2). A shape edit is a step of the document's history like any other,
+undone, redone and kept in the working copy; the edit contract's `ChangeSet` lists ontology axioms
+only, so a step that changes shapes says so in its summary and has no axioms. Giving change sets a
+graph per shape set is with the server's change entries (DATA_ARCHITECTURE.md), when versions need
+it (2.3).
 
 **The data-integration track does not change this.** Its first task is 3.8, after the backend
 exists; from SH-2 it can validate what a mapping previews against a chosen shape set (4.11).

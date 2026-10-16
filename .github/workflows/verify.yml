@@ -48,11 +48,14 @@ jobs:
       - name: Fetch the reasoner's libraries and compile the service
         run: node -e "import('./reasoner/run.mjs').then((m) => m.prepare())"
 
-      # The round-trip corpus: public ontologies, each pinned by its checksum in corpus/corpus.mjs.
+      # The round-trip corpus: public ontologies, each pinned by its checksum in corpus/corpus.mjs,
+      # and the W3C SHACL Core test suite, pinned in corpus/shacl.mjs.
       - uses: actions/cache@v6
         with:
-          path: corpus/files
-          key: corpus-${{ hashFiles('corpus/corpus.mjs') }}
+          path: |
+            corpus/files
+            corpus/shacl
+          key: corpus-${{ hashFiles('corpus/corpus.mjs', 'corpus/shacl.mjs') }}
       - name: Fetch the round-trip corpus
         run: pnpm corpus
 

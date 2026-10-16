@@ -15,7 +15,7 @@ pnpm lint       # oxlint (.oxlintrc.json); fails on any finding
 pnpm build      # static site in dist/
 pnpm verify     # every check: type-check, lint, unit tests, build, all browser checks, UI audit
 pnpm bench      # the benchmarks, kept in bench-results/ (see docs/BASELINES.md)
-pnpm corpus     # fetches the round-trip corpus (corpus/corpus.mjs) once; its test then runs with the unit tests
+pnpm corpus     # fetches the round-trip corpus (corpus/corpus.mjs) and the W3C SHACL Core tests (corpus/shacl.mjs) once; their tests then run with the unit tests
 pnpm reasoner   # the OWL 2 DL reasoning service (HermiT) on http://localhost:5190; needs a JDK, 11 or later
 node e2e/sidebar-tree.mjs [base URL]   # one browser check, against a running server (default http://localhost:5181/, from `pnpm exec vite preview --port 5181`)
 node e2e/ui-audit.mjs [base URL]       # measures every view in both themes: text contrast, text size, pointer target size, overflow; fails if any is off
@@ -325,15 +325,17 @@ More on what the advanced reasoner does and does not cover is under
   two of the model's own cannot be given one name, which would only invite mistakes.
 - **A model saved before** (format 1, which knew a property by its name in lower case; format
   2, whose domains and ranges were lists of classes; format 3, which kept class expressions as
-  Turtle text) opens as it was: the same ontology, the same relationships, the same properties
+  Turtle text; format 4, whose shapes were one list, each a form for part of SHACL with the rest
+  as Turtle) opens as it was: the same ontology, the same relationships, the same properties
   and the same picture. What a list meant is what those formats wrote: one class is that class,
   several are their union in one axiom (it was always written so), an empty list no domain, and
   none at all one that follows the uses; a data property's datatype is one axiom, and a range
   kept as text the axiom it states; a superclass or definition kept as text is the class axiom
-  of that kind it states. `src/model/migration.test.ts` checks that on three models saved in
-  format 1, one in format 2 and one in format 3 (their Turtle byte for byte for formats 1 and 2,
-  statement for statement for 3). It is saved in format 4 from then on, which a version of the
-  app from before cannot read in full.
+  of that kind it states. Format 4's shapes are one shape set, called "Shapes", whose Turtle is
+  the same statements and whose findings are the same. `src/model/migration.test.ts` checks
+  that on three models saved in format 1, one in format 2, one in format 3 and one in format 4
+  (their Turtle byte for byte for formats 1 and 2, statement for statement for 3 and 4). It is
+  saved in format 5 from then on, which a version of the app from before cannot read in full.
 - **Every entity has an IRI from the moment it exists**: one made from its name or, while it has
   none (a new class is "New class"), one that stands in, in the default namespace. The first real
   name replaces that one, once, and whatever referred to it follows; after that a rename never
@@ -468,6 +470,29 @@ More on what the advanced reasoner does and does not cover is under
   - Not done: the fast reasoner is asked about this ontology alone, without the ontologies it
     imports (HermiT is sent them, as under Validation). A class entailed to be equivalent to
     `owl:Thing` is not marked as such.
+- **Shapes** (model format 5, from 2026-10-16; `src/model/shacl.ts`, `src/components/Shapes.tsx`)
+  – SHACL shapes, as a constraint model of their own beside the ontology: what the data of one
+  application or source has to be like, where the ontology says what holds of the world.
+  - Shapes are kept in **shape sets**, each with a name, what it is for and the namespace of its
+    new shapes. Two sets may have a different shape for one class. A set imports Turtle (a shape
+    with the IRI of one it has is replaced, and keeps its place) and exports as a file of its
+    own; exporting the ontology leaves the shapes out. Deleting a set, like every edit of a shape, is
+    one step to undo.
+  - A shape is a form of what is said of it, and every construct of SHACL 1.0 Core has a place
+    in it: targets, node and property shapes, every kind of property path (typed as SPARQL writes
+    it, `:a / ^:b | :c*`, and kept as the SHACL path it is), value type, cardinality, value
+    range, string, property pair and other constraints, `sh:and`, `sh:or`, `sh:xone`, `sh:not`,
+    `sh:node` and qualified value shapes, with a shape given in place or a named one from any
+    set, and the non-validating `sh:name`, `sh:description`, `sh:order`, `sh:group` and
+    `sh:defaultValue`. What is about no shape (a property group, data) and what is not Core
+    (`sh:sparql`) is kept as Turtle, as written, and can be edited as such.
+  - Nothing is lost on the way through: each shapes graph of the W3C SHACL Core test suite is
+    read into the form and written back statement for statement (`src/model/shacl.test.ts`;
+    `pnpm corpus` fetches the suite).
+  - The editor of a class, data property or object property lists the shapes about it in every
+    set, each opening where it is, and *Add a shape for this class* starts one in the set open.
+  - OWL restrictions never become shapes, nor shapes restrictions: the ontology and the shapes
+    are kept apart (ADR-020).
 - **Model checks** – unnamed and duplicate terms, circular or redundant hierarchies, isolated
   terms, unlabelled or duplicate relations, malformed cardinalities, missing descriptions and more.
 - **Graph layouts** – a *Graph layout* selector in the bar above the graph (and the *Arrange*
@@ -546,11 +571,11 @@ More on what the advanced reasoner does and does not cover is under
     instance of an enumeration that is different from all members but one is that one (and
     from all of them, a contradiction), an enumeration whose members are all of a class is a
     kind of that class, and a value of a property has to be one its enumerated datatype lists.
-  - *SHACL*: the model's shapes validated against a data graph by a SHACL Core engine
-    (`rdf-validate-shacl`, loaded on first use). Shapes are made in a form (SHACL shapes tab),
-    imported from Turtle or written as Turtle, and saved with the model but apart from the
-    ontology. The data graph is the model's own RDF (individuals and ontology triples) or an
-    imported file, in any syntax an ontology can be opened in. Results keep the standard report fields.
+  - *SHACL*: the shapes of every shape set (see *Shapes*) validated together against a data
+    graph by a SHACL Core engine (`rdf-validate-shacl`, loaded on first use). The data graph is
+    the model's own RDF (individuals and ontology triples) or an imported file, in any syntax an
+    ontology can be opened in. Results keep the standard report fields, and each opens the shape
+    it is of, in its set.
   - *Quality*: 34 modelling rules (missing definitions, redundant superclasses, naming, IRIs
     and namespaces, enumerations without members or with something on the list that does not
     belong there, …), each of which can be switched off per model. They are suggestions,
@@ -711,7 +736,9 @@ that *Layered* says so and uses the built-in hierarchical layout.
   is zoomed, is `culling.ts`, which also cuts a long line to the part that may be seen.
   Which object property a relationship uses, by id, is `identity.ts`; every entity's IRI is
   `iri.ts`; a model of an older format is brought up to date in `normalizeModel` (`types.ts`),
-  checked against the files in `fixtures/v1`, `v2` and `v3`. What an ontology says that the
+  checked against the files in `fixtures/v1` to `v4`. SHACL shapes as structure, read from
+  Turtle and written back, and their paths as SPARQL, are `shacl.ts`; what the views ask of the
+  shape sets of a model is `shapes.ts`, and the format-4 shapes are read by `shapesLegacy.ts`. What an ontology says that the
   model has no place for is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in
   `rdf.ts`) tells what it took. Class expressions and data ranges are one structure,
   `expressions.ts` (read from RDF, written in OWL functional syntax as the OWL API has them,
@@ -775,7 +802,9 @@ that *Layered* says so and uses the built-in hierarchical layout.
   report) and `main-thread.mjs` (the longest main-thread task in the browser, for `bench.mjs`).
 - `corpus` – the round-trip corpus: `corpus.mjs` lists the ontologies, each by a fixed version
   and its checksum, and fetches them into `files/` (not committed); `expected/` holds what a
-  round trip through the app loses of each today (see *Reading ontologies*).
+  round trip through the app loses of each today (see *Reading ontologies*). `shacl.mjs` fetches
+  the W3C SHACL Core test suite, at a fixed commit and with a checksum of the whole, into
+  `shacl/` (not committed).
 
 ## OWL constructs without an editor
 
@@ -1106,13 +1135,11 @@ together in `src/model/inferred.ts`.
   the values individuals have against the list of their property's range (a number by its
   value, so `"01"` is `"1"^^xsd:integer`; anything else as written, so a date with a time zone
   is not the same date without one); datatypes are not compared with each other.
-- SHACL: all of SHACL Core is validated. SHACL-SPARQL, SHACL Advanced Features and entailment
-  regimes are not. The shape form covers targets (class, node, subjects-of, objects-of), a
-  property or its inverse as path, and the constraints min/max count, datatype, class, node
-  kind, pattern, allowed values, min/max inclusive and exclusive, min/max length, one value
-  per language, closed, severity and message. Anything else in Core (`sh:or`, `sh:and`,
-  `sh:not`, `sh:xone`, qualified value shapes, property pairs, other paths) is written or
-  imported as Turtle and validated the same.
+- SHACL: all of SHACL Core is validated, and the shape form covers all of it. SHACL-SPARQL,
+  SHACL Advanced Features and entailment regimes are not validated; `sh:sparql` is kept as Turtle.
+  Every set is validated at once: one set against one data graph of its choosing is stage SH-2
+  of the roadmap. A shape that refers to itself (through `sh:node`, `sh:or` and the like), which
+  SHACL leaves undefined, ends the run with a message saying so.
 - OWL restrictions are never turned into shapes, and reasoner-inferred types are not added to
   the data graph.
 - Validation runs as a job in a worker, and a run can be stopped (*Stop*, while it runs); the

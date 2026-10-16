@@ -466,6 +466,11 @@ undo applies one backwards. The document has a revision of its own (`version` in
 any step can be given as axioms added and removed (`changeSetOf`), which is the difference a
 named version will show. Named versions, their storage and a view of the history are task 2.3.
 
+**Status, 2026-10-16.** Shape sets (roadmap stage SH-1) are part of the same history: an edit of
+a shape is one step, undone and redone like any other. A change set lists ontology axioms only,
+so such a step has none, and says in its summary that it changed the SHACL shapes. What a step
+changed in a shape set, statement by statement, is for 2.3, when a version has to show it.
+
 ### TD-13 Serialization gaps — Medium
 
 **Where.** `exportModel` in `src/model/files.ts:193`; `src/model/rdf.ts`.

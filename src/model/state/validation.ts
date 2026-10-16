@@ -56,9 +56,7 @@ export interface ValidationSlice {
     job: string | null;
     /** The data graph SHACL validates. */
     data: DataGraph;
-    tab: 'results' | 'shapes' | 'rules' | 'inferences';
-    /** The shape open in the shape editor. */
-    shapeId: string | null;
+    tab: 'results' | 'rules' | 'inferences';
     /** Which reasoner answers the OWL questions: the app's own rules, or the OWL 2 DL reasoning service. */
     engine: EngineId;
     /** Where the reasoning service is. */
@@ -76,7 +74,7 @@ export interface ValidationSlice {
   cancelValidation: () => void;
   /** Asks for checks that run by themselves about the model as it is, unless their report is of it already. */
   requestChecks: (kind: CheckKind) => void;
-  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'shapeId' | 'engine' | 'reasonerUrl' | 'focus'>>) => void;
+  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'engine' | 'reasonerUrl' | 'focus'>>) => void;
 }
 
 export const validationSlice: Slice<ValidationSlice> = (set, get) => {
@@ -108,7 +106,6 @@ export const validationSlice: Slice<ValidationSlice> = (set, get) => {
       job: null,
       data: MODEL_DATA,
       tab: 'results',
-      shapeId: null,
       focus: null,
       checks: {},
       ...(() => {

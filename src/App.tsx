@@ -11,6 +11,7 @@ import { VocabView } from './components/VocabView';
 import { EntitiesView } from './components/Entities';
 import { AlignmentView } from './components/Alignment';
 import { ValidationView } from './components/Validation';
+import { ShapesView } from './components/Shapes';
 import { StructureView } from './components/Structure';
 import { BulkDialog } from './components/views';
 import { viewFor } from './model/modelTypes';
@@ -109,6 +110,7 @@ export function App() {
           <Canvas />
           {view === 'table' && <EntitiesView />}
           {view === 'structure' && <StructureView />}
+          {view === 'shapes' && <ShapesView />}
           {view === 'checks' && <ValidationView />}
           {view === 'align' && <AlignmentView />}
           {view === 'rdf' && <RdfView />}

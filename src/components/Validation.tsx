@@ -10,7 +10,6 @@ import { creditOf, ENGINES, reasonerHealth, type ReasoningResult } from '../mode
 import { MODEL_DATA, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../validation/contracts';
 import { fixOf } from '../validation/local';
 import { categoryLabel, DL_LIMITS, isStale, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE } from '../validation/report';
-import { ShapesPanel } from './Shapes';
 import { CommitInput } from './fields';
 import { Disclosure } from './Icon';
 
@@ -112,7 +111,7 @@ export function ValidationView() {
           ) : run.shacl.status === 'skipped' ? (
             <p className="muted">
               No shapes yet, so there is nothing to validate against.{' '}
-              <button className="link" onClick={() => st().setValidation({ tab: 'shapes' })}>
+              <button className="link" onClick={() => st().openShapes()}>
                 Make or import shapes
               </button>
             </p>
@@ -161,7 +160,7 @@ export function ValidationView() {
             <summary>What is validated</summary>
             <ul>
               <li>
-                <strong>Shapes graph:</strong> the model’s shapes, and nothing else. OWL restrictions are not turned into shapes.
+                <strong>Shapes graph:</strong> every shape set of the model, and nothing else. OWL restrictions are not turned into shapes.
               </li>
               <li>
                 <strong>Data graph, “This model”:</strong> the model as RDF, which is its individuals <em>and</em> its ontology triples (classes, properties, hierarchy). The hierarchy is what lets a shape for Person reach an Employee.
@@ -210,7 +209,6 @@ export function ValidationView() {
         {(
           [
             ['results', `Results (${findings.length})`],
-            ['shapes', `SHACL shapes (${model.shapes.nodes.length}${model.shapes.extra.trim() ? '+' : ''})`],
             ['rules', 'Quality rules'],
             ['inferences', 'Inferred facts'],
           ] as const
@@ -222,7 +220,6 @@ export function ValidationView() {
       </div>
 
       {tab === 'results' && <Results findings={findings} counts={{ owl: count('owl'), shacl: count('shacl'), quality: count('quality') }} stale={stale} ran={!!run} />}
-      {tab === 'shapes' && <ShapesPanel />}
       {tab === 'rules' && <Rules />}
       {tab === 'inferences' && (
         <>
@@ -537,7 +534,7 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
     if (e.kind === 'term') st().select([e.id]);
     else if (e.kind === 'prop') st().selectProp(e.id);
     else if (e.kind === 'rel') st().select([], [e.id]);
-    else if (e.kind === 'shape') st().setValidation({ tab: 'shapes', shapeId: e.id });
+    else if (e.kind === 'shape') st().openShapes(null, e.id);
     else if (e.kind === 'model') st().select([]);
   };
   const showOnCanvas = (f: Finding) => {
@@ -752,7 +749,7 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
                           </button>
                         )}
                         {f.shapeId && (
-                          <button className="btn small" onClick={() => st().setValidation({ tab: 'shapes', shapeId: f.shapeId! })}>
+                          <button className="btn small" onClick={() => st().openShapes(null, f.shapeId!)}>
                             Open the shape
                           </button>
                         )}

@@ -93,6 +93,9 @@ function canonical(qs: Quad[]): string {
     (out.get(s) ?? out.set(s, []).get(s)!).push(q);
     if (isBlank(q.object)) pointedAt.set(blankKey(q.object), (pointedAt.get(blankKey(q.object)) ?? 0) + 1);
   }
+  // A blank node that needs a label gets it by where it stands in the statement, not by the order
+  // the triples came in: the same statement, however written, has the same text.
+  const rank = blankRanks(qs);
   const labelled = new Map<string, string>();
   const inline = (b: string) => (pointedAt.get(b) ?? 0) === 1 && !labelled.has(b);
   const visiting = new Set<string>();
@@ -102,7 +105,7 @@ function canonical(qs: Quad[]): string {
     if (t.termType === 'NamedNode') return '<' + t.value + '>';
     const b = blankKey(t);
     if (inline(b) && !visiting.has(b)) return node(b);
-    if (!labelled.has(b)) labelled.set(b, '_:b' + labelled.size);
+    if (!labelled.has(b)) labelled.set(b, '_:b' + rank.get(b));
     return labelled.get(b)!;
   };
   /** A blank node written in place: a list if it is a proper one, otherwise its properties. */
@@ -154,6 +157,42 @@ function canonical(qs: Quad[]): string {
     }
   }
   return lines.sort().join('\n');
+}
+
+/** A short hash of a text (FNV-1a), to keep signatures short. */
+function hash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/**
+ * The blank nodes of a statement in an order that depends on what the statement says, not on the
+ * order of its triples: each has a signature of its triples, the terms at their other ends, and,
+ * round by round, the signatures of the blank nodes there. Blank nodes that end with the same
+ * signature stand alike, and any order of them writes the same text.
+ */
+function blankRanks(qs: Quad[]): Map<string, number> {
+  const around = new Map<string, { dir: string; p: string; other: Term }[]>();
+  const add = (b: string, x: { dir: string; p: string; other: Term }) => (around.get(b) ?? around.set(b, []).get(b)!).push(x);
+  for (const q of qs) {
+    if (isBlank(q.subject)) add(blankKey(q.subject), { dir: '>', p: q.predicate.value, other: q.object });
+    if (isBlank(q.object)) add(blankKey(q.object), { dir: '<', p: q.predicate.value, other: q.subject });
+  }
+  const blanks = [...around.keys()];
+  let sig = new Map(blanks.map((b) => [b, '']));
+  for (let round = 0; round < 4; round++) {
+    const next = new Map<string, string>();
+    for (const b of blanks) {
+      const parts = around.get(b)!.map((x) => `${x.dir}${x.p} ${isBlank(x.other) ? '_' + sig.get(blankKey(x.other)) : x.other.termType === 'Literal' ? literal(x.other) : '<' + x.other.value + '>'}`);
+      next.set(b, hash(parts.sort().join('|')));
+    }
+    sig = next;
+  }
+  return new Map([...blanks].sort((a, b) => (sig.get(a)! < sig.get(b)! ? -1 : sig.get(a)! > sig.get(b)! ? 1 : 0)).map((b, i) => [b, i]));
 }
 
 /** The statements of a Turtle document. */

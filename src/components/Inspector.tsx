@@ -21,6 +21,7 @@ import { Metadata } from './Metadata';
 import { TermChips } from './TermChips';
 import { AxiomList } from './AxiomList';
 import { ClassAxioms } from './ClassAxioms';
+import { ShapesAbout } from './Shapes';
 import { definedClasses } from '../model/axioms';
 import { datatypeAxiom } from '../model/domains';
 import { classesOfUnion, type ClassAxiom, type ClassExpression, type DataRange, type DataRangeAxiom } from '../model/expressions';
@@ -263,6 +264,7 @@ function TermPanel({ term }: { term: Term }) {
           <ClassAxioms term={term} />
           {has('restrictions') && <ClassRestrictions term={term} />}
           <ClassProperties term={term} />
+          {supports(model, 'validation') && <ShapesAbout iri={term.iri} name={term.name} isClass />}
           {has('inferred') && <InferredSupers term={term} />}
           {has('inferred') && <InferredRestrictionsPanel term={term} />}
         </>
@@ -288,6 +290,7 @@ function TermPanel({ term }: { term: Term }) {
           <LinkEditor term={term} kind="propertyDisjointWith" noun="disjoint property" label="Disjoint properties" />
         </Section>
       )}
+      {has('axioms') && term.type === 'property' && supports(model, 'validation') && <ShapesAbout iri={term.iri} name={term.name} isClass={false} />}
 
       {has('axioms') && term.type === 'instance' && (
         <>
@@ -718,6 +721,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
       </fieldset>
         <PropLinks prop={prop} />
       </Section>
+      {supports(model, 'validation') && <ShapesAbout iri={prop.iri} name={prop.name} isClass={false} />}
       <Section id="annotations" title="Annotations" count={prop.fields.length + (prop.description ? 1 : 0)}>
         <label className="field">
           <span>

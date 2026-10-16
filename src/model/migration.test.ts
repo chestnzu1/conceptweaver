@@ -8,7 +8,9 @@ import { withIris } from './iri';
 import { dataDomain, objectProperties, plainRelationships, relChoice, type PropView } from './props';
 import { fromTurtle, toTurtle } from './rdf';
 import { MODEL_VERSION, normalizeModel, type Model } from './types';
+import { findShape, setTurtle } from './shapes';
 import { statementsOf } from './unmapped';
+import { shaclFindings } from './validation';
 
 /**
  * Models saved in format 1, before object properties had ids (fixtures/v1, written by the code of
@@ -219,6 +221,50 @@ describe('a model saved in format 3', () => {
   it('is saved in the format of today, and opens from that unchanged', () => {
     const saved = JSON.parse(JSON.stringify(m));
     expect(saved.version).toBe(MODEL_VERSION);
+    expect(open(saved)).toEqual(m);
+  });
+});
+
+/**
+ * A model saved in format 4 (fixtures/v4, written by the code of that format and not since), whose
+ * shapes were one graph of node shapes in fixed fields, with Turtle for what the fields could not
+ * say. Opened today they are one shape set, every shape a structure, saying the same, and a
+ * validation finds the same as format 4 found.
+ */
+describe('a model saved in format 4', () => {
+  const dir4 = new URL('./fixtures/v4/', import.meta.url).pathname;
+  const read4 = (file: string) => fs.readFileSync(dir4 + file, 'utf8');
+  const raw = JSON.parse(read4('shapes.json'));
+  const m = open(raw);
+  const was = JSON.parse(read4('shapes.findings.json')) as { findings: Record<string, unknown>[]; editable: number; kept: number };
+  const statements = (ttl: string) => statementsOf(ttl).map((s) => s.text).sort();
+
+  it('was saved in format 4, with its shapes in fields and one kept as Turtle, and opens with them as one set', () => {
+    expect(raw.version).toBe(4);
+    expect(raw.shapes.nodes).toHaveLength(was.editable);
+    expect(raw.shapes.extra).toContain('ContactShape');
+    expect(m.version).toBe(MODEL_VERSION);
+    expect(m.shapeSets).toHaveLength(1);
+    expect(m.shapeSets[0].name).toBe('Shapes');
+    // The shape format 4 kept as text (it used sh:or) is a structure now, like the others; nothing is kept as text.
+    expect(m.shapeSets[0].shapes.filter((s) => s.iri).map((s) => s.iri!.split('#')[1]).sort()).toEqual(['ContactShape', 'OrganisationShape', 'PersonShape']);
+    expect(m.shapeSets[0].extra).toBe('');
+  });
+
+  it('says what format 4 said: the same statements as its shapes graph', () => {
+    expect(statements(setTurtle(m, m.shapeSets[0]))).toEqual(statements(read4('shapes.shapes.ttl')));
+  });
+
+  it('validates to the same findings', async () => {
+    const { findings } = await shaclFindings(m);
+    const said = findings.map((f) => ({ severity: f.severity, rule: f.rule, message: f.message, shape: findShape(m, f.shapeId!)?.shape.iri ?? null, ...f.shacl }));
+    expect(said).toEqual(was.findings);
+  });
+
+  it('is saved in the format of today, and opens from that unchanged', () => {
+    const saved = JSON.parse(JSON.stringify(m));
+    expect(saved.version).toBe(MODEL_VERSION);
+    expect(saved.shapes).toBeUndefined();
     expect(open(saved)).toEqual(m);
   });
 });

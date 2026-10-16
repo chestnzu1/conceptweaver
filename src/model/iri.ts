@@ -1,3 +1,4 @@
+import { renamedSets } from './shacl';
 import { renamed, type ClassAxiom, type DataRangeAxiom } from './expressions';
 import type { ExtraField, Model, ObjProp, Term } from './types';
 import { renameIris } from './unmapped';
@@ -100,30 +101,12 @@ function axiomsFollow<T extends Pick<Term, 'domains' | 'ranges'> | Pick<ObjProp,
 export function followIris(m: Model, changed: Map<string, string>): Model {
   if (!changed.size) return m;
   const swap = (x: string) => changed.get(x) ?? x;
-  const inText = (text: string) => text.replace(/<([^<>\s]*)>/g, (all, iri: string) => (changed.has(iri) ? `<${changed.get(iri)}>` : all));
-  const all = (list: string[]) => (list.some((x) => changed.has(x)) ? list.map(swap) : list);
   const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && changed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && changed.has(f.value) ? { ...f, value: swap(f.value) } : f)) } : x);
   return {
     ...m,
     terms: m.terms.map((t) => axiomsFollow(refs(t), changed)),
     props: m.props.map((p) => axiomsFollow(refs(p), changed)),
-    shapes: {
-      extra: inText(m.shapes.extra),
-      nodes: m.shapes.nodes.map((n) => ({
-        ...n,
-        targetClass: all(n.targetClass),
-        targetNode: all(n.targetNode),
-        targetSubjectsOf: all(n.targetSubjectsOf),
-        targetObjectsOf: all(n.targetObjectsOf),
-        properties: n.properties.map((s) => ({
-          ...s,
-          path: swap(s.path),
-          ...(s.class ? { class: swap(s.class) } : {}),
-          ...(s.hasValue?.iri ? { hasValue: { ...s.hasValue, v: swap(s.hasValue.v) } } : {}),
-          ...(s.in ? { in: s.in.map((v) => (v.iri ? { ...v, v: swap(v.v) } : v)) } : {}),
-        })),
-      })),
-    },
+    shapeSets: renamedSets(m.shapeSets, changed),
     mappings: m.mappings.map((x) => (changed.has(x.source) || changed.has(x.target) ? { ...x, source: swap(x.source), target: swap(x.target) } : x)),
     rejected: m.rejected.map((r) => r.split('|').map(swap).join('|')),
     ...(m.unmapped ? { unmapped: renameIris(m.unmapped, changed) } : {}),

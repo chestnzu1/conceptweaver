@@ -2,7 +2,8 @@
 // statement (NFR-1, FR-M1-8). src/model/corpus.test.ts opens each, saves it unchanged and has
 // the OWL service compare the two; what is lost today is in corpus/expected/.
 //
-//   node corpus/corpus.mjs      (pnpm corpus) fetches the files that are not there yet
+//   node corpus/corpus.mjs      (pnpm corpus) fetches the files that are not there yet, and the
+//                               W3C SHACL Core test suite (corpus/shacl.mjs)
 //
 // The files are not kept in the repository: each is fetched from where it is published, at a
 // fixed version, and checked against its SHA-256, so the corpus is the same everywhere. A file
@@ -12,6 +13,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchShaclSuite } from './shacl.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const FILES = path.join(here, 'files');
@@ -123,6 +125,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const before = missing().length;
     await fetchCorpus();
     console.log(before ? `The corpus is complete: ${CORPUS.length} ontologies in ${path.relative(process.cwd(), FILES)}.` : `The corpus was already complete (${CORPUS.length} ontologies).`);
+    // And the W3C SHACL Core test suite (corpus/shacl.mjs).
+    await fetchShaclSuite();
   } catch (e) {
     console.error(e instanceof Error ? e.message : e);
     process.exit(1);

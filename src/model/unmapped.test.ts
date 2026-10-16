@@ -45,6 +45,13 @@ describe('statements', () => {
     expect(one[0].quads).toHaveLength(4);
   });
 
+  it('are the same statement when a blank node two triples point at comes in another order', () => {
+    // A blank node pointed at twice is labelled; its label depends on what it stands for, not on where it comes.
+    const one = statementsOf(`${P}:a :p _:x . :b :p _:y . :c :q _:x . :d :q _:y . _:x :v 1 . _:y :v 2 .`);
+    const two = statementsOf(`${P}_:y :v 2 . :d :q _:y . :b :p _:y . _:x :v 1 . :c :q _:x . :a :p _:x .`);
+    expect(one.map((s) => s.text).sort()).toEqual(two.map((s) => s.text).sort());
+  });
+
   it('write a list in place, and keep what shares a blank node as one', () => {
     const [chain] = statementsOf(`${P}:q owl:propertyChainAxiom ( :p :p ) .`);
     expect(chain.text).toBe('<http://example.org/o#q> <http://www.w3.org/2002/07/owl#propertyChainAxiom> ( <http://example.org/o#p> <http://example.org/o#p> ) .');

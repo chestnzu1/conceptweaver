@@ -4,6 +4,8 @@ import { classExpressionAxiomFrom, classExpressionFrom, dataRangeFrom, expressio
 import { statementsOf } from './unmapped';
 import { withIris } from './iri';
 import { compactIri, STANDARD } from './prefixes';
+import { shapeSetsFrom, type ShapeSet } from './shacl';
+import { shapeSetOfFormat4 } from './shapesLegacy';
 
 export type TermType = 'concept' | 'property' | 'instance';
 export type RelKind = 'association' | 'generalization' | 'property';
@@ -334,10 +336,13 @@ export interface Prefix {
  * expression (or for a data property's range a data range), where it was a list of classes that
  * meant their union, and a data property's range one datatype. 4 (from 2026-10-14): a class's
  * superclasses, equivalent classes and disjoint classes that are expressions are axioms with a
- * structured expression (Term.classAxioms), where they were kept as Turtle text (Term.axioms). A
- * model of an earlier version is read and brought up to date by normalizeModel.
+ * structured expression (Term.classAxioms), where they were kept as Turtle text (Term.axioms). 5
+ * (from 2026-10-15): the SHACL shapes are shape sets, several named shapes graphs each holding
+ * every SHACL Core construct as structure (shacl.ts), where they were one graph of node shapes in
+ * fixed fields with Turtle for the rest (`shapes`). A model of an earlier version is read and
+ * brought up to date by normalizeModel.
  */
-export const MODEL_VERSION = 4;
+export const MODEL_VERSION = 5;
 
 export interface Model {
   format: 'conceptweaver';
@@ -372,7 +377,8 @@ export interface Model {
   props: ObjProp[];
   terms: Term[];
   relations: Relation[];
-  shapes: Shapes;
+  /** The SHACL shape sets: constraint models beside the ontology, never part of it (shacl.ts). */
+  shapeSets: ShapeSet[];
   quality: QualityConfig;
   externals: ExternalRef[];
   mappings: MappingMeta[];
@@ -438,75 +444,6 @@ export interface GovernanceConfig {
   overrides: Record<string, { appliesTo?: EntityKind[]; required?: boolean }>;
 }
 
-/** A value in a SHACL constraint: an IRI, or a literal with its datatype or language. */
-export interface ShapeValue {
-  v: string;
-  iri?: boolean;
-  dt?: string;
-  lang?: string;
-}
-
-export type ShaclSeverity = 'Violation' | 'Warning' | 'Info';
-export const NODE_KINDS = ['IRI', 'Literal', 'BlankNode', 'BlankNodeOrIRI', 'BlankNodeOrLiteral', 'IRIOrLiteral'] as const;
-
-/** One sh:property of a node shape: what the values reached by a path must be like. Entities are named by IRI. */
-export interface PropertyShape {
-  id: string;
-  /** IRI of the property the values are reached by; `inverse` follows it backwards (sh:inversePath). */
-  path: string;
-  inverse?: boolean;
-  name?: string;
-  message?: string;
-  severity?: ShaclSeverity;
-  minCount?: number;
-  maxCount?: number;
-  /** A datatype as a prefixed name (xsd:string) or a full IRI. */
-  datatype?: string;
-  class?: string;
-  nodeKind?: (typeof NODE_KINDS)[number];
-  pattern?: string;
-  flags?: string;
-  in?: ShapeValue[];
-  hasValue?: ShapeValue;
-  minInclusive?: ShapeValue;
-  maxInclusive?: ShapeValue;
-  minExclusive?: ShapeValue;
-  maxExclusive?: ShapeValue;
-  minLength?: number;
-  maxLength?: number;
-  uniqueLang?: boolean;
-  languageIn?: string[];
-  /** IRI of a node shape every value must conform to. */
-  node?: string;
-}
-
-/** A SHACL node shape as the shape editor holds it. */
-export interface ShapeDef {
-  id: string;
-  iri: string;
-  name: string;
-  targetClass: string[];
-  targetNode: string[];
-  targetSubjectsOf: string[];
-  targetObjectsOf: string[];
-  severity?: ShaclSeverity;
-  message?: string;
-  closed?: boolean;
-  deactivated?: boolean;
-  properties: PropertyShape[];
-}
-
-/**
- * The model's SHACL shapes graph. It is kept apart from the ontology: shapes say what data
- * must look like, they assert nothing about the classes. `nodes` are the shapes the editor
- * understands; `extra` is Turtle for imported shapes that use more of SHACL than the editor has
- * fields for, kept as written.
- */
-export interface Shapes {
-  nodes: ShapeDef[];
-  extra: string;
-}
-
 /**
  * Another ontology this one knows about. Only this description is in the model; the
  * ontology's content is cached in the browser and is never merged into the model by itself.
@@ -569,7 +506,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapes: { nodes: [], extra: '' }, quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
+  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapeSets: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -911,7 +848,8 @@ export function normalizeModel(raw: unknown): Model {
     props,
     terms,
     relations,
-    shapes: normalizeShapes(o.shapes),
+    // Format 5 has shape sets; an earlier one had one graph of shapes, which becomes one set.
+    shapeSets: Array.isArray(o.shapeSets) ? shapeSetsFrom(o.shapeSets) : shapeSetOfFormat4(o.shapes),
     externals: (Array.isArray(o.externals) ? (o.externals as Record<string, unknown>[]) : [])
       .filter((e) => e && typeof e === 'object' && str(e.id))
       .map((e): ExternalRef => {
@@ -1037,55 +975,6 @@ export function withClassLists(m: Model, legacy: ClassLists): Model {
   };
   if (!kept.length) return out;
   return { ...out, unmapped: [...(out.unmapped ?? '').split('\n').filter(Boolean), ...kept].sort().join('\n') + '\n' };
-}
-
-const SEVERITIES = ['Violation', 'Warning', 'Info'];
-const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined);
-const strs = (v: unknown) => (Array.isArray(v) ? [...new Set(v.map((x) => str(x)).filter(Boolean))] : []);
-function shapeValue(v: unknown): ShapeValue | undefined {
-  if (!v || typeof v !== 'object') return undefined;
-  const o = v as Record<string, unknown>;
-  if (typeof o.v !== 'string') return undefined;
-  return { v: o.v, ...(o.iri === true ? { iri: true } : {}), ...(str(o.dt) ? { dt: str(o.dt) } : {}), ...(LANG.test(str(o.lang)) ? { lang: str(o.lang).toLowerCase() } : {}) };
-}
-
-/** Validates the shapes part of untrusted JSON. A model saved before shapes existed has none. */
-export function normalizeShapes(raw: unknown): Shapes {
-  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const nodes: ShapeDef[] = [];
-  for (const n of (Array.isArray(o.nodes) ? o.nodes : []) as Record<string, unknown>[]) {
-    if (!n || typeof n !== 'object' || !str(n.iri)) continue;
-    const properties: PropertyShape[] = [];
-    for (const p of (Array.isArray(n.properties) ? n.properties : []) as Record<string, unknown>[]) {
-      if (!p || typeof p !== 'object') continue;
-      const out: PropertyShape = { id: str(p.id) || uid(), path: str(p.path) };
-      if (p.inverse === true) out.inverse = true;
-      for (const k of ['name', 'message', 'datatype', 'class', 'pattern', 'flags', 'node'] as const) if (str(p[k])) out[k] = str(p[k]);
-      if (SEVERITIES.includes(str(p.severity))) out.severity = str(p.severity) as ShaclSeverity;
-      for (const k of ['minCount', 'maxCount', 'minLength', 'maxLength'] as const) if (count(p[k]) !== undefined) out[k] = count(p[k]);
-      if ((NODE_KINDS as readonly string[]).includes(str(p.nodeKind))) out.nodeKind = str(p.nodeKind) as PropertyShape['nodeKind'];
-      for (const k of ['hasValue', 'minInclusive', 'maxInclusive', 'minExclusive', 'maxExclusive'] as const) if (shapeValue(p[k])) out[k] = shapeValue(p[k]);
-      if (Array.isArray(p.in)) out.in = p.in.map(shapeValue).filter((x): x is ShapeValue => !!x);
-      if (p.uniqueLang === true) out.uniqueLang = true;
-      if (Array.isArray(p.languageIn)) out.languageIn = strs(p.languageIn);
-      properties.push(out);
-    }
-    nodes.push({
-      id: str(n.id) || uid(),
-      iri: str(n.iri),
-      name: str(n.name),
-      targetClass: strs(n.targetClass),
-      targetNode: strs(n.targetNode),
-      targetSubjectsOf: strs(n.targetSubjectsOf),
-      targetObjectsOf: strs(n.targetObjectsOf),
-      ...(SEVERITIES.includes(str(n.severity)) ? { severity: str(n.severity) as ShaclSeverity } : {}),
-      ...(str(n.message) ? { message: str(n.message) } : {}),
-      ...(n.closed === true ? { closed: true } : {}),
-      ...(n.deactivated === true ? { deactivated: true } : {}),
-      properties,
-    });
-  }
-  return { nodes, extra: str(o.extra) };
 }
 
 /** Name of a relation kind as shown in menus; SKOS calls a generalization "broader". */

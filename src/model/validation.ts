@@ -9,7 +9,8 @@ import { termIris, toTurtle } from './rdf';
 import { reason, type Reasoning } from './reasoner';
 import { dlResult, entityLinks, readable, type DlReport, type EntityLink, type ReasoningResult } from './reasoning';
 import { MODEL_DATA, type Category, type DataGraph, type EntityRef, type EntityType, type Finding, type JustifiedEntity, type Level, type OntologyRef, type OwlSummary, type QualitySummary, type Scope, type ShaclSummary, type ValidationReport } from '../validation/contracts';
-import { SH, shapesToTurtle } from './shapes';
+import { isPropertyShape } from './shacl';
+import { findShape, ownerOf, SH, shapeByIri, shapeName, shapesToTurtle } from './shapes';
 import type { Model } from './types';
 import { quoted, quotedName } from './words';
 
@@ -61,8 +62,8 @@ function entityIndex(model: Model) {
     return r ? { kind: 'rel', id, name: `${byId.get(r.from)?.name || 'Unnamed'} → ${byId.get(r.to)?.name || 'Unnamed'}`, type: 'relationship' } : undefined;
   };
   const shape = (id: string): EntityRef | undefined => {
-    const s = model.shapes.nodes.find((x) => x.id === id);
-    return s ? { kind: 'shape', id, name: s.name || 'Shape', type: 'shape', iri: s.iri } : undefined;
+    const s = findShape(model, id)?.shape;
+    return s ? { kind: 'shape', id, name: shapeName(s), type: 'shape', iri: s.iri } : undefined;
   };
   const ontology: EntityRef = { kind: 'model', id: 'model', name: model.name, type: 'ontology', iri: ontologyIriOf(model) };
   return { term, prop, rel, shape, ontology, byId };
@@ -384,7 +385,8 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
   let shapeQuads: unknown[];
   let dataQuads: unknown[];
   try {
-    shapeQuads = new Parser().parse(shapesTtl);
+    // Blank nodes keep their labels: an anonymous shape is labelled by its id, and a result names it so.
+    shapeQuads = new Parser({ blankNodePrefix: '' }).parse(shapesTtl);
   } catch (e) {
     return done({ status: 'failed', error: `The shapes could not be read: ${e instanceof Error ? e.message : 'not valid Turtle'}` });
   }
@@ -406,10 +408,8 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
 
     const iriToTerm = termIris(model);
     const iriToProp = new Map(model.props.filter((p) => p.iri).map((p) => [p.iri!, p.id]));
-    const shapeByIri = new Map(model.shapes.nodes.map((s) => [s.iri, s]));
-    // A property shape is usually a blank node; the node shape that holds it says where it is from.
-    const parent = new Map<string, string>();
-    for (const x of shapeQuads as { subject: RdfTerm; predicate: RdfTerm; object: RdfTerm }[]) if (x.predicate.value === SH + 'property') parent.set(x.object.value, x.subject.value);
+    // The shape a result is of, and the shape the editor lists it under: itself, or the shape that holds it.
+    const shapeOf = (t: RdfTerm) => (t.termType === 'BlankNode' ? findShape(model, t.value) : shapeByIri(model, t.value));
     const short = (iri: string) => compactIri(model, iri) ?? (iri.startsWith(SH) ? 'sh:' + iri.slice(SH.length) : `<${iri}>`);
     const show = (t: RdfTerm) => (t.termType === 'Literal' ? JSON.stringify(t.value) + (t.language ? '@' + t.language : '') : t.termType === 'BlankNode' ? '_:' + t.value : short(t.value));
 
@@ -422,8 +422,8 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
       const level = SEVERITY[r.severity?.value.slice(SH.length) ?? 'Violation'] ?? 'error';
       const component = r.sourceConstraintComponent?.value ?? '';
       const source = r.sourceShape;
-      const owner = source ? (source.termType === 'BlankNode' ? parent.get(source.value) : source.value) : undefined;
-      const shape = owner ? shapeByIri.get(owner) : undefined;
+      const found = source ? shapeOf(source) : undefined;
+      const shape = found ? (found.shape.iri ? found.shape : (ownerOf(found.set, found.shape.id) ?? found.shape)) : undefined;
       const path = r.path?.termType === 'NamedNode' ? r.path.value : undefined;
       const messages = r.message.map((m) => m.value);
       return {
@@ -443,7 +443,7 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
           focusNode: focus ? show(focus) : '',
           ...(r.path ? { resultPath: path ? short(path) : '(a path that is not a single property)' } : {}),
           ...(r.value ? { value: show(r.value) } : {}),
-          sourceShape: source ? (source.termType === 'BlankNode' ? `a property shape${owner ? ` of ${short(owner)}` : ''}` : short(source.value)) : '',
+          sourceShape: source ? (source.termType === 'BlankNode' ? `${found && isPropertyShape(found.shape) ? 'a property shape' : 'an anonymous shape'}${shape && shape !== found?.shape ? ` of ${shape.iri ? short(shape.iri) : shapeName(shape)}` : ''}` : short(source.value)) : '',
           sourceConstraintComponent: component ? short(component) : '',
           resultSeverity: r.severity ? short(r.severity.value) : '',
           resultMessage: messages,
@@ -458,7 +458,9 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
     const count = (l: Level) => findings.filter((f) => f.severity === l).length;
     return done({ status: report.conforms ? 'conforms' : 'violations', violations: count('error'), warnings: count('warning'), infos: count('info'), shapes: shapeSubjects.size, dataTriples: dataQuads.length, report: reportTtl }, findings);
   } catch (e) {
-    return done({ status: 'failed', error: `The SHACL engine stopped: ${e instanceof Error ? e.message : 'unknown error'}`, shapes: shapeSubjects.size, dataTriples: dataQuads.length });
+    // A shape that refers to itself, through sh:node, sh:or and the like, has no meaning SHACL defines: the engine goes round it until it runs out.
+    const recursive = e instanceof RangeError && /call stack/i.test(e.message);
+    return done({ status: 'failed', error: recursive ? 'A shape refers to itself, through sh:node, sh:property, sh:or or the like. SHACL does not say what such a shape means, and the engine cannot validate with it: take the reference away.' : `The SHACL engine stopped: ${e instanceof Error ? e.message : 'unknown error'}`, shapes: shapeSubjects.size, dataTriples: dataQuads.length });
   }
 }
 

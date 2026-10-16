@@ -5,7 +5,7 @@ import { classIriOf } from '../../structure/local';
 import { findPath } from '../checks';
 import { bounds } from '../geometry';
 import { normalizeByKind, type SavedStyle } from '../graphStyle';
-import { allowsView, supports, type View } from '../modelTypes';
+import { allowsView, supports, viewFor, type View } from '../modelTypes';
 import { initialModel } from './document';
 import { stored, STYLES_KEY, THEME_KEY } from './storage';
 import type { Slice, State } from './types';
@@ -121,6 +121,8 @@ export interface SessionSlice {
   selProp: string | null;
   vp: Viewport;
   canvasSize: { w: number; h: number };
+  /** What the Shapes view has open: a shape set, and a shape of it. */
+  shapesView: { set: string | null; shape: string | null };
   /**
    * The canvas draws all of what it shows, in full detail, rather than what is in view: for the
    * moment a picture of it is taken (files.ts), which is of the whole graph.
@@ -185,6 +187,8 @@ export interface SessionSlice {
   setVp: (vp: Viewport) => void;
   zoomBy: (factor: number, cx?: number, cy?: number) => void;
   setCanvasSize: (w: number, h: number) => void;
+  /** Opens the Shapes view on a set, and a shape of it; the set the shape is in when only the shape is given. */
+  openShapes: (set?: string | null, shape?: string | null) => void;
   setDrawAll: (on: boolean) => void;
   fit: () => void;
   setView: (v: View) => void;
@@ -206,6 +210,7 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   selProp: null,
   vp: { x: 0, y: 0, k: 1 },
   canvasSize: { w: 0, h: 0 },
+  shapesView: { set: null, shape: null },
   drawAll: false,
   view: 'graph',
   editing: null,
@@ -421,6 +426,11 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
       return { vp: { k, x: px - (px - s.vp.x) * ratio, y: py - (py - s.vp.y) * ratio } };
     }),
   setCanvasSize: (w, h) => set({ canvasSize: { w, h } }),
+  openShapes: (setId, shape) => {
+    const sets = get().model.shapeSets;
+    const of = shape ? sets.find((s) => s.shapes.some((x) => x.id === shape))?.id : undefined;
+    set({ view: viewFor(get().model, 'shapes'), shapesView: { set: of ?? setId ?? get().shapesView.set ?? sets[0]?.id ?? null, shape: shape ?? null } });
+  },
   setDrawAll: (on) => set({ drawAll: on }),
   fit: () => {
     const { canvasSize } = get();

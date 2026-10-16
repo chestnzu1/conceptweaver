@@ -11,3 +11,5 @@ bench-results/
 
 # The round-trip corpus, fetched by pnpm corpus (corpus/corpus.mjs)
 corpus/files/
+# The W3C SHACL Core test suite, fetched by pnpm corpus (corpus/shacl.mjs)
+corpus/shacl/

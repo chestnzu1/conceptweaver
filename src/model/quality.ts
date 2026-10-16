@@ -6,7 +6,7 @@ import { validateLiteral } from './literals';
 import { isAbsoluteIri, STANDARD } from './prefixes';
 import { nameKey } from './identity';
 import { assertedSuperclasses, objectProperties, propLinks } from './props';
-import { shapeReferences } from './shapes';
+import { findShape, ownerOf, shapeName, shapeReferences } from './shapes';
 import { OWL, unparsedIn, type ClassAxiomKind } from './expressions';
 import { classText, namingFor } from './manchester';
 
@@ -312,10 +312,15 @@ export function qualityDiagnostics(model: Model, config: QualityConfig = model.q
     for (const p of model.props) for (const link of PROP_LINKS) for (const k of p[link] ?? []) if (!ids.has(k)) add('unresolved-reference', `Object property ${quoted(p.name)} refers to a property that is not in the model.`, { prop: p.id, suggestion: 'Open the property and remove the reference, or declare the missing property.' });
     const iris = new Set(entities.map((e) => e.iri).filter(Boolean));
     const missing = new Map<string, string[]>();
-    for (const r of shapeReferences(model.shapes)) if (!iris.has(r.iri)) missing.set(r.shape.id, [...(missing.get(r.shape.id) ?? []), `${r.as} <${r.iri}>`]);
+    for (const r of shapeReferences(model.shapeSets)) {
+      if (iris.has(r.iri)) continue;
+      // Reported of the shape a set lists, the one an anonymous shape belongs to.
+      const shape = (r.shape.iri ? r.shape : ownerOf(r.set, r.shape.id) ?? r.shape).id;
+      missing.set(shape, [...(missing.get(shape) ?? []), `${r.as} <${r.iri}>`]);
+    }
     for (const [shape, list] of missing) {
-      const s = model.shapes.nodes.find((x) => x.id === shape)!;
-      add('unresolved-reference', `Shape ${quoted(s.name)} refers to ${list.length === 1 ? 'an IRI that is' : `${list.length} IRIs that are`} not in this ontology: ${[...new Set(list)].slice(0, 3).join(', ')}${list.length > 3 ? '…' : ''}.`, { shape, severity: 'info', explanation: 'That is as it should be when the shape is for imported data with a vocabulary of its own. Against this model’s own data it will match nothing.' });
+      const s = findShape(model, shape)!.shape;
+      add('unresolved-reference', `Shape ${quoted(shapeName(s))} refers to ${list.length === 1 ? 'an IRI that is' : `${list.length} IRIs that are`} not in this ontology: ${[...new Set(list)].slice(0, 3).join(', ')}${list.length > 3 ? '…' : ''}.`, { shape, severity: 'info', explanation: 'That is as it should be when the shape is for imported data with a vocabulary of its own. Against this model’s own data it will match nothing.' });
     }
   }
   if (on('prefix-conflict')) {

@@ -1,0 +1,272 @@
+{
+ "format": "conceptweaver",
+ "version": 4,
+ "name": "Staff",
+ "description": "",
+ "baseIri": "http://example.org/staff#",
+ "ontologyIri": "http://example.org/staff",
+ "prefixes": [],
+ "mode": "ontology",
+ "lang": "",
+ "vocab": {
+  "enabled": false,
+  "map": {}
+ },
+ "props": [
+  {
+   "id": "3v7p6us9ba3",
+   "name": "works for",
+   "description": "",
+   "chars": [],
+   "iri": "http://example.org/staff#worksFor"
+  }
+ ],
+ "terms": [
+  {
+   "id": "tiqh5488ba3",
+   "name": "Person",
+   "description": "",
+   "type": "concept",
+   "color": "",
+   "x": 0,
+   "y": 0,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#Person"
+  },
+  {
+   "id": "l9xnnu50ba3",
+   "name": "Organisation",
+   "description": "",
+   "type": "concept",
+   "color": "",
+   "x": -60,
+   "y": 220,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#Organisation"
+  },
+  {
+   "id": "dv2xjsj8ba3",
+   "name": "name",
+   "description": "",
+   "type": "property",
+   "color": "",
+   "x": -60,
+   "y": 470,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#name"
+  },
+  {
+   "id": "53r95zzoba3",
+   "name": "age",
+   "description": "",
+   "type": "property",
+   "color": "",
+   "x": 60,
+   "y": 470,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#age"
+  },
+  {
+   "id": "396bjjm9ba3",
+   "name": "Ann",
+   "description": "",
+   "type": "instance",
+   "color": "",
+   "x": 79,
+   "y": 220,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#ann",
+   "values": [
+    {
+     "prop": "dv2xjsj8ba3",
+     "value": "Ann"
+    },
+    {
+     "prop": "53r95zzoba3",
+     "value": "34",
+     "dt": "xsd:integer"
+    }
+   ]
+  },
+  {
+   "id": "w549uf81ba4",
+   "name": "Bob",
+   "description": "",
+   "type": "instance",
+   "color": "",
+   "x": 0,
+   "y": 110,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#bob",
+   "values": [
+    {
+     "prop": "53r95zzoba3",
+     "value": "unknown"
+    }
+   ]
+  },
+  {
+   "id": "39e1wfkgba4",
+   "name": "Acme",
+   "description": "",
+   "type": "instance",
+   "color": "",
+   "x": 0,
+   "y": 330,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#acme",
+   "values": [
+    {
+     "prop": "dv2xjsj8ba3",
+     "value": "Acme"
+    }
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "id": "p0kyb3kwba4",
+   "from": "396bjjm9ba3",
+   "to": "tiqh5488ba3",
+   "label": "",
+   "kind": "generalization",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "h5gz0dfvba4",
+   "from": "w549uf81ba4",
+   "to": "tiqh5488ba3",
+   "label": "",
+   "kind": "generalization",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "3st52j4sba4",
+   "from": "39e1wfkgba4",
+   "to": "l9xnnu50ba3",
+   "label": "",
+   "kind": "generalization",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "uyq1zhpjba4",
+   "from": "396bjjm9ba3",
+   "to": "39e1wfkgba4",
+   "label": "works for",
+   "kind": "association",
+   "prop": "3v7p6us9ba3",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "s7w5z0g6ba4",
+   "from": "w549uf81ba4",
+   "to": "396bjjm9ba3",
+   "label": "works for",
+   "kind": "association",
+   "prop": "3v7p6us9ba3",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  }
+ ],
+ "shapes": {
+  "nodes": [
+   {
+    "id": "06gm28c4ba7",
+    "iri": "http://example.org/staff#PersonShape",
+    "name": "Person shape",
+    "targetClass": [
+     "http://example.org/staff#Person"
+    ],
+    "targetNode": [],
+    "targetSubjectsOf": [],
+    "targetObjectsOf": [],
+    "properties": [
+     {
+      "id": "jwyp25hjba7",
+      "path": "http://example.org/staff#name",
+      "message": "A person has a name.",
+      "datatype": "xsd:string",
+      "minCount": 1
+     },
+     {
+      "id": "4gvl2nunba7",
+      "path": "http://example.org/staff#age",
+      "datatype": "xsd:integer",
+      "maxCount": 1
+     },
+     {
+      "id": "0pqbqailba7",
+      "path": "http://example.org/staff#worksFor",
+      "class": "http://example.org/staff#Organisation",
+      "severity": "Warning"
+     }
+    ]
+   },
+   {
+    "id": "bykb8aj0ba7",
+    "iri": "http://example.org/staff#OrganisationShape",
+    "name": "OrganisationShape",
+    "targetClass": [
+     "http://example.org/staff#Organisation"
+    ],
+    "targetNode": [],
+    "targetSubjectsOf": [],
+    "targetObjectsOf": [],
+    "properties": [
+     {
+      "id": "2ck2nfe5ba7",
+      "path": "http://example.org/staff#name",
+      "minCount": 1,
+      "maxLength": 40
+     }
+    ]
+   }
+  ],
+  "extra": "@prefix sh: <http://www.w3.org/ns/shacl#>.\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.\n\n<http://example.org/staff#ContactShape> a sh:NodeShape;\n    sh:targetClass <http://example.org/staff#Person>.\n_:n3-4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:n3-5.\n_:n3-5 sh:path <http://example.org/staff#name>;\n    sh:minCount 1.\n_:n3-4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:n3-6.\n_:n3-6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:n3-7.\n_:n3-7 sh:path <http://example.org/staff#worksFor>;\n    sh:minCount 1.\n_:n3-6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>.\n<http://example.org/staff#ContactShape> sh:or _:n3-4.\n"
+ },
+ "externals": [],
+ "mappings": [],
+ "rejected": [],
+ "governance": {
+  "custom": [],
+  "overrides": {}
+ },
+ "style": {
+  "theme": "standard",
+  "nodeTypes": {},
+  "edgeTypes": {},
+  "nodes": {},
+  "edges": {},
+  "anchors": {}
+ },
+ "layout": {
+  "kind": "hierarchy",
+  "direction": "TB",
+  "nodeSpacing": 36,
+  "layerSpacing": 70,
+  "repulsion": 1,
+  "routing": "auto",
+  "root": ""
+ },
+ "datatypes": [],
+ "quality": {
+  "off": [],
+  "on": []
+ }
+}

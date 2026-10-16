@@ -204,7 +204,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M1 Modelling and entity management | **Existing** | `src/components/Entities.tsx`, `EntityEditor.tsx`, `src/model/iri.ts`, `src/model/identity.ts` | Lossless round trip (property identity done 2026-10-14) |
 | M2 Axiom and restriction editing | **Partially Implemented** | `src/model/axioms.ts`, `props.ts` | Class expressions are text |
 | M3 Reasoning | **Existing**, job handling partial | `src/model/reasoner.ts`, `reasoning.ts`, `reasoner/ReasonerService.java` | Blocks the page; no ELK; no jobs |
-| M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shapes.ts`, `quality.ts`, `src/validation/` | Shapes are a tab of Validation, one set per model, part of Core as text (SHACL track, SH-1 to SH-5) |
+| M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shacl.ts`, `quality.ts`, `src/validation/` | A set is not validated on its own; findings stop at the shape; nothing proposes shapes (SHACL track, SH-2 to SH-5) |
 | M5 Graph and subgraph | **Existing** | `src/components/Canvas.tsx`, `src/layout/`, `src/model/subgraph.ts` | About 2,000 terms |
 | M6 Structure exploration | **Existing** | `src/structure/` | No ontology-level comparison |
 | M7 Bulk import and mapping | **Partially Implemented** | `src/model/bulk.ts` | No files, no mapping screen |
@@ -408,17 +408,18 @@ reasoner never blocks editing (NFR-3). Complete OWL 2 DL reasoning is not guaran
 practice.
 
 **Status: Existing.** SHACL Core through `rdf-validate-shacl` (`src/model/shaclEngine.ts`,
-`shaclFindings` in `validation.ts`), on the model's own individuals or on imported data. A form
-editor for common shapes, with anything else in Core written as Turtle (`src/model/shapes.ts`,
-`Shapes.tsx`). 34 quality rules in seven groups, each switchable, some with a quick fix
+`shaclFindings` in `validation.ts`), on the model's own individuals or on imported data. Shapes in a
+view of their own, in shape sets, every SHACL 1.0 Core construct in the form and read from and
+written to Turtle with nothing lost (`src/model/shacl.ts`, `shapes.ts`, `Shapes.tsx`; since
+2026-10-16, SH-1). 34 quality rules in seven groups, each switchable, some with a quick fix
 (`src/model/quality.ts`). One results table across the three kinds of check, with reports in
 JSON and RDF.
 
 **Gaps.** No SHACL-SPARQL. Imported data lasts for the session only. No user-defined quality
-rules. No way to run checks outside the application. Shapes are a tab of the Validation view,
-one shapes graph per model; the Core constructs the form has no fields for are kept as Turtle;
-a finding opens its shape, not the constraint it failed; nothing proposes shapes from the
-ontology. (Validation in a worker, cancellable: done 2026-10-15.)
+rules. No way to run checks outside the application. Every shape set is validated at once, on one
+data graph at a time; a finding opens its shape, not the constraint it failed; nothing proposes
+shapes from the ontology. (Validation in a worker, cancellable: done 2026-10-15. Shapes as a
+view of their own, in shape sets, with all of Core in the form: done 2026-10-16.)
 
 **Direction (2026-10-15).** Three models, related by mappings and never one-to-one: the
 conceptual model (OWL), the constraint model (SHACL shape sets: what an application accepts,
@@ -442,8 +443,8 @@ SH-5, delivers FR-M4-12 to FR-M4-16 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMA
 | FR-M4-9 | SHACL-SPARQL and validation against the inferred graph, with a server engine. | Recommended (SH-5) | P2 |
 | FR-M4-10 | The workbench has a fourth kind of check, *Mapping*, beside OWL, SHACL and quality: same results table, same links to what a finding is about, stale when the mapping, the ontology or the schema changes. The checks themselves are FR-M15-9. | Recommended | P1 |
 | FR-M4-11 | Data from a relational source, previewed or materialised through a mapping, can be validated against the project's shapes. | Recommended: previewed rows at DI-2, materialised data at DI-4 | P1 (previewed), P2 (materialised) |
-| FR-M4-12 | Shapes are edited in a view of their own, beside the ontology's editors, in named shape sets (constraint models), several per ontology, each with its purpose, validated and exported on its own. A class may have any number of shapes; a class's and a property's editor list the shapes about them. | Recommended (SH-1) | P0 |
-| FR-M4-13 | Every SHACL 1.0 Core construct is edited in the form: logical constraints, qualified value shapes, property pair constraints, property paths, nested shapes, closed shapes. A shape set reads from and writes to Turtle with nothing lost; what the form cannot hold (SHACL-SPARQL) is kept and written back. | Recommended (SH-1) | P0 |
+| FR-M4-12 | Shapes are edited in a view of their own, beside the ontology's editors, in named shape sets (constraint models), several per ontology, each with its purpose, validated and exported on its own. A class may have any number of shapes; a class's and a property's editor list the shapes about them. | Partially Implemented 2026-10-16 (SH-1: the sets, the *Shapes* view, the entities' editors, export per set; `src/components/Shapes.tsx`). A set validated on its own is SH-2. | P0 |
+| FR-M4-13 | Every SHACL 1.0 Core construct is edited in the form: logical constraints, qualified value shapes, property pair constraints, property paths, nested shapes, closed shapes. A shape set reads from and writes to Turtle with nothing lost; what the form cannot hold (SHACL-SPARQL) is kept and written back. | Implemented 2026-10-16 (SH-1; `src/model/shacl.ts`, checked on the W3C suite by `shacl.test.ts`) | P0 |
 | FR-M4-14 | A chosen shape set is validated against a chosen data graph; data graphs are kept with the project. A finding opens the property shape at the constraint it failed, with the value and the path, and says where in its file the focus node is. | Recommended (SH-2) | P0 |
 | FR-M4-15 | Shapes are proposed from the ontology (restrictions, domains and ranges, characteristics, datatypes, enumerations, keys), each saying what the axiom means, what the shape would check and where they differ; accepted, edited or dismissed one by one; nothing is added unreviewed; an accepted shape keeps its origin and goes stale when the axiom changes. | Recommended (SH-3) | P1 |
 | FR-M4-16 | The server validates with Jena SHACL behind the same interface, giving the browser's reports on the W3C SHACL Core tests, and validates data graphs too large for the page. | Recommended (SH-4) | P1 |
