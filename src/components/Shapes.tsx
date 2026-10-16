@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { download } from '../model/files';
 import { objectProperties } from '../model/props';
 import { isPropertyShape, PARAM, PARAMS, pathOf, pathToSparql, SH, shapeSetTurtle, sparqlToPath, termFromText, termToText, valuesOf, type ParamInfo, type Shape, type ShaclTerm, type ShaclValue, type ShapeProp, type ShapeSet } from '../model/shacl';
@@ -256,6 +256,14 @@ function ShapeForm({ set, shape, top, model, naming, edits, focus, nested = fals
   const other = rows.filter((x) => !core.includes(x));
   const properties = shape.props.map((x, i) => ({ ...x, i })).filter((x) => x.p === SH + 'property');
   const offered = PARAMS.filter((p) => p.on === 'both' || (p.on === 'property') === property);
+  // Opened from a validation finding: what failed this shape, shown here, at the constraint it failed.
+  const failed = useStore((s) => (s.shapesView.shape === shape.id ? s.shapesView.failed : undefined));
+  const here = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!failed) return;
+    const at = here.current?.querySelector(`:scope > .shape-params > [data-param="${failed.parameter}"]`) ?? here.current;
+    at?.scrollIntoView({ block: 'center' });
+  }, [failed]);
   const preview = useMemo(() => {
     const ids = nestedIds(set, shape);
     return shapeSetTurtle({ shapes: set.shapes.filter((s) => s.id === shape.id || ids.has(s.id)), extra: '', prefixes: set.prefixes }, { prefixes: { ...modelPrefixes(model), ...set.prefixes } });
@@ -270,7 +278,7 @@ function ShapeForm({ set, shape, top, model, naming, edits, focus, nested = fals
   };
 
   return (
-    <div className={'shape-form' + (nested ? ' nested' : '') + (focus === shape.id && nested ? ' focused' : '')} data-shape={shape.id}>
+    <div ref={here} className={'shape-form' + (nested ? ' nested' : '') + (focus === shape.id && nested ? ' focused' : '')} data-shape={shape.id}>
       {!nested && (
         <div className="shape-head">
           <label className="field">
@@ -303,6 +311,43 @@ function ShapeForm({ set, shape, top, model, naming, edits, focus, nested = fals
           </button>
         </div>
       )}
+      {failed && (
+        <div className="shape-failed" role="note" aria-label="What validation found">
+          <p>
+            <strong>Not met{failed.parameter ? <> at sh:{failed.parameter}</> : ''}</strong> by <code>{failed.focusNode}</code>
+            {failed.line ? `, line ${failed.line} of ${failed.data}` : failed.data ? ` in ${failed.data}` : ''}: {failed.message}
+          </p>
+          {(failed.path || failed.value) && (
+            <p className="muted">
+              {failed.path && (
+                <>
+                  Path <code>{failed.path}</code>
+                  {failed.value ? '; ' : '.'}
+                </>
+              )}
+              {failed.value && (
+                <>
+                  value <code>{failed.value}</code>.
+                </>
+              )}
+            </p>
+          )}
+          <div className="row">
+            <button
+              className="link"
+              onClick={() => {
+                st().setView('checks');
+                st().setValidation({ tab: 'results', focus: failed.finding });
+              }}
+            >
+              Back to the finding
+            </button>
+            <button className="btn icon ghost" aria-label="Close what validation found" title="Close" onClick={() => st().openShapes(set.id, shape.id)}>
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       {property && <PathField shape={shape} naming={naming} edits={edits} />}
       {GROUPS.map((group) => {
         const here = core.filter((x) => PARAM.get(x.p)!.group === group);
@@ -311,7 +356,7 @@ function ShapeForm({ set, shape, top, model, naming, edits, focus, nested = fals
           <div key={group} className="shape-params" data-group={group}>
             <h4>{group}</h4>
             {here.map((x) => (
-              <ParamRow key={x.i} info={PARAM.get(x.p)!} value={x.v} index={x.i} set={set} shape={shape} top={top} model={model} naming={naming} edits={edits} choices={choices} focus={focus} />
+              <ParamRow key={x.i} info={PARAM.get(x.p)!} value={x.v} index={x.i} set={set} shape={shape} top={top} model={model} naming={naming} edits={edits} choices={choices} focus={focus} failed={failed?.parameter === PARAM.get(x.p)!.local} />
             ))}
           </div>
         );
@@ -442,7 +487,7 @@ function valueText(v: ShaclValue, naming: ShapeNaming, set: ShapeSet): string {
   return s ? `[ ${shapeName(s)} ]` : '[]';
 }
 
-function ParamRow({ info, value, index, set, shape, top, model, naming, edits, choices, focus }: { info: ParamInfo; value: ShaclValue; index: number; set: ShapeSet; shape: Shape; top: Shape; model: Model; naming: ShapeNaming; edits: Edits; choices: ReturnType<typeof useChoices>; focus: string | null }) {
+function ParamRow({ info, value, index, set, shape, top, model, naming, edits, choices, focus, failed = false }: { info: ParamInfo; value: ShaclValue; index: number; set: ShapeSet; shape: Shape; top: Shape; model: Model; naming: ShapeNaming; edits: Edits; choices: ReturnType<typeof useChoices>; focus: string | null; failed?: boolean }) {
   const put = (v: ShaclValue) => edits.setValue(shape.id, index, v);
   const drop = () => edits.remove(shape.id, index);
   const head = (
@@ -455,13 +500,13 @@ function ParamRow({ info, value, index, set, shape, top, model, naming, edits, c
       ×
     </button>
   );
-  if (info.kind === 'shape') return <ShapeValueField value={value} index={index} owner={shape} top={top} set={set} model={model} naming={naming} edits={edits} focus={focus} kind={info.local} />;
+  if (info.kind === 'shape') return <ShapeValueField value={value} index={index} owner={shape} top={top} set={set} model={model} naming={naming} edits={edits} focus={focus} kind={info.local} failed={failed} />;
   if (info.kind === 'shapes') {
     const list = (value as { list: ShaclValue[] }).list;
     const setList = (next: ShaclValue[], shapes: Shape[] = [], dropped: string[] = []) =>
       edits.editSet((s) => withoutInline({ ...s, shapes: [...s.shapes.map((x) => (x.id === shape.id ? { ...x, props: x.props.map((p, i) => (i === index ? { ...p, v: { list: next } } : p)) } : x)), ...shapes] }, dropped));
     return (
-      <fieldset className="param-shapes" data-param={info.local}>
+      <fieldset className={'param-shapes' + (failed ? ' failed' : '')} data-param={info.local}>
         <legend>
           {head}
           {removeButton}
@@ -485,7 +530,7 @@ function ParamRow({ info, value, index, set, shape, top, model, naming, edits, c
     );
   }
   return (
-    <div className="param-row" data-param={info.local}>
+    <div className={'param-row' + (failed ? ' failed' : '')} data-param={info.local}>
       {head}
       <span className="param-value">
         <ValueField info={info} value={value} naming={naming} choices={choices} onChange={put} onRemove={drop} of={shapeName(shape)} />
@@ -713,11 +758,11 @@ function PathField({ shape, naming, edits }: { shape: Shape; naming: ShapeNaming
 }
 
 /** A shape that is a value: a named shape, by IRI, or one written in place, edited where it is. */
-function ShapeValueField({ value, index, owner, top, set, model, naming, edits, focus, kind }: { value: ShaclValue; index: number; owner: Shape; top: Shape; set: ShapeSet; model: Model; naming: ShapeNaming; edits: Edits; focus: string | null; kind: string }) {
+function ShapeValueField({ value, index, owner, top, set, model, naming, edits, focus, kind, failed = false }: { value: ShaclValue; index: number; owner: Shape; top: Shape; set: ShapeSet; model: Model; naming: ShapeNaming; edits: Edits; focus: string | null; kind: string; failed?: boolean }) {
   const info = PARAM.get(SH + kind)!;
   const inner = 'shape' in value ? set.shapes.find((s) => s.id === value.shape) : undefined;
   return (
-    <fieldset className={'param-shape' + (kind === 'property' ? ' property' : '')} data-param={kind}>
+    <fieldset className={'param-shape' + (kind === 'property' ? ' property' : '') + (failed ? ' failed' : '')} data-param={kind}>
       <legend>
         <span className="param-name" title={info.about}>
           {kind === 'property' ? (inner && isPropertyShape(inner) ? pathToSparql(pathOf(inner)!, naming.label) : 'Property shape') : info.label} <code className="pred">sh:{kind}</code>

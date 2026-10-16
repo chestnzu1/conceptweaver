@@ -157,8 +157,8 @@ is planned. The overlaps stay where they are; what is new is the track below.
 | Stage | Contents | Needs | Placed in |
 | --- | --- | --- | --- |
 | **SH-1** Shapes as a first-class editor | A *Shapes* view; shape sets; every SHACL Core construct in the form; lossless Turtle per set; links with classes and properties. | 1.4, 1.8, 1.9 | Phase 2: done 2026-10-16 |
-| **SH-2** Validation one can act on | Data graphs kept with the project; a shape set validated against a data graph; findings to the constraint and the data's source; the W3C SHACL Core tests as the conformance suite. | SH-1 | Phase 2, next: before 2.3 |
-| **SH-3** Shapes proposed from the ontology | Proposals from axioms, reviewed one by one, with their meaning stated; origin kept; stale when the axiom changes. | SH-1; 2.1 (structured expressions) | Phase 2, before 2.3 |
+| **SH-2** Validation one can act on | Data graphs kept with the project; a shape set validated against a data graph; findings to the constraint and the data's source; the W3C SHACL Core tests as the conformance suite. | SH-1 | Phase 2: done 2026-10-16 |
+| **SH-3** Shapes proposed from the ontology | Proposals from axioms, reviewed one by one, with their meaning stated; origin kept; stale when the axiom changes. | SH-1; 2.1 (structured expressions) | Phase 2, next: before 2.3 |
 | **SH-4** Jena SHACL on the server | `ValidationService` answered by the companion; the same reports as the browser on the conformance suite; data graphs too large for the page. | SH-2; 3.2 | Phase 3, after 3.2 |
 | **SH-5** SHACL-SPARQL and the inferred graph | SPARQL-based constraints and constraint components; validation against the inferred graph; the browser naming what it cannot run. | SH-4 | Phase 3, after SH-4 |
 
@@ -660,6 +660,22 @@ undone, redone and kept in the working copy; the edit contract's `ChangeSet` lis
 only, so a step that changes shapes says so in its summary and has no axioms. Giving change sets a
 graph per shape set is with the server's change entries (DATA_ARCHITECTURE.md), when versions need
 it (2.3).
+
+**Status, 2026-10-16: SH-2 done.** A run validates the shape set chosen, or every set, against the
+model's own data or one of its data graphs (`src/model/dataGraphs.ts`): RDF read from a file, kept
+with the model by what it is, its content in IndexedDB, renamed, replaced, deleted and undone like
+any edit (`Model.dataGraphs`, no new format: a field with a default). A finding gives the line of
+its file its focus node is on (`dataLines.ts`, for Turtle), a path as SPARQL writes it, and opens
+the property shape itself at the constraint it failed, by `sh:sourceConstraintComponent`. All 98
+tests of the W3C SHACL 1.0 Core suite give their expected report through the app's own path,
+shapes read into a set and validated as the workbench does (`shaclConformance.test.ts`, in CI;
+what would differ is listed in `corpus/expected/shacl-core.txt`). Running it found a model without
+a base IRI could not be validated at all (the report writer was given an undefined prefix), and
+the worker dropped the chosen set; both are fixed. `e2e/data-graphs.mjs` checks two sets giving
+one graph two results, the line, the constraint, a reload, a replacement, an undo, and a graph
+whose content the browser does not have. What it left: a data graph's content is in one browser (a
+project's data graphs on the server are 3.x), no line for a blank node or a file converted to
+Turtle, and the content of a deleted graph stays in IndexedDB so that undo finds it.
 
 **The data-integration track does not change this.** Its first task is 3.8, after the backend
 exists; from SH-2 it can validate what a mapping previews against a chosen shape set (4.11).

@@ -26,7 +26,7 @@ export interface SavedInfo {
 
 const DB_NAME = 'conceptweaver';
 /** Version of the database layout (which stores exist). */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 /** Version of a record's layout (which fields it has). */
 const RECORD_SCHEMA = 1;
 
@@ -77,6 +77,8 @@ function open(): Promise<IDBDatabase> {
       if (ev.oldVersion < 2) db.createObjectStore('externals', { keyPath: 'id' });
       // Version 3: the working copy, what is in the editor, kept as it is edited (it was one string in localStorage).
       if (ev.oldVersion < 3) db.createObjectStore('working', { keyPath: 'id' });
+      // Version 4: the content of data graphs, which a model names (Model.dataGraphs) and SHACL validates.
+      if (ev.oldVersion < 4) db.createObjectStore('datagraphs', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(explain(req.error));
@@ -221,7 +223,7 @@ export interface CachedOntology {
 }
 
 /** Runs one transaction over one store and waits until it is safely written. */
-async function single<T>(name: 'externals' | 'working', mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+async function single<T>(name: 'externals' | 'working' | 'datagraphs', mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
   const db = await open();
   try {
     const t = db.transaction([name], mode);
@@ -245,6 +247,24 @@ export const cachedOntology = (id: string) => externals('readonly', (store) => d
 /** One cached under another id but with the same ontology IRI: the same ontology, added to another model. */
 export const cachedOntologyByIri = (iri: string) => externals('readonly', async (store) => ((await done(store.getAll())) as CachedOntology[]).find((c) => c.iri === iri && !!iri));
 export const uncacheOntology = (id: string) => externals('readwrite', async (store) => void store.delete(id));
+
+// ---------------------------------------------------------------- data graphs
+
+/**
+ * The content of a data graph, as Turtle, under the id its reference has in a model. It is kept
+ * when the reference goes, so that an undo finds it again, and so that a model saved before with
+ * the same graph still has it.
+ */
+export interface KeptDataGraph {
+  id: string;
+  text: string;
+  kept: number;
+}
+
+export const keepDataGraph = (id: string, text: string) => single('datagraphs', 'readwrite', async (store) => void store.put({ id, text, kept: Date.now() } satisfies KeptDataGraph));
+export const keptDataGraph = (id: string) => single('datagraphs', 'readonly', async (store) => ((await done(store.get(id))) as KeptDataGraph | undefined)?.text);
+/** Which of these data graphs have their content in this browser. */
+export const dataGraphsKept = (ids: string[]) => single('datagraphs', 'readonly', async (store) => new Set(((await done(store.getAllKeys())) as string[]).filter((id) => ids.includes(id))));
 
 // ---------------------------------------------------------------- the working copy
 

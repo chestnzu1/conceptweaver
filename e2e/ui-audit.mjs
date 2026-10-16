@@ -3,11 +3,15 @@
 // under 12px, and controls that stick out of the panel they belong to (a dialog being a panel of its own).
 // Needs a server:  pnpm exec vite preview --port 5181   (or pass another base URL)
 import { chromium } from 'playwright-core';
-import { globSync } from 'node:fs';
+import fs, { globSync } from 'node:fs';
 
 const base = process.argv[2] ?? 'http://localhost:5181/';
 const exe = globSync(process.env.HOME + '/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell')[0];
 const browser = await chromium.launch({ executablePath: exe });
+// A shape set and a data graph to validate it against, for the screens of SHACL findings.
+const files = fs.mkdtempSync('/tmp/cw-ui-audit-');
+fs.writeFileSync(`${files}/shapes.ttl`, '@prefix sh: <http://www.w3.org/ns/shacl#> .\n@prefix : <http://example.org/film-knowledge-graph#> .\n:FilmShape a sh:NodeShape ; sh:targetClass :Film ;\n  sh:property [ sh:path :releaseDate ; sh:minCount 1 ] .\n');
+fs.writeFileSync(`${files}/films.ttl`, '@prefix : <http://example.org/film-knowledge-graph#> .\n@prefix d: <http://data.example/> .\nd:f1 a :Film .\nd:f2 a :Film .\n');
 
 const measure = () => {
   const lum = ([r, g, b]) => {
@@ -280,6 +284,32 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await page.waitForFunction(() => document.querySelector('.owl-card .reasoned')?.getAttribute('data-engine') === 'dl' && !document.querySelector('.owl-card fieldset')?.disabled);
     report('Validation · OWL 2 DL', await page.evaluate(measure));
     await page.locator('.owl-card').getByRole('radio', { name: /^Fast reasoner/ }).check();
+    // A shape set and a data graph chosen, the data graphs listed, and a SHACL finding opened at the constraint it failed.
+    // Both go again after, so the views after are as they were.
+    await tab('Shapes');
+    await shapes.getByRole('button', { name: 'New shape set' }).click();
+    await shapes.locator('input[type=file]').first().setInputFiles(`${files}/shapes.ttl`);
+    await shapes.locator('.shape-list li').first().waitFor();
+    await tab('Validation');
+    const validation = page.locator('.validation');
+    await validation.locator(':scope > input[type=file]').setInputFiles(`${files}/films.ttl`);
+    await page.waitForFunction(() => document.querySelector('[aria-label="Data to validate"]')?.value !== 'model');
+    await validation.getByLabel('Shapes to validate with').selectOption({ index: 1 });
+    await validation.getByRole('button', { name: 'SHACL', exact: true }).click();
+    await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? '') && !document.querySelector('.validation .stale'));
+    report('Validation · a data graph and a shape set', await page.evaluate(measure));
+    await validation.locator('.tabs.sub').getByRole('tab', { name: /^Data graphs/ }).click();
+    report('Validation · Data graphs', await page.evaluate(measure));
+    await validation.locator('.tabs.sub').getByRole('tab', { name: /^Results/ }).click();
+    await validation.locator('tr.result', { has: page.locator('.cat.shacl') }).first().click();
+    await validation.getByRole('button', { name: 'Open the shape at this constraint' }).click();
+    await shapes.locator('.shape-failed').waitFor();
+    report('Shapes · opened from a finding', await page.evaluate(measure));
+    await shapes.getByRole('button', { name: 'Delete set' }).click();
+    await tab('Validation');
+    await validation.locator('.tabs.sub').getByRole('tab', { name: /^Data graphs/ }).click();
+    await validation.locator('.data-graphs').getByRole('button', { name: 'Delete' }).click();
+    await validation.locator('.tabs.sub').getByRole('tab', { name: /^Results/ }).click();
     await tab('Align');
     report('Align', await page.evaluate(measure));
     await tab('RDF');
@@ -339,4 +369,5 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
 }
 console.log('\nTOTALS', JSON.stringify(totals));
 await browser.close();
+fs.rmSync(files, { recursive: true, force: true });
 process.exit(Object.values(totals).some((n) => n > 0) ? 1 : 0);

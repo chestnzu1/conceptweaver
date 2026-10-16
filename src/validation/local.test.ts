@@ -4,7 +4,7 @@ import { emptyModel, newRelation, newTerm, type Model } from '../model/types';
 import { validate } from '../model/validation';
 import type { DlReport } from '../reasoning/contracts';
 import { MODEL_DATA, ValidationError, type ValidationJob } from './contracts';
-import { createLocalValidationService, fixOf, onThePage, type Runner, type ValidationHost } from './local';
+import { createLocalValidationService, fixOf, onThePage, optionsOf, type Runner, type ValidationHost, type WorkerInput } from './local';
 
 /** Two disjoint classes, a class under both (stated twice), and no definitions: something for each kind of check to find, and a quick fix. */
 const people = (): Model => {
@@ -106,5 +106,20 @@ describe('a quick fix', () => {
     // Of another model, or with another fix, it is not found.
     expect(fixOf(emptyModel('Other'), finding)).toBeUndefined();
     expect(fixOf(model, { ...finding, fix: { label: 'Something else', preview: '' } })).toBeUndefined();
+  });
+
+  it('tells the checks the same of a job, in a worker or on the page: the shape set chosen among it', async () => {
+    // The runner is given what the service was asked: a shape set, a data graph and its content.
+    let given: WorkerInput | undefined;
+    const runner: Runner = async (input, signal, progress) => ((given = input), onThePage(input, signal, progress));
+    const { service } = serviceOver(people(), runner);
+    const data = { source: 'graph' as const, id: 'g', name: 'g', fingerprint: 'f', text: '', includeOntology: true };
+    const report = await service.report((await service.start({ ...ref, categories: ['shacl'], data, shapeSet: 'set-1', engine: 'fast' })).job);
+    expect(given).toMatchObject({ shapeSet: 'set-1', data });
+    expect(optionsOf(given!, async () => {})).toMatchObject({ shapeSet: 'set-1', ref });
+    // The set is not in the model: SHACL says so, rather than validating with every set; the report has no content of the data.
+    expect(report.shacl).toMatchObject({ status: 'failed', error: expect.stringContaining('no longer in the model') });
+    expect(report.data).not.toHaveProperty('text');
+    expect(report.shapeSet).toBe('set-1');
   });
 });

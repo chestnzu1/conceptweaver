@@ -379,6 +379,8 @@ export interface Model {
   relations: Relation[];
   /** The SHACL shape sets: constraint models beside the ontology, never part of it (shacl.ts). */
   shapeSets: ShapeSet[];
+  /** The data graphs SHACL validates, beside the model's own individuals: what each is, its content kept in this browser (dataGraphs.ts). */
+  dataGraphs: DataGraphRef[];
   quality: QualityConfig;
   externals: ExternalRef[];
   mappings: MappingMeta[];
@@ -448,6 +450,26 @@ export interface GovernanceConfig {
  * Another ontology this one knows about. Only this description is in the model; the
  * ontology's content is cached in the browser and is never merged into the model by itself.
  */
+/**
+ * A data graph of the model: RDF that the shapes are validated against, kept with the model by
+ * what it is, its content (as Turtle) in this browser's IndexedDB under its id. It is no part of
+ * the ontology and is never written into it.
+ */
+export interface DataGraphRef {
+  id: string;
+  name: string;
+  /** The file it was read from, and its syntax. */
+  file: string;
+  format: string;
+  triples: number;
+  /** A fingerprint of its content: a graph replaced by another file is other data to validate. */
+  fingerprint: string;
+  /** Validated together with the ontology's triples, so that a shape for a class reaches its subclasses' instances. */
+  includeOntology: boolean;
+  /** When it was read, or last replaced. */
+  read: number;
+}
+
 export interface ExternalRef {
   id: string;
   name: string;
@@ -506,7 +528,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapeSets: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
+  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapeSets: [], dataGraphs: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -888,6 +910,9 @@ export function normalizeModel(raw: unknown): Model {
     style: normalizeGraphStyle(o.style, new Set(terms.map((t) => t.id)), new Set(relations.map((r) => r.id))),
     layout: normalizeLayout(o.layout, new Set(terms.map((t) => t.id))),
     datatypes,
+    dataGraphs: (Array.isArray(o.dataGraphs) ? (o.dataGraphs as Record<string, unknown>[]) : [])
+      .filter((g) => g && typeof g === 'object' && str(g.id))
+      .map((g): DataGraphRef => ({ id: str(g.id), name: str(g.name) || str(g.file) || 'Data', file: str(g.file), format: str(g.format) || 'turtle', triples: num(g.triples), fingerprint: str(g.fingerprint), includeOntology: g.includeOntology !== false, read: num(g.read) })),
     ...(typeof o.unmapped === 'string' && o.unmapped.trim() ? { unmapped: o.unmapped } : {}),
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],

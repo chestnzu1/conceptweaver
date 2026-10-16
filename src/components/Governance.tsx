@@ -23,8 +23,7 @@ import { standardAnnotation } from '../model/annotations';
 import { localName } from '../model/iri';
 import { compactIri, isAbsoluteIri } from '../model/prefixes';
 import type { Finding } from '../validation/contracts';
-import { isStale } from '../validation/report';
-import { useStore } from '../model/store';
+import { runIsStale, useStore } from '../model/store';
 import { DATATYPES, ENTITY_KINDS, ENUM_RANGE, META_GROUPS, VALUE_TYPES, type EntityKind, type MetaField, type MetaGroup, type Model, type ValueType } from '../model/types';
 import { EntityPicker, type Choice } from './EntityPicker';
 import { CommitInput, CommitTextarea } from './fields';
@@ -76,8 +75,8 @@ function AddInput({ type, label, onAdd }: { type: ValueType; label: string; onAd
  * to do after every edit.
  */
 function Findings({ entity }: { entity: MetaEntity }) {
-  const { run, data } = useStore((s) => s.validation);
-  const revision = useStore((s) => s.version.revision);
+  const run = useStore((s) => s.validation.run);
+  const stale = useStore(runIsStale);
   const about = (f: Finding) => ('term' in entity.owner ? f.terms.includes(entity.owner.term) || (f.entity?.kind === 'term' && f.entity.id === entity.owner.term) : f.entity?.kind === 'prop' && f.entity.id === entity.owner.prop);
   const found = run ? run.findings.filter(about) : [];
   const worst = (['error', 'warning'] as const).find((l) => found.some((f) => f.severity === l));
@@ -87,7 +86,7 @@ function Findings({ entity }: { entity: MetaEntity }) {
         'Not validated yet. '
       ) : (
         <>
-          <span className={worst ? 'bad' : found.length ? '' : 'good'}>{found.length ? `${found.length} finding${found.length === 1 ? '' : 's'}` : '✓ No findings'}</span> in the last validation run{isStale(run, revision, data) ? ', which was before the latest changes' : ''}.{' '}
+          <span className={worst ? 'bad' : found.length ? '' : 'good'}>{found.length ? `${found.length} finding${found.length === 1 ? '' : 's'}` : '✓ No findings'}</span> in the last validation run{stale ? ', which was before the latest changes' : ''}.{' '}
         </>
       )}
       <button className="link" onClick={() => st().setView('checks')}>

@@ -1,7 +1,7 @@
 import type { QuickFix } from '../model/quality';
 import type { DlReport } from '../reasoning/contracts';
 import type { Model } from '../model/types';
-import { qualityFindings, validate } from '../model/validation';
+import { qualityFindings, validate, type ValidateOptions } from '../model/validation';
 import { ValidationError, type CallOptions, type Category, type DataGraph, type Finding, type OntologyRef, type ValidationJob, type ValidationReport, type ValidationService } from './contracts';
 
 /**
@@ -18,6 +18,7 @@ import { ValidationError, type CallOptions, type Category, type DataGraph, type 
 export interface WorkerInput {
   model: Model;
   data: DataGraph;
+  shapeSet?: string;
   categories: Category[];
   previous?: ValidationReport;
   withImports?: Model;
@@ -33,6 +34,15 @@ const cancelled = () => new ValidationError('cancelled', 'The job was stopped.')
 /** A report as it travels: a quick fix as what it does, in words, without the function that does it. */
 export const plain = (report: ValidationReport): ValidationReport => ({ ...report, findings: report.findings.map((f) => (f.fix ? { ...f, fix: { label: f.fix.label, preview: f.fix.preview } } : f)) });
 
+/** What the checks are told of a job, wherever they run: in a worker or on the page, the same. */
+export const optionsOf = (input: WorkerInput, tick: (phase: string) => Promise<void>): ValidateOptions => ({
+  tick,
+  withImports: input.withImports,
+  askDl: input.dl ? async () => input.dl! : undefined,
+  ref: input.ref,
+  ...(input.shapeSet !== undefined ? { shapeSet: input.shapeSet } : {}),
+});
+
 /** The checks on the page itself, giving it a moment to redraw between parts. */
 export const onThePage: Runner = async (input, signal, progress) => {
   const tick = async (phase: string) => {
@@ -41,7 +51,7 @@ export const onThePage: Runner = async (input, signal, progress) => {
     if (signal.aborted) throw cancelled();
   };
   await tick('Starting…');
-  return validate(input.model, input.data, input.categories, input.previous ?? null, { tick, withImports: input.withImports, askDl: input.dl ? async () => input.dl! : undefined, ref: input.ref });
+  return validate(input.model, input.data, input.categories, input.previous ?? null, optionsOf(input, tick));
 };
 
 /** The checks in a worker of their own, which is stopped when the job is. */
@@ -135,7 +145,7 @@ export function createLocalValidationService(host: ValidationHost, run: Runner =
           dl = await host.askDl(stop.signal);
           if (!dl || stop.signal.aborted) throw cancelled();
         }
-        const input: WorkerInput = { model, data: query.data, categories: query.categories, ref, ...(query.previous ? { previous: query.previous } : {}), ...(dl ? { dl } : {}) };
+        const input: WorkerInput = { model, data: query.data, categories: query.categories, ref, ...(query.shapeSet !== undefined ? { shapeSet: query.shapeSet } : {}), ...(query.previous ? { previous: query.previous } : {}), ...(dl ? { dl } : {}) };
         const closure = query.imports && !dl ? host.withImports(model) : undefined;
         if (closure) input.withImports = closure;
         return plain(await run(input, stop.signal, (phase) => update(h, { phase })));

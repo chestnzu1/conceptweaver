@@ -32,7 +32,7 @@ export type { SubgraphState } from './state/subgraph';
 export { layoutOf, viewOf, type GraphScope } from './state/view';
 export type { Tween } from './state/layout';
 export { isDirty, type Doc } from './state/document';
-export { currentDl, problemCount, type CheckKind } from './state/validation';
+export { currentDl, problemCount, runIsStale, type CheckKind } from './state/validation';
 export { currentReasoning, type Inference, type Reasoning } from './state/reasoning';
 
 export const useStore = create<State>()((...a) => ({

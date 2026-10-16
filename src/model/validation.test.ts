@@ -151,8 +151,12 @@ describe('SHACL validation', () => {
     expect(summary).toMatchObject({ status: 'violations', violations: 2 });
     // Ann is an Employee: the target class reaches her through rdfs:subClassOf in the data graph.
     const ann = findings.find((f) => f.entity?.name === 'Ann')!;
-    expect(ann).toMatchObject({ category: 'shacl', severity: 'error', rule: 'MinCount', property: ':hasName', entity: { kind: 'term', id: id.Ann, type: 'individual' }, shapeId: personShape(n).id });
+    expect(ann).toMatchObject({ category: 'shacl', severity: 'error', rule: 'MinCount', property: ':hasName', entity: { kind: 'term', id: id.Ann, type: 'individual' } });
     expect(ann.shacl).toMatchObject({ focusNode: ':Ann', resultPath: ':hasName', sourceShape: 'a property shape of :PersonShape', sourceConstraintComponent: 'sh:MinCountConstraintComponent', resultSeverity: 'sh:Violation' });
+    // It is of the property shape for the name, inside the Person shape, and of its sh:minCount.
+    const nameShape = n.shapeSets[0].shapes.find((s) => s.props.some((x) => x.p === SH + 'path' && 'path' in x.v && JSON.stringify(x.v.path).includes(iri('has name'))))!;
+    expect(ann.shapeId).toBe(nameShape.id);
+    expect(ann.shacl!.parameter).toBe('minCount');
     // A missing value has no sh:value, and none is invented.
     expect(ann.shacl).not.toHaveProperty('value');
     expect(findings.find((f) => f.entity?.name === 'Bob')).toMatchObject({ rule: 'MaxCount', shacl: { sourceConstraintComponent: 'sh:MaxCountConstraintComponent' } });
@@ -171,21 +175,55 @@ describe('SHACL validation', () => {
     expect(findings.find((f) => f.entity?.name === 'Bob')).toMatchObject({ rule: 'Datatype', shacl: { value: '"41.5"', sourceConstraintComponent: 'sh:DatatypeConstraintComponent' } });
   });
 
-  it('validates imported data, with or without the ontology’s triples, and keeps the graphs apart', async () => {
+  it('validates a data graph, with or without the ontology’s triples, and keeps the graphs apart', async () => {
     const { m, iri } = build();
     const n = withPersonShape(m, iri);
     const text = `@prefix : <http://example.org/p#> . @prefix x: <http://data.example/> .\nx:carol a :Employee .\nx:dan a :Person ; :hasName "Dan" .`;
-    const withOntology: DataGraph = { source: 'imported', name: 'staff.ttl', text, includeOntology: true };
+    const withOntology: DataGraph = { source: 'graph', id: 'staff', name: 'staff', fingerprint: 'f', text, lines: true, includeOntology: true };
     const a = await shaclFindings(n, withOntology);
     // The model's own individuals are in the ontology's triples, so they are validated as well.
     expect(a.findings.map((f) => f.shacl!.focusNode).sort()).toEqual([':Ann', ':Bob', '<http://data.example/carol>']);
-    expect(a.findings.find((f) => f.shacl!.focusNode.includes('carol'))!.entity).toMatchObject({ kind: 'external', type: 'data' });
+    const carol = a.findings.find((f) => f.shacl!.focusNode.includes('carol'))!;
+    expect(carol.entity).toMatchObject({ kind: 'external', type: 'data' });
+    // Read from Turtle, the data says on which line of its file the focus node is; the model's own nodes are in no file.
+    expect(carol.shacl!.line).toBe(2);
+    expect(a.findings.find((f) => f.shacl!.focusNode === ':Ann')!.shacl!.line).toBeUndefined();
+    // Read from another syntax, the Turtle is not the file's, and no line is given.
+    expect((await shaclFindings(n, { ...withOntology, lines: false })).findings.every((f) => f.shacl!.line === undefined)).toBe(true);
     // Without them carol is an Employee of an unknown class: nothing says an Employee is a Person.
     const b = await shaclFindings(n, { ...withOntology, includeOntology: false });
-    expect(b.summary).toMatchObject({ status: 'conforms', includesOntology: false, dataSource: 'staff.ttl' });
-    // Neither the shapes nor the imported data ever reach the ontology's own RDF.
+    expect(b.summary).toMatchObject({ status: 'conforms', includesOntology: false, dataSource: 'staff' });
+    // Neither the shapes nor the data graph ever reach the ontology's own RDF.
     expect(toTurtle(n)).not.toMatch(/sh:|shacl|carol/);
-    expect((await shaclFindings(n, { source: 'imported', text: 'this is not turtle', includeOntology: false })).summary).toMatchObject({ status: 'failed' });
+    expect((await shaclFindings(n, { ...withOntology, text: 'this is not turtle' })).summary).toMatchObject({ status: 'failed' });
+    // A data graph whose content is not in this browser is not taken for an empty one.
+    const { text: _gone, ...elsewhere } = withOntology;
+    expect((await shaclFindings(n, elsewhere)).summary).toMatchObject({ status: 'failed', error: expect.stringContaining('is not in this browser') });
+  });
+
+  it('validates with the shape set chosen, or with every set', async () => {
+    const { m, iri } = build();
+    const n = withPersonShape(m, iri);
+    // A second set, for another application, requires an age of every Person; the first set does not.
+    const ages = importIntoSet(newSetFor('Ages'), `@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <${n.baseIri}> .\n:AgeShape sh:targetClass <${iri('Person')}> ; sh:property [ sh:path <${iri('has age')}> ; sh:minCount 1 ] .`).set;
+    const both = { ...n, shapeSets: [...n.shapeSets, ages] };
+    const every = await shaclFindings(both);
+    const first = await shaclFindings(both, MODEL_DATA, n.shapeSets[0].id);
+    const second = await shaclFindings(both, MODEL_DATA, ages.id);
+    expect(every.summary.violations).toBe(4);
+    expect(first.summary).toMatchObject({ violations: 2, shapes: 1, shapeSet: { id: n.shapeSets[0].id, name: 'Shapes' } });
+    expect(second.summary).toMatchObject({ violations: 2, shapeSet: { name: 'Ages' } });
+    expect(second.findings.every((f) => f.rule === 'MinCount' && f.property === ':hasAge')).toBe(true);
+    expect(every.summary.shapeSet).toBeUndefined();
+    expect((await shaclFindings(both, MODEL_DATA, 'gone')).summary).toMatchObject({ status: 'failed', error: expect.stringContaining('no longer in the model') });
+  });
+
+  it('says where a path of more than one property goes, as SPARQL writes it', async () => {
+    const { m, iri } = build();
+    const worksFor = m.props.find((p) => p.name === 'works for')!.iri!;
+    const n = withShapes(m, `:S sh:targetClass <${iri('Employee')}> ; sh:property [ sh:path ( <${worksFor}> <${iri('has name')}> ) ; sh:minCount 1 ] .`);
+    const { findings } = await shaclFindings(n);
+    expect(findings.find((f) => f.entity?.name === 'Ann')!.shacl).toMatchObject({ resultPath: ':worksFor / :hasName', parameter: 'minCount' });
   });
 
   it('writes a shape set as SHACL and reads it back as the same shapes', () => {
@@ -372,8 +410,23 @@ describe('validation runs and their synchronisation with the model', () => {
     const partial = await validate(n, MODEL_DATA, 'quality', run);
     expect(partial.shacl).toBe(run.shacl);
     expect(partial.findings.filter((f) => f.category === 'shacl').length).toBe(2);
-    // Another data graph is another thing validated.
-    expect(isStale(run, revisionOf(n), { source: 'imported', text: '', includeOntology: true })).toBe(true);
+    // Another data graph is another thing validated, and so is another content of it, or another shape set.
+    const graph: DataGraph = { source: 'graph', id: 'g', name: 'staff', fingerprint: 'a', includeOntology: true };
+    expect(isStale(run, revisionOf(n), graph)).toBe(true);
+    expect(isStale(run, revisionOf(n), MODEL_DATA, n.shapeSets[0].id)).toBe(true);
+    const ref = { ref: { ontologyId: 'working-copy', revisionId: revisionOf(n) } };
+    const ofGraph = await validate(n, { ...graph, text: '@prefix x: <http://data.example/> . x:a x:b x:c .' }, 'all', null, ref);
+    expect(ofGraph.data).toEqual(graph);
+    expect(isStale(ofGraph, revisionOf(n), graph)).toBe(false);
+    expect(isStale(ofGraph, revisionOf(n), { ...graph, fingerprint: 'b' })).toBe(true);
+    // SHACL of other data is not kept; what does not depend on the data is.
+    const other = await validate(n, MODEL_DATA, 'shacl', ofGraph, ref);
+    expect(other.owl).toBe(ofGraph.owl);
+    expect(other.quality).toBe(ofGraph.quality);
+    expect(other.shacl!.dataSource).toBe('This model');
+    const again = await validate(n, MODEL_DATA, 'quality', ofGraph, ref);
+    expect(again.shacl).toBeUndefined();
+    expect(again.findings.some((f) => f.category === 'shacl')).toBe(false);
   });
 
   it('exports the report as JSON and as RDF', async () => {

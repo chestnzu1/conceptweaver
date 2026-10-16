@@ -115,14 +115,31 @@ const pointingAt = (s: Pick<State, 'model' | 'structure'>, terms: string[], rels
   return iri === undefined ? s.structure : { ...s.structure, focus: iri, pointed: s.structure.pointed + 1 };
 };
 
+/**
+ * A SHACL finding a shape was opened from (roadmap stage SH-2): the constraint it failed, by the
+ * shape's parameter, and what failed it, for the Shapes view to show at that constraint.
+ */
+export interface ShapeFailure {
+  /** The finding, to go back to it. */
+  finding: string;
+  parameter?: string;
+  focusNode: string;
+  value?: string;
+  path?: string;
+  message: string;
+  /** Where the focus node is, when it is data of a data graph rather than of the model: the graph, and the line of its file. */
+  data?: string;
+  line?: number;
+}
+
 export interface SessionSlice {
   sel: Selection;
   /** Key of the object property open in the side panel, when one is. */
   selProp: string | null;
   vp: Viewport;
   canvasSize: { w: number; h: number };
-  /** What the Shapes view has open: a shape set, and a shape of it. */
-  shapesView: { set: string | null; shape: string | null };
+  /** What the Shapes view has open: a shape set, and a shape of it; and the finding it was opened from, if it was. */
+  shapesView: { set: string | null; shape: string | null; failed?: ShapeFailure };
   /**
    * The canvas draws all of what it shows, in full detail, rather than what is in view: for the
    * moment a picture of it is taken (files.ts), which is of the whole graph.
@@ -187,8 +204,11 @@ export interface SessionSlice {
   setVp: (vp: Viewport) => void;
   zoomBy: (factor: number, cx?: number, cy?: number) => void;
   setCanvasSize: (w: number, h: number) => void;
-  /** Opens the Shapes view on a set, and a shape of it; the set the shape is in when only the shape is given. */
-  openShapes: (set?: string | null, shape?: string | null) => void;
+  /**
+   * Opens the Shapes view on a set, and a shape of it; the set the shape is in when only the shape
+   * is given. From a finding, at the constraint it failed.
+   */
+  openShapes: (set?: string | null, shape?: string | null, failed?: ShapeFailure) => void;
   setDrawAll: (on: boolean) => void;
   fit: () => void;
   setView: (v: View) => void;
@@ -426,10 +446,10 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
       return { vp: { k, x: px - (px - s.vp.x) * ratio, y: py - (py - s.vp.y) * ratio } };
     }),
   setCanvasSize: (w, h) => set({ canvasSize: { w, h } }),
-  openShapes: (setId, shape) => {
+  openShapes: (setId, shape, failed) => {
     const sets = get().model.shapeSets;
     const of = shape ? sets.find((s) => s.shapes.some((x) => x.id === shape))?.id : undefined;
-    set({ view: viewFor(get().model, 'shapes'), shapesView: { set: of ?? setId ?? get().shapesView.set ?? sets[0]?.id ?? null, shape: shape ?? null } });
+    set({ view: viewFor(get().model, 'shapes'), shapesView: { set: of ?? setId ?? get().shapesView.set ?? sets[0]?.id ?? null, shape: shape ?? null, ...(failed && shape ? { failed } : {}) } });
   },
   setDrawAll: (on) => set({ drawAll: on }),
   fit: () => {

@@ -14,7 +14,7 @@ import type { SettingsDraft } from '../prefixes';
 import { declaredProp, isInstanceOf, relChoices, type RelChoice } from '../props';
 import { reconnect, type End } from '../reconnect';
 import { cannotRelate, settleRelation, typed } from '../relating';
-import { INSTANCE_OF, newProp, newRelation, newTerm, PROP_LINKS, type EntityKind, type Model, type ModelMode, type ObjProp, type Relation, type Term, type TermType } from '../types';
+import { INSTANCE_OF, newProp, newRelation, newTerm, PROP_LINKS, type DataGraphRef, type EntityKind, type Model, type ModelMode, type ObjProp, type Relation, type Term, type TermType } from '../types';
 import { labelKey, suggestFor } from '../vocab';
 import { prune } from './document';
 import type { Slice } from './types';
@@ -55,6 +55,8 @@ export interface EditsSlice {
   resetOwnStyle: (terms: string[] | 'all', rels: string[] | 'all') => void;
   /** Changes the SHACL shape sets: an edit like any other, one step of the history, saved with the model. */
   setShapeSets: (fn: (sets: ShapeSet[]) => ShapeSet[]) => void;
+  /** Changes the data graphs the model names (not their content, which is kept apart: dataGraphs.ts): one step of the history. */
+  setDataGraphs: (fn: (graphs: DataGraphRef[]) => DataGraphRef[]) => void;
 
   addTerm: (p?: Partial<Term>) => string;
   updateTerm: (id: string, patch: Partial<Term>, history?: boolean) => void;
@@ -157,6 +159,7 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
       return { ...m, terms: m.terms.map((t) => (set_.has(t.id) && t.color ? { ...t, color: '' } : t)), style: resetOwn(m.style, termIds, relIds) };
     }),
   setShapeSets: (fn) => get().apply((m) => ({ ...m, shapeSets: fn(m.shapeSets) })),
+  setDataGraphs: (fn) => get().apply((m) => ({ ...m, dataGraphs: fn(m.dataGraphs) })),
 
   addTerm: (p = {}) => {
     // A term is of a kind the type of model has: in a vocabulary everything new is a concept.

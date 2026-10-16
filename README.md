@@ -571,11 +571,21 @@ More on what the advanced reasoner does and does not cover is under
     instance of an enumeration that is different from all members but one is that one (and
     from all of them, a contradiction), an enumeration whose members are all of a class is a
     kind of that class, and a value of a property has to be one its enumerated datatype lists.
-  - *SHACL*: the shapes of every shape set (see *Shapes*) validated together against a data
-    graph by a SHACL Core engine (`rdf-validate-shacl`, loaded on first use). The data graph is
-    the model's own RDF (individuals and ontology triples) or an imported file, in any syntax an
-    ontology can be opened in. Results keep the standard report fields, and each opens the shape
-    it is of, in its set.
+  - *SHACL*: the shapes of one shape set, or of every set (see *Shapes*), validated against a
+    data graph by a SHACL Core engine (`rdf-validate-shacl`, loaded on first use). Both are
+    chosen on the SHACL card. The data graph is the model's own RDF (individuals and ontology
+    triples) or one of the model's **data graphs** (since 2026-10-16, roadmap stage SH-2;
+    `src/model/dataGraphs.ts`): RDF read from a file, in any syntax an ontology can be opened in,
+    kept with the model by what it is (name, file, triples, a fingerprint of its content) and its
+    content in this browser's IndexedDB, so it is there after a reload and in a later session.
+    The *Data graphs* tab lists them: rename, read again from a file (*Replace…*), validate,
+    delete (one undo brings it back), and whether the ontology's triples go with it. Nothing of
+    a data graph is ever part of the ontology. Results keep the standard report fields. A
+    finding says on which line of its file the focus node is, where the file was Turtle, gives a
+    path of more than one property as SPARQL writes it (`:a / ^:b`), and *Open the shape at this
+    constraint* opens the very property shape it is of, in its set, with the constraint that
+    failed marked and what failed it said there. A run is stale once the model, the data graph's
+    content or the choice of shapes changes.
   - *Quality*: 34 modelling rules (missing definitions, redundant superclasses, naming, IRIs
     and namespaces, enumerations without members or with something on the list that does not
     belong there, …), each of which can be switched off per model. They are suggestions,
@@ -738,8 +748,10 @@ that *Layered* says so and uses the built-in hierarchical layout.
   `iri.ts`; a model of an older format is brought up to date in `normalizeModel` (`types.ts`),
   checked against the files in `fixtures/v1` to `v4`. SHACL shapes as structure, read from
   Turtle and written back, and their paths as SPARQL, are `shacl.ts`; what the views ask of the
-  shape sets of a model is `shapes.ts`, and the format-4 shapes are read by `shapesLegacy.ts`. What an ontology says that the
-  model has no place for is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in
+  shape sets of a model is `shapes.ts`, and the format-4 shapes are read by `shapesLegacy.ts`.
+  The data graphs SHACL validates are `dataGraphs.ts` (their content in IndexedDB, `library.ts`),
+  and where in a file a node is, `dataLines.ts`. What an ontology says that the model has no place
+  for is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in
   `rdf.ts`) tells what it took. Class expressions and data ranges are one structure,
   `expressions.ts` (read from RDF, written in OWL functional syntax as the OWL API has them,
   followed through renames and deletions), with nothing of React in it: `manchester.ts` reads and
@@ -804,7 +816,8 @@ that *Layered* says so and uses the built-in hierarchical layout.
   and its checksum, and fetches them into `files/` (not committed); `expected/` holds what a
   round trip through the app loses of each today (see *Reading ontologies*). `shacl.mjs` fetches
   the W3C SHACL Core test suite, at a fixed commit and with a checksum of the whole, into
-  `shacl/` (not committed).
+  `shacl/` (not committed); `expected/shacl-core.txt` lists the tests whose report validation
+  does not give today (none).
 
 ## OWL constructs without an editor
 
@@ -1135,17 +1148,25 @@ together in `src/model/inferred.ts`.
   the values individuals have against the list of their property's range (a number by its
   value, so `"01"` is `"1"^^xsd:integer`; anything else as written, so a date with a time zone
   is not the same date without one); datatypes are not compared with each other.
-- SHACL: all of SHACL Core is validated, and the shape form covers all of it. SHACL-SPARQL,
-  SHACL Advanced Features and entailment regimes are not validated; `sh:sparql` is kept as Turtle.
-  Every set is validated at once: one set against one data graph of its choosing is stage SH-2
-  of the roadmap. A shape that refers to itself (through `sh:node`, `sh:or` and the like), which
-  SHACL leaves undefined, ends the run with a message saying so.
+- SHACL: all of SHACL Core is validated, and the shape form covers all of it. Every one of the
+  98 tests of the W3C SHACL 1.0 Core suite gives its expected report when its shapes are read
+  into a shape set and its data validated as the workbench does
+  (`src/model/shaclConformance.test.ts`, run in CI). SHACL-SPARQL, SHACL Advanced Features and
+  entailment regimes are not validated; `sh:sparql` is kept as Turtle. A shape that refers to
+  itself (through `sh:node`, `sh:or` and the like), which SHACL leaves undefined, ends the run
+  with a message saying so.
+- A finding's line is the one statements about its focus node begin on (or where it is first
+  named, when nothing is said of it). There is none for a blank node, nor for a file read from
+  RDF/XML, JSON-LD or another syntax that is converted to Turtle: the Turtle is not the file.
+- A data graph's content is kept in this browser only. A model saved to a file or opened in
+  another browser names its data graphs without their content: each says so, and validating it
+  says why it cannot be done, until it is read again from its file. The content of a deleted
+  graph stays in the browser, so that undo finds it.
 - OWL restrictions are never turned into shapes, and reasoner-inferred types are not added to
   the data graph.
 - Validation runs as a job in a worker, and a run can be stopped (*Stop*, while it runs); the
   results shown are then those of the run before. See *Reasoning and validation as jobs*.
   A full run takes about a second on 3,000 terms.
-- Imported data used for SHACL is kept for the session only.
 
 ## Reuse and alignment: limits
 

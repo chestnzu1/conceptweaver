@@ -183,7 +183,7 @@ await tab(/^Validation/);
 const validation = page.locator('.validation');
 await validation.locator('input[type=file]').last().setInputFiles(tmp + 'pizza.owl');
 await page.waitForFunction(() => /triples/.test(document.querySelector('.toast')?.textContent ?? ''));
-ok(/^pizza\.owl: \d+ triples, read from RDF\/XML, now the data SHACL validates\./.test(await toast()), 'data to validate is read from RDF/XML as well: ' + (await toast()));
+ok(/^pizza\.owl: \d+ triples, read from RDF\/XML, now a data graph of this model and the data SHACL validates\./.test(await toast()), 'data to validate is read from RDF/XML as well: ' + (await toast()));
 await tab('Graph');
 
 // ---------------------------------------------------------------- the syntaxes that are OWL's own, through the OWL service

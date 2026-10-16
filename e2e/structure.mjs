@@ -264,6 +264,8 @@ await settled();
 await view.getByLabel('Reasoner').selectOption({ label: 'Advanced reasoner (OWL 2 DL)' });
 await view.locator('.st-none').waitFor();
 await page.waitForFunction(() => /gave no answer/.test(document.querySelector('.view.structure .st-none')?.textContent ?? ''));
+// The run that asked it may still be finishing (its phase shows meanwhile): what it says is read once it has.
+await page.waitForFunction(() => !document.querySelector('.view.structure .st-reasoner select')?.disabled);
 const none = flat(await view.locator('.st-none').innerText());
 ok(none.startsWith('There is no inferred hierarchy to show. HermiT gave no answer.') && none.includes('Nothing is put in its place') && (await view.locator('.tree').count()) === 0, 'when the reasoner chosen has no answer there is no inferred hierarchy, and the other reasoner’s is not shown in its place: ' + none.slice(0, 110));
 ok(flat(await view.locator('.st-prov').innerText()).startsWith('HermiT · no answer') && (await view.locator('.st-none').getByRole('button', { name: 'Run reasoning' }).count()) === 1, 'it says which reasoner that is, and offers to ask it again');

@@ -8,7 +8,7 @@ import { withIris } from './iri';
 import { dataDomain, objectProperties, plainRelationships, relChoice, type PropView } from './props';
 import { fromTurtle, toTurtle } from './rdf';
 import { MODEL_VERSION, normalizeModel, type Model } from './types';
-import { findShape, setTurtle } from './shapes';
+import { findShape, ownerOf, setTurtle } from './shapes';
 import { statementsOf } from './unmapped';
 import { shaclFindings } from './validation';
 
@@ -257,7 +257,16 @@ describe('a model saved in format 4', () => {
 
   it('validates to the same findings', async () => {
     const { findings } = await shaclFindings(m);
-    const said = findings.map((f) => ({ severity: f.severity, rule: f.rule, message: f.message, shape: findShape(m, f.shapeId!)?.shape.iri ?? null, ...f.shacl }));
+    // What format 4 said of each: the shape it was listed under, which holds the one it comes from, and the standard fields.
+    // The constraint's parameter and the line of a file are said since, and are not compared.
+    const listedUnder = (id: string) => {
+      const found = findShape(m, id)!;
+      return (found.shape.iri ? found.shape : ownerOf(found.set, found.shape.id))?.iri ?? null;
+    };
+    const said = findings.map((f) => {
+      const { parameter: _parameter, line: _line, ...standard } = f.shacl!;
+      return { severity: f.severity, rule: f.rule, message: f.message, shape: listedUnder(f.shapeId!), ...standard };
+    });
     expect(said).toEqual(was.findings);
   });
 

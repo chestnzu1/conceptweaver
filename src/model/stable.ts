@@ -26,6 +26,7 @@ function sameMeaning(prev: Model, model: Model): boolean {
     prev.ontologyIri === model.ontologyIri &&
     prev.prefixes === model.prefixes &&
     prev.shapeSets === model.shapeSets &&
+    prev.dataGraphs === model.dataGraphs &&
     prev.quality === model.quality &&
     prev.governance === model.governance &&
     prev.datatypes === model.datatypes &&

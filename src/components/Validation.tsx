@@ -2,14 +2,15 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { download } from '../model/files';
 import { objectProperties } from '../model/props';
 import { QUALITY_RULES, ruleEnabled, setRule, type RuleGroup } from '../model/quality';
-import { asTurtle, fileText, FORMAT_LABEL, ONTOLOGY_FILES } from '../model/rdfFormats';
+import { currentData, currentShapeSet, dataOf, graphsHere, keepGraphText, readDataGraph } from '../model/dataGraphs';
+import { fileText, FORMAT_LABEL, ONTOLOGY_FILES, type DocumentFormat } from '../model/rdfFormats';
 import { useReasoning, WORKING } from './reasoning';
 import type { Inference } from '../model/store';
-import { currentDl, useStore } from '../model/store';
+import { currentDl, runIsStale, useStore } from '../model/store';
 import { creditOf, ENGINES, reasonerHealth, type ReasoningResult } from '../model/reasoning';
 import { MODEL_DATA, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../validation/contracts';
 import { fixOf } from '../validation/local';
-import { categoryLabel, DL_LIMITS, isStale, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE } from '../validation/report';
+import { categoryLabel, DL_LIMITS, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE } from '../validation/report';
 import { CommitInput } from './fields';
 import { Disclosure } from './Icon';
 
@@ -25,11 +26,15 @@ const fileBase = (name: string) => name.trim().replace(/[^\p{L}\p{N}]+/gu, '-').
 
 export function ValidationView() {
   const model = useStore((s) => s.model);
-  const { run, running, phase, data, tab } = useStore((s) => s.validation);
+  const { run, running, phase, tab } = useStore((s) => s.validation);
   const st = useStore.getState;
   const dataRef = useRef<HTMLInputElement>(null);
-  const revision = useStore((s) => s.version.revision);
-  const stale = isStale(run, revision, data);
+  /** The data graph a file chosen is to replace; a new one when none. */
+  const replacing = useRef<string | null>(null);
+  const stale = useStore(runIsStale);
+  // What SHACL validates, as it is in the model now: one of its data graphs or its own data, with every shape set or one.
+  const data = currentData(model, useStore((s) => s.validation.data));
+  const shapeSet = currentShapeSet(model, useStore((s) => s.validation.shapeSet));
 
   // The first time the workbench is opened for a model there is nothing to show, so it runs once.
   // After that it runs when asked: the results say what was validated, and when.
@@ -46,17 +51,30 @@ export function ValidationView() {
   // What the OWL 2 DL reasoner entails, when it is the one chosen and was asked about the model as it is.
   const dl = useStore(currentDl);
 
-  const importData = async (file: File) => {
+  /** Reads a file into a data graph of the model: a new one, or in place of the content of one it has. */
+  const readData = async (file: File, id: string | null) => {
     try {
-      // Data comes in the same syntaxes an ontology does; here it is kept as Turtle, which is what the checks read.
-      const { turtle, format } = await asTurtle(await fileText(file), { name: file.name, serviceUrl: st().validation.reasonerUrl });
-      const { Parser } = await import('n3');
-      const triples = new Parser().parse(turtle).length;
-      st().setValidation({ data: { source: 'imported', name: file.name, text: turtle, includeOntology: true } });
-      st().notify(`${file.name}: ${triples} triples${format === 'turtle' ? '' : `, read from ${FORMAT_LABEL[format]}`}, now the data SHACL validates. It is not added to the model.`);
+      const was = id ? st().model.dataGraphs.find((g) => g.id === id) : undefined;
+      const { ref, turtle } = await readDataGraph(await fileText(file), file.name, st().validation.reasonerUrl, was?.id);
+      const kept = await keepGraphText(ref.id, turtle);
+      const from = `${ref.triples} triples${ref.format === 'turtle' ? '' : `, read from ${FORMAT_LABEL[ref.format as DocumentFormat] ?? ref.format}`}`;
+      const only = kept ? '' : ' This browser keeps nothing for the site, so its content is here for this session only.';
+      if (was) {
+        // Replaced: the same graph, called and taken as before, with what the file has now.
+        st().setDataGraphs((all) => all.map((g) => (g.id === was.id ? { ...ref, name: g.name, includeOntology: g.includeOntology } : g)));
+        st().notify(`“${was.name}” is now what ${file.name} has: ${from}.${only}`);
+      } else {
+        st().setDataGraphs((all) => [...all, ref]);
+        st().setValidation({ data: dataOf(ref) });
+        st().notify(`${file.name}: ${from}, now a data graph of this model and the data SHACL validates. Nothing of it is added to the ontology.${only}`);
+      }
     } catch (e) {
       st().notify(`Could not read ${file.name}: ${e instanceof Error ? e.message : ''}`);
     }
+  };
+  const chooseFile = (id: string | null) => {
+    replacing.current = id;
+    dataRef.current?.click();
   };
 
   const runButton = (scope: Scope, label: string, primary = false) => (
@@ -132,41 +150,65 @@ export function ValidationView() {
                 )}
               </p>
               <p className="muted">
-                {run.shacl.shapes} shape{run.shacl.shapes === 1 ? '' : 's'} · {run.shacl.dataTriples} triples from {run.shacl.dataSource} · {run.shacl.ms} ms
+                {run.shacl.shapes} shape{run.shacl.shapes === 1 ? '' : 's'} {run.shacl.shapeSet ? `of “${run.shacl.shapeSet.name}”` : 'of every set'} · {run.shacl.dataTriples} triples from {run.shacl.dataSource} · {run.shacl.ms} ms
               </p>
             </>
           )}
           <div className="data-graph">
             <label>
-              <span>Data to validate</span>
-              <select aria-label="Data to validate" value={data.source} onChange={(e) => (e.target.value === 'model' ? st().setValidation({ data: MODEL_DATA }) : data.source === 'imported' ? undefined : dataRef.current?.click())}>
-                <option value="model">This model</option>
-                <option value="imported">{data.source === 'imported' ? `Imported: ${data.name}` : 'Imported RDF data…'}</option>
+              <span>Shapes</span>
+              <select aria-label="Shapes to validate with" value={shapeSet ?? ''} onChange={(e) => st().setValidation({ shapeSet: e.target.value || null })}>
+                <option value="">Every shape set{model.shapeSets.length > 1 ? ` (${model.shapeSets.length})` : ''}</option>
+                {model.shapeSets.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || 'Shapes'}
+                  </option>
+                ))}
               </select>
             </label>
-            {data.source === 'imported' && (
-              <>
-                <label className="check">
-                  <input type="checkbox" checked={data.includeOntology} onChange={(e) => st().setValidation({ data: { ...data, includeOntology: e.target.checked } })} />
-                  <span>with the ontology’s triples</span>
-                </label>
-                <button className="link" onClick={() => dataRef.current?.click()}>
-                  another file…
-                </button>
-              </>
+            <label>
+              <span>Data</span>
+              <select
+                aria-label="Data to validate"
+                value={data.id ?? 'model'}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const g = model.dataGraphs.find((x) => x.id === v);
+                  if (v === 'model') st().setValidation({ data: MODEL_DATA });
+                  else if (g) st().setValidation({ data: dataOf(g) });
+                  else chooseFile(null);
+                }}
+              >
+                <option value="model">This model</option>
+                {model.dataGraphs.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} ({g.triples} triples)
+                  </option>
+                ))}
+                <option value="add">Add a data graph…</option>
+              </select>
+            </label>
+            {data.source === 'graph' && (
+              <label className="check">
+                <input type="checkbox" checked={data.includeOntology} onChange={(e) => st().setDataGraphs((all) => all.map((g) => (g.id === data.id ? { ...g, includeOntology: e.target.checked } : g)))} />
+                <span>with the ontology’s triples</span>
+              </label>
             )}
+            <button className="link" onClick={() => st().setValidation({ tab: 'graphs' })}>
+              Data graphs ({model.dataGraphs.length})
+            </button>
           </div>
           <details>
             <summary>What is validated</summary>
             <ul>
               <li>
-                <strong>Shapes graph:</strong> every shape set of the model, and nothing else. OWL restrictions are not turned into shapes.
+                <strong>Shapes graph:</strong> the shape set chosen, or every set of the model, and nothing else. OWL restrictions are not turned into shapes.
               </li>
               <li>
                 <strong>Data graph, “This model”:</strong> the model as RDF, which is its individuals <em>and</em> its ontology triples (classes, properties, hierarchy). The hierarchy is what lets a shape for Person reach an Employee.
               </li>
               <li>
-                <strong>Data graph, imported:</strong> the file you choose, with the ontology’s triples added if the box is ticked. The file is used for validation only: it is not added to the model and not saved with it.
+                <strong>A data graph of the model:</strong> RDF read from a file, with the ontology’s triples added if the box is ticked. It is kept with the model and its content in this browser; nothing of it is added to the ontology. A finding gives the line of the file its focus node is on, where the file was Turtle.
               </li>
               <li>
                 <strong>Engine:</strong> {SHACL_ENGINE.name}. {SHACL_ENGINE.supports}.
@@ -209,6 +251,7 @@ export function ValidationView() {
         {(
           [
             ['results', `Results (${findings.length})`],
+            ['graphs', `Data graphs (${model.dataGraphs.length})`],
             ['rules', 'Quality rules'],
             ['inferences', 'Inferred facts'],
           ] as const
@@ -219,7 +262,8 @@ export function ValidationView() {
         ))}
       </div>
 
-      {tab === 'results' && <Results findings={findings} counts={{ owl: count('owl'), shacl: count('shacl'), quality: count('quality') }} stale={stale} ran={!!run} />}
+      {tab === 'results' && <Results findings={findings} counts={{ owl: count('owl'), shacl: count('shacl'), quality: count('quality') }} stale={stale} ran={!!run} dataName={run?.data.source === 'graph' ? (run.shacl?.dataSource ?? '') : ''} />}
+      {tab === 'graphs' && <DataGraphs chooseFile={chooseFile} />}
       {tab === 'rules' && <Rules />}
       {tab === 'inferences' && (
         <>
@@ -247,7 +291,7 @@ export function ValidationView() {
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
-          if (f) void importData(f);
+          if (f) void readData(f, replacing.current);
         }}
       />
     </div>
@@ -494,7 +538,7 @@ function Explanation({ f }: { f: Finding }) {
   );
 }
 
-function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts: Record<Category, number>; stale: boolean; ran: boolean }) {
+function Results({ findings, counts, stale, ran, dataName }: { findings: Finding[]; counts: Record<Category, number>; stale: boolean; ran: boolean; dataName: string }) {
   const st = useStore.getState;
   const [category, setCategory] = useState<Category | ''>('');
   const [severity, setSeverity] = useState<Level | ''>('');
@@ -543,6 +587,11 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
     else return;
     if (f.terms.length + f.rels.length > 1) st().select(f.terms, f.rels);
     st().setHighlight([...f.terms, ...f.rels], `${categoryLabel(f.category)}: ${f.rule}`);
+  };
+  /** Opens the shape a SHACL finding is of, at the constraint it failed, with what failed it. */
+  const openShape = (f: Finding) => {
+    const x = f.shacl;
+    st().openShapes(null, f.shapeId!, x ? { finding: f.id, ...(x.parameter ? { parameter: x.parameter } : {}), focusNode: x.focusNode, ...(x.value ? { value: x.value } : {}), ...(x.resultPath ? { path: x.resultPath } : {}), message: f.message, ...(f.entity?.kind === 'external' && dataName ? { data: dataName } : {}), ...(x.line ? { line: x.line } : {}) } : undefined);
   };
   const applyFix = (f: Finding) => {
     // A finding comes with what its fix does; the fix itself is found again in the model as it is.
@@ -701,6 +750,12 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
                             <dt>sh:focusNode</dt>
                             <dd>
                               <code>{f.shacl.focusNode}</code>
+                              {f.shacl.line && (
+                                <span className="muted line">
+                                  {' '}
+                                  · line {f.shacl.line} of {dataName}
+                                </span>
+                              )}
                             </dd>
                             <dt>sh:resultPath</dt>
                             <dd>{f.shacl.resultPath ? <code>{f.shacl.resultPath}</code> : <span className="muted">not given: the constraint is on the node itself</span>}</dd>
@@ -749,8 +804,8 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
                           </button>
                         )}
                         {f.shapeId && (
-                          <button className="btn small" onClick={() => st().openShapes(null, f.shapeId!)}>
-                            Open the shape
+                          <button className="btn small" title={f.shacl?.parameter ? `Opens the shape this comes from at sh:${f.shacl.parameter}, the constraint that failed` : 'Opens the shape this is about'} onClick={() => (f.category === 'shacl' ? openShape(f) : st().openShapes(null, f.shapeId!))}>
+                            {f.shacl?.parameter ? 'Open the shape at this constraint' : 'Open the shape'}
                           </button>
                         )}
                         {f.category === 'quality' && (
@@ -787,6 +842,109 @@ function Results({ findings, counts, stale, ran }: { findings: Finding[]; counts
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * The data graphs of the model: RDF read from files, each kept with the model and its content in
+ * this browser, to validate the shapes against. Each can be renamed, read again from a file,
+ * validated, or taken away; nothing of any of them is part of the ontology.
+ */
+function DataGraphs({ chooseFile }: { chooseFile: (id: string | null) => void }) {
+  const graphs = useStore((s) => s.model.dataGraphs);
+  const chosen = useStore((s) => s.validation.data);
+  const running = useStore((s) => s.validation.running);
+  const st = useStore.getState;
+  // Which have their content in this browser: a model opened in another names graphs it does not have.
+  // A graph is said to be missing only once it has been looked for, not while the answer is about others.
+  const [checked, setChecked] = useState<{ of: Set<string>; here: Set<string> } | null>(null);
+  useEffect(() => {
+    let live = true;
+    const ids = graphs.map((g) => g.id);
+    void graphsHere(ids).then((here) => live && setChecked({ of: new Set(ids), here }));
+    return () => {
+      live = false;
+    };
+  }, [graphs]);
+  const missing = (id: string) => !!checked && checked.of.has(id) && !checked.here.has(id);
+  const edit = (id: string, patch: Partial<(typeof graphs)[number]>) => st().setDataGraphs((all) => all.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+  return (
+    <div className="data-graphs">
+      <p className="muted">
+        RDF to validate the shapes against, beside the model’s own individuals: test data, an export of an application, the rows a mapping produces. Each is kept with the model, its content in this browser; nothing of it is added to the ontology. A model opened in another browser names its data graphs without their content: read each from its file again.
+      </p>
+      <div className="row">
+        <button className="btn small" onClick={() => chooseFile(null)}>
+          Add a data graph…
+        </button>
+      </div>
+      {graphs.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Read from</th>
+                <th style={{ width: 90 }}>Triples</th>
+                <th style={{ width: 150 }}>With the ontology</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {graphs.map((g) => (
+                <tr key={g.id} data-graph={g.id} className={chosen.id === g.id ? 'sel' : ''}>
+                  <td>
+                    <CommitInput aria-label={`Name of the data graph ${g.name}`} value={g.name} onCommit={(name) => name.trim() && edit(g.id, { name: name.trim() })} />
+                  </td>
+                  <td>
+                    {g.file} <span className="muted">· {FORMAT_LABEL[g.format as DocumentFormat] ?? g.format}{g.read ? ` · ${new Date(g.read).toLocaleString()}` : ''}</span>
+                    {missing(g.id) && (
+                      <span className="tag warn" title="Its content is not in this browser: it was read in another one, or the browser cleared it. Read it again from its file.">
+                        not in this browser
+                      </span>
+                    )}
+                  </td>
+                  <td>{g.triples}</td>
+                  <td>
+                    <label className="check">
+                      <input type="checkbox" checked={g.includeOntology} onChange={(e) => edit(g.id, { includeOntology: e.target.checked })} />
+                      <span>{g.includeOntology ? 'yes' : 'no'}</span>
+                    </label>
+                  </td>
+                  <td className="row-actions">
+                    <button
+                      className="btn small"
+                      disabled={running}
+                      title="Validates the shapes chosen against this data graph"
+                      onClick={() => {
+                        st().setValidation({ data: dataOf(g), tab: 'results' });
+                        void st().runValidation('shacl');
+                      }}
+                    >
+                      Validate
+                    </button>
+                    <button className="btn small" title="Reads a file in place of this graph’s content; it keeps its name and setting" onClick={() => chooseFile(g.id)}>
+                      Replace…
+                    </button>
+                    <button
+                      className="btn small ghost"
+                      title="Takes the graph out of the model. Undo brings it back."
+                      onClick={() => {
+                        st().setDataGraphs((all) => all.filter((x) => x.id !== g.id));
+                        st().notify(`“${g.name}” is no longer a data graph of this model. Undo brings it back.`);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!graphs.length && <p className="muted pad">No data graphs yet. SHACL validates the model’s own individuals until one is added.</p>}
+    </div>
   );
 }
 

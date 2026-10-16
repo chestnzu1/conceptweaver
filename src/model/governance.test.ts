@@ -6,7 +6,7 @@ import { qualityDiagnostics } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
 import { stable } from './stable';
 import { emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
-import { fingerprintOf, MODEL_DATA } from './validation';
+import { fingerprintOf } from './validation';
 
 const base = (): Model => {
   const m = emptyModel('Shop');
@@ -230,7 +230,7 @@ describe('governance metadata', () => {
     expect(stable(m)).toBe(m);
     const required = overrideField(m, 'owner', { required: true }).model!;
     expect(stable(required)).toBe(required);
-    expect(fingerprintOf(required, MODEL_DATA)).not.toBe(fingerprintOf(m, MODEL_DATA));
+    expect(fingerprintOf(required)).not.toBe(fingerprintOf(m));
   });
 
   it('drops a prefix of the model that only repeats one that is standard now', () => {

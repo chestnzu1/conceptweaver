@@ -3284,14 +3284,23 @@ table.prefixes small {
   width: 520px;
 }
 
+/* The kind of entity, whether it is saved, and the buttons: on one line in the panel's width ("Individual" is the longest). */
 .editor-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .editor-head h2 {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-head > :not(h2) {
+  flex: none;
 }
 
 .editor-head .save-state {
@@ -3889,6 +3898,47 @@ code.pred {
   max-width: 220px;
 }
 
+/* The data graphs of the model: a list to name, replace, validate and take away. */
+.validation .data-graphs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 0 16px 16px;
+  overflow: auto;
+}
+
+.validation .data-graphs p {
+  margin: 0;
+  max-width: 90ch;
+}
+
+.validation .data-graphs td input:not([type='checkbox']) {
+  width: 100%;
+  min-width: 120px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.validation .data-graphs tr.sel td {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.validation .data-graphs .tag {
+  margin-left: 6px;
+}
+
+.validation .data-graphs .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .validation .tabs.sub {
   align-self: flex-start;
   margin: 0 16px 8px;
@@ -4301,9 +4351,43 @@ code.pred {
   padding: 0 4px;
 }
 
-.param-shapes > .link {
+.param-shapes > .link,
+.shape-failed .link {
   align-self: flex-start;
   min-height: 24px;
+}
+
+.validation .data-graph > .link {
+  min-height: 24px;
+}
+
+/* A shape opened from a validation finding: what failed it, and the constraint it failed. */
+.shape-failed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 7%, var(--panel));
+}
+
+.shape-failed p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.shape-failed .row {
+  justify-content: space-between;
+}
+
+.param-row.failed,
+.param-shape.failed,
+.param-shapes.failed {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .param-member {

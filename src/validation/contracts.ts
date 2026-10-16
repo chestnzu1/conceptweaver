@@ -36,12 +36,17 @@ export interface EntityRef {
 /** A SHACL validation result as the standard reports it. A field the engine did not give is absent. */
 export interface ShaclDetail {
   focusNode: string;
+  /** The line of the data graph's file on which statements about the focus node begin, where the file was Turtle and the node is named. */
+  line?: number;
+  /** As SPARQL writes a property path: a property, or `^:p`, `:a / :b` and the like. */
   resultPath?: string;
   value?: string;
   sourceShape: string;
   sourceConstraintComponent: string;
   resultSeverity: string;
   resultMessage: string[];
+  /** The parameter of the source shape that gives the constraint, by its local name: `minCount` for sh:MinCountConstraintComponent. */
+  parameter?: string;
 }
 
 export interface Finding {
@@ -62,7 +67,7 @@ export interface Finding {
   terms: string[];
   rels: string[];
   shacl?: ShaclDetail;
-  /** The editable shape a SHACL result comes from, when it is one. */
+  /** The shape a finding is about: for SHACL, the source shape itself, which may be a property shape or another shape inside one. */
   shapeId?: string;
   /** A quick fix: what it does, in words. It is applied where the model is (`fixOf` in src/validation/local.ts). */
   fix?: Fix;
@@ -119,6 +124,8 @@ export interface ShaclSummary {
   dataTriples: number;
   dataSource: string;
   includesOntology: boolean;
+  /** The shape set validated with, when one was chosen; every set when absent. */
+  shapeSet?: { id: string; name: string };
   /** The standard validation report, as Turtle. */
   report?: string;
   ms: number;
@@ -133,17 +140,31 @@ export interface QualitySummary {
   ms: number;
 }
 
-/** What SHACL validates: the model's own RDF, or RDF brought in for the purpose. */
+/**
+ * What SHACL validates: the model's own RDF, or one of the model's data graphs (Model.dataGraphs),
+ * RDF read from a file and kept with the model, never part of the ontology.
+ */
 export interface DataGraph {
-  source: 'model' | 'imported';
-  /** For imported data: its file name and Turtle. It is not part of the model and is not saved with it. */
+  source: 'model' | 'graph';
+  /** For a data graph: its id, its name, and the fingerprint of its content. */
+  id?: string;
   name?: string;
+  fingerprint?: string;
+  /** For a data graph, in a query: its content, as Turtle; absent when it is not in this browser. A report leaves it out. */
   text?: string;
-  /** For imported data: also give the engine the ontology's triples, so that subclasses count. */
+  /** For a data graph read from Turtle: the text is the file's own, so findings can say on which line of it their focus node is. */
+  lines?: boolean;
+  /** For a data graph: also give the engine the ontology's triples, so that subclasses count. */
   includeOntology: boolean;
 }
 
 export const MODEL_DATA: DataGraph = { source: 'model', includeOntology: true };
+
+/** Whether two data graphs are the same data: the model's own, or one graph with the same content, taken the same way. */
+export const sameData = (a: DataGraph, b: DataGraph): boolean => a === b || (a.source === b.source && (a.source === 'model' || (a.id === b.id && a.fingerprint === b.fingerprint && a.includeOntology === b.includeOntology)));
+
+/** A data graph as a report tells of it: without its content. */
+export const describedData = ({ text: _text, ...data }: DataGraph): DataGraph => data;
 
 /** What a quick fix does, in words: a label, and exactly what would change. */
 export interface Fix {
@@ -159,9 +180,11 @@ export type Scope = 'all' | Category;
 /** What a validation job found about one revision. */
 export interface ValidationReport extends OntologyRef {
   at: number;
-  /** A fingerprint of what was validated: the ontology as RDF, the shapes and the rule settings. */
+  /** A fingerprint of the model validated: the ontology as RDF, the shapes and the rule settings. The data graph and shape set are said apart. */
   fingerprint: string;
   data: DataGraph;
+  /** The shape set SHACL validated with; every set when absent. */
+  shapeSet?: string;
   entities: number;
   owl?: OwlSummary;
   shacl?: ShaclSummary;
@@ -175,6 +198,8 @@ export interface ValidationQuery extends OntologyRef {
   categories: Category[];
   /** The data graph SHACL validates. */
   data: DataGraph;
+  /** The shape set SHACL validates with, by its id; every set when absent. */
+  shapeSet?: string;
   /** Which reasoner answers the OWL questions. */
   engine: EngineId;
   /** The OWL checks reason over the ontology together with the ones it imports, as far as they are to hand. */

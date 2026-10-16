@@ -1,6 +1,8 @@
 import { WORKING_COPY } from '../../structure/local';
 import { CATEGORIES, MODEL_DATA, ValidationError, type DataGraph, type Scope, type ValidationReport, type ValidationService } from '../../validation/contracts';
 import { createLocalValidationService } from '../../validation/local';
+import { isStale } from '../../validation/report';
+import { currentData, currentShapeSet, graphText } from '../dataGraphs';
 import { importsClosure } from '../external';
 import type { Model } from '../types';
 import { supports } from '../modelTypes';
@@ -21,6 +23,12 @@ export const currentDl = (s: Pick<State, 'version' | 'validation' | 'reasoning'>
   const dl = s.reasoning.dl;
   return s.validation.engine === 'dl' && dl?.revisionId === s.version.revision && dl.result.status !== 'failed' ? dl.result : undefined;
 };
+
+/**
+ * Whether the last run no longer describes what is in the editor: another revision of the model,
+ * another data graph or another content of it, or another choice of shapes.
+ */
+export const runIsStale = (s: Pick<State, 'model' | 'version' | 'validation'>): boolean => isStale(s.validation.run, s.version.revision, currentData(s.model, s.validation.data), currentShapeSet(s.model, s.validation.shapeSet));
 
 /**
  * The checks that run by themselves after an edit, away from the page. problems: the OWL and
@@ -54,9 +62,11 @@ export interface ValidationSlice {
     phase: string;
     /** The job of the run in progress, which can be stopped. */
     job: string | null;
-    /** The data graph SHACL validates. */
+    /** The data graph SHACL validates: the model's own, or one of its data graphs (without its content). */
     data: DataGraph;
-    tab: 'results' | 'rules' | 'inferences';
+    /** The shape set SHACL validates with, by its id; every set when none. */
+    shapeSet: string | null;
+    tab: 'results' | 'rules' | 'inferences' | 'graphs';
     /** Which reasoner answers the OWL questions: the app's own rules, or the OWL 2 DL reasoning service. */
     engine: EngineId;
     /** Where the reasoning service is. */
@@ -74,7 +84,7 @@ export interface ValidationSlice {
   cancelValidation: () => void;
   /** Asks for checks that run by themselves about the model as it is, unless their report is of it already. */
   requestChecks: (kind: CheckKind) => void;
-  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'tab' | 'engine' | 'reasonerUrl' | 'focus'>>) => void;
+  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'shapeSet' | 'tab' | 'engine' | 'reasonerUrl' | 'focus'>>) => void;
 }
 
 export const validationSlice: Slice<ValidationSlice> = (set, get) => {
@@ -105,6 +115,7 @@ export const validationSlice: Slice<ValidationSlice> = (set, get) => {
       phase: '',
       job: null,
       data: MODEL_DATA,
+      shapeSet: null,
       tab: 'results',
       focus: null,
       checks: {},
@@ -119,15 +130,19 @@ export const validationSlice: Slice<ValidationSlice> = (set, get) => {
     validationService: service,
     runValidation: async (scope = 'all') => {
       if (get().validation.running || !supports(get().model, 'validation')) return;
-      const { run, data, engine } = get().validation;
-      set((s) => ({ validation: { ...s.validation, running: true, phase: 'Starting…' } }));
+      const { run, engine } = get().validation;
+      const categories = scope === 'all' ? CATEGORIES : [scope];
+      // The data graph and the shape set as they are in the model now; a graph's content is read where SHACL needs it.
+      const data = currentData(get().model, get().validation.data);
+      const shapeSet = currentShapeSet(get().model, get().validation.shapeSet);
+      set((s) => ({ validation: { ...s.validation, running: true, phase: categories.includes('shacl') && data.id ? 'Reading the data graph…' : 'Starting…' } }));
       try {
+        const text = categories.includes('shacl') && data.id ? await graphText(data.id) : undefined;
         // An ontology that imports others is checked together with them, as far as they are in this browser.
-        const job = await service.start({ ...ref(), categories: scope === 'all' ? CATEGORIES : [scope], data, engine, imports: true, ...(run ? { previous: run } : {}) });
+        const job = await service.start({ ...ref(), categories, data: text === undefined ? data : { ...data, text }, ...(shapeSet ? { shapeSet } : {}), engine, imports: true, ...(run ? { previous: run } : {}) });
         set((s) => ({ validation: { ...s.validation, job: job.job } }));
         const report = await service.report(job.job);
-        // The data graph is the one the page holds, so that a change of it is seen as one.
-        set((s) => ({ validation: { ...s.validation, run: { ...report, data }, running: false, phase: '', job: null } }));
+        set((s) => ({ validation: { ...s.validation, run: report, running: false, phase: '', job: null } }));
       } catch (e) {
         set((s) => ({ validation: { ...s.validation, running: false, phase: '', job: null } }));
         if (e instanceof ValidationError && e.code === 'cancelled') get().notify('Validation stopped. The results shown are from before.');

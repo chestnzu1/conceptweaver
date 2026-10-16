@@ -446,6 +446,13 @@ whether it has agreed. `e2e/working-copy.mjs` keeps and reopens a 5,200-class mo
 characters, which `localStorage` refuses. Still the whole model is written each time, not the
 change (about 15 ms of copying at 2,600 classes); undo history is still in memory only.
 
+**Status, 2026-10-16.** The data graphs SHACL validates (roadmap stage SH-2) keep their content
+beside it, in a store of its own (database version 4, `datagraphs`), apart from the model, which
+names them. Content is never taken out: a deleted graph's stays so that undo, or a model saved
+before with the same graph, finds it again. It accumulates until the site's data is cleared;
+collecting what no model names any more needs to know every model that might, which versions
+(2.3) will.
+
 ### TD-12 No version history, diff or audit trail — High
 
 **Where.** `past: Model[]` and `future: Model[]` in `src/model/store.ts`. The only "revision" in

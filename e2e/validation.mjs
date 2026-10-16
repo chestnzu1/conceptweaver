@@ -192,21 +192,21 @@ const exported = fs.readFileSync(tmp + '/shapes.ttl', 'utf8');
 ok(/:FilmShape\s+a sh:NodeShape/.test(exported) && /:GenreShape\s+a sh:NodeShape/.test(exported) && exported.includes('sh:or'), 'the set exports as one Turtle file with all three');
 await tab(/^Validation/);
 
-// imported data as the data graph
+// a data graph of the model as the data validated
 fs.writeFileSync(tmp + '/data.ttl', `@prefix : <http://example.org/film-knowledge-graph#> . @prefix d: <http://data.example/> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 d:f1 a :Documentary .
 d:f2 a :Film ; :releaseDate "yesterday" .`);
 await v.locator(':scope > input[type=file]').setInputFiles(tmp + '/data.ttl');
-await page.waitForFunction(() => document.querySelector('.data-graph select')?.value === 'imported');
-ok((await v.locator('.stale').count()) === 1, 'choosing other data to validate makes the results stale');
+await page.waitForFunction(() => !['model', undefined].includes(document.querySelector('.data-graph select[aria-label="Data to validate"]')?.value));
+ok((await v.locator('.stale').count()) === 1, 'a data graph read from a file is the data validated from then on, and the results are stale');
 await run('SHACL');
 await sub(/^Results/);
 await v.getByLabel('Category').selectOption('shacl');
 const ext = await rowTexts();
-ok(ext.some((r) => r.includes('<http://data.example/f1> data') && r.includes('Or')) && ext.some((r) => r.includes('<http://data.example/f2> data') && r.includes('Datatype')), 'imported data is validated, a subclass instance included; its nodes are marked as data, not model entities: ' + ext.join(' / '));
-ok(flat(await card('SHACL validation').innerText()).includes('from data.ttl'), 'the card says which data was validated');
+ok(ext.some((r) => r.includes('<http://data.example/f1> data') && r.includes('Or')) && ext.some((r) => r.includes('<http://data.example/f2> data') && r.includes('Datatype')), 'the data graph is validated, a subclass instance included; its nodes are marked as data, not model entities: ' + ext.join(' / '));
+ok(flat(await card('SHACL validation').innerText()).includes('from data'), 'the card says which data was validated');
 await tab('Entities');
-ok((await page.locator('.view tbody tr').count()) > 0 && !(await page.locator('.view').innerText()).includes('data.example'), 'the imported data is not added to the model');
+ok((await page.locator('.view tbody tr').count()) > 0 && !(await page.locator('.view').innerText()).includes('data.example'), 'nothing of the data graph is added to the ontology');
 await tab(/^Validation/);
 await v.getByLabel('Data to validate').selectOption('model');
 await run('Run all checks');

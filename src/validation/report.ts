@@ -1,6 +1,6 @@
 import { ontologyIriOf } from '../model/prefixes';
 import type { Model } from '../model/types';
-import type { Category, DataGraph, Finding, ValidationReport } from './contracts';
+import { sameData, type Category, type DataGraph, type Finding, type ValidationReport } from './contracts';
 
 /**
  * What the validation workbench shows of the checks, and the reports it writes: the engines and
@@ -8,9 +8,12 @@ import type { Category, DataGraph, Finding, ValidationReport } from './contracts
  * anything.
  */
 
-/** Whether a report no longer describes what is in the editor: it is of another revision, or of other data. Moving terms on the canvas does not count. */
-export function isStale(run: ValidationReport | null, revisionId: string, data: DataGraph): boolean {
-  return !!run && (run.revisionId !== revisionId || run.data.source !== data.source || run.data.name !== data.name || run.data.text !== data.text || run.data.includeOntology !== data.includeOntology);
+/**
+ * Whether a report no longer describes what is in the editor: it is of another revision, of other
+ * data, or of another choice of shapes. Moving terms on the canvas does not count.
+ */
+export function isStale(run: ValidationReport | null, revisionId: string, data: DataGraph, shapeSet?: string): boolean {
+  return !!run && (run.revisionId !== revisionId || !sameData(run.data, data) || run.shapeSet !== shapeSet);
 }
 
 export const REASONER_LIMITS = [
@@ -58,6 +61,7 @@ export function reportJson(run: ValidationReport, model: Model): string {
       reasoner: dl?.report,
       shacl: shacl ? { ...shacl, report: undefined } : undefined,
       dataGraph: { source: data.source, name: data.name, includesOntologyTriples: data.source === 'model' || data.includeOntology },
+      shapeSet: shacl?.shapeSet?.name ?? 'every shape set',
       findings: findings.map(({ fix, id: _id, ...f }) => ({ ...f, category: CATEGORY_LABEL[f.category], ...(fix ? { quickFix: fix.label } : {}) })),
     },
     null,

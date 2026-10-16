@@ -8,8 +8,9 @@ import { QUALITY_RULES, qualityDiagnostics, ruleById, ruleEnabled, type QuickFix
 import { termIris, toTurtle } from './rdf';
 import { reason, type Reasoning } from './reasoner';
 import { dlResult, entityLinks, readable, type DlReport, type EntityLink, type ReasoningResult } from './reasoning';
-import { MODEL_DATA, type Category, type DataGraph, type EntityRef, type EntityType, type Finding, type JustifiedEntity, type Level, type OntologyRef, type OwlSummary, type QualitySummary, type Scope, type ShaclSummary, type ValidationReport } from '../validation/contracts';
-import { isPropertyShape } from './shacl';
+import { describedData, MODEL_DATA, sameData, type Category, type DataGraph, type EntityRef, type EntityType, type Finding, type JustifiedEntity, type Level, type OntologyRef, type OwlSummary, type QualitySummary, type Scope, type ShaclSummary, type ValidationReport } from '../validation/contracts';
+import { subjectLines } from './dataLines';
+import { isPropertyShape, PARAM, pathOf, pathToSparql } from './shacl';
 import { findShape, ownerOf, SH, shapeByIri, shapeName, shapesToTurtle } from './shapes';
 import type { Model } from './types';
 import { quoted, quotedName } from './words';
@@ -28,7 +29,7 @@ import { quoted, quotedName } from './words';
  */
 
 export type { Category, DataGraph, EntityRef, EntityType, Finding, JustifiedEntity, Level, OwlSummary, QualitySummary, ShaclDetail, ShaclSummary, ValidationReport } from '../validation/contracts';
-export { MODEL_DATA } from '../validation/contracts';
+export { describedData, MODEL_DATA, sameData } from '../validation/contracts';
 
 /** A run of the checks: what a validation job reports. */
 export type ValidationRun = ValidationReport;
@@ -368,20 +369,23 @@ interface RdfTerm {
 const SEVERITY: Record<string, Level> = { Violation: 'error', Warning: 'warning', Info: 'info' };
 
 /**
- * Validates a data graph against the model's shapes with a SHACL Core engine. The ontology
- * graph, the shapes graph and the data graph are three things: the shapes graph is the model's
- * shapes and nothing else; the data graph is what `data` names.
+ * Validates a data graph against the model's shapes with a SHACL Core engine: those of one shape
+ * set, or of every set. The ontology graph, the shapes graph and the data graph are three things:
+ * the shapes graph is the shapes and nothing else; the data graph is what `data` names.
  */
-export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA): Promise<{ summary: ShaclSummary; findings: Finding[] }> {
+export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA, shapeSet?: string): Promise<{ summary: ShaclSummary; findings: Finding[] }> {
   const t0 = performance.now();
   const ix = entityIndex(model);
-  const dataSource = data.source === 'model' ? 'This model' : (data.name ?? 'Imported data');
+  const dataSource = data.source === 'model' ? 'This model' : (data.name ?? 'A data graph');
   const includesOntology = data.source === 'model' || data.includeOntology;
-  const base: ShaclSummary = { status: 'skipped', violations: 0, warnings: 0, infos: 0, shapes: 0, dataTriples: 0, dataSource, includesOntology, ms: 0 };
+  const chosen = shapeSet === undefined ? undefined : model.shapeSets.find((s) => s.id === shapeSet);
+  const base: ShaclSummary = { status: 'skipped', violations: 0, warnings: 0, infos: 0, shapes: 0, dataTriples: 0, dataSource, includesOntology, ...(chosen ? { shapeSet: { id: chosen.id, name: chosen.name } } : {}), ms: 0 };
   const done = (s: Partial<ShaclSummary>, findings: Finding[] = []) => ({ summary: { ...base, ...s, ms: Math.round(performance.now() - t0) }, findings });
 
-  const shapesTtl = shapesToTurtle(model);
+  if (shapeSet !== undefined && !chosen) return done({ status: 'failed', error: 'The shape set chosen is no longer in the model. Choose another, or every set.' });
+  const shapesTtl = shapesToTurtle(model, chosen ? [chosen] : model.shapeSets);
   if (!shapesTtl.trim()) return done({ status: 'skipped' });
+  if (data.source === 'graph' && data.text === undefined) return done({ status: 'failed', error: `The content of the data graph “${dataSource}” is not in this browser: it was read in another one, or the browser cleared it. Replace it with its file, under Data graphs.` });
   let shapeQuads: unknown[];
   let dataQuads: unknown[];
   try {
@@ -392,7 +396,7 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
   }
   try {
     const ontology = includesOntology ? new Parser().parse(toTurtle(model)) : [];
-    const own = data.source === 'imported' ? new Parser().parse(data.text ?? '') : [];
+    const own = data.source === 'graph' ? new Parser().parse(data.text ?? '') : [];
     dataQuads = [...ontology, ...own];
   } catch (e) {
     return done({ status: 'failed', error: `The data could not be read: ${e instanceof Error ? e.message : 'not valid Turtle'}` });
@@ -413,7 +417,11 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
     const short = (iri: string) => compactIri(model, iri) ?? (iri.startsWith(SH) ? 'sh:' + iri.slice(SH.length) : `<${iri}>`);
     const show = (t: RdfTerm) => (t.termType === 'Literal' ? JSON.stringify(t.value) + (t.language ? '@' + t.language : '') : t.termType === 'BlankNode' ? '_:' + t.value : short(t.value));
 
-    const findings: Finding[] = (report.results as unknown as { focusNode?: RdfTerm; path?: RdfTerm; value?: RdfTerm; sourceShape?: RdfTerm; sourceConstraintComponent?: RdfTerm; severity?: RdfTerm; message: RdfTerm[] }[]).map((r, n): Finding => {
+    type Result = { focusNode?: RdfTerm; path?: RdfTerm; value?: RdfTerm; sourceShape?: RdfTerm; sourceConstraintComponent?: RdfTerm; severity?: RdfTerm; message: RdfTerm[] };
+    const results = report.results as unknown as Result[];
+    // Where in the data's file each focus node is, when the file was Turtle: its own lines.
+    const lines = data.source === 'graph' && data.lines && data.text ? subjectLines(data.text, new Set(results.flatMap((r) => (r.focusNode?.termType === 'NamedNode' ? [r.focusNode.value] : [])))) : undefined;
+    const findings: Finding[] = results.map((r, n): Finding => {
       const focus = r.focusNode;
       const focusIri = focus?.termType === 'NamedNode' ? focus.value : undefined;
       const termId = focusIri ? iriToTerm.get(focusIri) : undefined;
@@ -425,7 +433,14 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
       const found = source ? shapeOf(source) : undefined;
       const shape = found ? (found.shape.iri ? found.shape : (ownerOf(found.set, found.shape.id) ?? found.shape)) : undefined;
       const path = r.path?.termType === 'NamedNode' ? r.path.value : undefined;
+      // A path of more than one property is the source shape's own: written as SPARQL writes it.
+      const shapePath = found && isPropertyShape(found.shape) ? pathOf(found.shape) : undefined;
+      const resultPath = path ? short(path) : r.path ? (shapePath ? pathToSparql(shapePath, short) : '(a path of more than one property)') : undefined;
       const messages = r.message.map((m) => m.value);
+      // The parameter that gives the constraint: sh:MinCountConstraintComponent is given by sh:minCount.
+      const local = component.startsWith(SH) ? component.slice(SH.length).replace(/ConstraintComponent$/, '') : '';
+      const parameter = local && PARAM.has(SH + local[0].toLowerCase() + local.slice(1)) ? local[0].toLowerCase() + local.slice(1) : undefined;
+      const line = focusIri ? lines?.get(focusIri) : undefined;
       return {
         id: `shacl:${n}`,
         category: 'shacl',
@@ -435,24 +450,27 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
         // The engine's own message, or the shape's; nothing is made up when there is none.
         message: messages.join(' ') || `Does not conform to ${short(component)}.`,
         entity,
-        property: path ? short(path) : r.path ? 'a property path' : undefined,
+        property: resultPath,
         terms: termId ? [termId] : [],
         rels: [],
-        shapeId: shape?.id,
+        shapeId: found?.shape.id,
         shacl: {
           focusNode: focus ? show(focus) : '',
-          ...(r.path ? { resultPath: path ? short(path) : '(a path that is not a single property)' } : {}),
+          ...(line ? { line } : {}),
+          ...(resultPath ? { resultPath } : {}),
           ...(r.value ? { value: show(r.value) } : {}),
           sourceShape: source ? (source.termType === 'BlankNode' ? `${found && isPropertyShape(found.shape) ? 'a property shape' : 'an anonymous shape'}${shape && shape !== found?.shape ? ` of ${shape.iri ? short(shape.iri) : shapeName(shape)}` : ''}` : short(source.value)) : '',
           sourceConstraintComponent: component ? short(component) : '',
           resultSeverity: r.severity ? short(r.severity.value) : '',
           resultMessage: messages,
+          ...(parameter ? { parameter } : {}),
         },
       };
     });
 
     let reportTtl = '';
-    const writer = new Writer({ prefixes: { sh: SH, xsd: 'http://www.w3.org/2001/XMLSchema#', '': model.baseIri || undefined } as never });
+    // A model without a base IRI has no default prefix: the writer is not given one that is undefined.
+    const writer = new Writer({ prefixes: { sh: SH, xsd: 'http://www.w3.org/2001/XMLSchema#', ...(model.baseIri ? { '': model.baseIri } : {}) } });
     writer.addQuads([...report.dataset] as never);
     writer.end((_e: unknown, result: string) => (reportTtl = result));
     const count = (l: Level) => findings.filter((f) => f.severity === l).length;
@@ -468,13 +486,11 @@ export async function shaclFindings(model: Model, data: DataGraph = MODEL_DATA):
 
 export type { Scope } from '../validation/contracts';
 
-/** What a run covers, as a fingerprint: the same content always gives the same one. */
-export function fingerprintOf(model: Model, data: DataGraph): string {
-  return fingerprint(toTurtle(model) + '\n' + shapesToTurtle(model) + '\n' + JSON.stringify(model.quality) + '\n' + JSON.stringify(model.governance) + '\n' + (data.source === 'imported' ? (data.text ?? '') + data.includeOntology : ''));
+/** What a run is of, as a fingerprint: the ontology, the shapes and the rule settings. The same content always gives the same one. */
+export function fingerprintOf(model: Model): string {
+  return fingerprint(toTurtle(model) + '\n' + shapesToTurtle(model) + '\n' + JSON.stringify(model.quality) + '\n' + JSON.stringify(model.governance));
 }
 
-/** Whether two data graphs are the same one. */
-export const sameData = (a: DataGraph, b: DataGraph): boolean => a === b || (a.source === b.source && a.name === b.name && a.text === b.text && a.includeOntology === b.includeOntology);
 
 /**
  * Runs the checks of `scope` (one category, all, or a list) and reports what they find, as a
@@ -493,14 +509,30 @@ export interface ValidateOptions {
   reasoning?: Reasoning;
   /** The revision the report is of. */
   ref?: OntologyRef;
+  /** The shape set SHACL validates with; every set when absent. */
+  shapeSet?: string;
 }
 
 export async function validate(model: Model, data: DataGraph, scope: Scope | Category[], previous: ValidationReport | null, options: ValidateOptions = {}): Promise<ValidationReport> {
-  const { tick = async () => {}, withImports, askDl, reasoning, ref = { ontologyId: '', revisionId: '' } } = options;
+  const { tick = async () => {}, withImports, askDl, reasoning, ref = { ontologyId: '', revisionId: '' }, shapeSet } = options;
   const categories: Category[] = Array.isArray(scope) ? scope : scope === 'all' ? ['owl', 'shacl', 'quality'] : [scope];
-  const print = fingerprintOf(model, data);
-  const keep = previous && previous.fingerprint === print && sameData(previous.data, data) ? previous : null;
-  const run: ValidationReport = { ...ref, at: Date.now(), fingerprint: print, data, entities: model.terms.length + model.props.length, owl: keep?.owl, dl: keep?.dl, shacl: keep?.shacl, quality: keep?.quality, findings: keep ? keep.findings.filter((f) => !categories.includes(f.category)) : [] };
+  const print = fingerprintOf(model);
+  // What was found of the same model is kept for the checks not run now; SHACL's only when it was of the same data and shapes.
+  const keep = previous && previous.fingerprint === print ? previous : null;
+  const keepShacl = !!keep && sameData(keep.data, data) && keep.shapeSet === shapeSet;
+  const run: ValidationReport = {
+    ...ref,
+    at: Date.now(),
+    fingerprint: print,
+    data: describedData(data),
+    ...(shapeSet !== undefined ? { shapeSet } : {}),
+    entities: model.terms.length + model.props.length,
+    owl: keep?.owl,
+    dl: keep?.dl,
+    shacl: keepShacl ? keep.shacl : undefined,
+    quality: keep?.quality,
+    findings: keep ? keep.findings.filter((f) => !categories.includes(f.category) && (f.category !== 'shacl' || keepShacl)) : [],
+  };
   const wants = (c: Category) => categories.includes(c);
   if (wants('owl') && askDl && model.mode !== 'skos') {
     await tick('Reasoning with the OWL 2 DL reasoner…');
@@ -525,7 +557,7 @@ export async function validate(model: Model, data: DataGraph, scope: Scope | Cat
   }
   if (wants('shacl')) {
     await tick('Validating against the shapes…');
-    const r = await shaclFindings(model, data);
+    const r = await shaclFindings(model, data, shapeSet);
     run.shacl = r.summary;
     run.findings.push(...r.findings);
   }

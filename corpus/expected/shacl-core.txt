@@ -1,0 +1,3 @@
+# The W3C SHACL 1.0 Core tests whose report is not the one expected (0 of 98).
+# - a result expected and not given; + a result given and not expected.
+
