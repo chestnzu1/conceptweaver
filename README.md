@@ -689,6 +689,15 @@ More on what the advanced reasoner does and does not cover is under
   `src/export/`).
 - **Files** – save/open JSON; import Turtle / N-Triples (OWL, RDFS, SKOS); export OWL (Turtle),
   JSON-LD, CSV, SVG and PNG. Drag a file onto the window to open it.
+- **Export in every OWL syntax** (since 2026-10-16; `src/io/`) – *File → Export*: Turtle, JSON-LD
+  and **RDF/XML** (what Protégé saves; written in the page from the Turtle, statement for
+  statement, literals as written, `src/model/rdfxml.ts`), and **OWL/XML**, **functional** and
+  **Manchester syntax**, which the local OWL service (`pnpm reasoner`) writes with the OWL API from
+  the same Turtle. Without the service those three say why they cannot be written. Every export
+  states what the Turtle export states: the OWL API compares each with it and finds nothing
+  missing (`src/model/owlSyntaxes.test.ts`, on the example ontology and Pizza). OWL's own syntaxes
+  declare every entity they use, so the OWL API adds the declarations of the standard ones the
+  Turtle uses undeclared (`rdfs:label`, `xsd:string`, `owl:Thing`); RDF/XML adds nothing.
 - **Export with inferred assertions** – an export is of what is asserted. *File → Export → OWL
   with inferred assertions (Turtle)* writes the same ontology and, after it, under a heading
   that says what they are and which reasoner worked them out, the inferred class memberships

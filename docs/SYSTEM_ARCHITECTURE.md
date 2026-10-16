@@ -253,7 +253,7 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `ReasoningService` | `start(revision, engine)`, `status(job)`, `cancel(job)`, `result(job)` | `src/reasoning/local.ts`: `reasoner.ts` in a worker; HermiT through `reasoning.ts` | **Existing** (2026-10-15) |
 | `ValidationService` | `start(revision, scope)`, `status`, `cancel`, `report` | `src/validation/local.ts`: `validation.ts` in a worker | **Existing** (2026-10-15) |
 | `GraphService` | `neighbourhood(roots, depth, filters)`, `search(text)` | `subgraph.ts` (`extractSubgraph`, `searchTerms`) | Recommended, Phase 2 |
-| `ImportExportService` | `detect`, `read(document)`, `write(revision, syntax)` | `rdfFormats.ts`, `rdf.ts`, `files.ts` | Recommended, Phase 2 |
+| `ImportExportService` | `detect`, `read(document)`, `write(model, syntax)` | `src/io/local.ts`, over `rdfFormats.ts`, `rdf.ts` and `rdfxml.ts`; OWL's own syntaxes written by the OWL service | **Existing** (2026-10-16) |
 | `SparqlService` | `query(revision, text, graph)` | `sparql.ts` | Recommended, Phase 2 |
 | `AlignmentService` | external ontologies, mappings, suggestions | `external.ts`, `alignment.ts`, `matcher.ts` | Recommended, Phase 2 |
 | `ProjectService` | versions, save a version, a version's model, diff, restore; list, open and save | `src/projects/local.ts` over `library.ts` | **Existing** for versions (2026-10-16); list, open and save are still `library.ts` called directly |

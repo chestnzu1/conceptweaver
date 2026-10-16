@@ -211,7 +211,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M8 Reuse and alignment | **Existing** | `src/model/external.ts`, `alignment.ts`, `matcher.ts` | Imports not transitive or declared |
 | M9 Search and SPARQL | **Existing** | `src/entities/`, `src/model/sparql.ts` | Asserted graph only |
 | M10 Versioning | **Partially Implemented** | `src/projects/` (named versions, differences, restore, in this browser; 2026-10-16) | No history of one entity, no server revisions, no releases |
-| M11 Publishing and export | **Partially Implemented** | `src/model/files.ts`, `htmlExport.ts` | No RDF/XML export; no publishing |
+| M11 Publishing and export | **Partially Implemented** | `src/model/files.ts`, `htmlExport.ts`, `src/io/` | No generated documentation; no publishing |
 | M12 AI assistance | **Not implemented** | Matcher seam in `matcher.ts` | Everything |
 | M13 Collaboration and governance | **Partially Implemented** | `src/model/governance.ts` | No users, review or audit |
 | M14 Database connectivity and schema exploration | **Not implemented** | Free-text `database`, `schema`, `table`, `column` fields in `src/model/governance.ts` | Everything; needs the backend |
@@ -712,17 +712,17 @@ reordering a file is not a change (NFR-1). Picture-only changes are not ontology
 published resource.
 
 **Status: Partially Implemented.** Exports (`exportModel` in `src/model/files.ts`): the
-application's JSON, Turtle (as OWL, as SKOS, and with inferred assertions), JSON-LD, CSV of
-terms and relationships, SVG, PNG, and a self-contained interactive HTML page with search and a
-draggable graph (`src/model/htmlExport.ts`, `src/export/`).
+application's JSON, Turtle (as OWL, as SKOS, and with inferred assertions), JSON-LD, RDF/XML
+(written in the page), OWL/XML, functional and Manchester syntax (through the local OWL service;
+since 2026-10-16, `src/io/`), CSV of terms and relationships, SVG, PNG, and a self-contained
+interactive HTML page with search and a draggable graph (`src/model/htmlExport.ts`, `src/export/`).
 
-**Gaps.** No RDF/XML, OWL/XML, functional or Manchester export, although all are read (TD-13).
-No generated documentation. No publishing to a stable address. No Excel or PDF.
+**Gaps.** No generated documentation. No publishing to a stable address. No Excel or PDF.
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
 | FR-M11-1 | Export as Turtle, JSON-LD and the application's own format. | Existing | P0 |
-| FR-M11-2 | Export as RDF/XML, OWL/XML, functional and Manchester syntax. | Recommended | P0 |
+| FR-M11-2 | Export as RDF/XML, OWL/XML, functional and Manchester syntax. | Implemented 2026-10-16 (`src/io/local.ts`; RDF/XML in the page, the others through the OWL service) | P0 |
 | FR-M11-3 | Export with inferred statements as a separate, clearly marked section. | Existing | P1 |
 | FR-M11-4 | A self-contained interactive page of the model that opens anywhere. | Existing | P1 |
 | FR-M11-5 | Generated documentation: a page per entity with its definition, hierarchy, restrictions and usage, and an index. | Recommended | P2 |

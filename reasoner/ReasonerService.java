@@ -81,7 +81,8 @@ import org.semanticweb.owlapi.util.ShortFormProvider;
  *
  *   GET  /health   which reasoner this is
  *   POST /reason   { ontology, imports?: [{ iri, text }], timeoutMs?, explanations?: { max, perSubject, timeoutMs } }
- *   POST /convert  { document }: the document, in any OWL syntax, as Turtle
+ *   POST /convert  { document, to? }: the document, in any OWL syntax, as Turtle, or as `to` says:
+ *                  rdfxml, owlxml, functional or manchester
  *   POST /compare  { original, exported }: the statements in one document and not the other
  */
 public class ReasonerService {
@@ -141,6 +142,10 @@ public class ReasonerService {
     // and comparing two documents of an ontology statement by statement.
     o.addProperty("converts", true);
     o.addProperty("compares", true);
+    // The syntaxes /convert writes, besides reading every one of them.
+    JsonArray writes = new JsonArray();
+    for (String w : WRITES) writes.add(w);
+    o.add("writes", writes);
     return o;
   }
 
@@ -259,7 +264,21 @@ public class ReasonerService {
    * itself is read: an import is not fetched, and nothing is reasoned over or kept.
    */
   static void convert(HttpExchange x) throws IOException {
-    documents(x, "POST an ontology to /convert.", "The request is not JSON with the \"document\" to read.", new String[] {"document"}, r -> converted(r.get("document").getAsString()));
+    documents(x, "POST an ontology to /convert.", "The request is not JSON with the \"document\" to read.", new String[] {"document"}, r -> converted(r.get("document").getAsString(), r.has("to") && r.get("to").isJsonPrimitive() ? r.get("to").getAsString() : "turtle"));
+  }
+
+  /** The syntaxes a document can be written in, by the names the app gives them. */
+  static final String[] WRITES = {"turtle", "rdfxml", "owlxml", "functional", "manchester"};
+
+  static OWLDocumentFormat writer(String to) {
+    switch (to) {
+      case "turtle": return new TurtleDocumentFormat();
+      case "rdfxml": return new RDFXMLDocumentFormat();
+      case "owlxml": return new OWLXMLDocumentFormat();
+      case "functional": return new FunctionalSyntaxDocumentFormat();
+      case "manchester": return new ManchesterSyntaxDocumentFormat();
+      default: return null;
+    }
   }
 
   /**
@@ -334,7 +353,14 @@ public class ReasonerService {
     }
   }
 
-  static JsonObject converted(String document) {
+  /**
+   * A document read in whichever syntax it is in and written in another, with the prefixes it
+   * was written with: as Turtle (`turtle`, for reading into the app), or, for exporting from it,
+   * as RDF/XML, OWL/XML, functional or Manchester syntax (`document`).
+   */
+  static JsonObject converted(String document, String to) {
+    OWLDocumentFormat into = writer(to);
+    if (into == null) return unread("The OWL service does not write \"" + to + "\": it writes " + String.join(", ", WRITES) + ".");
     OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
     OWLOntology ontology;
     try {
@@ -344,18 +370,19 @@ public class ReasonerService {
     }
     try {
       OWLDocumentFormat source = manager.getOntologyFormat(ontology);
-      TurtleDocumentFormat turtle = new TurtleDocumentFormat();
-      if (source != null && source.isPrefixOWLOntologyFormat()) turtle.copyPrefixesFrom(source.asPrefixOWLOntologyFormat());
+      if (source != null && source.isPrefixOWLOntologyFormat() && into.isPrefixOWLOntologyFormat()) into.asPrefixOWLOntologyFormat().copyPrefixesFrom(source.asPrefixOWLOntologyFormat());
       StringDocumentTarget target = new StringDocumentTarget();
-      manager.saveOntology(ontology, turtle, target);
+      manager.saveOntology(ontology, into, target);
       JsonObject out = new JsonObject();
       out.add("errors", new JsonArray());
-      out.addProperty("turtle", target.toString());
+      if (to.equals("turtle")) out.addProperty("turtle", target.toString());
+      out.addProperty("document", target.toString());
+      out.addProperty("to", to);
       out.addProperty("format", source == null ? "unknown" : source.getKey());
       out.addProperty("axioms", ontology.getAxiomCount());
       return out;
     } catch (Exception e) {
-      return unread("It was read, but could not be written as Turtle: " + firstLines(String.valueOf(e.getMessage()), 3));
+      return unread("It was read, but could not be written as " + into.getKey() + ": " + firstLines(String.valueOf(e.getMessage()), 3));
     }
   }
 

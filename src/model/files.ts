@@ -12,6 +12,7 @@ import { fromTurtle, toJsonLd, toTurtle, toTurtleWithInferred } from './rdf';
 import { keptSummary } from './unmapped';
 import { asTurtle, detectFormat, FORMAT_LABEL, type DocumentFormat, type DocumentSource } from './rdfFormats';
 import { stable } from './stable';
+import { createLocalImportExportService } from '../io/local';
 import { routeOf } from '../layout/types';
 import { currentDl, layoutOf, useStore, viewOf } from './store';
 import { normalizeModel, type Model } from './types';
@@ -202,7 +203,7 @@ export async function inferredTurtle(): Promise<{ text: string; count: number } 
   return { text, count: found.memberships.length + found.facts.length };
 }
 
-export type ExportFormat = 'json' | 'jsonld' | 'turtle' | 'owl' | 'owl-inferred' | 'skos' | 'csv-terms' | 'csv-relations' | 'svg' | 'png' | 'html';
+export type ExportFormat = 'json' | 'jsonld' | 'turtle' | 'owl' | 'owl-inferred' | 'skos' | 'csv-terms' | 'csv-relations' | 'svg' | 'png' | 'html' | 'rdfxml' | 'owlxml' | 'functional' | 'manchester';
 
 export async function exportModel(format: ExportFormat) {
   const store = useStore.getState();
@@ -223,6 +224,15 @@ export async function exportModel(format: ExportFormat) {
       }
     }
     else if (format === 'skos') download(`${base}${m.mode === 'skos' ? '' : '-skos'}.ttl`, toTurtle(convertModel(m, 'skos')), 'text/turtle');
+    // In RDF/XML, written in the page; in OWL's own syntaxes, by the local OWL service. A vocabulary is written in those as the ontology it converts to.
+    else if (format === 'rdfxml' || format === 'owlxml' || format === 'functional' || format === 'manchester') {
+      const io = createLocalImportExportService({ serviceUrl: () => store.validation.reasonerUrl });
+      const which = format === 'rdfxml' ? m : convertModel(m, 'ontology');
+      if (format !== 'rdfxml') store.notify(`Writing ${FORMAT_LABEL[format]} through the OWL service…`);
+      const written = await io.write(which, format);
+      download(`${base}${which === m ? '' : '-ontology'}.${written.extension}`, written.text, written.mediaType);
+      if (format !== 'rdfxml') store.notify(`Exported as ${FORMAT_LABEL[format]}, written by the OWL API from the ontology as Turtle has it.`);
+    }
     else if (format === 'csv-terms') download(`${base}-terms.csv`, '﻿' + termsCsv(m), 'text/csv');
     else if (format === 'csv-relations') download(`${base}-relations.csv`, '﻿' + relationsCsv(m), 'text/csv');
     else if (!viewOf(store).terms.length) store.notify('Nothing to export yet.');

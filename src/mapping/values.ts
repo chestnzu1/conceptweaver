@@ -11,7 +11,7 @@ const NUMBERS = new Set(['xsd:decimal', 'xsd:double', 'xsd:float']);
 
 /** Digits grouped with spaces, apostrophes or one kind of separator, and one decimal mark: as a number is written. */
 function number(text: string, whole: boolean): string | undefined {
-  const t = text.replace(/[\s  ']/g, '');
+  const t = text.replace(/[\s\u00a0\u202f']/g, '');
   if (!/^[+-]?[\d.,]+$/.test(t)) return undefined;
   const dots = (t.match(/\./g) ?? []).length;
   const commas = (t.match(/,/g) ?? []).length;

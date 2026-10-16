@@ -197,10 +197,29 @@ else {
     ok((await toast()) === 'Opened “Shop ontology” from OWL functional syntax: 3 terms, 2 relations.' && (await nodes()).join('|') === 'Book|Customer|Product', 'with the OWL service running, a file in OWL functional syntax is opened: ' + (await toast()));
     ttl = await turtle();
     ok(ttl.includes(':Book a owl:Class') && /rdfs:subClassOf :Product/.test(ttl) && /owl:onProperty :buys ;\s*owl:someValuesFrom :Product/.test(ttl), 'with its subclass and its restriction');
+
+    // Exported in every OWL syntax (task 2.5): RDF/XML written in the page, OWL's own syntaxes by the service; and opened again.
+    for (const [item, ext, start] of [['RDF/XML', 'owl', '<?xml'], ['OWL/XML', 'owx', '<?xml'], ['OWL functional syntax', 'ofn', 'Prefix('], ['OWL Manchester syntax', 'omn', 'Prefix:']]) {
+      const [file] = await Promise.all([page.waitForEvent('download'), fileMenu(new RegExp('^' + item.replace('/', '\\/')))]);
+      await file.saveAs(tmp + 'export.' + ext);
+      const text = fs.readFileSync(tmp + 'export.' + ext, 'utf8');
+      ok(file.suggestedFilename().endsWith('.' + ext) && text.trimStart().startsWith(start) && text.includes('Book'), `exported as ${item}, as ${file.suggestedFilename()}`);
+    }
+    await openFile('export.ofn');
+    await opened('Opened “Shop ontology” from OWL functional syntax');
+    ok((await nodes()).join('|') === 'Book|Customer|Product', 'and the functional syntax it wrote opens again as the same ontology');
+    await openFile('export.owl');
+    await opened('Opened “Shop ontology” from RDF/XML');
+    ok((await nodes()).join('|') === 'Book|Customer|Product', 'and so does the RDF/XML');
   } finally {
     await service.stop();
   }
 }
+
+// Without the service, OWL's own syntaxes say why they cannot be written; RDF/XML needs none.
+await fileMenu(/^OWL\/XML/);
+await page.waitForFunction(() => /none answers/.test(document.querySelector('.toast')?.textContent ?? ''));
+ok((await toast()).startsWith('OWL/XML is written by the app\'s local OWL service, and none answers at http://127.0.0.1:5195.'), 'without the OWL service, OWL/XML says why it cannot be written: ' + (await toast()).slice(0, 100));
 
 // ---------------------------------------------------------------- what the model has no place for
 await openFile('kin.owl');

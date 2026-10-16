@@ -5,6 +5,14 @@ import { readModelFile } from './files';
 import { relChoice, restrictionsOf } from './props';
 import { convertWithService } from './rdfFormats';
 import type { Model } from './types';
+import fs from 'node:fs';
+import { CORPUS, corpusFile } from '../../corpus/corpus.mjs';
+import { createLocalImportExportService } from '../io/local';
+import { withIris } from './iri';
+import { decodeDocument } from './rdfFormats';
+import { sampleModel } from './sample';
+
+const PIZZA = CORPUS.find((c: { id: string }) => c.id === 'pizza')!;
 
 /**
  * The syntaxes that are OWL's own and no RDF, read for real: these start the local OWL service,
@@ -191,6 +199,48 @@ describe.skipIf(!!why)('ontologies in the syntaxes that are OWL\'s own', () => {
     expect(names(m)).toEqual(['margherita', 'pizza']);
     expect(term(m, 'margherita').iri).toBe('http://purl.obolibrary.org/obo/PZ_0000002');
     expect(m.relations.map((r) => relChoice(m, r))).toEqual(['generalization']);
+  });
+
+  // Export in every OWL syntax (roadmap task 2.5, FR-M11-2): each states what the Turtle export does, to the OWL API.
+  describe('exported', () => {
+    const io = () => createLocalImportExportService({ serviceUrl: () => service.url });
+    const compare = async (original: string, exported: string) => {
+      const r = await fetch(`${service.url}/compare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original, exported }) });
+      return (await r.json()) as { errors: string[]; original: { axioms: number }; exported: { axioms: number; format: string }; removed: string[]; added: string[] };
+    };
+    const models: [string, () => Promise<Model>][] = [
+      ['the example ontology', async () => withIris(sampleModel())],
+      ['Pizza', async () => withIris((await readModelFile(decodeDocument(new Uint8Array(fs.readFileSync(corpusFile(PIZZA)))), PIZZA.file, { serviceUrl: service.url })).model)],
+    ];
+    it('by a service that says what it writes', () => {
+      expect(service.health).toMatchObject({ writes: ['turtle', 'rdfxml', 'owlxml', 'functional', 'manchester'] });
+    });
+    for (const [what, made] of models) {
+      for (const syntax of ['rdfxml', 'owlxml', 'functional', 'manchester'] as const) {
+        it.skipIf(what === 'Pizza' && !fs.existsSync(corpusFile(PIZZA)))(`${what} as ${syntax}: the same axioms as the Turtle export, and read back`, async () => {
+          const model = await made();
+          const turtle = (await io().write(model, 'turtle')).text;
+          const written = await io().write(model, syntax);
+          const c = await compare(turtle, written.text);
+          expect(c.errors).toEqual([]);
+          expect(c.removed).toEqual([]);
+          // RDF/XML states exactly what the Turtle does. OWL's own syntaxes declare every entity they use, and the OWL API
+          // adds the declarations of the standard ones the Turtle uses undeclared (rdfs:label, xsd:string, owl:Thing): nothing else.
+          if (syntax === 'rdfxml') expect(c.added).toEqual([]);
+          else expect(c.added.filter((a) => !/^Declaration\((AnnotationProperty|Datatype|Class)\((rdf|rdfs|owl|xsd|skos|dcterms):\w+\)\)$/.test(a))).toEqual([]);
+          expect(c.exported.axioms).toBe(c.original.axioms + c.added.length);
+          // And the app reads its own export back as the same entities.
+          const back = await readModelFile(written.text, `export.${written.extension}`, { serviceUrl: service.url });
+          expect(back.model.terms.map((t) => t.iri).sort()).toEqual(model.terms.map((t) => t.iri).sort());
+        }, 120_000);
+      }
+    }
+    it('says why a syntax of OWL cannot be written where no service answers', async () => {
+      const none = createLocalImportExportService({ serviceUrl: () => 'http://127.0.0.1:5188' });
+      await expect(none.write(withIris(sampleModel()), 'functional')).rejects.toThrow(/written by the app's local OWL service, and none answers at http:\/\/127.0.0.1:5188/);
+      // RDF/XML needs none.
+      expect((await none.write(withIris(sampleModel()), 'rdfxml')).text).toContain('<rdf:RDF');
+    });
   });
 
   it('says what the OWL API objects to in a document that is not well-formed', async () => {

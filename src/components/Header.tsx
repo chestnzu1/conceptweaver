@@ -104,6 +104,14 @@ export function Header() {
     // Asserted axioms only is what an export is. This one adds, after them and marked as such, what the reasoner entails.
     ...(supports(model, 'reasoning') ? [{ label: 'OWL with inferred assertions (Turtle)', onClick: () => void exportModel('owl-inferred'), hint: 'materialized' }] : []),
     { label: 'JSON-LD', onClick: () => exportModel('jsonld') },
+    { label: 'RDF/XML', onClick: () => void exportModel('rdfxml'), hint: 'as Protégé saves' },
+    ...(model.mode === 'ontology'
+      ? [
+          { label: 'OWL/XML', onClick: () => void exportModel('owlxml'), hint: 'through the OWL service' },
+          { label: 'OWL functional syntax', onClick: () => void exportModel('functional'), hint: 'through the OWL service' },
+          { label: 'OWL Manchester syntax', onClick: () => void exportModel('manchester'), hint: 'through the OWL service' },
+        ]
+      : []),
     { label: 'Terms as CSV', onClick: () => exportModel('csv-terms') },
     { label: 'Relations as CSV', onClick: () => exportModel('csv-relations') },
     { label: 'Image (SVG)', onClick: () => exportModel('svg') },

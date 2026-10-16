@@ -506,6 +506,12 @@ each time.
 other way (`/convert` in `reasoner/ReasonerService.java` uses the OWL API, which writes all of
 them). Imports closure belongs to M8.
 
+**Status, 2026-10-16: the first point done (roadmap task 2.5).** RDF/XML is written in the page
+from the Turtle (`src/model/rdfxml.ts`); OWL/XML, functional and Manchester syntax by the OWL
+service, whose `/convert` now takes the syntax to write (`to`). The OWL API finds every export
+states what the Turtle does. The Turtle writer is still the app's own, and imports are still not
+followed.
+
 ### TD-14 The reasoning service is a stateless single file on a frozen library bundle — Medium
 
 **Where.** `reasoner/ReasonerService.java` (820 lines), `reasoner/run.mjs`,

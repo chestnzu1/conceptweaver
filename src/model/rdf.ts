@@ -716,6 +716,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   // Classes: declared ones first, then anything used in a class position.
   for (const type of [NS.owl + 'Class', NS.rdfs + 'Class', NS.skos + 'Concept']) {
     for (const c of typed(type)) {
+      // owl:Thing and the like are OWL's own, never a class of the model: a declaration of one is kept as it was written.
+      if (builtin(c)) continue;
       ensure(c, 'concept');
       mark(c, NS.rdf + 'type', type);
     }

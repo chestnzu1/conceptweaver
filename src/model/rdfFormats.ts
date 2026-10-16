@@ -351,6 +351,30 @@ export async function convertWithService(text: string, format: DocumentFormat, s
 }
 
 /**
+ * Has the local OWL service write the Turtle the app writes in one of OWL's own syntaxes, which
+ * the OWL API writes and the page does not: OWL/XML, functional or Manchester syntax.
+ */
+export async function writeWithService(turtle: string, to: 'owlxml' | 'functional' | 'manchester', source: DocumentSource = {}): Promise<string> {
+  const base = (source.serviceUrl ?? DEFAULT_SERVICE_URL).replace(/\/+$/, '');
+  let response: Response;
+  try {
+    response = await (source.fetch ?? fetch)(base + '/convert', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ document: turtle, to }) });
+  } catch {
+    throw new Error(`${FORMAT_LABEL[to]} is written by the app's local OWL service, and none answers at ${base}. Start it with “pnpm reasoner” and export again, or export as Turtle or RDF/XML, which need no service.`);
+  }
+  let answer: { document?: unknown; errors?: unknown } | undefined;
+  try {
+    answer = (await response.json()) as typeof answer;
+  } catch {
+    answer = undefined;
+  }
+  if (!answer || typeof answer !== 'object') throw new Error(`What answered at ${base} is not the OWL service (HTTP ${response.status}).`);
+  if (!response.ok) throw new Error(Array.isArray(answer.errors) && answer.errors.length ? String(answer.errors[0]) : `The OWL service could not write it as ${FORMAT_LABEL[to]}.`);
+  if (typeof answer.document !== 'string') throw new Error(`The OWL service at ${base} is an older one that only writes Turtle. Stop it and start it again with “pnpm reasoner”.`);
+  return answer.document;
+}
+
+/**
  * A document as Turtle, whatever syntax of RDF or OWL it is in, and which syntax that was. The
  * app's own JSON is not an RDF document and is refused here; whoever opens a model reads it
  * before asking (see readModelFile in files.ts).
