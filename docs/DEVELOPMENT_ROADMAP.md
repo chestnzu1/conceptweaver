@@ -281,7 +281,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | SH-2 | **Validation one can act on.** Data graphs kept with the project in IndexedDB, not for one session: several, each named and replaced on demand. A run validates a chosen shape set against a chosen data graph (or the model's own individuals). A finding opens the property shape at the constraint it failed (`sh:sourceConstraintComponent`), shows the value and the path, and for data read from a file the line its focus node is on. The W3C SHACL 1.0 Core test suite as a conformance suite, run in CI: each test's expected report. | FR-M4-1, FR-M4-14 | M |
 | SH-3 | **Shapes proposed from the ontology.** *Propose shapes* for a class, a set of classes or the ontology: from restrictions, domains and ranges, functional properties, datatypes, enumerations and keys. Each proposal says what the axiom means in OWL, what the shape would check, and where the two differ (ADR-020); none is selected to begin with. Accepted, edited or dismissed one by one or by kind, into a chosen shape set, as one change set; an accepted shape keeps its origin and is marked stale when that axiom changes or goes. | FR-M4-15, ADR-020 | M |
 | 2.3 | **Versions and differences, locally.** Named versions in IndexedDB; an axiom-level difference shown by entity, the shape sets' changes with it; restore as a new version. `ProjectService`. Done 2026-10-16. | TD-12, FR-M10-1 to FR-M10-3 | L |
-| 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
+| 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2. Done 2026-10-16. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
 | 2.5 | **Export in every OWL syntax** through the conversion the service already performs in the other direction. `ImportExportService`. | TD-13, FR-M11-2 | S |
 | 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. | FR-M3-5 | M |
 | 2.7 | Annotation properties as entities; labels in several languages with a display language. | FR-M1-4, FR-M1-5 | M |
@@ -612,9 +612,10 @@ purpose:
 Phase 1 is done, and 2.1 and 2.2 with it (see [BASELINES.md](BASELINES.md) and
 [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for what each measured and left).
 
-**2026-10-16: SH-1, SH-2 and SH-3 are done, and milestone MS-12 with them, and then 2.3** (each
-with its status below). The next task is 2.4, tabular import; this section gives its scope when
-it starts. What follows is SH-1 as it was set out, and the status of each stage and of 2.3.
+**2026-10-16: SH-1, SH-2 and SH-3 are done, and milestone MS-12 with them; then 2.3 and 2.4,
+and with them milestone MS-4, the MVP** (each with its status below). The next task is 2.5,
+export in every OWL syntax; this section gives its scope when it starts. What follows is SH-1 as
+it was set out, and the status of each stage and task.
 
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.
@@ -715,6 +716,24 @@ restriction removed are two changes under the class; of five, the sixth after re
 is the third), and `e2e/versions.mjs` the same in the browser, across a reload. What it left: the
 history of one entity (FR-M10-4), list, open and save still going to `library.ts` directly rather
 than through `ProjectService`, and versions kept whole rather than as change sets.
+
+**Status, 2026-10-16: 2.4 done** (TD-17, FR-M7-2 to FR-M7-5, ADR-019), and with it MS-4: class
+expressions are authored (2.1), the Graph view works with 10,000 classes (2.2), versions and
+differences exist (2.3), and a spreadsheet is imported with a mapping. *File → Import a table…*
+reads CSV and TSV in an encoding and Excel workbooks (.xlsx, unzipped in the page with no library,
+`src/import/`), with sheet, separator and header row chosen; each column is given a use on a
+mapping screen, with a first guess from its name; IRIs are made by templates over the columns. The
+mapping core (`src/mapping/`: `template.ts`, `values.ts`, `plan.ts`) takes a `Table` of named
+columns and knows nothing of files, for DI-2 to use as it is. Before anything is made, the preview
+says what each row becomes, or why it is skipped (its IRI cannot be made, another row has it, what
+it is under is neither a row nor in the model, or is skipped), and which values are left out and
+why; the import is one edit, which one undo takes back; mappings are kept as templates.
+`mapping.test.ts` checks the acceptance (2,000 rows with parent references become that hierarchy;
+the row whose parent is missing is reported by its row number and nothing is made of it; 20,000
+rows planned in about 60 ms), `import.test.ts` the readers on a workbook written by openpyxl, and
+`e2e/import-table.mjs` the dialog, undo, an Excel sheet as individuals with values converted, a
+template, and the same file again making nothing. What it left: updating entities from a table
+(FR-M7-6), files too large for the browser (FR-M7-7), the older .xls format.
 
 **The data-integration track does not change this.** Its first task is 3.8, after the backend
 exists; from SH-2 it can validate what a mapping previews against a chosen shape set (4.11).

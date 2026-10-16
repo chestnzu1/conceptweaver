@@ -207,7 +207,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shacl.ts`, `quality.ts`, `src/validation/` | No SHACL-SPARQL; no server engine; keys and nested class expressions are not proposed as shapes (SHACL track, SH-4 and SH-5) |
 | M5 Graph and subgraph | **Existing** | `src/components/Canvas.tsx`, `src/layout/`, `src/model/subgraph.ts` | About 2,000 terms |
 | M6 Structure exploration | **Existing** | `src/structure/` | No ontology-level comparison |
-| M7 Bulk import and mapping | **Partially Implemented** | `src/model/bulk.ts` | No files, no mapping screen |
+| M7 Bulk import and mapping | **Partially Implemented** | `src/model/bulk.ts`, `src/mapping/`, `src/import/` | No update mode, no server job, no RML |
 | M8 Reuse and alignment | **Existing** | `src/model/external.ts`, `alignment.ts`, `matcher.ts` | Imports not transitive or declared |
 | M9 Search and SPARQL | **Existing** | `src/entities/`, `src/model/sparql.ts` | Asserted graph only |
 | M10 Versioning | **Partially Implemented** | `src/projects/` (named versions, differences, restore, in this browser; 2026-10-16) | No history of one entity, no server revisions, no releases |
@@ -552,15 +552,16 @@ versions or two ontologies. The HTTP implementation has no server.
 **Description.** Bringing many entities in at once from tabular sources, with control over what
 each column becomes.
 
-**Status: Partially Implemented.** *Bulk add* (`src/model/bulk.ts`, dialog in
-`src/components/views.tsx`) takes pasted text in two steps: terms with a type, description,
-synonyms, datatype and further columns as annotations, with an optional header row; then
-relationships in arrow notation. An indented outline is read as a hierarchy. Problems are
-reported per line.
+**Status: Partially Implemented.** *Bulk add* (`src/model/bulk.ts`) takes pasted text: terms
+with their metadata, then relationships in arrow notation, or an indented outline. *Import a
+table* (since 2026-10-16, roadmap task 2.4) reads CSV, TSV and Excel files, in an encoding, with
+a sheet and header row chosen; maps each column to a use on a mapping screen, with IRIs made by
+templates; previews what each row becomes or why it is skipped; imports as one undoable edit;
+and keeps mappings as templates. It is built on a mapping core that does not assume a file
+(`src/mapping/`, ADR-019).
 
-**Gaps.** No file upload; no CSV or Excel parsing; no mapping screen; no preview of the
-resulting entities; no saved templates; no updating of existing entities; individuals with
-property values cannot be imported from columns.
+**Gaps.** No updating of existing entities from a table (FR-M7-6): a row the model has is left as
+it is. No server job for files too large for the browser. No RML.
 
 **User stories.**
 
@@ -573,10 +574,10 @@ property values cannot be imported from columns.
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
 | FR-M7-1 | Paste rows of terms and relationships. | Existing | P0 |
-| FR-M7-2 | Upload CSV, TSV and Excel files; choose sheet, header row and encoding. | Recommended | P0 |
-| FR-M7-3 | A mapping screen: each column becomes a name, an IRI or part of one, a type, a parent, an annotation (with language), a data property value, or a link to another entity by a chosen property. | Recommended | P0 |
-| FR-M7-4 | Preview before commit: what will be created, what will be skipped and why, row by row; the import is one undoable change. | Partially Implemented (notes per line; one history step) | P0 |
-| FR-M7-5 | Mappings are saved as named templates and reused. | Recommended | P1 |
+| FR-M7-2 | Upload CSV, TSV and Excel files; choose sheet, header row and encoding. | Implemented 2026-10-16 (`src/import/`) | P0 |
+| FR-M7-3 | A mapping screen: each column becomes a name, an IRI or part of one, a type, a parent, an annotation (with language), a data property value, or a link to another entity by a chosen property. | Implemented 2026-10-16 (`ImportTable.tsx`, over `src/mapping/`) | P0 |
+| FR-M7-4 | Preview before commit: what will be created, what will be skipped and why, row by row; the import is one undoable change. | Implemented 2026-10-16 (`src/mapping/plan.ts`) | P0 |
+| FR-M7-5 | Mappings are saved as named templates and reused. | Implemented 2026-10-16 (`src/import/templates.ts`, in this browser) | P1 |
 | FR-M7-6 | Update mode: rows are matched to existing entities by IRI or a key column; changes are shown before they are applied. | Recommended | P1 |
 | FR-M7-7 | Files too large for the browser are imported as a server job. | Future | P2 |
 | FR-M7-8 | A mapping can be exported in a standard mapping language (RML). | Future | P3 |

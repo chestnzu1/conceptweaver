@@ -575,6 +575,11 @@ template. Relationships are a second paste in arrow notation.
 **Remediation.** M7 in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md). The parsers are a
 sound base for the row-to-entity step.
 
+**Status, 2026-10-16: done (roadmap task 2.4)**, beside *Bulk add*, which stays for pasted text.
+*Import a table* reads CSV, TSV and Excel files (`src/import/`), maps columns on a screen, previews
+row by row with reasons, imports as one edit and keeps templates, over a mapping core that does
+not assume a file (`src/mapping/`, ADR-019). Left: updating entities from a table (FR-M7-6).
+
 ### TD-18 Two identity schemes for entities — Medium
 
 **Where.** `Term.id` (random) and `Term.iri` (optional until the term is named) in

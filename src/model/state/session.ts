@@ -188,7 +188,7 @@ export interface SessionSlice {
   /** Whether the panel of filters is open. It is the page's, not a list's: open, it stays open from tab to tab. */
   entityFiltersOpen: boolean;
   setEntityFiltersOpen: (open: boolean) => void;
-  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | 'openurl' | 'versions' | null;
+  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | 'openurl' | 'versions' | 'import' | null;
   toast: string | null;
   graphScope: GraphScope;
   setGraphScope: (scope: GraphScope) => void;

@@ -573,6 +573,24 @@ More on what the advanced reasoner does and does not cover is under
 - **Find path** – select two terms to spotlight the shortest path between them.
 - **Bulk add** – two steps: terms with their metadata (`Name | Type | Description | Synonyms`,
   or spreadsheet rows with a header), then relationships (`Customer -> places -> Order`).
+- **Import a table** (since 2026-10-16; `src/mapping/`, `src/import/`, `ImportTable.tsx`) – *File →
+  Import a table…*: a CSV, TSV or Excel (.xlsx) file, read in the encoding, with the separator,
+  sheet and header row chosen (each found in the file to begin with). Each row becomes a class
+  (in a vocabulary, a concept) or an individual of a class. Its IRI is made by a template over its
+  columns (`http://example.org/f#{Code}`, or `{Title:name}` for a value made into a name the way
+  the editor makes IRIs), and each column is given a use: the name, a superclass or broader
+  concept, the class of an individual, a description or synonyms (in a language), an annotation
+  (`skos:notation`, `rdfs:seeAlso`, …), a value of a data property (converted: "yes" is true,
+  "1,234.5" is 1234.5, a date is a date), or a link by an object property (between individuals a
+  fact, between classes a restriction). A column is guessed a use from what it is called. What
+  a row refers to (a parent, a class, a link) is looked for among the rows, by the column chosen
+  as their key, then by name, then among the model's entities. Before anything is made, the
+  preview says what each row becomes: made, in the model already (and left as it is), or
+  skipped, with why (its IRI cannot be made, another row has it, what it is under is neither a
+  row nor in the model, or is a row that is skipped), and which values of a row that is made are
+  left out, and why; for classes, the hierarchy they will be. The import is one edit, which one
+  undo takes back. A mapping can be kept as a template, by name, for the next file laid out the
+  same way. 20,000 rows are planned in well under a second.
 - **RDFS & OWL (optional)** – switch it on in the Vocabulary view to use standard properties
   (`rdfs:subClassOf`, `owl:equivalentClass`, `owl:sameAs`, …): pick one per relation, or map a
   relationship label to one so every relation with that label exports as it.
@@ -797,6 +815,13 @@ that *Layered* says so and uses the built-in hierarchical layout.
   or the validation engine (`src/components/boundaries.test.ts`): they read the answers through
   the store (`state/reasoning.ts`, `state/validation.ts`, and `useReasoning` in
   `src/components/reasoning.ts`).
+- `src/mapping` – the mapping core (ADR-019), which does not know where rows come from, for
+  tabular import now and database mapping at stage DI-2: `template.ts` (IRI templates),
+  `values.ts` (value conversion), `plan.ts` (what an import would do, row by row with reasons,
+  and the model it makes). `src/import` reads tables from files: `delimited.ts` (CSV and TSV, in
+  an encoding), `xlsx.ts` (Excel workbooks, unzipped with the browser's DecompressionStream, no
+  library; loaded when first used), `guess.ts` (a first mapping from the column names) and
+  `templates.ts` (mappings kept by name).
 - `src/projects` – the versions of the models in My Models (`ProjectService` in `contracts.ts`):
   `local.ts` keeps them in IndexedDB, compressed, and restores one as a new version;
   `difference.ts` says what differs between two models, entity by entity, over `changesBetween`.
@@ -1187,6 +1212,11 @@ together in `src/model/inferred.ts`.
 - A finding's line is the one statements about its focus node begin on (or where it is first
   named, when nothing is said of it). There is none for a blank node, nor for a file read from
   RDF/XML, JSON-LD or another syntax that is converted to Turtle: the Turtle is not the file.
+- Importing a table: the older Excel format (.xls) is not read (save it as .xlsx or CSV); a
+  formula gives the value Excel last calculated. A row whose IRI the model has already is left
+  as it is: updating entities from a table is not done yet (FR-M7-6). An individual's values are
+  values of data properties; a class's column of values is an annotation. More than 3,000 new
+  terms are laid out row by row rather than as a hierarchy. Templates are kept in this browser.
 - Shapes proposed from the ontology: a proposal dismissed is shown again the next time
   proposals are opened. A stale shape shows the axiom it came from in OWL functional syntax, since
   the ontology no longer has it to be read out in Manchester syntax.

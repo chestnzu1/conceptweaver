@@ -11,6 +11,7 @@ const browser = await chromium.launch({ executablePath: exe });
 // A shape set and a data graph to validate it against, for the screens of SHACL findings.
 const files = fs.mkdtempSync('/tmp/cw-ui-audit-');
 fs.writeFileSync(`${files}/shapes.ttl`, '@prefix sh: <http://www.w3.org/ns/shacl#> .\n@prefix : <http://example.org/film-knowledge-graph#> .\n:FilmShape a sh:NodeShape ; sh:targetClass :Film ;\n  sh:property [ sh:path :releaseDate ; sh:minCount 1 ] .\n');
+fs.writeFileSync(`${files}/classes.csv`, 'Code,Label,Parent\nC1,Class 1,\nC2,Class 2,C1\nC3,Orphan,C9\n');
 fs.writeFileSync(`${files}/films.ttl`, '@prefix : <http://example.org/film-knowledge-graph#> .\n@prefix d: <http://data.example/> .\nd:f1 a :Film .\nd:f2 a :Film .\n');
 
 const measure = () => {
@@ -371,6 +372,17 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     report('Class expression · as blocks', await page.evaluate(measure));
     await xe.getByRole('button', { name: 'Add the axiom' }).click();
     report('Class expression · a defined class', await page.evaluate(measure));
+    // Importing a table: the file read, its columns given uses, and the preview with a row skipped.
+    await page.locator('.header').getByRole('button', { name: /^File/ }).click();
+    await page.getByRole('menuitem', { name: /^Import a table…/ }).click();
+    const importing = page.locator('.dialog.import-table');
+    report('Import a table · no file yet', await page.evaluate(measure));
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), importing.getByRole('button', { name: /file…$/ }).click()]);
+    await chooser.setFiles(`${files}/classes.csv`);
+    await importing.locator('.import-preview .counts').waitFor();
+    await importing.getByRole('button', { name: /^Skipped/ }).click();
+    report('Import a table · previewed', await page.evaluate(measure));
+    await importing.getByRole('button', { name: 'Cancel' }).click();
     // Versions: asked to be in My Models first, then saved, listed and compared with the model now.
     const versions = page.locator('.dialog.versions');
     const openVersions = async () => {

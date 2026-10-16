@@ -813,7 +813,7 @@ sequenceDiagram
 | Governance fields `database`, `schema`, `table`, `column`, `physicalType` and the *technical data asset* kind (`src/model/governance.ts`) | These are free text today. They become links to real schema objects, which gives lineage without a new concept. |
 | Browser cache with a "not on this machine" state (`externals` store in `src/model/library.ts`) | Caching schema snapshots and mapping drafts for offline editing. Never credentials, never rows. |
 | The service pattern and its error codes (`http.ts`, `boundaries.test.ts`, `stale-revision`) | Every new interface. |
-| Tabular import mapping, planned as task 2.4 (FR-M7-3) | The same mapping core: IRI templates, column-to-property rules, value conversion, preview with row-level reasons (ADR-019). |
+| The mapping core of tabular import (`src/mapping/`: `template.ts`, `values.ts`, `plan.ts`; **Existing** since 2026-10-16, task 2.4) | The same mapping core: IRI templates, column-to-property rules, value conversion, preview with row-level reasons (ADR-019). Its input is a `Table` of named columns, which a database result is as well as a file. |
 
 **Not reusable as it is.** The canvas (`src/components/Canvas.tsx`) draws the ontology's own
 `Model` and edits it (TD-05). A schema is not an ontology and must not be forced into that

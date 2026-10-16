@@ -5,6 +5,7 @@ import { Inspector } from './components/Inspector';
 import { TermList } from './components/TermList';
 import { LibraryDialog, SaveAsDialog } from './components/Library';
 import { VersionsDialog } from './components/Versions';
+import { ImportTableDialog } from './components/ImportTable';
 import { OntologySettings } from './components/OntologySettings';
 import { RdfView } from './components/RdfView';
 import { SparqlView } from './components/SparqlView';
@@ -127,6 +128,7 @@ export function App() {
       {dialog === 'new' && <NewModelDialog />}
       {dialog === 'openurl' && <OpenUrlDialog />}
       {dialog === 'versions' && <VersionsDialog />}
+      {dialog === 'import' && <ImportTableDialog />}
       {message && <MessageDialog />}
       {dropping && <div className="drop-overlay">Drop a model (.json) or ontology (.ttl) to open it</div>}
       {toast && (

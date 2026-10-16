@@ -2,6 +2,8 @@ import type { ShapeSet } from '../shacl';
 import { hierarchyOf } from '../../layout/graph';
 import { makeInstanceOf, statedMember, type Edit } from '../axioms';
 import type { BulkRelation, BulkTerm, Outline } from '../bulk';
+import type { Plan } from '../../mapping/contracts';
+import { applyPlan } from '../../mapping/plan';
 import { convertModel } from '../convert';
 import { propDatatype, withDatatype } from '../domains';
 import { bounds, type Anchor } from '../geometry';
@@ -97,6 +99,8 @@ export interface EditsSlice {
   bulkAddRelations: (items: BulkRelation[], createMissing: boolean) => { added: number; created: number; skipped: number };
   /** Adds an indented hierarchy: its terms (reusing existing ones by name) and the links between them. */
   bulkAddOutline: (outline: Outline) => { terms: number; rels: number };
+  /** Makes what an import of a table plans (src/mapping/plan.ts), as one edit that one undo takes back. */
+  importPlan: (plan: Plan) => { added: number };
   /** Turns the model into the other type, translating what its relations mean. */
   convertTo: (mode: ModelMode) => void;
   /** Declares a new object property and opens it. */
@@ -388,6 +392,15 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
     set({ sel: { terms: created.map((t) => t.id), rels: rels.map((r) => r.id) } });
     get().fit();
     return { added: rels.length, created: created.length, skipped };
+  },
+  importPlan: (plan) => {
+    const { model, terms } = applyPlan(get().model, plan);
+    if (!terms.length) return { added: 0 };
+    get().apply(() => model);
+    // What was made is selected, unless there is too much of it to show as a selection.
+    set({ sel: { terms: terms.length <= 500 ? terms : [], rels: [] }, highlight: [] });
+    get().fit();
+    return { added: terms.length };
   },
   bulkAddOutline: (outline) => {
     const { model } = get();
