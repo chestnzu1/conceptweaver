@@ -138,8 +138,12 @@ export interface SessionSlice {
   selProp: string | null;
   vp: Viewport;
   canvasSize: { w: number; h: number };
-  /** What the Shapes view has open: a shape set, and a shape of it; and the finding it was opened from, if it was. */
-  shapesView: { set: string | null; shape: string | null; failed?: ShapeFailure };
+  /**
+   * What the Shapes view has open: a shape set, and a shape of it; the finding it was opened from,
+   * if it was; and the shapes proposed from the ontology being reviewed, for some classes (by IRI)
+   * or for all of it (null).
+   */
+  shapesView: { set: string | null; shape: string | null; failed?: ShapeFailure; propose?: { classes: string[] | null } };
   /**
    * The canvas draws all of what it shows, in full detail, rather than what is in view: for the
    * moment a picture of it is taken (files.ts), which is of the whole graph.
@@ -209,6 +213,8 @@ export interface SessionSlice {
    * is given. From a finding, at the constraint it failed.
    */
   openShapes: (set?: string | null, shape?: string | null, failed?: ShapeFailure) => void;
+  /** Shows the shapes proposed from the ontology for these classes (IRIs), or for all of it; undefined puts them away. */
+  openProposals: (classes: string[] | null | undefined) => void;
   setDrawAll: (on: boolean) => void;
   fit: () => void;
   setView: (v: View) => void;
@@ -451,6 +457,7 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
     const of = shape ? sets.find((s) => s.shapes.some((x) => x.id === shape))?.id : undefined;
     set({ view: viewFor(get().model, 'shapes'), shapesView: { set: of ?? setId ?? get().shapesView.set ?? sets[0]?.id ?? null, shape: shape ?? null, ...(failed && shape ? { failed } : {}) } });
   },
+  openProposals: (classes) => set((s) => ({ ...(classes === undefined ? {} : { view: viewFor(s.model, 'shapes') }), shapesView: { ...s.shapesView, propose: classes === undefined ? undefined : { classes } } })),
   setDrawAll: (on) => set({ drawAll: on }),
   fit: () => {
     const { canvasSize } = get();

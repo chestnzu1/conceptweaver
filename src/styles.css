@@ -3023,6 +3023,150 @@ table.prefixes small {
   width: min(460px, 100%);
 }
 
+/* Shapes proposed from the ontology: each with its axiom, its shape, and what the two mean. */
+.dialog.proposals {
+  width: min(960px, 100%);
+  max-height: calc(100vh - 32px);
+}
+
+.dialog.proposals > p {
+  margin: 0;
+}
+
+.proposal-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.proposal-scope .link {
+  min-height: 24px;
+}
+
+.proposal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.proposal-group header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.proposal-group h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.proposal-group header .link,
+.proposal-list > .link {
+  min-height: 24px;
+}
+
+.proposal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+  padding: 8px 40px 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.proposal.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.proposal > .check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.proposal code {
+  overflow-wrap: anywhere;
+}
+
+.proposal .axiom {
+  font-weight: 600;
+}
+
+.proposal .proposed {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.proposal dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.proposal dt {
+  color: var(--ink-2);
+}
+
+.proposal dd {
+  margin: 0;
+}
+
+.proposal > .btn.icon {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+.not-proposed ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.not-proposed li {
+  margin-bottom: 4px;
+}
+
+.dialog-actions .field.into {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A shape accepted from the ontology: the axiom it came from, and whether that is still stated. */
+.shape-origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 8px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-size: 13px;
+}
+
+.shape-origin.stale {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
+}
+
+.shape-origin code {
+  overflow-wrap: anywhere;
+}
+
 .dialog.saveas input {
   font-size: 15px;
 }
@@ -4119,6 +4263,10 @@ code.pred {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.shape-list li button .tag {
+  align-self: flex-start;
 }
 
 .shape-list li button.on {

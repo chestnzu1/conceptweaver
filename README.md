@@ -491,8 +491,23 @@ More on what the advanced reasoner does and does not cover is under
     `pnpm corpus` fetches the suite).
   - The editor of a class, data property or object property lists the shapes about it in every
     set, each opening where it is, and *Add a shape for this class* starts one in the set open.
-  - OWL restrictions never become shapes, nor shapes restrictions: the ontology and the shapes
-    are kept apart (ADR-020).
+  - OWL restrictions never become shapes by themselves, nor shapes restrictions: the ontology
+    and the shapes are kept apart (ADR-020). What the ontology states can be **proposed** as
+    shapes (since 2026-10-16, roadmap stage SH-3; `src/model/proposals.ts`,
+    `src/components/Proposals.tsx`): *Propose from the ontology…* in the Shapes view, or *Propose
+    from its axioms…* in a class's editor, for the whole ontology, a class or a few. Proposals
+    come from restrictions (some, only, min, max, exactly, value; also inside an intersection or
+    a definition), domains and ranges, functional and inverse functional properties, datatypes,
+    enumerated datatypes and facets, and enumerations (`owl:oneOf`), read from the ontology as it
+    is written, so restrictions drawn on the canvas and class axioms alike. Each shows its axiom,
+    the shape it would add, what the axiom means in OWL (it concludes what is not stated, and
+    does not take different names for different things), what the shape would check in the data,
+    and where the two differ. None is chosen to begin with; they are chosen or dismissed one by
+    one or by kind, and added to a chosen set, or a new one, as one step that undo takes back. An
+    accepted shape says which axiom it came from (`cw:fromAxiom`, in OWL functional syntax, kept
+    in its Turtle), and is marked stale once the ontology no longer states it; it can then be
+    kept as a shape of its own. Keys (which SHACL Core cannot check), `Self` restrictions, and
+    fillers that are nested class expressions are listed as not proposed, each with why.
 - **Model checks** – unnamed and duplicate terms, circular or redundant hierarchies, isolated
   terms, unlabelled or duplicate relations, malformed cardinalities, missing descriptions and more.
 - **Graph layouts** – a *Graph layout* selector in the bar above the graph (and the *Arrange*
@@ -750,7 +765,8 @@ that *Layered* says so and uses the built-in hierarchical layout.
   Turtle and written back, and their paths as SPARQL, are `shacl.ts`; what the views ask of the
   shape sets of a model is `shapes.ts`, and the format-4 shapes are read by `shapesLegacy.ts`.
   The data graphs SHACL validates are `dataGraphs.ts` (their content in IndexedDB, `library.ts`),
-  and where in a file a node is, `dataLines.ts`. What an ontology says that the model has no place
+  and where in a file a node is, `dataLines.ts`. Shapes proposed from the ontology's axioms, and
+  whether an accepted one is stale, are `proposals.ts`. What an ontology says that the model has no place
   for is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in
   `rdf.ts`) tells what it took. Class expressions and data ranges are one structure,
   `expressions.ts` (read from RDF, written in OWL functional syntax as the OWL API has them,
@@ -1158,6 +1174,9 @@ together in `src/model/inferred.ts`.
 - A finding's line is the one statements about its focus node begin on (or where it is first
   named, when nothing is said of it). There is none for a blank node, nor for a file read from
   RDF/XML, JSON-LD or another syntax that is converted to Turtle: the Turtle is not the file.
+- Shapes proposed from the ontology: a proposal dismissed is shown again the next time
+  proposals are opened. A stale shape shows the axiom it came from in OWL functional syntax, since
+  the ontology no longer has it to be read out in Manchester syntax.
 - A data graph's content is kept in this browser only. A model saved to a file or opened in
   another browser names its data graphs without their content: each says so, and validating it
   says why it cannot be done, until it is read again from its file. The content of a deleted

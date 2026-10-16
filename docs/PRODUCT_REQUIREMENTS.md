@@ -204,7 +204,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M1 Modelling and entity management | **Existing** | `src/components/Entities.tsx`, `EntityEditor.tsx`, `src/model/iri.ts`, `src/model/identity.ts` | Lossless round trip (property identity done 2026-10-14) |
 | M2 Axiom and restriction editing | **Partially Implemented** | `src/model/axioms.ts`, `props.ts` | Class expressions are text |
 | M3 Reasoning | **Existing**, job handling partial | `src/model/reasoner.ts`, `reasoning.ts`, `reasoner/ReasonerService.java` | Blocks the page; no ELK; no jobs |
-| M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shacl.ts`, `quality.ts`, `src/validation/` | Nothing proposes shapes from the ontology; no SHACL-SPARQL; no server engine (SHACL track, SH-3 to SH-5) |
+| M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shacl.ts`, `quality.ts`, `src/validation/` | No SHACL-SPARQL; no server engine; keys and nested class expressions are not proposed as shapes (SHACL track, SH-4 and SH-5) |
 | M5 Graph and subgraph | **Existing** | `src/components/Canvas.tsx`, `src/layout/`, `src/model/subgraph.ts` | About 2,000 terms |
 | M6 Structure exploration | **Existing** | `src/structure/` | No ontology-level comparison |
 | M7 Bulk import and mapping | **Partially Implemented** | `src/model/bulk.ts` | No files, no mapping screen |
@@ -419,10 +419,11 @@ nothing lost (`src/model/shacl.ts`, `shapes.ts`, `Shapes.tsx`; since 2026-10-16,
 JSON and RDF.
 
 **Gaps.** No SHACL-SPARQL. No user-defined quality rules. No way to run checks outside the
-application. A data graph's content is in one browser only. Nothing proposes shapes from the
-ontology. (Validation in a worker, cancellable: done 2026-10-15. Shapes as a view of their own,
+application. A data graph's content is in one browser only. Keys, and restrictions whose filler
+is a nested class expression, are not proposed as shapes (each is listed with why). (Validation in a worker, cancellable: done 2026-10-15. Shapes as a view of their own,
 in shape sets, with all of Core in the form; a chosen set validated against a data graph kept
-with the model, findings to the constraint and the line: done 2026-10-16.)
+with the model, findings to the constraint and the line; shapes proposed from the ontology,
+reviewed one by one, with their origin kept: done 2026-10-16.)
 
 **Direction (2026-10-15).** Three models, related by mappings and never one-to-one: the
 conceptual model (OWL), the constraint model (SHACL shape sets: what an application accepts,
@@ -449,7 +450,7 @@ SH-5, delivers FR-M4-12 to FR-M4-16 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMA
 | FR-M4-12 | Shapes are edited in a view of their own, beside the ontology's editors, in named shape sets (constraint models), several per ontology, each with its purpose, validated and exported on its own. A class may have any number of shapes; a class's and a property's editor list the shapes about them. | Implemented 2026-10-16 (SH-1: the sets, the *Shapes* view, the entities' editors, export per set, `src/components/Shapes.tsx`; SH-2: a set validated on its own) | P0 |
 | FR-M4-13 | Every SHACL 1.0 Core construct is edited in the form: logical constraints, qualified value shapes, property pair constraints, property paths, nested shapes, closed shapes. A shape set reads from and writes to Turtle with nothing lost; what the form cannot hold (SHACL-SPARQL) is kept and written back. | Implemented 2026-10-16 (SH-1; `src/model/shacl.ts`, checked on the W3C suite by `shacl.test.ts`) | P0 |
 | FR-M4-14 | A chosen shape set is validated against a chosen data graph; data graphs are kept with the project. A finding opens the property shape at the constraint it failed, with the value and the path, and says where in its file the focus node is. | Implemented 2026-10-16 (SH-2; `src/model/dataGraphs.ts`, `validation.ts`; the W3C suite in `shaclConformance.test.ts`, the view in `e2e/data-graphs.mjs`) | P0 |
-| FR-M4-15 | Shapes are proposed from the ontology (restrictions, domains and ranges, characteristics, datatypes, enumerations, keys), each saying what the axiom means, what the shape would check and where they differ; accepted, edited or dismissed one by one; nothing is added unreviewed; an accepted shape keeps its origin and goes stale when the axiom changes. | Recommended (SH-3) | P1 |
+| FR-M4-15 | Shapes are proposed from the ontology (restrictions, domains and ranges, characteristics, datatypes, enumerations, keys), each saying what the axiom means, what the shape would check and where they differ; accepted, edited or dismissed one by one; nothing is added unreviewed; an accepted shape keeps its origin and goes stale when the axiom changes. | Implemented 2026-10-16 (SH-3; `src/model/proposals.ts`, `src/components/Proposals.tsx`; Pizza in `proposals.test.ts`) | P1 |
 | FR-M4-16 | The server validates with Jena SHACL behind the same interface, giving the browser's reports on the W3C SHACL Core tests, and validates data graphs too large for the page. | Recommended (SH-4) | P1 |
 
 **Dependencies.** FR-M4-4 shares the job model with M3. FR-M4-12 to FR-M4-14 need stable

@@ -355,7 +355,9 @@ function termText(o: T): string {
 // ---------------------------------------------------------------- writing
 
 /** The prefixes SHACL is written with, besides the model's and the set's own. */
-export const STANDARD_PREFIXES: Record<string, string> = { sh: SH, rdf: RDF, rdfs: RDFS, xsd: XSD, owl: OWL };
+/** The app's own statements about shapes: cw:fromAxiom, the axiom a shape proposed from the ontology came from (proposals.ts). */
+export const CW_SHAPES = 'https://conceptweaver.app/shapes#';
+export const STANDARD_PREFIXES: Record<string, string> = { sh: SH, rdf: RDF, rdfs: RDFS, xsd: XSD, owl: OWL, cw: CW_SHAPES };
 
 const LOCAL = /^(?:[A-Za-z0-9_](?:[\w.-]*[\w-])?)?$/;
 
@@ -567,7 +569,8 @@ export function renamedSets(sets: ShapeSet[], changed: Map<string, string>): Sha
   const next = sets.map((set) => {
     const shapes = set.shapes.map((s) => {
       const props = s.props.map((x) => {
-        const v = renamedValue(x.v, changed);
+        // The axiom a shape came from names IRIs in its text: a new IRI is the same axiom.
+        const v = x.p === CW_SHAPES + 'fromAxiom' && 'lit' in x.v ? { ...x.v, lit: x.v.lit.replace(/<([^>]*)>/g, (m, iri: string) => (changed.has(iri) ? `<${changed.get(iri)}>` : m)) } : renamedValue(x.v, changed);
         const p = changed.get(x.p) ?? x.p;
         return JSON.stringify(v) === JSON.stringify(x.v) && p === x.p ? x : { p, v };
       });

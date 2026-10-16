@@ -4,10 +4,12 @@ import { objectProperties } from '../model/props';
 import { isPropertyShape, PARAM, PARAMS, pathOf, pathToSparql, SH, shapeSetTurtle, sparqlToPath, termFromText, termToText, valuesOf, type ParamInfo, type Shape, type ShaclTerm, type ShaclValue, type ShapeProp, type ShapeSet } from '../model/shacl';
 import { importIntoSet, inlineIn, modelPrefixes, namespaceOf, nestedIds, newInlineShape, newNodeShape, newPropertyShape, newSetFor, setTurtle, shapeName, shapeNaming, shapesAbout, targetClasses, topShapes, turtleProblem, withoutInline, type ShapeNaming } from '../model/shapes';
 import { stable } from '../model/stable';
+import { FROM_AXIOM, originsOf, proposeShapes } from '../model/proposals';
 import { useStore } from '../model/store';
 import { DATATYPES, type Model } from '../model/types';
 import { EntityPicker, type Choice } from './EntityPicker';
 import { Section } from './EntityEditor';
+import { ProposalsDialog } from './Proposals';
 import { CommitInput } from './fields';
 
 /**
@@ -24,7 +26,7 @@ const XSD = 'http://www.w3.org/2001/XMLSchema#';
 const NODE_KINDS = ['IRI', 'Literal', 'BlankNode', 'BlankNodeOrIRI', 'BlankNodeOrLiteral', 'IRIOrLiteral'];
 const SEVERITIES = ['Violation', 'Warning', 'Info'];
 /** What is shown apart from the parameters: the kind, the name, the path, the property shapes. */
-const OWN = new Set([RDF + 'type', RDFS + 'label', SH + 'path', SH + 'property']);
+const OWN = new Set([RDF + 'type', RDFS + 'label', SH + 'path', SH + 'property', FROM_AXIOM]);
 const GROUPS = [...new Set(PARAMS.map((p) => p.group))];
 const fileName = (model: Model, set: ShapeSet) => `${[model.name, set.name].map((x) => x.trim().replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()).filter(Boolean).join('-') || 'shapes'}.ttl`;
 
@@ -98,10 +100,14 @@ export function ShapesView() {
           <button className="btn small" onClick={addSet}>
             New shape set
           </button>
+          <button className="btn small" title="Shapes the ontology's axioms suggest, each with what the axiom means and where a shape differs: none is added until chosen" onClick={() => st().openProposals(null)}>
+            Propose from the ontology…
+          </button>
           {!sets.length && <p className="muted">No shapes yet. A shape says what data must contain: “every Person has exactly one name”. Make a set, or import shapes into one.</p>}
         </aside>
         {set ? <SetPanel key={set.id} set={set} model={model} shapeId={open.shape} /> : <div className="muted pad">Make a shape set to begin, or open a model that has shapes.</div>}
       </div>
+      {open.propose && <ProposalsDialog classes={open.propose.classes} />}
     </div>
   );
 }
@@ -113,6 +119,10 @@ function SetPanel({ set, model, shapeId }: { set: ShapeSet; model: Model; shapeI
   const [query, setQuery] = useState('');
   const naming = useMemo(() => shapeNaming(model, set), [model, set]);
   const tops = useMemo(() => topShapes(set), [set]);
+  // What the ontology states now, for the shapes that came from its axioms: one whose axiom is gone is stale.
+  const fromOntology = useMemo(() => set.shapes.some((s) => originsOf(s).length > 0), [set]);
+  const stated = useMemo(() => (fromOntology ? proposeShapes(model).origins : null), [model, fromOntology]);
+  const originsIn = (s: Shape) => [s, ...[...nestedIds(set, s)].map((id) => set.shapes.find((x) => x.id === id)!).filter(Boolean)].flatMap(originsOf);
   const open = (id: string | null) => st().openShapes(set.id, id);
   const kept = shapeId === 'kept';
   const shown = tops.find((s) => s.id === shapeId) ?? (shapeId && !kept ? tops.find((s) => nestedIds(set, s).has(shapeId)) : undefined);
@@ -213,6 +223,7 @@ function SetPanel({ set, model, shapeId }: { set: ShapeSet; model: Model; shapeI
                         {isPropertyShape(s) ? `property shape · ${pathToSparql(pathOf(s)!, naming.name)}` : `node shape · ${valuesOf(s, SH + 'property').length} propert${valuesOf(s, SH + 'property').length === 1 ? 'y' : 'ies'}`}
                       </span>
                       {valuesOf(s, SH + 'deactivated').some((v) => 'lit' in v && v.lit === 'true') && <span className="tag auto">off</span>}
+                      {stated && originsIn(s).length > 0 && (originsIn(s).some((o) => !stated.has(o)) ? <span className="tag warn" title="The ontology no longer states an axiom it came from">stale</span> : <span className="tag auto" title="Proposed from the ontology's axioms, and accepted">from the ontology</span>)}
                     </button>
                   </li>
                 ))}
@@ -256,6 +267,9 @@ function ShapeForm({ set, shape, top, model, naming, edits, focus, nested = fals
   const other = rows.filter((x) => !core.includes(x));
   const properties = shape.props.map((x, i) => ({ ...x, i })).filter((x) => x.p === SH + 'property');
   const offered = PARAMS.filter((p) => p.on === 'both' || (p.on === 'property') === property);
+  // Proposed from the ontology and accepted: the axioms it came from, and whether the ontology still states them.
+  const origins = shape.props.map((x, i) => ({ x, i })).filter(({ x }) => x.p === FROM_AXIOM && 'lit' in x.v).map(({ x, i }) => ({ origin: (x.v as { lit: string }).lit, i }));
+  const stated = useMemo(() => (origins.length ? proposeShapes(model).origins : new Set<string>()), [model, origins.length]);
   // Opened from a validation finding: what failed this shape, shown here, at the constraint it failed.
   const failed = useStore((s) => (s.shapesView.shape === shape.id ? s.shapesView.failed : undefined));
   const here = useRef<HTMLDivElement>(null);
@@ -311,6 +325,19 @@ function ShapeForm({ set, shape, top, model, naming, edits, focus, nested = fals
           </button>
         </div>
       )}
+      {origins.map(({ origin, i }) => {
+        const stale = !stated.has(origin);
+        const said = proposeShapes(model).proposals.find((p) => p.origin === origin)?.axiom ?? origin.replace(/<([^>]*)>/g, (_m, iri: string) => naming.name(iri));
+        return (
+          <p key={i} className={'shape-origin' + (stale ? ' stale' : '')}>
+            <span>{stale ? 'Came from an axiom the ontology no longer states:' : 'From the ontology:'}</span> <code>{said}</code>
+            {stale && <span className="tag warn">stale</span>}
+            <button className="btn icon ghost" aria-label="Forget which axiom it came from" title="Keeps the shape, as a shape of its own" onClick={() => edits.remove(shape.id, i)}>
+              ×
+            </button>
+          </p>
+        );
+      })}
       {failed && (
         <div className="shape-failed" role="note" aria-label="What validation found">
           <p>
@@ -976,9 +1003,14 @@ export function ShapesAbout({ iri, name, isClass }: { iri: string | undefined; n
         </ul>
       )}
       {isClass && (
-        <button className="btn small" onClick={add}>
-          Add a shape for this class
-        </button>
+        <div className="row wrap">
+          <button className="btn small" onClick={add}>
+            Add a shape for this class
+          </button>
+          <button className="btn small" title="Shapes this class's axioms suggest, each with what the axiom means and where a shape differs" onClick={() => st().openProposals([iri])}>
+            Propose from its axioms…
+          </button>
+        </div>
       )}
     </Section>
   );

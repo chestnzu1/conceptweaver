@@ -158,7 +158,7 @@ is planned. The overlaps stay where they are; what is new is the track below.
 | --- | --- | --- | --- |
 | **SH-1** Shapes as a first-class editor | A *Shapes* view; shape sets; every SHACL Core construct in the form; lossless Turtle per set; links with classes and properties. | 1.4, 1.8, 1.9 | Phase 2: done 2026-10-16 |
 | **SH-2** Validation one can act on | Data graphs kept with the project; a shape set validated against a data graph; findings to the constraint and the data's source; the W3C SHACL Core tests as the conformance suite. | SH-1 | Phase 2: done 2026-10-16 |
-| **SH-3** Shapes proposed from the ontology | Proposals from axioms, reviewed one by one, with their meaning stated; origin kept; stale when the axiom changes. | SH-1; 2.1 (structured expressions) | Phase 2, next: before 2.3 |
+| **SH-3** Shapes proposed from the ontology | Proposals from axioms, reviewed one by one, with their meaning stated; origin kept; stale when the axiom changes. | SH-1; 2.1 (structured expressions) | Phase 2: done 2026-10-16 |
 | **SH-4** Jena SHACL on the server | `ValidationService` answered by the companion; the same reports as the browser on the conformance suite; data graphs too large for the page. | SH-2; 3.2 | Phase 3, after 3.2 |
 | **SH-5** SHACL-SPARQL and the inferred graph | SPARQL-based constraints and constraint components; validation against the inferred graph; the browser naming what it cannot run. | SH-4 | Phase 3, after SH-4 |
 
@@ -612,6 +612,11 @@ purpose:
 Phase 1 is done, and 2.1 and 2.2 with it (see [BASELINES.md](BASELINES.md) and
 [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for what each measured and left).
 
+**2026-10-16: SH-1, SH-2 and SH-3 are done, and milestone MS-12 with them** (each with its
+status below). The next task is 2.3, versions and differences locally, which now covers the shape
+sets and the data graphs' references as well; this section gives its scope when it starts. What
+follows is SH-1 as it was set out, and the status of each stage.
+
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.
 
@@ -676,6 +681,25 @@ one graph two results, the line, the constraint, a reload, a replacement, an und
 whose content the browser does not have. What it left: a data graph's content is in one browser (a
 project's data graphs on the server are 3.x), no line for a blank node or a file converted to
 Turtle, and the content of a deleted graph stays in IndexedDB so that undo finds it.
+
+**Status, 2026-10-16: SH-3 done, and with it milestone MS-12.** *Propose from the ontology* (in
+the Shapes view, and *Propose from its axioms* in a class's editor) reads the ontology as it is
+written, so a restriction drawn on the canvas and one typed as a class axiom are proposed alike
+(`src/model/proposals.ts`): restrictions, also inside an intersection or a definition (some, only,
+min, max, exactly, value; a filler that is a named class, several joined by and or or, a datatype,
+an enumerated datatype or facets), domains and ranges, functional and inverse functional
+properties, and enumerations. Each proposal shows its axiom in Manchester syntax, the shape it
+would add, what the axiom means in OWL, what the shape checks and where the two differ; none is
+chosen to begin with; they are chosen or dismissed one by one or by kind, for a class, a few or
+the whole ontology, and added to a chosen set, or a new one, as one step of the history. An
+accepted shape keeps its axiom in OWL functional syntax as `cw:fromAxiom`, which travels with its
+Turtle and follows a change of IRI; once the ontology no longer states that axiom the shape is
+marked stale, in its form and in the list, and can be kept as a shape of its own. Keys, an
+`ObjectHasSelf`, and fillers that are nested expressions are listed as not proposed, each with
+why. For Pizza: 198 proposals and 2 not proposed, worked out in about 20 ms (`proposals.test.ts`;
+`e2e/proposals.mjs` in the browser). What it left: dismissals last while the proposals are open; a
+stale axiom is shown in functional syntax, as it is no longer in the ontology to be read out in
+Manchester syntax.
 
 **The data-integration track does not change this.** Its first task is 3.8, after the backend
 exists; from SH-2 it can validate what a mapping previews against a chosen shape set (4.11).

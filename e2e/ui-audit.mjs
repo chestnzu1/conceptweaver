@@ -273,6 +273,17 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await property.getByLabel('Path').press('Enter');
     await property.locator('[data-param=path] [role=alert]').waitFor();
     report('Shapes · a shape, open in place', await page.evaluate(measure));
+    // Shapes proposed from the ontology, a few chosen, and a shape accepted from them with the axiom it came from.
+    await shapes.getByRole('button', { name: 'Propose from the ontology…' }).click();
+    const proposals = page.locator('.dialog.proposals');
+    await proposals.locator('.proposal').first().waitFor();
+    for (const n of [0, 1]) await proposals.locator('.proposal').nth(n).getByRole('checkbox').check();
+    report('Shapes · proposed from the ontology', await page.evaluate(measure));
+    await proposals.getByRole('button', { name: 'Add 2 shapes' }).click();
+    await proposals.waitFor({ state: 'detached' });
+    await shapes.locator('.shape-list li button', { hasText: '(from the ontology)' }).first().click();
+    await shapes.locator('.shape-origin').first().waitFor();
+    report('Shapes · accepted from the ontology', await page.evaluate(measure));
     await shapes.getByRole('button', { name: 'Delete set' }).click();
     await tab('Validation');
     await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
