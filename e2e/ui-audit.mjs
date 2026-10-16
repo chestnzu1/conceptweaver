@@ -25,7 +25,13 @@ const fake = http.createServer((req, res) => {
   req.on('data', (c) => (body += c));
   req.on('end', () => {
     if (req.url === '/v1/models') return res.writeHead(200, { 'Content-Type': 'application/json', ...cors }).end(JSON.stringify({ data: [{ id: 'audit-model' }] }));
-    const answered = JSON.parse(body).messages.at(-1).role === 'tool';
+    const asked = JSON.parse(body).messages;
+    const answered = asked.at(-1).role === 'tool';
+    if (asked.findLast((m) => m.role === 'user').content.startsWith('How big')) {
+      const chunks = answered ? [{ choices: [{ delta: { content: 'It has eight classes.' } }] }] : [{ choices: [{ delta: { tool_calls: [{ index: 0, id: 's', type: 'function', function: { name: 'getOntologySummary', arguments: '{}' } }] } }] }];
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', ...cors });
+      return res.end(chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n');
+    }
     const operations = [{ action: 'add', type: 'declare', entityKind: 'class', name: 'Short film' }, { action: 'add', type: 'subClassOf', subject: "'Short film'", expression: 'Film' }, { action: 'add', type: 'disjointClasses', subject: 'Documentary', expression: 'Film' }];
     const chunks = answered
       ? [{ choices: [{ delta: { content: `I proposed it for your review. **Note** that [Documentary](${NS}Documentary) is a film already, and that [Short film](${NS}ShortFilm) is not in the ontology yet:\n\n- one\n- two` } }] }]
@@ -454,6 +460,18 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await reviewing.getByRole('button', { name: 'Edit' }).click();
     report('Assistant · a proposal edited', await page.evaluate(measure));
     await reviewing.getByRole('button', { name: 'Close' }).click();
+    // A lookup shown before it is sent.
+    await assistant.getByRole('button', { name: 'Settings' }).click();
+    await aiSettings.getByLabel('Show me each lookup, and send it only if I say so').check();
+    await aiSettings.getByRole('button', { name: 'Save' }).click();
+    await assistant.getByLabel('Ask the assistant').fill('How big is it?');
+    await assistant.getByRole('button', { name: 'Send' }).click();
+    await assistant.locator('.lookup-ask summary').click();
+    report('Assistant · a lookup to send', await page.evaluate(measure));
+    await assistant.locator('.lookup-ask').getByRole('button', { name: 'Send', exact: true }).click();
+    await assistant.getByRole('button', { name: 'Settings' }).click();
+    await aiSettings.getByLabel('Show me each lookup, and send it only if I say so').uncheck();
+    await aiSettings.getByRole('button', { name: 'Save' }).click();
     await assistant.getByRole('button', { name: 'Hide the assistant' }).click();
     // The sidebar folded away to its strip, with and without a search on.
     await page.locator('.term-list').getByLabel('Search terms').fill('film');

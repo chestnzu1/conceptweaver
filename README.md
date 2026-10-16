@@ -1458,13 +1458,22 @@ URL and the route in this browser (`localStorage`, `conceptweaver:assistant`); *
 configuration* forgets them, and the key.
 
 **The key** is held in the page's memory only (`src/ai/providers/http.ts`): never in
-`localStorage`, IndexedDB, the working copy, a saved model, a version or an export, and never
-written to the console. It is gone when the page is closed or reloaded, and asked for again. It
-is bound to the endpoint it was given for: choosing another provider or another base URL drops
-it. Where a provider's error repeats it, it is replaced by `[key]` before it is shown.
-`e2e/assistant.mjs` searches every store of the browser, the page and two exports for a test key
-and finds it nowhere. A key kept from one session to the next would need the server's per-user,
-encrypted storage, which does not exist yet; until then there is none.
+`localStorage`, `sessionStorage`, IndexedDB, the working copy, a saved model, a version or an
+export, and never written to the console. It is gone when the page is closed or reloaded, and
+asked for again. It is bound to the endpoint it was given for: choosing another provider or
+another base URL drops it. Where a provider's error repeats it, it is replaced by `[key]` before
+it is shown. `e2e/assistant.mjs` searches every store of the browser, the page and two exports
+for a test key and finds it nowhere.
+
+Through the local service the key can instead be **held by the service**: *Let the local service
+hold the key* in the settings gives it to the service (`POST /ai/key`), which keeps it in its
+memory, never on disk, until it stops, and answers with a handle of 256 random bits. The page
+keeps only the handle, in this tab's `sessionStorage`, so a reload does not ask for the key
+again; the handle works only through that service, for that endpoint and provider, and the key
+is never given back. Once the service has restarted the handle is refused, let go of, and the
+key asked for again; *Remove configuration* asks the service to forget it. A key kept on disk
+from one session of the service to the next would need the server's per-user, encrypted
+storage, which does not exist yet; until then there is none.
 
 **Where requests go.** One of two routes, chosen in the settings:
 
@@ -1482,15 +1491,22 @@ encrypted storage, which does not exist yet; until then there is none.
   `100.64/10`, `fc00::/7`, multicast), and only the paths a chat needs (`/chat/completions`,
   `/messages`, `/models`, a Gemini model's `:streamGenerateContent`). It follows no redirect,
   answers only the pages it answers for the reasoner (`--allow-origin`), and logs neither keys
-  nor bodies. To reach a model server on this machine or your network through it, start it with
-  `pnpm reasoner --allow-local-ai`. Not caught: a name that resolves to a public address when it
-  is checked and to a private one when it is asked (DNS rebinding); the service checks the
-  address it resolved, not the one the request finally reaches.
+  nor bodies. The endpoint's host is looked up once, every address it has is checked, and the
+  connection is made to that very address, with TLS spoken to the host by its name (SNI) and the
+  certificate verified for that name: a name that resolves to a public address when it is
+  checked and to a private one a moment later (DNS rebinding) is not followed there
+  (`src/ai/proxyTls.test.ts` stands a rebinding name server up with a hosts file that changes
+  its answer, and checks the private address is never reached; the service as it was before this
+  reached it). To reach a model server on this machine or your network through it, start it
+  with `pnpm reasoner --allow-local-ai`.
 
 **What is sent.** Your question; what is selected, as a line apart from the question; the
 earlier turns of the conversation (the last 40 messages, the results of lookups of earlier
 questions shortened to 400 characters); and what the assistant looks up. The panel says this
-above the conversation, and lists each lookup as it is made under the answer. The ontology is
+above the conversation, and lists each lookup as it is made under the answer. With *Show me each
+lookup, and send it only if I say so* in the settings, each lookup's result is shown, in full,
+before it is sent, and sent only on *Send*; *Don't send* tells the provider only that it was
+declined (FR-M12-6). The ontology is
 never sent whole: the assistant asks through nine read-only tools (`src/ai/tools.ts`), each
 answer at most 12,000 characters, so a question about a model of 6,000 classes sends a few
 kilobytes (`src/ai/conversation.test.ts`):
@@ -1513,9 +1529,11 @@ entity links it by IRI. A link to an entity opens it in the editor; a link to an
 ontology's namespace that names nothing is marked *not in the ontology*.
 
 **Proposals.** A change is asked for through one more tool, `proposeChanges`, as typed
-operations (declare an entity; add or remove a subclass, equivalent or disjoint classes, a domain,
-a range, a characteristic, a subproperty, an inverse, a class assertion, a property assertion,
-an annotation), each with its target, the axioms it adds or removes, an explanation, the
+operations: declare an entity (a class, property, individual or datatype); add or remove a
+subclass, equivalent or disjoint classes, a key, a domain, a range, a characteristic, a
+subproperty, an inverse, equivalent or disjoint properties, a property chain, a class assertion,
+a property assertion, same or different individuals, a datatype definition, an annotation, an
+annotation of the ontology, or an import. Each has its target, the axioms it adds or removes, an explanation, the
 semantic impact and the concerns the assistant sees (`src/ai/proposals.ts`). Class expressions
 are written in Manchester syntax and read by the editor's own parser. A proposal is compiled to
 a change set of the edit service (*Edits as change sets*) and checked on a copy, and its card in
@@ -1526,8 +1544,12 @@ the editor would not keep as stated), or *out of date*. *Review…* shows the ax
 removed, each entity it touches before and after, and what the fast reasoner finds before and
 after: whether it makes the ontology inconsistent, the classes it makes unsatisfiable and those
 it makes satisfiable again (on models up to 4,000 terms; the fast reasoner covers RDFS and part
-of OWL 2 RL, so the DL reasoner under Validation can say more once it is applied). *Edit*
-changes the operations, and *Check the edited proposal* compiles and checks them again.
+of OWL 2 RL). *Check with HermiT* asks the OWL 2 DL reasoner, through the local service, about
+the ontology before and after the proposal, side by side: complete for OWL 2 DL, so it finds
+what the fast reasoner cannot, such as a maximum cardinality that leaves a class nothing to be
+(`src/ai/dlCheck.test.ts`); it says when its answer is partial, and why, and when it could not be
+asked. *Edit* changes the operations, and *Check the edited proposal* compiles and checks them
+again.
 
 *Accept* applies a proposal that reads and is not refused, as one edit: undone and redone like
 any other, kept with the working copy, named *Assistant: …* in the history, and refused if the
@@ -1536,12 +1558,15 @@ against the ontology as it is). What it added is selected, and the graph shows i
 leaves the ontology as it was. Nothing the assistant says changes the ontology otherwise.
 
 **Answers** stream in as they are written; *Stop* ends one, and the request with it. A request
-that hears nothing for a minute is given up. A conversation is kept for each ontology while the
-page is open, and *Clear* starts it afresh; conversations and proposals are not saved.
+that hears nothing for a minute is given up. The conversation about each ontology, with its
+proposals, is kept in this browser (IndexedDB, store `assistant`, by the ontology's IRI; never a
+key) and is there again when the ontology is opened again. A proposal that was waiting is then
+*out of date*, since it was checked in another session, and is checked again before it can be
+accepted. *Clear* starts the conversation afresh and deletes what was kept of it.
 
-**What it cannot do.** It does not edit SWRL rules, SHACL shapes, data graphs, imports or the
-ontology's own annotations; property chains, keys and datatype definitions are not among its
-operations. It sees validation results only as of the last run.
+**What it cannot do.** It does not edit SWRL rules (the app has no place for them), SHACL shapes
+(they have their own proposals, under Shapes) or data graphs. It sees validation results only as
+of the last run.
 There are no several assistants and no background work: one question, one answer, the lookups it
 makes, and at most eight rounds of them. Gemini's and Anthropic's own tool formats are spoken;
 other providers only through an OpenAI-compatible endpoint.

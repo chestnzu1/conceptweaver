@@ -212,7 +212,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M9 Search and SPARQL | **Existing** | `src/entities/`, `src/model/sparql.ts` | Asserted graph only |
 | M10 Versioning | **Partially Implemented** | `src/projects/` (named versions, differences, restore, in this browser; 2026-10-16) | No history of one entity, no server revisions, no releases |
 | M11 Publishing and export | **Partially Implemented** | `src/model/files.ts`, `htmlExport.ts`, `src/io/` | No generated documentation; no publishing |
-| M12 AI assistance | **Partially Implemented** | `src/ai/`, `src/components/assistant/` (the assistant, bring your own key; 2026-10-16); matcher seam in `matcher.ts` | No mapping, drafting or query suggestions; nothing saved of a conversation |
+| M12 AI assistance | **Partially Implemented** | `src/ai/`, `src/components/assistant/` (the assistant, bring your own key; 2026-10-16); matcher seam in `matcher.ts` | No mapping, drafting or query suggestions |
 | M13 Collaboration and governance | **Partially Implemented** | `src/model/governance.ts` | No users, review or audit |
 | M14 Database connectivity and schema exploration | **Not implemented** | Free-text `database`, `schema`, `table`, `column` fields in `src/model/governance.ts` | Everything; needs the backend |
 | M15 Ontology-to-relational semantic mapping | **Not implemented** | Reusable parts only (entity lists, validation, matcher, IRI handling) | Everything |
@@ -747,10 +747,11 @@ rejects.
 that answers questions about the open ontology with the user's own provider and key (OpenAI,
 Anthropic, Gemini, an OpenAI-compatible endpoint), through nine read-only tools, and proposes
 typed changes that are compiled to change sets, checked by the editor's rules and the fast
-reasoner, reviewed, edited, and applied only when accepted, as one edit (`src/ai/`,
-`src/components/assistant/`, `e2e/assistant.mjs`). The key is held in memory only; requests go
-straight to the provider or through the local service (`/ai/forward`), which refuses private
-addresses. Mapping suggestion remains a list of matcher functions (`MATCHERS` in
+reasoner (and, on request, HermiT), reviewed, edited, and applied only when accepted, as one
+edit (`src/ai/`, `src/components/assistant/`, `e2e/assistant.mjs`). Conversations and proposals
+are kept per ontology in this browser. The key is held in the page's memory, or in the local
+service's memory behind a handle; requests go straight to the provider or through the local
+service (`/ai/forward`), which refuses private addresses and connects to the address it checked. Mapping suggestion remains a list of matcher functions (`MATCHERS` in
 `src/model/matcher.ts`), written so that another matcher can be added beside the lexical one.
 
 | Id | Requirement | Status | Priority |
@@ -760,7 +761,7 @@ addresses. Mapping suggestion remains a list of matcher functions (`MATCHERS` in
 | FR-M12-3 | Draft a definition or labels for an entity from its position and neighbours. | Future | P3 |
 | FR-M12-4 | Propose classes and relationships from a document or a list of terms. | Future | P3 |
 | FR-M12-5 | Translate a question into SPARQL, or a description into a class expression, for the user to check. | Partial: the assistant proposes class expressions in Manchester syntax, checked before acceptance; no SPARQL | P3 |
-| FR-M12-6 | A provider is configured explicitly; what would be sent is shown; nothing is sent otherwise. | **Partial**: nothing is sent until a provider and key are set and a question is asked; the panel says what kinds of content are sent and lists each lookup as it is made, but does not ask before each one | P2 |
+| FR-M12-6 | A provider is configured explicitly; what would be sent is shown; nothing is sent otherwise. | **Existing** for the assistant: nothing is sent until a provider and key are set and a question is asked; the panel says what is sent and lists each lookup; with *Show me each lookup* on, each lookup's result is shown in full and sent only when the user says so | P2 |
 | FR-M12-7 | Suggest mappings between a schema and the ontology from names, comments, types and sample values. Schema names and sample values are sent to a provider only with explicit consent per data source. | Future | P3 |
 
 **Module non-functional points.** NFR-10 and AR-10. A proposed axiom is validated by the same

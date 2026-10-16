@@ -4,9 +4,11 @@ import { createLocalEditService, entityAxioms, ontologyOf } from '../editing/loc
 import { propDatatype } from '../model/domains';
 import { baseIriOf, localName } from '../model/iri';
 import { namingFor, parseClass, parseDataRange, parseLiteral, type EntityKind, type Naming } from '../model/manchester';
-import { expandIri } from '../model/prefixes';
+import { expandIri, ontologyIriOf } from '../model/prefixes';
 import { reason } from '../model/reasoner';
+import type { DlReport } from '../model/reasoning';
 import type { Model } from '../model/types';
+import { statementsOf } from '../model/unmapped';
 import { axiomText } from '../projects/difference';
 import { revisionOf, WORKING_COPY } from '../structure/local';
 import type { JsonSchema, ToolSpec } from './providers/contracts';
@@ -24,7 +26,30 @@ import { findEntity } from './tools';
  * any other, kept with the model, and refused if the ontology has moved on since.
  */
 
-export const OPERATION_TYPES = ['declare', 'subClassOf', 'equivalentClasses', 'disjointClasses', 'domain', 'range', 'characteristic', 'subPropertyOf', 'inverseOf', 'classAssertion', 'objectPropertyAssertion', 'dataPropertyAssertion', 'annotation'] as const;
+export const OPERATION_TYPES = [
+  'declare',
+  'subClassOf',
+  'equivalentClasses',
+  'disjointClasses',
+  'hasKey',
+  'domain',
+  'range',
+  'characteristic',
+  'subPropertyOf',
+  'inverseOf',
+  'equivalentProperties',
+  'disjointProperties',
+  'propertyChain',
+  'classAssertion',
+  'objectPropertyAssertion',
+  'dataPropertyAssertion',
+  'sameIndividual',
+  'differentIndividuals',
+  'datatypeDefinition',
+  'annotation',
+  'ontologyAnnotation',
+  'import',
+] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 export const CHARACTERISTICS = ['Functional', 'InverseFunctional', 'Transitive', 'Symmetric', 'Asymmetric', 'Reflexive', 'Irreflexive'] as const;
 
@@ -33,7 +58,7 @@ export interface Operation {
   action: 'add' | 'remove';
   type: OperationType;
   /** declare: what is declared, its name, and its IRI if it is to have a given one. */
-  entityKind?: 'class' | 'objectProperty' | 'dataProperty' | 'individual';
+  entityKind?: 'class' | 'objectProperty' | 'dataProperty' | 'individual' | 'datatype';
   name?: string;
   iri?: string;
   /** The entity an axiom is about: a class (or class expression), property or individual, by name, prefixed name or <IRI>. */
@@ -42,6 +67,8 @@ export interface Operation {
   expression?: string;
   /** More class expressions, for equivalentClasses and disjointClasses. */
   expressions?: string[];
+  /** Entities, in order: the properties of a chain or a key, the other properties or individuals of an equivalence, disjointness, sameness or difference. */
+  members?: string[];
   property?: string;
   characteristic?: (typeof CHARACTERISTICS)[number];
   /** An individual, for objectPropertyAssertion; an IRI value, for annotation. */
@@ -79,12 +106,14 @@ function namingWith(base: Naming, declared: Declared[]): Naming {
   };
 }
 
-const KIND: Record<NonNullable<Operation['entityKind']>, { entity: 'Class' | 'ObjectProperty' | 'DataProperty' | 'NamedIndividual'; kind: EntityKind; camel: boolean }> = {
+const KIND: Record<NonNullable<Operation['entityKind']>, { entity: 'Class' | 'ObjectProperty' | 'DataProperty' | 'NamedIndividual' | 'Datatype'; kind: EntityKind; camel: boolean }> = {
   class: { entity: 'Class', kind: 'class', camel: false },
   objectProperty: { entity: 'ObjectProperty', kind: 'object', camel: true },
   dataProperty: { entity: 'DataProperty', kind: 'data', camel: true },
   individual: { entity: 'NamedIndividual', kind: 'individual', camel: false },
+  datatype: { entity: 'Datatype', kind: 'datatype', camel: true },
 };
+const OWL = 'http://www.w3.org/2002/07/owl#';
 const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
 const SKOS_PREF = 'http://www.w3.org/2004/02/skos/core#prefLabel';
 
@@ -108,7 +137,7 @@ export function compile(model: Model, operations: Operation[]): Compiled {
     if (op.type !== 'declare' || op.action !== 'add') return;
     const k = op.entityKind && KIND[op.entityKind];
     const name = op.name?.trim();
-    if (!k || !name) return errors.push(`Operation ${i + 1}: a declaration needs entityKind (class, objectProperty, dataProperty or individual) and a name.`);
+    if (!k || !name) return errors.push(`Operation ${i + 1}: a declaration needs entityKind (class, objectProperty, dataProperty, individual or datatype) and a name.`);
     let iri = op.iri?.trim().replace(/^<|>$/g, '');
     if (iri && !/^[A-Za-z][A-Za-z0-9+.-]*:\S+$/.test(iri)) return errors.push(`Operation ${i + 1}: ${iri} is not an IRI.`);
     if (!iri) {
@@ -124,17 +153,33 @@ export function compile(model: Model, operations: Operation[]): Compiled {
   const entity = (ref: string | undefined, want: EntityKind[], what: string): string => {
     const text = (ref ?? '').trim();
     if (!text) throw new Error(`it needs ${what}`);
-    const d = declared.find((x) => x.name.toLowerCase() === text.toLowerCase() || x.iri === text.replace(/^<|>$/g, ''));
+    // A name may come quoted, as Manchester syntax quotes a name with spaces.
+    const bare = text.replace(/^'(.*)'$/, '$1');
+    const d = declared.find((x) => x.name.toLowerCase() === bare.toLowerCase() || x.iri === text.replace(/^<|>$/g, ''));
     if (d) {
       if (!want.includes(d.kind)) throw new Error(`${text} is declared as ${d.kind === 'object' ? 'an object property' : d.kind === 'data' ? 'a data property' : `a ${d.kind}`}, not as ${what}`);
       return d.iri;
     }
-    const f = findEntity(model, text.replace(/^'(.*)'$/, '$1'));
+    const f = findEntity(model, bare);
+    if (!f && want.includes('datatype')) {
+      // A datatype the ontology declares but the editor has no form for is known by its IRI or its local name.
+      const iri = text.startsWith('<') ? text.slice(1, -1) : (expandIri(model, text) ?? '');
+      const dt = [...ontologyOf(model).kinds.declared].find(([k, types]) => types.has('Datatype') && (k === iri || k === ns + bare || k.replace(/^.*[#/]/, '').toLowerCase() === bare.toLowerCase()));
+      if (dt) return dt[0];
+    }
     if (!f) throw new Error(`there is no entity “${text}” in the ontology or the proposal`);
     const as: EntityKind = f.kind === 'class' ? 'class' : f.kind === 'individual' ? 'individual' : f.kind === 'object property' ? 'object' : f.kind === 'data property' ? 'data' : 'datatype';
     if (!want.includes(as)) throw new Error(`${f.name} is ${f.kind === 'individual' ? 'an individual' : `a ${f.kind}`}, not ${what}`);
     return f.iri;
   };
+  /** Entities named in a list, each of one of the kinds wanted. */
+  const list = (refs: string[] | undefined, want: EntityKind[], what: string, least: number): string[] => {
+    const all = (refs ?? []).map((r) => r.trim()).filter(Boolean);
+    if (all.length < least) throw new Error(`it needs at least ${least} ${what} in members`);
+    return all.map((r) => entity(r, want, what));
+  };
+  /** A statement the editor keeps as RDF, written as the editor writes it, so that it can be removed again exactly. */
+  const statement = (turtle: string): Axiom => ({ type: 'Unmapped', turtle: statementsOf(turtle)[0].text });
   const kindOfProperty = (iri: string): 'object' | 'data' => (declared.find((d) => d.iri === iri)?.kind ?? (model.props.some((p) => p.iri === iri) ? 'object' : 'data')) as 'object' | 'data';
   const cls = (text: string | undefined, what: string): ClassExpression => {
     if (!text?.trim()) throw new Error(`it needs ${what}`);
@@ -248,6 +293,48 @@ export function compile(model: Model, operations: Operation[]): Compiled {
           if (op.value === undefined) throw new Error('it needs a value');
           return add({ type: 'DataPropertyAssertion', source: entity(op.subject, ['individual'], 'an individual'), property, value: literal(op, property) });
         }
+        case 'hasKey': {
+          const c = entity(op.subject, ['class'], 'a named class');
+          return add(statement(`<${c}> <${OWL}hasKey> ( ${list(op.members, ['object', 'data'], 'key properties', 1)
+            .map((p) => `<${p}>`)
+            .join(' ')} ) .`));
+        }
+        case 'equivalentProperties':
+        case 'disjointProperties': {
+          const all = [...(op.subject ? [op.subject] : []), ...(op.members ?? [])];
+          const ps = list(all, ['object', 'data'], 'properties', 2);
+          const kind = kindOfProperty(ps[0]);
+          if (ps.some((p) => kindOfProperty(p) !== kind)) throw new Error('object properties and data properties cannot be equivalent or disjoint with each other');
+          const type = op.type === 'equivalentProperties' ? (kind === 'object' ? 'EquivalentObjectProperties' : 'EquivalentDataProperties') : kind === 'object' ? 'DisjointObjectProperties' : 'DisjointDataProperties';
+          return add({ type, properties: ps });
+        }
+        case 'propertyChain': {
+          const sup = entity(op.property ?? op.subject, ['object'], 'the object property the chain implies');
+          const chain = list(op.members, ['object'], 'object properties of the chain', 2);
+          return add(statement(`<${sup}> <${OWL}propertyChainAxiom> ( ${chain.map((p) => `<${p}>`).join(' ')} ) .`));
+        }
+        case 'sameIndividual':
+        case 'differentIndividuals': {
+          const all = [...(op.subject ? [op.subject] : []), ...(op.members ?? [])];
+          return add({ type: op.type === 'sameIndividual' ? 'SameIndividual' : 'DifferentIndividuals', individuals: list(all, ['individual'], 'individuals', 2) });
+        }
+        case 'datatypeDefinition':
+          return add({ type: 'DatatypeDefinition', datatype: entity(op.subject, ['datatype'], 'a datatype'), range: data(op.expression) });
+        case 'ontologyAnnotation': {
+          const property = annotationProperty(op.property);
+          const ontology = ontologyIriOf(model);
+          if (!ontology) throw new Error('the ontology has no IRI to annotate: give it one in the ontology settings');
+          if (op.object) return add({ type: 'OntologyAnnotation', ontology, property, value: { iri: op.object.replace(/^<|>$/g, '') } });
+          if (op.value === undefined) throw new Error('it needs a value');
+          return add({ type: 'OntologyAnnotation', ontology, property, value: literal(op) });
+        }
+        case 'import': {
+          const iri = (op.object ?? op.iri ?? '').trim().replace(/^<|>$/g, '');
+          if (!/^https?:\/\/\S+$/.test(iri)) throw new Error('it needs the IRI of the ontology to import, in object');
+          const ontology = ontologyIriOf(model);
+          if (!ontology) throw new Error('the ontology has no IRI to import into: give it one in the ontology settings');
+          return add({ type: 'Import', ontology, iri });
+        }
         case 'annotation': {
           const subject = entity(op.subject, ['class', 'object', 'data', 'individual'], 'the entity it annotates');
           const property = annotationProperty(op.property);
@@ -332,6 +419,51 @@ export async function review(model: Model, input: Pick<ProposalInput, 'summary' 
   return { ...base, changeSet };
 }
 
+/** The model with a proposal's change set applied, on a copy: what the reasoners are asked about. */
+export async function applied(model: Model, changeSet: ChangeSet): Promise<Model> {
+  let after = model;
+  await createLocalEditService({ current: () => ({ model: after, ontologyId: changeSet.ontologyId }), commit: (next) => (after = next) }).apply(changeSet);
+  return after;
+}
+
+/** What the OWL 2 DL reasoner finds of a proposal: the ontology before and after it, asked side by side. */
+export interface DlFindings {
+  engine: string;
+  /** complete: OWL 2 DL; partial: something was left out or taken loosely; failed: no answer (see errors). */
+  status: 'complete' | 'partial' | 'failed';
+  before: DlReport['consistency'];
+  after: DlReport['consistency'];
+  newlyUnsatisfiable: { name: string; iri: string }[];
+  noLongerUnsatisfiable: { name: string; iri: string }[];
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * Asks the OWL 2 DL reasoner (HermiT, through the local service) about the ontology before and
+ * after a proposal: complete where the fast reasoner is not, so a cardinality, a complement or a
+ * union it does not follow is followed here. `ask` is the service, as the editor asks it.
+ */
+export async function dlCheck(model: Model, changeSet: ChangeSet, ask: (m: Model) => Promise<DlReport>): Promise<DlFindings> {
+  const after = await applied(model, changeSet);
+  const [was, now] = await Promise.all([ask(model), ask(after)]);
+  const failed = [was, now].find((r) => r.status === 'failed');
+  const nameOf = (iri: string) => findEntity(after, iri)?.name ?? findEntity(model, iri)?.name ?? iri.replace(/^.*[#/]/, '');
+  const unsat = (r: DlReport) => new Set((r.unsatisfiable ?? []).filter((i) => !i.endsWith('#Nothing')));
+  const a = unsat(was);
+  const b = unsat(now);
+  return {
+    engine: [now.engine, now.engineVersion].filter(Boolean).join(' '),
+    status: failed ? 'failed' : was.status === 'partial' || now.status === 'partial' ? 'partial' : 'complete',
+    before: was.consistency,
+    after: now.consistency,
+    newlyUnsatisfiable: failed ? [] : [...b].filter((i) => !a.has(i)).map((iri) => ({ name: nameOf(iri), iri })),
+    noLongerUnsatisfiable: failed ? [] : [...a].filter((i) => !b.has(i)).map((iri) => ({ name: nameOf(iri), iri })),
+    errors: [...new Set([...was.errors, ...now.errors])].slice(0, 5),
+    warnings: [...new Set([...was.warnings, ...now.warnings])].slice(0, 5),
+  };
+}
+
 /** The entity an axiom is told under: its subject, as a frame of Manchester syntax has it. */
 function aboutIri(a: Axiom): string | undefined {
   const named = (e: ClassExpression): string | undefined => (e.type === 'Class' ? e.iri : undefined);
@@ -355,6 +487,21 @@ function aboutIri(a: Axiom): string | undefined {
       return a.sub;
     case 'InverseObjectProperties':
       return a.first;
+    case 'EquivalentObjectProperties':
+    case 'DisjointObjectProperties':
+    case 'EquivalentDataProperties':
+    case 'DisjointDataProperties':
+      return a.properties[0];
+    case 'SameIndividual':
+    case 'DifferentIndividuals':
+      return a.individuals[0];
+    case 'DatatypeDefinition':
+      return a.datatype;
+    case 'Unmapped':
+      return /^<([^>]+)>/.exec(a.turtle)?.[1];
+    case 'OntologyAnnotation':
+    case 'Import':
+      return undefined;
     default:
       return 'property' in a ? a.property : undefined;
   }
@@ -369,16 +516,17 @@ const OPERATION: JsonSchema = {
   properties: {
     action: { type: 'string', enum: ['add', 'remove'], description: 'add, or remove an axiom the ontology states (exactly as it states it).' },
     type: { type: 'string', enum: [...OPERATION_TYPES], description: 'What kind of axiom.' },
-    entityKind: { type: 'string', enum: ['class', 'objectProperty', 'dataProperty', 'individual'], description: 'declare: what is declared.' },
+    entityKind: { type: 'string', enum: ['class', 'objectProperty', 'dataProperty', 'individual', 'datatype'], description: 'declare: what is declared.' },
     name: s('declare: the new entity’s name (label). Its IRI is made from it unless iri is given.'),
     iri: s('declare: the IRI the new entity is to have (optional).'),
-    subject: s('The entity the axiom is about: a class (or, for subClassOf, a class expression), a property or an individual: its name, prefixed name or <IRI>.'),
-    expression: s('A class expression in Manchester syntax ("Film and (hasDirector some Director)", "hasPart min 2 Wheel", "not Pizza"); for a data property range, a data range ("xsd:integer[>= 0]"). Quote names with spaces: \'Release date\'.'),
+    subject: s('The entity the axiom is about: a class (or, for subClassOf, a class expression), a property, an individual, or (datatypeDefinition) a datatype: its name, prefixed name or <IRI>.'),
+    expression: s('A class expression in Manchester syntax ("Film and (hasDirector some Director)", "hasPart min 2 Wheel", "not Pizza"); for a data property range or a datatypeDefinition, a data range ("xsd:integer[>= 0]"). Quote names with spaces: \'Release date\'.'),
     expressions: { type: 'array', items: s('A class expression in Manchester syntax.'), description: 'equivalentClasses, disjointClasses: the other classes.' },
-    property: s('domain, range, characteristic, objectPropertyAssertion, dataPropertyAssertion: the property. subPropertyOf: the superproperty. inverseOf: the inverse. annotation: the annotation property (rdfs:comment, skos:definition, …).'),
+    members: { type: 'array', items: s('An entity: name, prefixed name or <IRI>.'), description: 'propertyChain: the object properties of the chain, in order (the chain implies property). hasKey: the key properties of the class in subject. equivalentProperties, disjointProperties: the other properties. sameIndividual, differentIndividuals: the other individuals.' },
+    property: s('domain, range, characteristic, objectPropertyAssertion, dataPropertyAssertion: the property. subPropertyOf: the superproperty. inverseOf: the inverse. propertyChain: the property the chain implies. annotation, ontologyAnnotation: the annotation property (rdfs:comment, skos:definition, …).'),
     characteristic: { type: 'string', enum: [...CHARACTERISTICS], description: 'characteristic: which.' },
-    object: s('objectPropertyAssertion: the individual that is the value. annotation: an IRI value.'),
-    value: s('dataPropertyAssertion, annotation: the literal value.'),
+    object: s('objectPropertyAssertion: the individual that is the value. annotation, ontologyAnnotation: an IRI value. import: the IRI of the ontology to import.'),
+    value: s('dataPropertyAssertion, annotation, ontologyAnnotation: the literal value.'),
     datatype: s('dataPropertyAssertion: the value’s datatype (xsd:integer, …), when it is not the property’s range.'),
     lang: s('annotation, dataPropertyAssertion: the value’s language tag.'),
   },
@@ -415,7 +563,7 @@ export function proposalInput(args: unknown): ProposalInput | string {
     if (!o || typeof o !== 'object' || Array.isArray(o)) return `Operation ${i + 1} is not an object.`;
     for (const [k, v] of Object.entries(o)) {
       if (!fields.has(k)) return `Operation ${i + 1} has a field “${k}” that operations do not have.`;
-      if (k === 'expressions' ? !Array.isArray(v) || v.some((x) => typeof x !== 'string') : typeof v !== 'string') return `Operation ${i + 1}: “${k}” has the wrong type.`;
+      if (k === 'expressions' || k === 'members' ? !Array.isArray(v) || v.some((x) => typeof x !== 'string') : typeof v !== 'string') return `Operation ${i + 1}: “${k}” has the wrong type.`;
     }
     const op = o as Operation;
     if (!OPERATION_TYPES.includes(op.type)) return `Operation ${i + 1}: there is no type “${String(op.type)}”.`;

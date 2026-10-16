@@ -704,11 +704,12 @@ Nothing is sent until a provider and key are set and a question asked; the ontol
 as the bounded answers of read-only lookups, each listed in the panel; labels and annotations
 are passed as data the model is told never to follow. The key is held in memory only, bound to
 one endpoint, redacted from errors, and found in no storage or export (`e2e/assistant.mjs`). The
-local service forwards to private addresses only when started with `--allow-local-ai`. Left: a
-proposal's origin is kept only in the history's name for it; the fast reasoner is incomplete for
-OWL 2 DL, so a proposal it passes can still make a class unsatisfiable that HermiT would find;
-a name that resolves differently between the service's check and its request (DNS rebinding)
-is not caught.
+local service forwards to private addresses only when started with `--allow-local-ai`, and
+connects to the very address it checked, so DNS rebinding is not followed
+(`src/ai/proxyTls.test.ts`). A proposal can be checked by HermiT before it is accepted, where
+the fast reasoner is incomplete; with *Show me each lookup* on, nothing of the ontology is sent
+without the user's say. Left: a proposal's origin is kept only in the history's name for it;
+the HermiT check is asked for, not made by itself.
 
 **Risks introduced by ontology-to-relational data integration.** Added with the extension of 2026-10-13 ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §12).
 None is debt: nothing of this capability is built yet. They are listed so that each is designed

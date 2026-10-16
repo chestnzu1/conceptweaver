@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { AiError, type ProviderSettings, type StreamEvent } from './contracts';
-import { endpointProblem, forgetKey, hasKey, holdKey, keyFor } from './http';
+import { credentialFor, endpointProblem, forgetKey, hasKey, holdKey } from './http';
 import { adapterFor } from './index';
 
 /**
@@ -131,10 +131,10 @@ describe('the key, and where requests go', () => {
   it('is held for one endpoint: changing the provider or a custom endpoint’s origin asks for it again', () => {
     const a: ProviderSettings = { provider: 'custom', model: 'm', baseUrl: 'https://llm.example.org/v1', transport: 'direct' };
     holdKey(KEY, a);
-    expect(keyFor(a)).toBe(KEY);
-    expect(keyFor({ ...a, baseUrl: 'https://llm.example.org/v2' })).toBe(KEY);
+    expect(credentialFor(a)).toEqual({ key: KEY });
+    expect(credentialFor({ ...a, baseUrl: 'https://llm.example.org/v2' })).toEqual({ key: KEY });
     expect(hasKey({ ...a, baseUrl: 'https://elsewhere.example/v1' })).toBe(false);
-    expect(hasKey({ provider: 'openai' })).toBe(false);
+    expect(hasKey({ provider: 'openai', transport: 'direct' })).toBe(false);
   });
 
   it('refuses a custom endpoint that is not https, holds a password, or has a query', () => {

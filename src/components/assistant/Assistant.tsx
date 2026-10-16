@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CHARACTERISTICS, OPERATION_TYPES, type Operation, type ProposalInput } from '../../ai/proposals';
 import { PROVIDERS, type ProviderSettings } from '../../ai/providers/contracts';
-import { endpointProblem, hasKey, holdKey } from '../../ai/providers/http';
+import { endpointProblem, hasKey, heldByService, holdKey, holdKeyInService } from '../../ai/providers/http';
 import { adapterFor } from '../../ai/providers/index';
-import { ASSISTANT_WIDTH, ontologyKey, useAssistant, type Proposal, type Turn } from '../../ai/state';
+import { ASSISTANT_WIDTH, ontologyKey, proposalKey, useAssistant, type Proposal, type Turn } from '../../ai/state';
 import { ontologyIriOf } from '../../model/prefixes';
 import { useStore } from '../../model/store';
 import { revisionOf } from '../../structure/local';
@@ -26,6 +26,7 @@ export function AssistantPanel() {
   const keyed = useAssistant((s) => s.keyed);
   const reviewing = useAssistant((s) => s.reviewing);
   const showSettings = useAssistant((s) => s.showSettings);
+  const confirm = useAssistant((s) => s.confirmLookups);
   const a = useAssistant.getState;
   if (!open) return null;
   const startDrag = (e: React.PointerEvent) => {
@@ -76,7 +77,8 @@ export function AssistantPanel() {
         </span>
       </div>
       <p className="assistant-notice">
-        What you ask, and the parts of this ontology the assistant looks up, are sent to {settings ? providerName(settings) : 'the provider you choose'}{settings?.transport === 'proxy' ? ', through the local service' : ''}. It changes nothing without your approval.
+        What you ask, and the parts of this ontology the assistant looks up, are sent to {settings ? providerName(settings) : 'the provider you choose'}{settings?.transport === 'proxy' ? ', through the local service' : ''}
+        {confirm ? ', each lookup only once you have seen it and said so' : ''}. It changes nothing without your approval.
       </p>
       <Conversation />
       <Composer />
@@ -89,13 +91,18 @@ export function AssistantPanel() {
 const NO_TURNS: Turn[] = [];
 
 function Conversation() {
-  useStore((s) => ontologyIriOf(s.model));
+  const ontology = useStore((s) => ontologyIriOf(s.model));
+  // What was kept of the conversation about this ontology, in an earlier session.
+  useEffect(() => {
+    void useAssistant.getState().load();
+  }, [ontology]);
   const turns = useAssistant((s) => s.conversations[ontologyKey()]?.turns ?? NO_TURNS);
   const end = useRef<HTMLDivElement>(null);
   const last = turns[turns.length - 1];
+  const waiting = !!last?.asking;
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
-  }, [turns.length, last?.text.length, last?.tools.length, last?.proposals.length, last?.error]);
+  }, [turns.length, last?.text.length, last?.tools.length, last?.proposals.length, last?.error, waiting]);
   const a = useAssistant.getState;
   return (
     <div className="assistant-turns" role="log" aria-label="Conversation" aria-live="polite">
@@ -153,6 +160,7 @@ function TurnView({ t }: { t: Turn }) {
           ))}
         </ul>
       )}
+      {t.asking && <LookupApproval turnId={t.id} asking={t.asking} />}
       {t.text ? <AnswerText text={t.text} /> : t.streaming && !t.tools.length ? <p className="muted">Thinking…</p> : null}
       {t.proposals.map((id) => (
         <ProposalCard key={id} id={id} />
@@ -162,6 +170,44 @@ function TurnView({ t }: { t: Turn }) {
           {t.error}
         </p>
       )}
+    </div>
+  );
+}
+
+/** A lookup's result, shown before it is sent: sent, or not, as the user says. */
+function LookupApproval({ turnId, asking }: { turnId: string; asking: NonNullable<Turn['asking']> }) {
+  const settings = useAssistant((s) => s.settings);
+  const a = useAssistant.getState;
+  let shown = asking.result;
+  try {
+    shown = JSON.stringify(JSON.parse(asking.result), null, 2);
+  } catch {
+    // As it is.
+  }
+  return (
+    <div className="lookup-ask" role="group" aria-label="A lookup waiting to be sent">
+      <p>
+        <strong>Send to {providerName(settings)}?</strong> {TOOL_WORDS[asking.name] ?? asking.name}
+        {asking.about ? (
+          <>
+            {' '}
+            <em>{asking.about.slice(0, 80)}</em>
+          </>
+        ) : null}
+        : {asking.result.length.toLocaleString('en')} characters.
+      </p>
+      <details>
+        <summary>What would be sent</summary>
+        <pre>{shown.length > 8000 ? shown.slice(0, 8000) + '\n…' : shown}</pre>
+      </details>
+      <div className="row">
+        <button className="btn small primary" onClick={() => a().answerLookup(turnId, true)}>
+          Send
+        </button>
+        <button className="btn small" onClick={() => a().answerLookup(turnId, false)}>
+          Don’t send
+        </button>
+      </div>
     </div>
   );
 }
@@ -198,12 +244,13 @@ function Composer() {
       />
       <div className="row">
         <span className="spacer" />
+        {/* Two buttons, not one restyled: the one is never seen fading into the other. */}
         {busy ? (
-          <button className="btn" onClick={() => a().stop()}>
+          <button key="stop" className="btn" onClick={() => a().stop()}>
             Stop
           </button>
         ) : (
-          <button className="btn primary" disabled={!text.trim()} onClick={send}>
+          <button key="send" className="btn primary" disabled={!text.trim()} onClick={send}>
             Send
           </button>
         )}
@@ -225,7 +272,7 @@ function standing(p: Proposal, revision: string): { label: string; tone: string;
 }
 
 function ProposalCard({ id }: { id: string }) {
-  const p = useAssistant((s) => s.proposals[id]);
+  const p = useAssistant((s) => s.proposals[proposalKey(id)]);
   const revision = revisionOf(useStore((s) => s.model));
   const a = useAssistant.getState;
   const [said, setSaid] = useState('');
@@ -244,6 +291,7 @@ function ProposalCard({ id }: { id: string }) {
         {adds} axiom{adds === 1 ? '' : 's'} to add, {removes} to remove
         {p.review.logical && 'newlyUnsatisfiable' in p.review.logical && p.review.logical.newlyUnsatisfiable.length ? ` · makes ${p.review.logical.newlyUnsatisfiable.length} class${p.review.logical.newlyUnsatisfiable.length === 1 ? '' : 'es'} unsatisfiable` : ''}
         {p.review.logical && 'inconsistentAfter' in p.review.logical && p.review.logical.inconsistentAfter && !p.review.logical.inconsistentBefore ? ' · makes the ontology inconsistent' : ''}
+        {p.dl && p.dl !== 'running' && p.dl.status !== 'failed' ? (p.dl.after === 'inconsistent' && p.dl.before !== 'inconsistent' ? ' · HermiT: makes it inconsistent' : p.dl.newlyUnsatisfiable.length ? ` · HermiT: makes ${p.dl.newlyUnsatisfiable.length} class${p.dl.newlyUnsatisfiable.length === 1 ? '' : 'es'} unsatisfiable` : ' · HermiT finds no new problem') : ''}
       </p>
       <div className="row wrap">
         <button className="btn small" onClick={() => a().setReviewing(id)}>
@@ -290,6 +338,15 @@ const FIELDS: Record<Operation['type'], (keyof Operation)[]> = {
   objectPropertyAssertion: ['subject', 'property', 'object'],
   dataPropertyAssertion: ['subject', 'property', 'value', 'datatype'],
   annotation: ['subject', 'property', 'value', 'lang'],
+  hasKey: ['subject', 'members'],
+  equivalentProperties: ['subject', 'members'],
+  disjointProperties: ['subject', 'members'],
+  propertyChain: ['property', 'members'],
+  sameIndividual: ['subject', 'members'],
+  differentIndividuals: ['subject', 'members'],
+  datatypeDefinition: ['subject', 'expression'],
+  ontologyAnnotation: ['property', 'value', 'lang', 'object'],
+  import: ['object'],
 };
 
 /**
@@ -298,7 +355,7 @@ const FIELDS: Record<Operation['type'], (keyof Operation)[]> = {
  * edited operation by operation and checked again; then accepted or rejected.
  */
 function ProposalReview({ id }: { id: string }) {
-  const p = useAssistant((s) => s.proposals[id]);
+  const p = useAssistant((s) => s.proposals[proposalKey(id)]);
   const model = useStore((s) => s.model);
   const revision = revisionOf(model);
   const a = useAssistant.getState;
@@ -365,9 +422,10 @@ function ProposalReview({ id }: { id: string }) {
                 {logical.newlyUnsatisfiable.length > 0 && <li className="bad">It makes unsatisfiable: {logical.newlyUnsatisfiable.map((c) => c.name).join(', ')}.</li>}
                 {logical.noLongerUnsatisfiable.length > 0 && <li>No longer unsatisfiable: {logical.noLongerUnsatisfiable.map((c) => c.name).join(', ')}.</li>}
               </ul>
-              <p className="muted">The fast reasoner covers RDFS and part of OWL 2 RL: what it finds is so; what it does not find may still be. Validation can ask the OWL 2 DL reasoner once the change is made.</p>
+              <p className="muted">The fast reasoner covers RDFS and part of OWL 2 RL: what it finds is so; what it does not find may still be.</p>
             </div>
           )}
+          {r.changeSet && <DlLogic p={p} current={p.revision === revision} />}
           {r.notes.map((n) => (
             <p key={n} className="muted">
               {n}
@@ -442,7 +500,10 @@ function ProposalReview({ id }: { id: string }) {
                       <option value="objectProperty">object property</option>
                       <option value="dataProperty">data property</option>
                       <option value="individual">individual</option>
+                      <option value="datatype">datatype</option>
                     </select>
+                  ) : f === 'members' ? (
+                    <MembersInput key={f} label={`members of operation ${i + 1}`} value={o.members ?? []} onChange={(members) => setOp(i, { members })} />
                   ) : (
                     <input key={f} aria-label={`${f} of operation ${i + 1}`} placeholder={f} value={String(o[f] ?? '')} spellCheck={false} onChange={(e) => setOp(i, { [f]: e.target.value || undefined })} />
                   ),
@@ -510,6 +571,55 @@ function ProposalReview({ id }: { id: string }) {
   );
 }
 
+/** A list of entities, typed with commas between them: the text as typed is kept while it is edited. */
+function MembersInput({ label, value, onChange }: { label: string; value: string[]; onChange: (members: string[]) => void }) {
+  const [text, setText] = useState(value.join(', '));
+  return (
+    <input
+      aria-label={label}
+      placeholder="members, separated by commas"
+      value={text}
+      spellCheck={false}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(e.target.value.split(',').map((x) => x.trim()).filter(Boolean));
+      }}
+    />
+  );
+}
+
+/** What the OWL 2 DL reasoner makes of a proposal, or the button that asks it. */
+function DlLogic({ p, current }: { p: Proposal; current: boolean }) {
+  const a = useAssistant.getState;
+  const dl = p.dl;
+  return (
+    <div className="logic dl" aria-live="polite">
+      <strong>Logic, by the OWL 2 DL reasoner</strong>
+      {!dl && (
+        <div className="row wrap">
+          <button className="btn small" disabled={!current || p.status !== 'pending'} onClick={() => void a().checkWithDl(p.id)}>
+            Check with HermiT
+          </button>
+          <span className="muted">Complete for OWL 2 DL; needs the local service (pnpm reasoner).</span>
+        </div>
+      )}
+      {dl === 'running' && <p className="muted">HermiT is reasoning over the ontology before and after the change…</p>}
+      {dl && dl !== 'running' && dl.status === 'failed' && <p className="bad">{dl.errors[0] ?? 'The reasoner gave no answer.'}</p>}
+      {dl && dl !== 'running' && dl.status !== 'failed' && (
+        <ul>
+          <li className={dl.after === 'inconsistent' && dl.before !== 'inconsistent' ? 'bad' : ''}>
+            {dl.after === 'inconsistent' ? (dl.before === 'inconsistent' ? 'The ontology is inconsistent before and after.' : 'It makes the ontology inconsistent.') : dl.after === 'unknown' ? 'Whether it is consistent after it is not known.' : dl.before === 'inconsistent' ? 'It makes an inconsistent ontology consistent.' : 'Consistent before and after.'}
+          </li>
+          {dl.newlyUnsatisfiable.length > 0 && <li className="bad">It makes unsatisfiable: {dl.newlyUnsatisfiable.map((c) => c.name).join(', ')}.</li>}
+          {dl.noLongerUnsatisfiable.length > 0 && <li>No longer unsatisfiable: {dl.noLongerUnsatisfiable.map((c) => c.name).join(', ')}.</li>}
+          {dl.status === 'partial' && <li className="muted">Partial: {dl.warnings[0] ?? 'something was left out or taken loosely.'}</li>}
+          <li className="muted">{dl.engine}.</li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function Problems({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="problems">
@@ -533,6 +643,9 @@ function Problems({ title, items }: { title: string; items: string[] }) {
  */
 function AssistantSettings() {
   const saved = useAssistant((s) => s.settings);
+  const [confirm, setConfirm] = useState(() => useAssistant.getState().confirmLookups);
+  const [inService, setInService] = useState(() => !!saved && heldByService(saved));
+  const [saving, setSaving] = useState(false);
   const reasonerUrl = useStore((s) => s.validation.reasonerUrl);
   const a = useAssistant.getState;
   const [form, setForm] = useState<ProviderSettings>(() => saved ?? { provider: 'anthropic', model: '', transport: 'direct' });
@@ -541,7 +654,9 @@ function AssistantSettings() {
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => box.current?.focus(), []);
-  const keyed = hasKey(form);
+  const settingsNow = { ...form, ...(form.transport === 'proxy' ? { proxyUrl: form.proxyUrl || reasonerUrl } : {}) };
+  const keyed = hasKey(settingsNow);
+  const held = keyed && heldByService(settingsNow);
   const problem = form.provider === 'custom' ? endpointProblem(form.baseUrl) : undefined;
   const meta = PROVIDERS.find((p) => p.id === form.provider)!;
   const complete = !!form.model.trim() && !problem && (keyed || !!key.trim());
@@ -589,7 +704,7 @@ function AssistantSettings() {
         </label>
         <label className="field">
           <span>API key</span>
-          <input aria-label="API key" type="password" autoComplete="off" spellCheck={false} value={key} placeholder={keyed ? 'A key is held for this session: type to replace it' : 'Your own key, for this session only'} onChange={(e) => setKey(e.target.value)} />
+          <input aria-label="API key" type="password" autoComplete="off" spellCheck={false} value={key} placeholder={held ? 'The local service holds a key: type to replace it' : keyed ? 'A key is held for this session: type to replace it' : 'Your own key, for this session only'} onChange={(e) => setKey(e.target.value)} />
           <small className="muted">Kept in this page’s memory only: not saved, not in any file or export, gone when the page is closed. It is sent to {form.provider === 'custom' ? 'the endpoint above' : meta.label} and nowhere else; change the endpoint and it is asked for again.</small>
         </label>
         <fieldset className="route">
@@ -603,7 +718,17 @@ function AssistantSettings() {
             <span>through the local service (pnpm reasoner), which sets the key on each request and refuses endpoints on this machine or a private network</span>
           </label>
           {form.transport === 'proxy' && <input aria-label="Address of the local service" value={form.proxyUrl ?? reasonerUrl} spellCheck={false} onChange={(e) => setForm({ ...form, proxyUrl: e.target.value })} />}
+          {form.transport === 'proxy' && (
+            <label className="check">
+              <input type="checkbox" checked={inService} onChange={(e) => setInService(e.target.checked)} />
+              <span>Let the local service hold the key, in its memory, until it stops: this tab keeps only a handle to it, so a reload does not ask for the key again</span>
+            </label>
+          )}
         </fieldset>
+        <label className="check">
+          <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
+          <span>Show me each lookup, and send it only if I say so</span>
+        </label>
         <p className="muted">The assistant sends what you ask and the parts of the open ontology it looks up (names, IRIs, axioms, annotations) to the provider you choose, under that provider’s terms. It never changes the ontology without your approval.</p>
         {result && (
           <p className={result.ok ? 'good' : 'bad'} role="status">
@@ -633,14 +758,28 @@ function AssistantSettings() {
           </button>
           <button
             className="btn primary"
-            disabled={!complete}
-            onClick={() => {
-              a().configure(settings, key.trim() ? key : undefined);
+            disabled={!complete || saving}
+            onClick={async () => {
+              if (key.trim() && settings.transport === 'proxy' && inService) {
+                setSaving(true);
+                try {
+                  // The key goes to the service, and only the handle it answers with stays here.
+                  await holdKeyInService(key, settings);
+                  a().configure(settings);
+                } catch (e) {
+                  setResult({ ok: false, text: e instanceof Error ? e.message : String(e) });
+                  return;
+                } finally {
+                  setSaving(false);
+                }
+              } else a().configure(settings, key.trim() ? key : undefined);
+              a().setConfirmLookups(confirm);
+              a().refreshKeyed();
               setKey('');
               close();
             }}
           >
-            Save
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

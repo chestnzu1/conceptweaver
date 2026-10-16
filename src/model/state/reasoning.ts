@@ -5,6 +5,7 @@ import { cachedOntology } from '../library';
 import { adopt, type Inference, type Reasoning } from '../reasoner';
 import { askReasoner, dlRequest, dlResult, type ReasoningResult } from '../reasoning';
 import type { Slice, State } from './types';
+import type { Model } from '../types';
 
 export type { Inference, Reasoning };
 
@@ -46,22 +47,24 @@ export const currentReasoning = (s: Pick<State, 'version' | 'reasoning'>): Reaso
 
 export const NO_REASONING: ReasoningSlice['reasoning'] = { fast: null, dl: null, jobs: [], failed: null };
 
+/** The ontologies a model imports, as they were read (the Turtle kept in this browser): they go with it to the DL reasoner. */
+export async function importsOf(model: Model): Promise<{ iri: string; text: string }[]> {
+  const imports: { iri: string; text: string }[] = [];
+  for (const ref of model.externals) {
+    if (!ref.imports || !ref.iri) continue;
+    const hit = await cachedOntology(ref.id).catch(() => undefined);
+    if (hit) imports.push({ iri: ref.iri, text: hit.text });
+  }
+  return imports;
+}
+
 export const reasoningSlice: Slice<ReasoningSlice> = (set, get) => {
   const kept = new Map<string, Reasoning>();
   /** The revision a fast job has been asked for and has not answered yet. */
   let asked = '';
   const service = createLocalReasoningService({
     current: () => ({ model: get().model, ontologyId: get().doc.id ?? WORKING_COPY, revisionId: get().version.revision }),
-    askDl: async (model, signal) => {
-      // The ontologies it imports go with it, as they were read: the Turtle kept in this browser.
-      const imports: { iri: string; text: string }[] = [];
-      for (const ref of model.externals) {
-        if (!ref.imports || !ref.iri) continue;
-        const hit = await cachedOntology(ref.id).catch(() => undefined);
-        if (hit) imports.push({ iri: ref.iri, text: hit.text });
-      }
-      return askReasoner(get().validation.reasonerUrl, dlRequest(model, imports), { signal });
-    },
+    askDl: async (model, signal) => askReasoner(get().validation.reasonerUrl, dlRequest(model, await importsOf(model)), { signal }),
     changed: (job) =>
       set((s) => {
         const others = s.reasoning.jobs.filter((j) => j.job !== job.job);

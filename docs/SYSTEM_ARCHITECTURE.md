@@ -594,7 +594,7 @@ the Server profile is exposed.
 | Cross-origin access | The companion keeps the origin allow-list it has (`--allow-origin`). The server uses same-origin deployment where possible. |
 | Secrets | Database and provider credentials from the environment, never in the repository. |
 | Auditing | Every change set records who and when (it is the history). |
-| AI providers | Off unless configured (AR-10). The key is held in the page's memory only, sent only to the endpoint it was given for, never stored or logged; the local service's `/ai/forward` forwards only to the providers' addresses and to public `https` endpoints, follows no redirect, and answers only allowed origins. A key kept between sessions needs the server's encrypted per-user store. |
+| AI providers | Off unless configured (AR-10). The key is held in the page's memory, or in the local service's memory behind a 256-bit handle (`/ai/key`), sent only to the endpoint it was given for, never stored on disk or logged; the local service's `/ai/forward` forwards only to the providers' addresses and to public `https` endpoints, connects to the address it checked (no DNS rebinding) with TLS verified for the host's name, follows no redirect, and answers only allowed origins. A key kept between sessions of the service needs the server's encrypted per-user store. |
 | External databases | Credentials, read-only access, user-written SQL and row data: §12.9. |
 
 ## 10. Deployment

@@ -7978,3 +7978,35 @@ tbody tr.pinned td:first-child {
 .dialog.assistant-settings:focus {
   outline: none;
 }
+
+/* A lookup shown before it is sent. */
+.lookup-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent-soft);
+}
+
+.lookup-ask p {
+  margin: 0;
+}
+
+.lookup-ask pre {
+  max-height: 260px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 7px;
+  background: var(--panel);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lookup-ask summary {
+  cursor: pointer;
+}

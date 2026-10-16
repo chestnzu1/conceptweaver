@@ -1,14 +1,15 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withIris } from '../model/iri';
 import { toTurtle } from '../model/rdf';
 import { sampleModel } from '../model/sample';
 import { useStore } from '../model/store';
 import type { Model } from '../model/types';
-import { bounded, respond, selectionLine, SYSTEM } from './conversation';
+import { bounded, DECLINED, respond, selectionLine, SYSTEM } from './conversation';
 import type { ChatRequest, ChatResult, ProviderAdapter } from './providers/contracts';
 import { forgetKey } from './providers/http';
-import { useAssistant } from './state';
+import { storedConversation } from '../model/library';
+import { ontologyKey, proposalKey, useAssistant } from './state';
 
 /** The assistant's loop over a scripted model: tools, a proposal, and nothing changed until the user accepts. */
 
@@ -75,6 +76,29 @@ describe('an answer', () => {
     expect(sent).toBeLessThan(40_000);
   });
 
+  it('sends a lookup only once the user says so, where they asked to see each first', async () => {
+    const film = st().model.terms.find((t) => t.name === 'Film')!;
+    const { adapter, asked } = scripted([
+      { text: '', toolCalls: [{ id: 'a', name: 'getEntityDetails', arguments: { iri: NS + 'Film' } }, { id: 'b', name: 'getEntityDetails', arguments: { iri: NS + 'Person' } }], stop: 'tool' },
+      { text: 'Done.', toolCalls: [], stop: 'end' },
+    ]);
+    const { ontologyContext } = await import('./state');
+    const shown: string[] = [];
+    await respond(adapter, [], 'Compare Film and Person.', { context: ontologyContext, propose: async () => ({ id: 'x', review: { errors: [], refusals: [], notes: [], lines: [], affected: [] } }) }, {
+      // The first is declined, the second sent.
+      approve: async (call, result) => {
+        shown.push(result);
+        return (call.arguments as { iri: string }).iri.endsWith('#Person');
+      },
+    });
+    expect(shown).toHaveLength(2);
+    expect(shown[0]).toContain(film.description);
+    const sent = JSON.stringify(asked[1]);
+    expect(sent).not.toContain(film.description);
+    expect(sent).toContain(JSON.stringify(DECLINED).slice(1, 40));
+    expect(sent).toContain('A human being involved in making films.');
+  });
+
   it('shortens the results of tools of earlier questions, and never sends a result without its call', () => {
     const long = 'y'.repeat(2000);
     const kept = bounded([
@@ -108,7 +132,7 @@ describe('a change asked for', () => {
       propose: async (input: Parameters<Parameters<typeof respond>[3]['propose']>[0]) => {
         const r = await import('./proposals').then((m) => m.review(st().model, input));
         id = 'P-test';
-        useAssistant.setState((s) => ({ proposals: { ...s.proposals, [id]: { id, input, review: r, status: 'pending', ontology: 'x', revision: (r.changeSet?.baseRevision ?? ''), created: 0 } } }));
+        useAssistant.setState((s) => ({ proposals: { ...s.proposals, [proposalKey(id)]: { id, input, review: r, status: 'pending', ontology: ontologyKey(), revision: r.changeSet?.baseRevision ?? '', created: 0 } } }));
         return { id, review: r };
       },
     };
@@ -118,7 +142,7 @@ describe('a change asked for', () => {
     expect(toTurtle(st().model)).toBe(before);
     expect(await useAssistant.getState().accept(id)).toBeUndefined();
     expect(st().model.terms.some((t) => t.name === 'Short film')).toBe(true);
-    expect(useAssistant.getState().proposals[id].status).toBe('applied');
+    expect(useAssistant.getState().proposals[proposalKey(id)].status).toBe('applied');
     st().undo();
     expect(toTurtle(st().model)).toBe(before);
     // The key is in memory only: not in what is kept in the browser, nor in the model.
@@ -130,9 +154,55 @@ describe('a change asked for', () => {
   it('is refused once the ontology has changed since it was checked', async () => {
     const { review } = await import('./proposals');
     const r = await review(st().model, { summary: 'x', operations: [{ action: 'add', type: 'subClassOf', subject: 'Genre', expression: 'Award' }] });
-    useAssistant.setState((s) => ({ proposals: { ...s.proposals, Pstale: { id: 'Pstale', input: { summary: 'x', explanation: '', impact: '', concerns: [], operations: [] }, review: r, status: 'pending', ontology: 'x', revision: r.changeSet!.baseRevision, created: 0 } } }));
+    useAssistant.setState((s) => ({ proposals: { ...s.proposals, [proposalKey('Pstale')]: { id: 'Pstale', input: { summary: 'x', explanation: '', impact: '', concerns: [], operations: [] }, review: r, status: 'pending', ontology: ontologyKey(), revision: r.changeSet!.baseRevision, created: 0 } } }));
     st().updateTerm(st().model.terms[0].id, { description: 'Changed meanwhile.' });
     expect(await useAssistant.getState().accept('Pstale')).toMatch(/has changed since this proposal was checked/);
-    expect(useAssistant.getState().proposals.Pstale.status).toBe('stale');
+    expect(useAssistant.getState().proposals[proposalKey('Pstale')].status).toBe('stale');
+  });
+});
+
+describe('a conversation', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A provider speaking OpenAI's API, answering from a script, in place of the network. */
+  const provider = (answers: object[][]) =>
+    vi.fn(async (_url: string, init: RequestInit) => {
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer sk-kept-test-77');
+      const chunks = answers.shift() ?? [{ choices: [{ delta: { content: 'Done.' } }] }];
+      const body = chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n';
+      return new Response(new Blob([body]).stream(), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    });
+
+  it('is kept for its ontology with its proposals, read again in a later session, its proposals checked again before they are accepted', async () => {
+    const a = useAssistant.getState;
+    a().configure({ provider: 'custom', model: 'm', baseUrl: 'http://127.0.0.1:9/v1', transport: 'direct' }, 'sk-kept-test-77');
+    const operations = [{ action: 'add', type: 'declare', entityKind: 'class', name: 'Short film' }, { action: 'add', type: 'subClassOf', subject: "'Short film'", expression: 'Film' }];
+    vi.stubGlobal('fetch', provider([[{ choices: [{ delta: { tool_calls: [{ index: 0, id: 'p', function: { name: 'proposeChanges', arguments: JSON.stringify({ summary: 'Short films', explanation: 'e', impact: 'i', operations }) } }] }, finish_reason: 'tool_calls' }] }], [{ choices: [{ delta: { content: 'I proposed P1.' } }] }]]));
+    await a().load();
+    a().clear();
+    await a().ask('Add short films.');
+    const key = ontologyKey();
+    expect(a().conversations[key].turns.map((t) => t.role)).toEqual(['user', 'assistant']);
+    expect(a().proposals[proposalKey('P1')]).toMatchObject({ id: 'P1', status: 'pending' });
+    await vi.waitFor(async () => expect((await storedConversation(key))?.proposals).toHaveLength(1));
+    const kept = JSON.stringify(await storedConversation(key));
+    expect(kept).toContain('I proposed P1.');
+    expect(kept).not.toContain('sk-kept-test-77');
+
+    // A later session: nothing in memory, the conversation read from what was kept.
+    useAssistant.setState({ conversations: {}, proposals: {} });
+    await a().load();
+    expect(a().conversations[key].turns[1].text).toBe('I proposed P1.');
+    expect(a().proposals[proposalKey('P1')].status).toBe('stale');
+    expect(await a().accept('P1')).toMatch(/cannot be applied as it is/);
+    await a().recheck('P1');
+    expect(a().proposals[proposalKey('P1')].status).toBe('pending');
+    expect(await a().accept('P1')).toBeUndefined();
+    expect(st().model.terms.some((t) => t.name === 'Short film')).toBe(true);
+
+    // Cleared, it is gone, kept or not.
+    a().clear();
+    await vi.waitFor(async () => expect(await storedConversation(key)).toBeUndefined());
+    expect(Object.keys(a().proposals).filter((k) => k.startsWith(key + ' '))).toEqual([]);
   });
 });

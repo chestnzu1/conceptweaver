@@ -26,7 +26,7 @@ export interface SavedInfo {
 
 const DB_NAME = 'conceptweaver';
 /** Version of the database layout (which stores exist). */
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 /** Version of a record's layout (which fields it has). */
 const RECORD_SCHEMA = 1;
 
@@ -81,6 +81,8 @@ function open(): Promise<IDBDatabase> {
       if (ev.oldVersion < 4) db.createObjectStore('datagraphs', { keyPath: 'id' });
       // Version 5: the named versions of the models in My Models, by the model they are of.
       if (ev.oldVersion < 5) db.createObjectStore('versions', { keyPath: 'id' }).createIndex('project', 'project');
+      // Version 6: the assistant's conversation and proposals about each ontology, by the ontology's IRI.
+      if (ev.oldVersion < 6) db.createObjectStore('assistant', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(explain(req.error));
@@ -227,7 +229,7 @@ export interface CachedOntology {
 }
 
 /** Runs one transaction over one store and waits until it is safely written. */
-async function single<T>(name: 'externals' | 'working' | 'datagraphs' | 'versions', mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+async function single<T>(name: 'externals' | 'working' | 'datagraphs' | 'versions' | 'assistant', mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
   const db = await open();
   try {
     const t = db.transaction([name], mode);
@@ -302,6 +304,25 @@ export const deleteVersions = (project: string) =>
   single('versions', 'readwrite', async (store) => {
     for (const key of (await done(store.index('project').getAllKeys(project))) as string[]) store.delete(key);
   });
+
+// ---------------------------------------------------------------- the assistant
+
+/**
+ * The assistant's conversation about one ontology, and the proposals made in it, by the ontology's
+ * IRI: what was asked and answered, and what was looked up. Never a key: the assistant's settings
+ * are not kept here, and its key nowhere.
+ */
+export interface StoredConversation {
+  id: string;
+  messages: unknown[];
+  turns: unknown[];
+  proposals: unknown[];
+  kept: number;
+}
+
+export const putConversation = (c: Omit<StoredConversation, 'kept'>) => single('assistant', 'readwrite', async (store) => void store.put({ ...c, kept: Date.now() }));
+export const storedConversation = (id: string) => single('assistant', 'readonly', (store) => done(store.get(id) as IDBRequest<StoredConversation | undefined>));
+export const deleteConversation = (id: string) => single('assistant', 'readwrite', async (store) => void store.delete(id));
 
 // ---------------------------------------------------------------- the working copy
 

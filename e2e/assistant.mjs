@@ -4,13 +4,18 @@
 // nothing until they are accepted, reviewed with their axioms, before and after, and what the
 // reasoner finds; one that does not read is not accepted, is edited and checked again; one
 // accepted is one edit, in the graph, that undo takes back and redo puts back; one checked before
-// the ontology changed is out of date until checked again; an answer stopped; and the key in no
-// storage, file or export, gone after a reload while the rest of the settings stay.
+// the ontology changed is out of date until checked again; an answer stopped; a lookup shown
+// before it is sent, and not sent when declined; the key in no storage, file or export, gone after
+// a reload while the rest of the settings stay, and the conversation with its proposals kept. Then,
+// where Java is there, through the local service: the key held by it, so a reload keeps it while
+// this tab keeps only a handle; given again once the service has restarted; and a proposal checked
+// by HermiT, which finds what the fast reasoner does not.
 // A fake provider that speaks OpenAI's API stands in for one, on this machine.
 // Needs the preview server:  pnpm build && pnpm exec vite preview --port 5181
 import { chromium } from 'playwright-core';
 import fs, { globSync } from 'node:fs';
 import http from 'node:http';
+import { startReasoner, unavailable } from '../reasoner/run.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5181/';
 const exe = globSync(process.env.HOME + '/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell')[0];
@@ -44,6 +49,7 @@ function answer(request) {
   const answered = last.role === 'tool';
   if (question.includes('Explain the selected class')) {
     if (!answered) return calls(['getSelectedEntity', {}]);
+    if (JSON.parse(last.content).declined) return [text('You chose not to send what I looked up, so I can say nothing of it.')];
     const { selected } = JSON.parse(last.content);
     const ns = selected.iri.replace(/[^#/]*$/, '');
     return [text(`**${selected.name}** is a class.`), text(` See [${selected.name}](${selected.iri}), and [a class it does not have](${ns}NoSuchThing).`), { choices: [{ delta: {}, finish_reason: 'stop' }] }];
@@ -59,6 +65,10 @@ function answer(request) {
   if (question.includes('directors')) {
     if (!answered) return calls(propose('Directors are filmmakers', [{ action: 'add', type: 'subClassOf', subject: 'Director', expression: 'Filmmaker' }]));
     return [text('I proposed P4.')];
+  }
+  if (question.includes('win nothing')) {
+    if (!answered) return calls(propose('Documentaries win nothing', [{ action: 'add', type: 'subClassOf', subject: 'Documentary', expression: 'wins max 0 Award' }]));
+    return [text('I proposed P5.')];
   }
   if (question.includes('slowly')) return Array.from({ length: 60 }, (_, i) => text(`word${i} `));
   return [text('I cannot help with that.')];
@@ -256,6 +266,36 @@ await page.waitForTimeout(300);
 ok(streamClosedEarly, 'stopped, the answer is cut off, and the request to the provider is closed');
 await page.screenshot({ path: shots + 'assistant.png' });
 
+// ---------------------------------------------------------------- each lookup shown first, and sent only when the user says so
+await panel.getByRole('button', { name: 'Settings' }).click();
+await settings.getByLabel('Show me each lookup, and send it only if I say so').check();
+await settings.getByRole('button', { name: 'Save' }).click();
+await settings.waitFor({ state: 'detached' });
+ok(flat(await panel.locator('.assistant-notice').innerText()).includes('each lookup only once you have seen it and said so'), 'the panel says that each lookup is shown before it is sent');
+await pick('Film');
+const sentBefore = seen.length;
+await panel.getByLabel('Ask the assistant').fill('Explain the selected class.');
+await panel.getByRole('button', { name: 'Send' }).click();
+const asking = panel.locator('.lookup-ask');
+await asking.waitFor();
+await asking.locator('summary').click();
+ok(flat(await asking.innerText()).startsWith('Send to OpenAI-compatible endpoint? Looked at the selection') && (await asking.locator('pre').innerText()).includes('"selected"'), 'a lookup is shown, with what would be sent, before it is sent: ' + flat(await asking.innerText()).slice(0, 80));
+await page.screenshot({ path: shots + 'assistant-lookup.png' });
+await asking.getByRole('button', { name: 'Don’t send' }).click();
+await page.waitForFunction(() => [...document.querySelectorAll('aside.assistant .assistant-turn')].at(-1)?.getAttribute('data-streaming') === 'no');
+const declined = JSON.parse(seen.slice(sentBefore).at(-1).body).messages.at(-1);
+ok(declined.role === 'tool' && declined.content.includes('chose not to send') && !declined.content.includes('Film'), 'declined, the provider is told only that it was not sent, and nothing of the class: ' + declined.content.slice(0, 80));
+ok(flat(await lastTurn().innerText()).includes('Looked at the selection · not sent') && flat(await lastTurn().innerText()).includes('You chose not to send'), 'and the answer says so');
+await panel.getByLabel('Ask the assistant').fill('Explain the selected class.');
+await panel.getByRole('button', { name: 'Send' }).click();
+await asking.waitFor();
+await asking.getByRole('button', { name: 'Send', exact: true }).click();
+await page.waitForFunction(() => [...document.querySelectorAll('aside.assistant .assistant-turn')].at(-1)?.getAttribute('data-streaming') === 'no');
+ok(flat(await lastTurn().innerText()).includes('Film is a class.'), 'sent, it is answered from');
+await panel.getByRole('button', { name: 'Settings' }).click();
+await settings.getByLabel('Show me each lookup, and send it only if I say so').uncheck();
+await settings.getByRole('button', { name: 'Save' }).click();
+
 // ---------------------------------------------------------------- the key: in no storage, file or export
 const stored = await page.evaluate(async () => {
   const all = [JSON.stringify({ ...localStorage }), JSON.stringify({ ...sessionStorage }), document.documentElement.outerHTML];
@@ -283,10 +323,57 @@ ok(exported.every((t) => t.length > 1000 && !t.includes(KEY) && !t.includes('fak
 await page.reload();
 await page.waitForSelector('.node');
 ok((await panel.locator('.assistant-status .tag').innerText()) === 'OpenAI-compatible endpoint: no key yet', 'after a reload the panel is still open, the settings kept, and the key gone: ' + (await panel.locator('.assistant-status .tag').innerText()));
+await panel.locator('.turn.user', { hasText: 'Make directors filmmakers.' }).waitFor();
+ok((await panel.locator('.turn.user').count()) >= 6 && flat(await card('P4').innerText()).includes('applied') && flat(await card('P3').innerText()).includes('rejected'), 'and the conversation about this ontology is still there, with its proposals as they were left');
+
+// ---------------------------------------------------------------- through the local service: the key held by it, and HermiT
+const noJava = unavailable();
+if (noJava) console.log('SKIP the local service: ' + noJava);
+else {
+  const PORT = 5166;
+  let service = await startReasoner({ port: PORT, quiet: true, log: () => {}, allowLocalAi: true });
+  await page.evaluate((u) => localStorage.setItem('conceptweaver:reasoner-url', u), service.url);
+  await page.reload();
+  await page.waitForSelector('.node');
+  await panel.getByRole('button', { name: 'Settings' }).click();
+  await settings.getByRole('radio', { name: /through the local service/ }).check();
+  ok((await settings.getByLabel('Address of the local service').inputValue()) === service.url, 'requests through the local service go to the address the reasoner is asked at');
+  await settings.getByLabel(/Let the local service hold the key/).check();
+  await settings.getByLabel('API key').fill(KEY);
+  await settings.getByRole('button', { name: 'Save' }).click();
+  await settings.waitFor({ state: 'detached' });
+  const where = await page.evaluate(() => ({ session: JSON.stringify({ ...sessionStorage }), local: JSON.stringify({ ...localStorage }) }));
+  ok(!where.session.includes(KEY) && !where.local.includes(KEY) && /handle\\":\\"[A-Za-z0-9_-]{43}/.test(where.session), 'the service holds the key; this tab keeps only a handle to it');
+  await page.reload();
+  await page.waitForSelector('.node');
+  ok((await panel.locator('.assistant-status .tag').innerText()) === 'OpenAI-compatible endpoint · fake-model', 'after a reload, the key the service holds is there still: ' + (await panel.locator('.assistant-status .tag').innerText()));
+  const through = seen.length;
+  await ask('Make documentaries win nothing.');
+  await card('P5').waitFor();
+  ok(seen.length > through && seen.slice(through).every((x) => x.auth === `Bearer ${KEY}`), 'asked through the service, the key it holds is set on each request it makes');
+  ok(!flat(await card('P5').innerText()).includes('unsatisfiable'), 'the fast reasoner finds nothing wrong with a proposal that empties a class by a cardinality');
+  await card('P5').getByRole('button', { name: 'Review…' }).click();
+  await review.getByRole('button', { name: 'Check with HermiT' }).click();
+  await review.locator('.logic.dl li.bad').waitFor({ timeout: 60_000 });
+  ok(flat(await review.locator('.logic.dl').innerText()).includes('It makes unsatisfiable: Documentary.') && flat(await review.locator('.logic.dl').innerText()).includes('HermiT'), 'HermiT, asked about the ontology before and after, finds the class it makes unsatisfiable: ' + flat(await review.locator('.logic.dl').innerText()).slice(0, 120));
+  await page.screenshot({ path: shots + 'assistant-hermit.png' });
+  await review.getByRole('button', { name: 'Reject' }).click();
+  ok(flat(await card('P5').innerText()).includes('HermiT: makes 1 class unsatisfiable'), 'and the card says so');
+
+  // Restarted, the service holds no key: the handle is let go of, and the key asked for again.
+  await service.stop();
+  service = await startReasoner({ port: PORT, quiet: true, log: () => {}, allowLocalAi: true });
+  await ask('Make documentaries win nothing.');
+  ok(flat(await lastTurn().innerText()).includes('The local service: The key is no longer held') && (await panel.locator('.assistant-status .tag').innerText()) === 'OpenAI-compatible endpoint: no key yet', 'once the service has restarted, the key is asked for again: ' + flat(await lastTurn().innerText()).slice(0, 120));
+  ok(!(await page.evaluate(() => JSON.stringify({ ...sessionStorage }))).includes('handle'), 'and the handle is let go of');
+  await service.stop();
+}
 await panel.getByRole('button', { name: 'Hide the assistant' }).click();
 ok((await panel.count()) === 0, 'it can be put away');
 
-ok(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+// The one refusal asked for above (a key the restarted service no longer holds) is logged by the browser as a failed load.
+const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of 410/.test(e));
+ok(unexpected.length === 0, 'no console errors' + (unexpected.length ? ': ' + unexpected.join(' | ') : ''));
 await browser.close();
 provider.close();
 console.log(failed ? `\n${failed} FAILED` : '\nALL PASSED');

@@ -84,9 +84,11 @@ import org.semanticweb.owlapi.util.ShortFormProvider;
  *   POST /convert  { document, to? }: the document, in any OWL syntax, as Turtle, or as `to` says:
  *                  rdfxml, owlxml, functional or manchester
  *   POST /compare  { original, exported }: the statements in one document and not the other
- *   POST /ai/forward { provider, path, method, body?, key, baseUrl? }: a request of the app's
- *                  assistant, forwarded to the AI provider with the key set on it, and its answer
- *                  streamed back (see forward)
+ *   POST /ai/forward { provider, path, method, body?, key or handle, baseUrl? }: a request of the
+ *                  app's assistant, forwarded to the AI provider with the key set on it, and its
+ *                  answer streamed back (see forward)
+ *   POST /ai/key   { provider, baseUrl?, key }: holds the key in memory for that endpoint, and
+ *                  answers with a handle to forward with instead; /ai/key/forget { handle }
  */
 public class ReasonerService {
   /** Where an import that was not sent is "found": a file that does not exist, so that it is missing and nothing is fetched. */
@@ -121,6 +123,8 @@ public class ReasonerService {
     server.createContext("/convert", ReasonerService::convert);
     server.createContext("/compare", ReasonerService::compare);
     server.createContext("/ai/forward", ReasonerService::forward);
+    server.createContext("/ai/key/forget", ReasonerService::forgetKey);
+    server.createContext("/ai/key", ReasonerService::holdKey);
     server.setExecutor(Executors.newCachedThreadPool());
     server.start();
     System.out.println("ConceptWeaver reasoning service: HermiT " + hermitVersion + " (OWL API " + owlapiVersion + ") on http://" + host + ":" + port);
@@ -150,6 +154,8 @@ public class ReasonerService {
     o.addProperty("converts", true);
     o.addProperty("compares", true);
     o.addProperty("forwardsAi", true);
+    // It holds a key for the assistant, by a handle, so that the page need not (POST /ai/key).
+    o.addProperty("holdsAiKeys", true);
     // The syntaxes /convert writes, besides reading every one of them.
     JsonArray writes = new JsonArray();
     for (String w : WRITES) writes.add(w);
@@ -508,48 +514,173 @@ public class ReasonerService {
   static final java.util.regex.Pattern OPENAI_PATH = java.util.regex.Pattern.compile("^/(chat/completions|models)$");
   static final java.util.regex.Pattern ANTHROPIC_PATH = java.util.regex.Pattern.compile("^/(messages|models)$");
   static final java.util.regex.Pattern GEMINI_PATH = java.util.regex.Pattern.compile("^/models(\\?pageSize=\\d{1,4}|/[A-Za-z0-9._-]{1,120}:streamGenerateContent\\?alt=sse)?$");
-  static final java.net.http.HttpClient AI = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NEVER).connectTimeout(java.time.Duration.ofSeconds(15)).build();
+  /** How long a connection to a provider may take to be made, and how long its answer may be silent. */
+  static final int AI_CONNECT_MS = Integer.getInteger("conceptweaver.ai.connectTimeoutMs", 15_000);
+  static final int AI_SILENT_MS = 120_000;
+
+  /** A key the page asked the service to hold, for one endpoint: used for it, never given back. */
+  static final class HeldKey {
+    final String provider;
+    /** The custom endpoint's base URL, without a trailing slash; null for a provider's own. */
+    final String base;
+    final String key;
+
+    HeldKey(String provider, String base, String key) {
+      this.provider = provider;
+      this.base = base;
+      this.key = key;
+    }
+  }
+
+  /** The keys held, by an unguessable handle: in this process's memory only, gone when it stops; the oldest go past 64. */
+  static final java.util.Map<String, HeldKey> HELD = Collections.synchronizedMap(new java.util.LinkedHashMap<String, HeldKey>() {
+    @Override
+    protected boolean removeEldestEntry(java.util.Map.Entry<String, HeldKey> eldest) {
+      return size() > 64;
+    }
+  });
+  static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
+
+  /** A request the service will not send, and why: said to the page as 403. */
+  static final class AiRefused extends Exception {
+    AiRefused(String why) {
+      super(why);
+    }
+  }
+
+  /** Where a request for a provider goes, and which paths it may take, once its endpoint is checked. */
+  static final class Endpoint {
+    final URI base;
+    final java.util.regex.Pattern paths;
+    /** A custom endpoint: its addresses are checked before it is asked. */
+    final boolean custom;
+
+    Endpoint(URI base, java.util.regex.Pattern paths, boolean custom) {
+      this.base = base;
+      this.paths = paths;
+      this.custom = custom;
+    }
+
+    /** As a held key is bound to it: the custom base URL, or null for a provider's own. */
+    String bound() {
+      return custom ? base.toString() : null;
+    }
+  }
+
+  static Endpoint endpoint(String provider, String baseUrl) throws AiRefused {
+    if (provider.equals("custom")) {
+      String why = urlRefused(baseUrl);
+      if (why != null) throw new AiRefused(why);
+      return new Endpoint(URI.create(baseUrl.trim().replaceAll("/+$", "")), OPENAI_PATH, true);
+    }
+    if (AI_BASES.containsKey(provider)) return new Endpoint(URI.create(AI_BASES.get(provider)), provider.equals("anthropic") ? ANTHROPIC_PATH : provider.equals("gemini") ? GEMINI_PATH : OPENAI_PATH, false);
+    throw new AiRefused("There is no provider \"" + provider + "\" to forward to.");
+  }
+
+  static boolean known(String provider) {
+    return provider.equals("custom") || AI_BASES.containsKey(provider);
+  }
+
+  static boolean keyReads(String key) {
+    return key != null && !key.isEmpty() && key.length() <= 1000 && key.matches("[\\x21-\\x7e]+");
+  }
+
+  /** The request's JSON, or null. */
+  static JsonObject requestJson(HttpExchange x) throws IOException {
+    byte[] sent = body(x);
+    try {
+      return sent == null ? null : GSON.fromJson(new String(sent, StandardCharsets.UTF_8), JsonObject.class);
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  /** Whether the request may be answered at all: an allowed page, POST. Answers it if not. */
+  static boolean admitted(HttpExchange x, String what) throws IOException {
+    if (x.getRequestMethod().equals("OPTIONS")) {
+      respond(x, 204, new JsonObject());
+      return false;
+    }
+    if (!allowed(x.getRequestHeaders().getFirst("Origin"))) {
+      respond(x, 403, unread("This page is not allowed to use the service. Start it with --allow-origin=<the page's origin>."));
+      return false;
+    }
+    if (!x.getRequestMethod().equals("POST")) {
+      respond(x, 405, unread("POST a request to " + what + "."));
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Holds a key for one endpoint, in this process's memory, and answers with a handle the page
+   * keeps instead of the key (POST /ai/key { provider, baseUrl?, key }); forgets it again
+   * (POST /ai/key/forget { handle }). A handle is 256 random bits: it is what lets a request
+   * through /ai/forward use the key, for that endpoint only, and the key is never given back.
+   * Nothing is written to disk: a key held is gone when the service stops.
+   */
+  static void holdKey(HttpExchange x) throws IOException {
+    try {
+      if (!admitted(x, "/ai/key")) return;
+      JsonObject r = requestJson(x);
+      String provider = text(r, "provider");
+      String key = text(r, "key");
+      if (provider == null || !known(provider) || !keyReads(key)) {
+        respond(x, 400, unread("The request is not JSON with a provider there is and a key that reads as one."));
+        return;
+      }
+      Endpoint e = endpoint(provider, text(r, "baseUrl"));
+      if (e.custom && !allowLocalAi) {
+        String why = addressRefused(resolve(e.base.getHost()));
+        if (why != null) throw new AiRefused(why);
+      }
+      byte[] bits = new byte[32];
+      RANDOM.nextBytes(bits);
+      String handle = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bits);
+      HELD.put(handle, new HeldKey(provider, e.bound(), key));
+      JsonObject o = new JsonObject();
+      o.addProperty("handle", handle);
+      respond(x, 200, o);
+    } catch (AiRefused e) {
+      respond(x, 403, unread(e.getMessage()));
+    } catch (RuntimeException e) {
+      respond(x, 500, unread("The service failed to hold the key."));
+    }
+  }
+
+  static void forgetKey(HttpExchange x) throws IOException {
+    if (!admitted(x, "/ai/key/forget")) return;
+    String handle = text(requestJson(x), "handle");
+    if (handle != null) HELD.remove(handle);
+    respond(x, 200, new JsonObject());
+  }
 
   /**
    * A request of the app's assistant, forwarded to the AI provider it names, and the provider's
-   * answer streamed back as it comes. The page sends the key here, over this machine's loopback;
-   * the service sets it on the request in the provider's own header and sends it nowhere else:
-   * a provider's address is fixed, a custom endpoint has to be https and on the public internet
-   * (unless the service was started with --allow-local-ai, for a model server here), a redirect is
-   * never followed, and only the paths a chat or a list of models needs are forwarded. Nothing of
-   * the request is logged or kept.
+   * answer streamed back as it comes. The key comes with the request, or is one the service holds
+   * (by its handle, for this endpoint only); the service sets it on the request in the provider's
+   * own header and sends it nowhere else: a provider's address is fixed, a custom endpoint has to
+   * be https and on the public internet (unless the service was started with --allow-local-ai,
+   * for a model server here), the connection is made to the very address that was checked
+   * (aiRequest), a redirect is never followed, and only the paths a chat or a list of models needs
+   * are forwarded. Nothing of the request is logged or kept.
    */
   static void forward(HttpExchange x) throws IOException {
+    AiAnswer answer = null;
     try {
-      if (x.getRequestMethod().equals("OPTIONS")) {
-        respond(x, 204, new JsonObject());
-        return;
-      }
-      if (!allowed(x.getRequestHeaders().getFirst("Origin"))) {
-        respond(x, 403, unread("This page is not allowed to use the service. Start it with --allow-origin=<the page's origin>."));
-        return;
-      }
-      if (!x.getRequestMethod().equals("POST")) {
-        respond(x, 405, unread("POST a request to /ai/forward."));
-        return;
-      }
-      byte[] sent = body(x);
-      JsonObject r;
-      try {
-        r = sent == null ? null : GSON.fromJson(new String(sent, StandardCharsets.UTF_8), JsonObject.class);
-      } catch (RuntimeException e) {
-        r = null;
-      }
+      if (!admitted(x, "/ai/forward")) return;
+      JsonObject r = requestJson(x);
       String provider = text(r, "provider");
       String path = text(r, "path");
       String method = text(r, "method");
       String key = text(r, "key");
+      String handle = text(r, "handle");
       String content = text(r, "body");
-      if (provider == null || path == null || method == null || key == null) {
+      if (provider == null || path == null || method == null || (key == null && handle == null)) {
         respond(x, 400, unread("The request is not JSON with the provider, path, method and key."));
         return;
       }
-      if (key.isEmpty() || key.length() > 1000 || !key.matches("[\\x21-\\x7e]+")) {
+      if (key != null && !keyReads(key)) {
         respond(x, 400, unread("The key is empty or has characters a key does not have."));
         return;
       }
@@ -557,67 +688,67 @@ public class ReasonerService {
         respond(x, 400, unread("Only GET and POST are forwarded."));
         return;
       }
-      String base;
-      java.util.regex.Pattern paths;
-      if (provider.equals("custom")) {
-        base = text(r, "baseUrl");
-        String why = endpointRefused(base);
-        if (why != null) {
-          respond(x, 403, unread(why));
-          return;
-        }
-        base = base.replaceAll("/+$", "");
-        paths = OPENAI_PATH;
-      } else if (AI_BASES.containsKey(provider)) {
-        base = AI_BASES.get(provider);
-        paths = provider.equals("anthropic") ? ANTHROPIC_PATH : provider.equals("gemini") ? GEMINI_PATH : OPENAI_PATH;
-      } else {
+      if (!known(provider)) {
         respond(x, 400, unread("There is no provider \"" + provider + "\" to forward to."));
         return;
       }
-      if (!paths.matcher(path).matches()) {
+      Endpoint e = endpoint(provider, text(r, "baseUrl"));
+      if (key == null) {
+        HeldKey held = HELD.get(handle);
+        if (held == null) {
+          respond(x, 410, unread("The key is no longer held (the service was restarted, or the key was forgotten): enter it again."));
+          return;
+        }
+        if (!held.provider.equals(provider) || !java.util.Objects.equals(held.base, e.bound())) throw new AiRefused("The key the service holds is for another endpoint.");
+        key = held.key;
+      }
+      if (!e.paths.matcher(path).matches()) {
         respond(x, 400, unread("The path " + path + " is not one the assistant asks a provider at."));
         return;
       }
-      java.net.http.HttpRequest.Builder req = java.net.http.HttpRequest.newBuilder(URI.create(base + path)).timeout(java.time.Duration.ofSeconds(120)).header("Accept", "text/event-stream, application/json");
-      if (provider.equals("anthropic")) req.header("x-api-key", key).header("anthropic-version", "2023-06-01");
-      else if (provider.equals("gemini")) req.header("x-goog-api-key", key);
-      else req.header("Authorization", "Bearer " + key);
-      if (method.equals("POST")) req.header("Content-Type", "application/json").POST(java.net.http.HttpRequest.BodyPublishers.ofString(content == null ? "{}" : content));
-      else req.GET();
-      java.net.http.HttpResponse<InputStream> answer;
+      List<String[]> headers = new ArrayList<>();
+      headers.add(new String[] {"Accept", "text/event-stream, application/json"});
+      if (provider.equals("anthropic")) {
+        headers.add(new String[] {"x-api-key", key});
+        headers.add(new String[] {"anthropic-version", "2023-06-01"});
+      } else if (provider.equals("gemini")) headers.add(new String[] {"x-goog-api-key", key});
+      else headers.add(new String[] {"Authorization", "Bearer " + key});
+      byte[] payload = method.equals("POST") ? (content == null ? "{}" : content).getBytes(StandardCharsets.UTF_8) : null;
+      if (payload != null) headers.add(new String[] {"Content-Type", "application/json"});
       try {
-        answer = AI.send(req.build(), java.net.http.HttpResponse.BodyHandlers.ofInputStream());
-      } catch (java.net.http.HttpTimeoutException e) {
+        answer = aiRequest(URI.create(e.base + path), method, headers, payload, e.custom);
+      } catch (java.net.SocketTimeoutException t) {
         respond(x, 504, unread("The provider did not answer in time."));
         return;
-      } catch (IOException e) {
-        respond(x, 502, unread("The provider could not be reached from this machine (" + URI.create(base).getHost() + ")."));
+      } catch (javax.net.ssl.SSLException t) {
+        respond(x, 502, unread("The endpoint's certificate could not be verified for " + e.base.getHost() + ", so nothing was sent to it."));
+        return;
+      } catch (IOException t) {
+        respond(x, 502, unread("The provider could not be reached from this machine (" + e.base.getHost() + ")."));
         return;
       }
-      int status = answer.statusCode();
-      if (status >= 300 && status < 400) {
-        answer.body().close();
+      if (answer.status >= 300 && answer.status < 400) {
         respond(x, 502, unread("The endpoint answered with a redirect, which is not followed, so that the key goes nowhere it was not sent."));
         return;
       }
       cors(x);
-      x.getResponseHeaders().set("Content-Type", answer.headers().firstValue("content-type").orElse("application/json"));
+      x.getResponseHeaders().set("Content-Type", answer.contentType == null ? "application/json" : answer.contentType);
       x.getResponseHeaders().set("Cache-Control", "no-store");
-      x.sendResponseHeaders(status, 0);
-      try (InputStream in = answer.body(); OutputStream out = x.getResponseBody()) {
+      x.sendResponseHeaders(answer.status, 0);
+      try (OutputStream out = x.getResponseBody()) {
         byte[] buf = new byte[8192];
-        for (int n; (n = in.read(buf)) > 0; ) {
+        for (int n; (n = answer.body.read(buf)) > 0; ) {
           out.write(buf, 0, n);
           out.flush();
         }
       }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      x.close();
+    } catch (AiRefused e) {
+      respond(x, 403, unread(e.getMessage()));
     } catch (RuntimeException e) {
       // Never with the request in it: it holds the key.
       respond(x, 500, unread("The service failed to forward the request."));
+    } finally {
+      if (answer != null) answer.close();
     }
   }
 
@@ -626,14 +757,10 @@ public class ReasonerService {
   }
 
   /**
-   * Why a custom endpoint is not forwarded to, if it is not: it has to be https with no user name,
-   * password, query or fragment, and every address its host has has to be on the public
-   * internet, so that a request cannot be sent through this service to this machine or the
-   * network it is on. With --allow-local-ai, http and local addresses are allowed: a model server
-   * here. (A host name that changes what it resolves to between this check and the request is
-   * not caught.)
+   * Why a custom endpoint's base URL is not forwarded to, if it is not: it has to be https (or,
+   * with --allow-local-ai, http) with a host and no user name, password, query or fragment.
    */
-  static String endpointRefused(String base) {
+  static String urlRefused(String base) {
     if (base == null || base.isBlank()) return "A custom endpoint needs its base URL.";
     URI u;
     try {
@@ -645,19 +772,203 @@ public class ReasonerService {
     String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase();
     if (!scheme.equals("https") && !(scheme.equals("http") && allowLocalAi)) return "The endpoint has to be https. (An http endpoint on this machine is reached when the service is started with --allow-local-ai.)";
     if (u.getHost() == null) return "The endpoint's base URL has no host.";
-    if (allowLocalAi) return null;
+    return null;
+  }
+
+  /** Every address a host has, looked up once. */
+  static java.net.InetAddress[] resolve(String host) throws AiRefused {
     try {
-      for (java.net.InetAddress a : java.net.InetAddress.getAllByName(u.getHost())) {
-        byte[] b = a.getAddress();
-        boolean uniqueLocal = a instanceof java.net.Inet6Address && (b[0] & 0xfe) == 0xfc;
-        boolean shared = b.length == 4 && (b[0] & 0xff) == 100 && (b[1] & 0xc0) == 64;
-        if (a.isLoopbackAddress() || a.isSiteLocalAddress() || a.isLinkLocalAddress() || a.isAnyLocalAddress() || a.isMulticastAddress() || uniqueLocal || shared)
-          return "The endpoint is on this machine or a private network, which the service does not forward to unless it is started with --allow-local-ai.";
-      }
+      return java.net.InetAddress.getAllByName(host);
     } catch (java.net.UnknownHostException e) {
-      return "The endpoint's host, " + u.getHost() + ", is not known.";
+      throw new AiRefused("The endpoint's host, " + host + ", is not known.");
+    }
+  }
+
+  /** Why these addresses are not forwarded to, if they are not: any of them on this machine or a private network. */
+  static String addressRefused(java.net.InetAddress[] all) {
+    for (java.net.InetAddress a : all) {
+      byte[] b = a.getAddress();
+      boolean uniqueLocal = a instanceof java.net.Inet6Address && (b[0] & 0xfe) == 0xfc;
+      boolean shared = b.length == 4 && (b[0] & 0xff) == 100 && (b[1] & 0xc0) == 64;
+      if (a.isLoopbackAddress() || a.isSiteLocalAddress() || a.isLinkLocalAddress() || a.isAnyLocalAddress() || a.isMulticastAddress() || uniqueLocal || shared)
+        return "The endpoint is on this machine or a private network, which the service does not forward to unless it is started with --allow-local-ai.";
     }
     return null;
+  }
+
+  /** A provider's answer as it comes: its status, its type, and its body, read until it ends. */
+  static final class AiAnswer implements AutoCloseable {
+    final int status;
+    final String contentType;
+    final InputStream body;
+    final java.net.Socket socket;
+
+    AiAnswer(int status, String contentType, InputStream body, java.net.Socket socket) {
+      this.status = status;
+      this.contentType = contentType;
+      this.body = body;
+      this.socket = socket;
+    }
+
+    @Override
+    public void close() {
+      try {
+        socket.close();
+      } catch (IOException e) {
+        // Closed already.
+      }
+    }
+  }
+
+  /**
+   * One HTTP/1.1 request to an AI endpoint, made to the address its host was checked to have. The
+   * host is looked up once, here; for a custom endpoint every address it has is checked (unless
+   * the service was started with --allow-local-ai); and the connection is made to that address,
+   * so a name that resolves elsewhere a moment later (DNS rebinding) is not followed. TLS is
+   * spoken to the host by its name (SNI), and the certificate is verified for that name. The
+   * answer is streamed: chunked or not, and silent for no longer than AI_SILENT_MS.
+   */
+  static AiAnswer aiRequest(URI target, String method, List<String[]> headers, byte[] payload, boolean check) throws IOException, AiRefused {
+    String host = target.getHost();
+    boolean tls = "https".equalsIgnoreCase(target.getScheme());
+    int port = target.getPort() != -1 ? target.getPort() : tls ? 443 : 80;
+    java.net.InetAddress[] all = resolve(host);
+    if (check && !allowLocalAi) {
+      String why = addressRefused(all);
+      if (why != null) throw new AiRefused(why);
+    }
+    // The address checked, with the host's name kept for TLS: no second lookup is made.
+    java.net.InetAddress pinned = java.net.InetAddress.getByAddress(host, all[0].getAddress());
+    java.net.Socket socket = new java.net.Socket();
+    try {
+      socket.connect(new InetSocketAddress(pinned, port), AI_CONNECT_MS);
+      socket.setSoTimeout(AI_SILENT_MS);
+      java.net.Socket wire = socket;
+      if (tls) {
+        javax.net.ssl.SSLSocket t = (javax.net.ssl.SSLSocket) ((javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault()).createSocket(socket, host, port, true);
+        javax.net.ssl.SSLParameters p = t.getSSLParameters();
+        p.setEndpointIdentificationAlgorithm("HTTPS");
+        if (!host.startsWith("[") && !host.matches("[0-9.]+")) p.setServerNames(List.of(new javax.net.ssl.SNIHostName(host)));
+        t.setSSLParameters(p);
+        t.startHandshake();
+        wire = t;
+      }
+      StringBuilder h = new StringBuilder();
+      String path = (target.getRawPath() == null || target.getRawPath().isEmpty() ? "/" : target.getRawPath()) + (target.getRawQuery() == null ? "" : "?" + target.getRawQuery());
+      h.append(method).append(' ').append(path).append(" HTTP/1.1\r\n");
+      h.append("Host: ").append(target.getRawAuthority()).append("\r\n");
+      for (String[] kv : headers) {
+        if (kv[1].indexOf('\r') >= 0 || kv[1].indexOf('\n') >= 0) throw new AiRefused("A header of the request has a line break in it.");
+        h.append(kv[0]).append(": ").append(kv[1]).append("\r\n");
+      }
+      h.append("Accept-Encoding: identity\r\nUser-Agent: ConceptWeaver local service\r\nConnection: close\r\n");
+      if (payload != null) h.append("Content-Length: ").append(payload.length).append("\r\n");
+      h.append("\r\n");
+      OutputStream out = new java.io.BufferedOutputStream(wire.getOutputStream());
+      out.write(h.toString().getBytes(StandardCharsets.UTF_8));
+      if (payload != null) out.write(payload);
+      out.flush();
+      InputStream in = new java.io.BufferedInputStream(wire.getInputStream());
+      int status;
+      java.util.Map<String, String> got;
+      do {
+        String line = httpLine(in);
+        if (line == null || !line.matches("HTTP/1\\.[01] \\d{3}.*")) throw new IOException("What answered is not HTTP.");
+        status = Integer.parseInt(line.substring(9, 12));
+        got = new java.util.HashMap<>();
+        for (String l; (l = httpLine(in)) != null && !l.isEmpty(); ) {
+          int colon = l.indexOf(':');
+          if (colon > 0) got.put(l.substring(0, colon).trim().toLowerCase(), l.substring(colon + 1).trim());
+        }
+      } while (status >= 100 && status < 200);
+      InputStream body;
+      if ("chunked".equalsIgnoreCase(got.get("transfer-encoding"))) body = new Chunked(in);
+      else if (got.containsKey("content-length")) body = new Limited(in, Long.parseLong(got.get("content-length")));
+      else body = in;
+      return new AiAnswer(status, got.get("content-type"), body, wire);
+    } catch (IOException | AiRefused | RuntimeException e) {
+      socket.close();
+      throw e;
+    }
+  }
+
+  /** A line of an HTTP head, without its line break; null at the end. */
+  static String httpLine(InputStream in) throws IOException {
+    ByteArrayOutputStream line = new ByteArrayOutputStream();
+    for (int c; (c = in.read()) != -1; ) {
+      if (c == '\n') return line.toString(StandardCharsets.ISO_8859_1).replaceAll("\r$", "");
+      if (line.size() > 65_536) throw new IOException("A line of the answer's head is too long.");
+      line.write(c);
+    }
+    return line.size() == 0 ? null : line.toString(StandardCharsets.ISO_8859_1);
+  }
+
+  /** A body sent in chunks, read as the bytes it is. */
+  static final class Chunked extends InputStream {
+    final InputStream in;
+    long left = 0;
+    boolean ended = false;
+
+    Chunked(InputStream in) {
+      this.in = in;
+    }
+
+    @Override
+    public int read() throws IOException {
+      byte[] one = new byte[1];
+      return read(one, 0, 1) <= 0 ? -1 : one[0] & 0xff;
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      if (ended) return -1;
+      if (left == 0) {
+        String size = httpLine(in);
+        if (size == null) throw new java.io.EOFException();
+        int semi = size.indexOf(';');
+        left = Long.parseLong((semi >= 0 ? size.substring(0, semi) : size).trim(), 16);
+        if (left == 0) {
+          while (true) {
+            String trailer = httpLine(in);
+            if (trailer == null || trailer.isEmpty()) break;
+          }
+          ended = true;
+          return -1;
+        }
+      }
+      int n = in.read(b, off, (int) Math.min(len, left));
+      if (n < 0) throw new java.io.EOFException();
+      left -= n;
+      if (left == 0) httpLine(in);
+      return n;
+    }
+  }
+
+  /** A body of a known length. */
+  static final class Limited extends InputStream {
+    final InputStream in;
+    long left;
+
+    Limited(InputStream in, long length) {
+      this.in = in;
+      this.left = length;
+    }
+
+    @Override
+    public int read() throws IOException {
+      if (left <= 0) return -1;
+      int c = in.read();
+      if (c >= 0) left--;
+      return c;
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      if (left <= 0) return -1;
+      int n = in.read(b, off, (int) Math.min(len, left));
+      if (n > 0) left -= n;
+      return n;
+    }
   }
 
   // ---------------------------------------------------------------- reasoning

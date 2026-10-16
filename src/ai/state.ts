@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { EditError } from '../editing/contracts';
+import { deleteConversation, putConversation, storedConversation } from '../model/library';
 import { ontologyIriOf } from '../model/prefixes';
 import { currentReasoning, runIsStale, useStore } from '../model/store';
 import { revisionOf, WORKING_COPY } from '../structure/local';
@@ -7,7 +8,9 @@ import { respond, type AssistantHost } from './conversation';
 import { AiError, type Message, type ProviderSettings, type ToolCall } from './providers/contracts';
 import { forgetKey, hasKey, holdKey, redact } from './providers/http';
 import { adapterFor } from './providers/index';
-import { review, type ProposalInput, type Review } from './proposals';
+import { askReasoner, dlRequest } from '../model/reasoning';
+import { importsOf } from '../model/state/reasoning';
+import { dlCheck, review, type DlFindings, type ProposalInput, type Review } from './proposals';
 import type { OntologyContext } from './tools';
 
 /**
@@ -29,6 +32,8 @@ export interface Turn {
   proposals: string[];
   error?: string;
   streaming?: boolean;
+  /** A lookup's result waiting for the user to send it or not (when they asked to see each first). */
+  asking?: { name: string; about: string; result: string };
 }
 
 export type ProposalStatus = 'pending' | 'applied' | 'rejected' | 'stale';
@@ -42,12 +47,17 @@ export interface Proposal {
   ontology: string;
   revision: string;
   created: number;
+  /** What the OWL 2 DL reasoner found of it, for the revision it was checked against, once asked. */
+  dl?: DlFindings | 'running';
 }
 
 interface Conversation {
   messages: Message[];
   turns: Turn[];
 }
+
+/** Where a proposal is kept: its number (P1, P2, …) is for the ontology it is about. */
+export const proposalKey = (id: string, ontology: string = ontologyKey()): string => `${ontology} ${id}`;
 
 interface AssistantState {
   open: boolean;
@@ -56,11 +66,19 @@ interface AssistantState {
   /** Whether there is a key for the settings in this session (the key itself is not here). */
   keyed: boolean;
   conversations: Record<string, Conversation>;
+  /** The proposals, by proposalKey: P1, P2, … of each ontology. */
   proposals: Record<string, Proposal>;
+  /** Reads what was kept of the conversation about the ontology open, once in a session. */
+  load: () => Promise<void>;
   busy: boolean;
   /** The proposal open for review. */
   reviewing: string | null;
   showSettings: boolean;
+  /** Whether each lookup's result is shown to the user, and sent only if they say so (FR-M12-6). */
+  confirmLookups: boolean;
+  setConfirmLookups: (on: boolean) => void;
+  /** The user's answer to a lookup waiting to be sent. */
+  answerLookup: (turnId: string, send: boolean) => void;
   setOpen: (open: boolean) => void;
   setWidth: (width: number) => void;
   configure: (settings: ProviderSettings, key?: string) => void;
@@ -75,10 +93,13 @@ interface AssistantState {
   /** Says again whether there is a key for the settings, after one was given or tried elsewhere. */
   refreshKeyed: () => void;
   accept: (id: string) => Promise<string | undefined>;
+  /** Asks the OWL 2 DL reasoner (the local service) about the ontology before and after a proposal. */
+  checkWithDl: (id: string) => Promise<void>;
   reject: (id: string) => void;
 }
 
 const SETTINGS = 'conceptweaver:assistant';
+const CONFIRM = 'conceptweaver:assistant-confirm';
 const WIDTH = 'conceptweaver:assistant-width';
 export const ASSISTANT_WIDTH = { min: 300, max: 760, initial: 380 } as const;
 
@@ -93,6 +114,12 @@ function storedSettings(): ProviderSettings | null {
   }
 }
 
+/** What a call is about, in a word: the IRI, query or summary it was given. */
+const aboutOf = (call: ToolCall): string => {
+  const a = typeof call.arguments === 'object' && call.arguments ? (call.arguments as Record<string, unknown>) : {};
+  return String(a.iri ?? a.query ?? a.summary ?? '');
+};
+
 /** What the tools are given: the editor's model, selection, reasoning and validation, now. */
 export function ontologyContext(): OntologyContext {
   const s = useStore.getState();
@@ -105,9 +132,13 @@ export const ontologyKey = (): string => ontologyIriOf(useStore.getState().model
 const ontologyId = () => useStore.getState().doc.id ?? WORKING_COPY;
 
 let stopper: AbortController | null = null;
+/** The answers awaited for lookups, by turn. */
+const waiting = new Map<string, (send: boolean) => void>();
 let made = 0;
-/** Proposals are numbered apart from turns, so the first one is P1. */
-let proposed = 0;
+/** The ontologies whose kept conversations have been read, or are being read. */
+const loading = new Map<string, Promise<void>>();
+/** As much of a conversation as is kept in this browser. */
+const KEEP = 200;
 
 export const useAssistant = create<AssistantState>((set, get) => {
   const conversation = (): Conversation => get().conversations[ontologyKey()] ?? { messages: [], turns: [] };
@@ -117,15 +148,33 @@ export const useAssistant = create<AssistantState>((set, get) => {
     if (!c) return {};
     return { conversations: { ...s.conversations, [key]: { ...c, turns: c.turns.map((t) => (t.id === id ? f(t) : t)) } } };
   });
-  const keep = (p: Proposal) => set((s) => ({ proposals: { ...s.proposals, [p.id]: p } }));
+  const keep = (p: Proposal) => {
+    set((s) => ({ proposals: { ...s.proposals, [proposalKey(p.id, p.ontology)]: p } }));
+    save(p.ontology);
+  };
+  const find = (id: string) => get().proposals[proposalKey(id)];
+  /** Keeps the conversation about an ontology, and its proposals, in this browser (never a key: none is in them). */
+  const save = (key: string) => {
+    const c = get().conversations[key];
+    if (!c) return;
+    const proposals = Object.values(get().proposals)
+      .filter((p) => p.ontology === key)
+      .map((p) => ({ ...p, dl: p.dl === 'running' ? undefined : p.dl }));
+    const turns = c.turns.slice(-KEEP).map((t) => ({ ...t, streaming: false, asking: undefined }));
+    void putConversation({ id: key, messages: c.messages.slice(-KEEP), turns, proposals }).catch(() => {
+      // Not kept: the conversation stays for this session.
+    });
+  };
 
   const host: AssistantHost = {
     context: ontologyContext,
     async propose(input) {
       const model = useStore.getState().model;
       const r = await review(model, input, ontologyId());
-      const id = `P${++proposed}`;
-      keep({ id, input, review: r, status: 'pending', ontology: ontologyKey(), revision: revisionOf(model), created: Date.now() });
+      const ontology = ontologyKey();
+      const n = Math.max(0, ...Object.values(get().proposals).filter((p) => p.ontology === ontology).map((p) => Number(p.id.slice(1)) || 0)) + 1;
+      const id = `P${n}`;
+      keep({ id, input, review: r, status: 'pending', ontology, revision: revisionOf(model), created: Date.now() });
       return { id, review: r };
     },
   };
@@ -147,9 +196,51 @@ export const useAssistant = create<AssistantState>((set, get) => {
       }
     })(),
     settings: storedSettings(),
-    keyed: false,
+    // A key the local service holds for these settings is there from the start (its handle is kept for this tab).
+    keyed: (() => {
+      const s = storedSettings();
+      return !!s && hasKey(s);
+    })(),
+    confirmLookups: (() => {
+      try {
+        return localStorage.getItem(CONFIRM) === 'on';
+      } catch {
+        return false;
+      }
+    })(),
+    setConfirmLookups: (on) => {
+      try {
+        localStorage.setItem(CONFIRM, on ? 'on' : 'off');
+      } catch {
+        // For this session.
+      }
+      set({ confirmLookups: on });
+    },
+    answerLookup: (turnId, send) => {
+      waiting.get(turnId)?.(send);
+    },
     conversations: {},
     proposals: {},
+    load: () => {
+      const key = ontologyKey();
+      // Read once: a conversation in memory is the one there is.
+      if (get().conversations[key]) return Promise.resolve();
+      let reading = loading.get(key);
+      if (!reading) {
+        reading = (async () => {
+          const kept = await storedConversation(key).catch(() => undefined);
+          // A proposal checked in an earlier session was checked against a revision this session cannot name: it is checked again before it is accepted.
+          const proposals = Object.fromEntries(((kept?.proposals ?? []) as Proposal[]).map((p) => [proposalKey(p.id, key), { ...p, ontology: key, dl: undefined, status: p.status === 'pending' ? 'stale' : p.status }] as const));
+          set((s) =>
+            s.conversations[key]
+              ? {}
+              : { conversations: { ...s.conversations, [key]: { messages: (kept?.messages ?? []) as Message[], turns: (kept?.turns ?? []) as Turn[] } }, proposals: { ...s.proposals, ...proposals } },
+          );
+        })().finally(() => loading.delete(key));
+        loading.set(key, reading);
+      }
+      return reading;
+    },
     busy: false,
     reviewing: null,
     showSettings: false,
@@ -194,9 +285,12 @@ export const useAssistant = create<AssistantState>((set, get) => {
       const settings = get().settings;
       if (get().busy || !question.trim()) return;
       const key = ontologyKey();
+      await get().load();
       const before = conversation();
-      const user: Turn = { id: `t${++made}`, role: 'user', text: question.trim(), tools: [], proposals: [] };
-      const reply: Turn = { id: `t${++made}`, role: 'assistant', text: '', tools: [], proposals: [], streaming: true };
+      // Unique beyond this session, since turns are kept.
+      const turnId = () => `t${Date.now().toString(36)}-${++made}`;
+      const user: Turn = { id: turnId(), role: 'user', text: question.trim(), tools: [], proposals: [] };
+      const reply: Turn = { id: turnId(), role: 'assistant', text: '', tools: [], proposals: [], streaming: true };
       put({ ...before, turns: [...before.turns, user, reply] });
       if (!settings || !hasKey(settings)) {
         updateTurn(key, reply.id, (t) => ({ ...t, streaming: false, error: 'The assistant is not set up: choose a provider and enter your API key in its settings.' }));
@@ -210,11 +304,27 @@ export const useAssistant = create<AssistantState>((set, get) => {
           onText: (delta) => updateTurn(key, reply.id, (t) => ({ ...t, text: t.text + delta })),
           onTool: (call: ToolCall, done?: string) =>
             updateTurn(key, reply.id, (t) => {
-              const about = typeof call.arguments === 'object' && call.arguments ? String((call.arguments as Record<string, unknown>).iri ?? (call.arguments as Record<string, unknown>).query ?? (call.arguments as Record<string, unknown>).summary ?? '') : '';
-              const tools = done === undefined ? [...t.tools, { name: call.name, about }] : t.tools.map((x, i) => (i === t.tools.length - 1 && x.name === call.name ? { ...x, done } : x));
+              const tools = done === undefined ? [...t.tools, { name: call.name, about: aboutOf(call) }] : t.tools.map((x, i) => (i === t.tools.length - 1 && x.name === call.name ? { ...x, done } : x));
               return { ...t, tools };
             }),
           onProposal: (id) => updateTurn(key, reply.id, (t) => ({ ...t, proposals: [...t.proposals, id] })),
+          ...(get().confirmLookups
+            ? {
+                approve: (call: ToolCall, result: string) =>
+                  new Promise<boolean>((resolve) => {
+                    const settle = (send: boolean) => {
+                      waiting.delete(reply.id);
+                      stopper?.signal.removeEventListener('abort', no);
+                      updateTurn(key, reply.id, (t) => ({ ...t, asking: undefined }));
+                      resolve(send);
+                    };
+                    const no = () => settle(false);
+                    waiting.set(reply.id, settle);
+                    stopper?.signal.addEventListener('abort', no, { once: true });
+                    updateTurn(key, reply.id, (t) => ({ ...t, asking: { name: call.name, about: aboutOf(call), result } }));
+                  }),
+              }
+            : {}),
         });
         const c = get().conversations[key] ?? before;
         set((s) => ({ conversations: { ...s.conversations, [key]: { ...c, messages } } }));
@@ -222,29 +332,36 @@ export const useAssistant = create<AssistantState>((set, get) => {
       } catch (e) {
         const message = e instanceof AiError ? e.message : `The assistant failed: ${redact(e instanceof Error ? e.message : String(e))}`;
         updateTurn(key, reply.id, (t) => ({ ...t, streaming: false, error: e instanceof AiError && e.code === 'cancelled' ? 'Stopped.' : message }));
+        // A key the service no longer holds is let go of: the panel says the key is to be given again.
+        set({ keyed: hasKey(settings) });
       } finally {
         stopper = null;
         set({ busy: false });
+        save(key);
       }
     },
     stop: () => stopper?.abort(),
     clear: () => {
       stopper?.abort();
+      const key = ontologyKey();
       put({ messages: [], turns: [] });
+      // Its proposals go with it: their cards were in it.
+      set((s) => ({ proposals: Object.fromEntries(Object.entries(s.proposals).filter(([, p]) => p.ontology !== key)) }));
+      void deleteConversation(key).catch(() => undefined);
     },
     refreshKeyed: () => set((s) => ({ keyed: !!s.settings && hasKey(s.settings) })),
     setReviewing: (reviewing) => set({ reviewing }),
     setShowSettings: (showSettings) => set({ showSettings }),
     recheck: async (id, input) => {
-      const p = get().proposals[id];
+      const p = find(id);
       // A proposal is about the ontology it was made for: never checked against another one.
       if (!p || p.ontology !== ontologyKey()) return;
       const model = useStore.getState().model;
       const next = input ?? p.input;
-      keep({ ...p, input: next, review: await review(model, next, ontologyId()), status: 'pending', revision: revisionOf(model) });
+      keep({ ...p, input: next, review: await review(model, next, ontologyId()), status: 'pending', revision: revisionOf(model), dl: undefined });
     },
     accept: async (id) => {
-      const p = get().proposals[id];
+      const p = find(id);
       if (!p || p.status !== 'pending' || !p.review.changeSet) return 'This proposal cannot be applied as it is: see what is wrong with it.';
       const st = useStore.getState();
       if (revisionOf(st.model) !== p.revision) {
@@ -268,8 +385,24 @@ export const useAssistant = create<AssistantState>((set, get) => {
         return `Not applied: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
+    checkWithDl: async (id) => {
+      const p = find(id);
+      const st = useStore.getState();
+      if (!p?.review.changeSet || p.dl === 'running' || p.ontology !== ontologyKey() || revisionOf(st.model) !== p.revision) return;
+      keep({ ...p, dl: 'running' });
+      const url = st.validation.reasonerUrl;
+      let dl: DlFindings;
+      try {
+        dl = await dlCheck(st.model, p.review.changeSet, async (m) => askReasoner(url, dlRequest(m, await importsOf(m), { justifications: 0 })));
+      } catch (e) {
+        dl = { engine: 'HermiT', status: 'failed', before: 'unknown', after: 'unknown', newlyUnsatisfiable: [], noLongerUnsatisfiable: [], errors: [e instanceof Error ? e.message : String(e)], warnings: [] };
+      }
+      // Kept only if the proposal is still the one that was asked about.
+      const now = find(id);
+      if (now && now.revision === p.revision && now.input === p.input) keep({ ...now, dl });
+    },
     reject: (id) => {
-      const p = get().proposals[id];
+      const p = find(id);
       if (p) keep({ ...p, status: 'rejected' });
     },
   };

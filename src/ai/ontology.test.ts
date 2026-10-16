@@ -131,6 +131,43 @@ describe('a proposal', () => {
     expect(toTurtle(m)).toBe(before);
   });
 
+  it('can state chains, keys, property and individual axioms, datatypes, ontology annotations and imports, and take each back', async () => {
+    const cases: [string, Operation[], string][] = [
+      ['a property chain', [{ action: 'add', type: 'propertyChain', property: 'wins', members: ['directs', 'wins'] }], '#propertyChainAxiom> ( <' + NS + 'directs> <' + NS + 'wins> )'],
+      ['a key', [{ action: 'add', type: 'hasKey', subject: 'Film', members: ["'Release date'"] }], '#hasKey> ( <' + NS + 'releaseDate> )'],
+      ['equivalent properties', [{ action: 'add', type: 'declare', entityKind: 'objectProperty', name: 'is director of' }, { action: 'add', type: 'equivalentProperties', subject: 'directs', members: ["'is director of'"] }], 'owl:equivalentProperty'],
+      ['disjoint properties', [{ action: 'add', type: 'disjointProperties', subject: "'acts in'", members: ['directs'] }], 'owl:propertyDisjointWith'],
+      ['the same individual', [{ action: 'add', type: 'declare', entityKind: 'individual', name: 'Gisaengchung' }, { action: 'add', type: 'sameIndividual', subject: 'Parasite', members: ['Gisaengchung'] }], 'owl:sameAs'],
+      ['different individuals', [{ action: 'add', type: 'declare', entityKind: 'individual', name: 'Okja' }, { action: 'add', type: 'differentIndividuals', subject: 'Parasite', members: ['Okja'] }], 'owl:differentFrom'],
+      ['a datatype', [{ action: 'add', type: 'declare', entityKind: 'datatype', name: 'minutes' }, { action: 'add', type: 'datatypeDefinition', subject: 'minutes', expression: 'xsd:integer[>= 0]' }], '#onDatatype> <http://www.w3.org/2001/XMLSchema#integer>'],
+      ['an ontology annotation', [{ action: 'add', type: 'ontologyAnnotation', property: 'rdfs:comment', value: 'Reviewed with the assistant.' }], '"Reviewed with the assistant."'],
+      ['an import', [{ action: 'add', type: 'import', object: 'http://purl.org/dc/terms/' }], 'owl:imports <http://purl.org/dc/terms/>'],
+    ];
+    for (const [what, operations, written] of cases) {
+      const m = film();
+      const r = await review(m, { summary: what, operations });
+      expect({ what, errors: r.errors, refusals: r.refusals }).toEqual({ what, errors: [], refusals: [] });
+      let after = m;
+      const { createLocalEditService } = await import('../editing/local');
+      await createLocalEditService({ current: () => ({ model: after, ontologyId: WORKING_COPY }), commit: (n) => (after = n) }).apply(r.changeSet!);
+      expect({ what, written: toTurtle(after).includes(written) }).toEqual({ what, written: true });
+      // What was added can be taken back exactly, by the same operation removed.
+      const last = operations[operations.length - 1];
+      const back = await review(after, { summary: 'back', operations: [{ ...last, action: 'remove' }] });
+      expect({ what, errors: back.errors, refusals: back.refusals }).toEqual({ what, errors: [], refusals: [] });
+    }
+  });
+
+  it('says what a chain, a key or a sameness lacks', () => {
+    const { errors } = compile(film(), ops({ action: 'add', type: 'propertyChain', property: 'wins', members: ['directs'] }, { action: 'add', type: 'hasKey', subject: 'Film and Genre', members: ['directs'] }, { action: 'add', type: 'sameIndividual', subject: 'Parasite', members: ['Film'] }, { action: 'add', type: 'equivalentProperties', subject: 'directs', members: ["'Release date'"] }));
+    expect(errors).toEqual([
+      'Operation 1 (add propertyChain): it needs at least 2 object properties of the chain in members.',
+      expect.stringMatching(/^Operation 2 \(add hasKey\): there is no entity “Film and Genre”/),
+      'Operation 3 (add sameIndividual): Film is a class, not individuals.',
+      'Operation 4 (add equivalentProperties): object properties and data properties cannot be equivalent or disjoint with each other.',
+    ]);
+  });
+
   it('takes an entity away with everything that names it', async () => {
     const m = film();
     const r = await review(m, { summary: 'No more awards', operations: ops({ action: 'remove', type: 'declare', subject: 'Award' }) });

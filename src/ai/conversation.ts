@@ -43,7 +43,15 @@ export interface Hooks {
   /** A tool is being run, or has been: what it was asked, and in a line what it found. */
   onTool?: (call: ToolCall, done?: string) => void;
   onProposal?: (id: string) => void;
+  /**
+   * Asked before the result of a lookup is sent, where the user wants to see each one first: true
+   * sends it; false sends only that the user declined. Without it, results are sent as they come.
+   */
+  approve?: (call: ToolCall, result: string) => Promise<boolean>;
 }
+
+/** What is sent in place of a lookup the user chose not to share. */
+export const DECLINED = answer({ declined: 'The user chose not to send this result. Do not ask for the same again; answer from what you have, or say what you would need.' });
 
 /** What is said of the selection with the question, so that "this class" means something. */
 export function selectionLine(c: OntologyContext): string {
@@ -103,8 +111,11 @@ export async function respond(adapter: ProviderAdapter, history: Message[], ques
             ...(review.notes.length ? { notes: review.notes } : {}),
           });
         }
-      } else out = runReadTool(call.name, call.arguments, host.context());
-      hooks.onTool?.(call, gist(call.name, out));
+      } else {
+        out = runReadTool(call.name, call.arguments, host.context());
+        if (hooks.approve && !(await hooks.approve(call, out))) out = DECLINED;
+      }
+      hooks.onTool?.(call, out === DECLINED ? 'not sent' : gist(call.name, out));
       messages.push({ role: 'tool', callId: call.id, name: call.name, result: out });
     }
     if (hooks.signal?.aborted) return messages;
