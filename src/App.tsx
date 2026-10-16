@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Canvas } from './components/Canvas';
 import { Header, openFile } from './components/Header';
 import { Inspector } from './components/Inspector';
+import { AssistantPanel } from './components/assistant/Assistant';
 import { TermList } from './components/TermList';
 import { LibraryDialog, SaveAsDialog } from './components/Library';
 import { VersionsDialog } from './components/Versions';
@@ -120,6 +121,7 @@ export function App() {
           {view === 'vocab' && <VocabView />}
         </main>
         <Inspector />
+        <AssistantPanel />
       </div>
       {dialog === 'bulk' && <BulkDialog />}
       {dialog === 'settings' && <OntologySettings />}

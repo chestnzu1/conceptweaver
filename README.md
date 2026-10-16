@@ -698,6 +698,11 @@ More on what the advanced reasoner does and does not cover is under
   missing (`src/model/owlSyntaxes.test.ts`, on the example ontology and Pizza). OWL's own syntaxes
   declare every entity they use, so the OWL API adds the declarations of the standard ones the
   Turtle uses undeclared (`rdfs:label`, `xsd:string`, `owl:Thing`); RDF/XML adds nothing.
+- **The assistant** (since 2026-10-16; `src/ai/`, `src/components/assistant/`) – a panel for
+  questions about the ontology open, answered by the model of your own provider (OpenAI,
+  Anthropic, Gemini or an OpenAI-compatible endpoint) through read-only lookups, with changes
+  proposed for review and applied only when accepted, as one edit. The key is for this session
+  only. See *The assistant* below.
 - **Export with inferred assertions** – an export is of what is asserted. *File → Export → OWL
   with inferred assertions (Turtle)* writes the same ontology and, after it, under a heading
   that says what they are and which reasoner worked them out, the inferred class memberships
@@ -1429,8 +1434,128 @@ it, and nothing was replaced):
   hundreds of thousands of classes will open slowly or not at all, and the canvas draws every
   term (see *Size*).
 
+## The assistant: ask about the ontology, with your own key
+
+*Assistant* in the toolbar opens a panel beside the inspector (over it, where the window is
+narrow), as wide as it is dragged, and closed again with its ×. It answers questions about the
+ontology open in the editor (what a class means, how it is defined, why it is unsatisfiable, how
+to model something) and proposes changes for you to review. It never changes the ontology itself.
+It is used with your own account at OpenAI, Anthropic or Google, or with any endpoint that speaks
+OpenAI's Chat Completions API (a model server on this machine, a gateway).
+
+**Setting it up.** *Settings* in the panel:
+
+| Provider | Base | Key sent as | Model, for example |
+| --- | --- | --- | --- |
+| OpenAI | `https://api.openai.com/v1` | `Authorization: Bearer` | the model's name in the API |
+| Anthropic | `https://api.anthropic.com/v1` | `x-api-key` | `claude-sonnet-5-5` |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta` | `x-goog-api-key` | the model's name in the API |
+| OpenAI-compatible endpoint | the base URL you give, ending before `/chat/completions` | `Authorization: Bearer` | what the endpoint calls it |
+
+The model has to support tool (function) calling. *Test connection* lists the provider's models
+and says whether the one named is among them. *Save* keeps the provider, the model, the base
+URL and the route in this browser (`localStorage`, `conceptweaver:assistant`); *Remove
+configuration* forgets them, and the key.
+
+**The key** is held in the page's memory only (`src/ai/providers/http.ts`): never in
+`localStorage`, IndexedDB, the working copy, a saved model, a version or an export, and never
+written to the console. It is gone when the page is closed or reloaded, and asked for again. It
+is bound to the endpoint it was given for: choosing another provider or another base URL drops
+it. Where a provider's error repeats it, it is replaced by `[key]` before it is shown.
+`e2e/assistant.mjs` searches every store of the browser, the page and two exports for a test key
+and finds it nowhere. A key kept from one session to the next would need the server's per-user,
+encrypted storage, which does not exist yet; until then there is none.
+
+**Where requests go.** One of two routes, chosen in the settings:
+
+- **Straight from the browser** to the provider. Requests carry no cookies and no referrer, and a
+  redirect is refused rather than followed, so the key is never sent anywhere but the endpoint
+  it was given for. OpenAI, Anthropic (with its header for browser access) and Gemini answer
+  pages; an OpenAI-compatible endpoint may not, unless it allows the page's origin (CORS). A
+  custom base URL has to be `https://`, or `http://` to this machine (`localhost`, `127.0.0.1`,
+  `[::1]`) for a model server here; one with a user name, a password, a query or a fragment is
+  refused.
+- **Through the local service** (`pnpm reasoner`, `POST /ai/forward`), which makes the request
+  and sets the key on it, and streams the answer back. It forwards only to the three providers'
+  own addresses and to a custom endpoint over `https` that is not on this machine or a private
+  network (loopback, `10/8`, `172.16/12`, `192.168/16`, link-local including `169.254.169.254`,
+  `100.64/10`, `fc00::/7`, multicast), and only the paths a chat needs (`/chat/completions`,
+  `/messages`, `/models`, a Gemini model's `:streamGenerateContent`). It follows no redirect,
+  answers only the pages it answers for the reasoner (`--allow-origin`), and logs neither keys
+  nor bodies. To reach a model server on this machine or your network through it, start it with
+  `pnpm reasoner --allow-local-ai`. Not caught: a name that resolves to a public address when it
+  is checked and to a private one when it is asked (DNS rebinding); the service checks the
+  address it resolved, not the one the request finally reaches.
+
+**What is sent.** Your question; what is selected, as a line apart from the question; the
+earlier turns of the conversation (the last 40 messages, the results of lookups of earlier
+questions shortened to 400 characters); and what the assistant looks up. The panel says this
+above the conversation, and lists each lookup as it is made under the answer. The ontology is
+never sent whole: the assistant asks through nine read-only tools (`src/ai/tools.ts`), each
+answer at most 12,000 characters, so a question about a model of 6,000 classes sends a few
+kilobytes (`src/ai/conversation.test.ts`):
+
+| Tool | Gives |
+| --- | --- |
+| `getOntologySummary` | IRI, counts, top classes, properties, imports, reasoning status |
+| `searchEntities` | entities by name or IRI, with kind and IRI |
+| `getEntityDetails` | an entity's asserted axioms (in Manchester syntax), annotations, and apart from them what the reasoner inferred |
+| `getClassHierarchy` | superclasses and subclasses, asserted and inferred, to a depth |
+| `getPropertyAxioms` | a property's domain, range, characteristics, inverse, superproperties |
+| `getSelectedEntity` | what is selected in the editor, in detail |
+| `getRestrictions` | a class's restrictions, stated and inherited |
+| `getImports` | the imports and whether they are loaded |
+| `getValidationResults` | the last validation run: consistency, unsatisfiable classes, findings, and whether it is out of date |
+
+Labels, comments, annotations and imported content are passed as data: the instructions the
+assistant is given say they are never to be taken as instructions, and an answer that names an
+entity links it by IRI. A link to an entity opens it in the editor; a link to an IRI in the
+ontology's namespace that names nothing is marked *not in the ontology*.
+
+**Proposals.** A change is asked for through one more tool, `proposeChanges`, as typed
+operations (declare an entity; add or remove a subclass, equivalent or disjoint classes, a domain,
+a range, a characteristic, a subproperty, an inverse, a class assertion, a property assertion,
+an annotation), each with its target, the axioms it adds or removes, an explanation, the
+semantic impact and the concerns the assistant sees (`src/ai/proposals.ts`). Class expressions
+are written in Manchester syntax and read by the editor's own parser. A proposal is compiled to
+a change set of the edit service (*Edits as change sets*) and checked on a copy, and its card in
+the conversation says how it stands: *to review*, *does not read* (a name the ontology does not
+have, an expression that does not parse, an operation that lacks a field), *refused* (the
+editor's rules: a removal of what is not stated, an axiom stated already), *not supported* (what
+the editor would not keep as stated), or *out of date*. *Review…* shows the axioms added and
+removed, each entity it touches before and after, and what the fast reasoner finds before and
+after: whether it makes the ontology inconsistent, the classes it makes unsatisfiable and those
+it makes satisfiable again (on models up to 4,000 terms; the fast reasoner covers RDFS and part
+of OWL 2 RL, so the DL reasoner under Validation can say more once it is applied). *Edit*
+changes the operations, and *Check the edited proposal* compiles and checks them again.
+
+*Accept* applies a proposal that reads and is not refused, as one edit: undone and redone like
+any other, kept with the working copy, named *Assistant: …* in the history, and refused if the
+ontology has changed since it was checked (it is then *out of date*, and *Check again* checks it
+against the ontology as it is). What it added is selected, and the graph shows it. *Reject*
+leaves the ontology as it was. Nothing the assistant says changes the ontology otherwise.
+
+**Answers** stream in as they are written; *Stop* ends one, and the request with it. A request
+that hears nothing for a minute is given up. A conversation is kept for each ontology while the
+page is open, and *Clear* starts it afresh; conversations and proposals are not saved.
+
+**What it cannot do.** It does not edit SWRL rules, SHACL shapes, data graphs, imports or the
+ontology's own annotations; property chains, keys and datatype definitions are not among its
+operations. It sees validation results only as of the last run.
+There are no several assistants and no background work: one question, one answer, the lookups it
+makes, and at most eight rounds of them. Gemini's and Anthropic's own tool formats are spoken;
+other providers only through an OpenAI-compatible endpoint.
+
+**For a backend.** The layers are apart: providers (`src/ai/providers/`, one adapter for each,
+behind `ProviderAdapter`), tools and proposals (`src/ai/tools.ts`, `proposals.ts`, which read the
+model and write change sets, and know no provider), the conversation loop (`conversation.ts`),
+and the panel's state (`state.ts`). On a Java/Spring server the adapters and the loop would move
+there, the key would be kept in the server's encrypted per-user store, and the panel would call
+the server instead of `adapterFor`; the tools would answer from the server's model, and
+proposals would stay change sets for the same edit service.
+
 ## Not there yet
 
-Excel/PowerPoint/PDF export, AI assistance, multiple saved models.
+Excel/PowerPoint/PDF export, multiple saved models.
 Colours, positions, the layout and cardinalities live only in the JSON format; the Turtle export carries the
 terms, descriptions, synonyms and relations.

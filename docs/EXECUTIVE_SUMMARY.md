@@ -37,7 +37,8 @@ TypeScript, 603 unit tests, and 21 browser scripts, one of them a UI audit.
 | Authoring of OWL class expressions | **Missing.** Imported expressions are kept as text and cannot be edited. |
 | Tabular import | **Basic.** Pasted rows only. |
 | Versioning, change history | **Missing.** |
-| Collaboration, server storage, AI assistance | **Missing.** |
+| Collaboration, server storage | **Missing.** |
+| AI assistance | **Partial**: an assistant with the user's own key, answering from the ontology through read-only lookups and proposing changes applied only on acceptance (2026-10-16). |
 | Connecting to relational databases, mapping, querying data through the ontology | **Missing.** Nothing exists; governance metadata has free-text database, schema, table and column fields. Useful parts to build from do exist (§8). |
 
 Three items in the brief's feature list are less complete than their names suggest: *OWL RL

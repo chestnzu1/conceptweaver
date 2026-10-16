@@ -455,7 +455,7 @@ for users of the companion and must be said in the release notes.
 | --- | --- | --- |
 | Python services | **Defer to Phase 5** (ADR-010) | Nothing in Phases 1–4 needs them. A third runtime is the most expensive item on the list for one maintainer. |
 | Embedding-based matching | Future | `src/model/matcher.ts` is already a list of `Matcher` functions; an embedding matcher is another entry, and can call a hosted embedding API from the Java application without any Python. |
-| LLM-assisted modelling | Future | Calls to a hosted model from the server, behind one interface, producing change sets a person accepts. No model is run locally by default. |
+| LLM-assisted modelling | **Existing in the browser** (2026-10-16); server later | The assistant (README, *The assistant*): provider adapters behind one `ProviderAdapter` interface (`src/ai/providers/`), read-only tools and typed proposals compiled to change sets (`src/ai/tools.ts`, `proposals.ts`), one tool loop (`conversation.ts`). Requests go from the browser, or through the local service's `/ai/forward`, which sets the key and refuses private addresses. On the server the adapters and loop move behind the API, with the key in encrypted per-user storage; tools and proposals keep their contracts. No model is run locally by default. |
 
 ## 7. Reasoner orchestration (Recommended)
 
@@ -594,7 +594,7 @@ the Server profile is exposed.
 | Cross-origin access | The companion keeps the origin allow-list it has (`--allow-origin`). The server uses same-origin deployment where possible. |
 | Secrets | Database and provider credentials from the environment, never in the repository. |
 | Auditing | Every change set records who and when (it is the history). |
-| AI providers | Off unless configured; what is sent is shown before it is sent (AR-10). |
+| AI providers | Off unless configured (AR-10). The key is held in the page's memory only, sent only to the endpoint it was given for, never stored or logged; the local service's `/ai/forward` forwards only to the providers' addresses and to public `https` endpoints, follows no redirect, and answers only allowed origins. A key kept between sessions needs the server's encrypted per-user store. |
 | External databases | Credentials, read-only access, user-written SQL and row data: §12.9. |
 
 ## 10. Deployment

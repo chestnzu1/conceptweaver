@@ -7546,3 +7546,435 @@ tbody tr.pinned td:first-child {
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+
+/* ---------------------------------------------------------------- assistant */
+
+/* Beside the inspector, as wide as it was left; over the editor where the window is narrow. */
+.assistant {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  overflow: visible;
+}
+
+.assistant-resize {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.assistant-resize::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+}
+
+.assistant-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -2px;
+  width: 3px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--quick) ease-out;
+}
+
+.assistant-resize:hover::after,
+.assistant-resize:focus-visible::after {
+  opacity: 1;
+}
+
+.assistant-resize:focus-visible {
+  outline: none;
+}
+
+.assistant-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 4px 14px;
+}
+
+.assistant-status {
+  display: flex;
+  min-width: 0;
+  padding: 0 14px 6px;
+}
+
+.assistant-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.assistant-status .tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-notice {
+  margin: 0;
+  padding: 0 14px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.assistant-turns {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px;
+  user-select: text;
+}
+
+.assistant-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assistant-empty .btn {
+  height: auto;
+  min-height: 26px;
+  padding: 3px 9px;
+  white-space: normal;
+  text-align: left;
+}
+
+.turn.user {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.turn.user p {
+  margin: 0;
+}
+
+.assistant-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.assistant-turn > .bad {
+  font-size: 13px;
+}
+
+.turn-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--line);
+  list-style: none;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.answer-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.answer-text p,
+.answer-text ul,
+.answer-text ol,
+.answer-text pre {
+  margin: 0;
+}
+
+.answer-text ul,
+.answer-text ol {
+  padding-left: 20px;
+}
+
+.answer-text .heading {
+  font-weight: 600;
+}
+
+.answer-text pre {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--panel-2);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.answer-text code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.answer-text a,
+.entity-ref.link {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.entity-ref.link {
+  font: inherit;
+}
+
+.entity-ref.missing .tag {
+  margin-left: 2px;
+}
+
+.proposal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.proposal-card .muted {
+  font-size: 12px;
+}
+
+.proposal-card.applied,
+.proposal-card.rejected {
+  border-style: dashed;
+}
+
+.assistant-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.assistant-compose .context {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-compose textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--canvas);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.assistant-settings .route {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.assistant-settings .route legend {
+  padding: 0 0 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.assistant-settings .route .check {
+  align-items: flex-start;
+}
+
+.assistant-settings .route .check input {
+  margin-top: 2px;
+}
+
+.assistant-settings .route > input,
+.review-edit input,
+.review-edit select {
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+
+.dialog.proposal-review {
+  width: min(860px, 100%);
+}
+
+.dialog.proposal-review p {
+  margin: 0;
+}
+
+.review-checks,
+.review-affected {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-checks ul,
+.dialog.proposal-review > div > ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.review-checks .bad {
+  font-size: 13px;
+}
+
+.review-lines ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-lines li {
+  padding-left: 8px;
+  border-left: 3px solid var(--accent);
+}
+
+.review-lines li.remove {
+  border-left-color: var(--danger);
+}
+
+.review-lines code {
+  display: block;
+  padding: 2px 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.review-affected summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.before-after {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.before-after ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.before-after ins {
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+.before-after del {
+  color: var(--danger);
+}
+
+.review-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-edit .op-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.review-edit .op-row input {
+  flex: 1;
+  min-width: 140px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* Where beside the inspector it would leave the canvas too narrow for its own tools, it lies over
+   the right of the window instead, the inspector under it until it is put away. */
+@media (max-width: 1279px) {
+  .body {
+    position: relative;
+  }
+
+  .assistant {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    box-shadow: var(--shadow);
+  }
+}
+
+@media (max-width: 900px) {
+  .assistant {
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, 100vw) !important;
+    box-shadow: var(--shadow);
+  }
+
+  .assistant-resize {
+    display: none;
+  }
+
+  .before-after {
+    grid-template-columns: 1fr;
+  }
+}
+
+.header-tools .btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The assistant's dialogs take the focus when they open, so the keyboard works in them at once; the box itself is not a control to mark. */
+.dialog.proposal-review:focus,
+.dialog.assistant-settings:focus {
+  outline: none;
+}

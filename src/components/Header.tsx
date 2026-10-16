@@ -12,6 +12,7 @@ import { LAYOUT_KINDS, LAYOUTS } from '../layout/types';
 import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu';
 import { CommitInput } from './fields';
 import { Icon } from './Icon';
+import { useAssistant } from '../ai/state';
 
 /**
  * Puts a document in the editor as the model: the app's own JSON, or an ontology in any syntax
@@ -53,6 +54,7 @@ export function Header() {
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const theme = useStore((s) => s.theme);
+  const assistantOpen = useAssistant((s) => s.open);
   const docId = useStore((s) => s.doc.id);
   const dirty = useStore(isDirty);
   const st = useStore.getState;
@@ -177,6 +179,9 @@ export function Header() {
         </button>
         <button className="btn" onClick={() => st().setDialog('bulk')}>
           Bulk add
+        </button>
+        <button className={'btn' + (assistantOpen ? ' on' : '')} aria-pressed={assistantOpen} title="Ask about this ontology, and have changes proposed for your review" onClick={() => useAssistant.getState().setOpen(!assistantOpen)}>
+          Assistant
         </button>
         <button
           className="btn icon"

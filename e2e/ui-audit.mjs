@@ -4,6 +4,7 @@
 // Needs a server:  pnpm exec vite preview --port 5181   (or pass another base URL)
 import { chromium } from 'playwright-core';
 import fs, { globSync } from 'node:fs';
+import http from 'node:http';
 
 const base = process.argv[2] ?? 'http://localhost:5181/';
 const exe = globSync(process.env.HOME + '/.cache/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell')[0];
@@ -13,6 +14,28 @@ const files = fs.mkdtempSync('/tmp/cw-ui-audit-');
 fs.writeFileSync(`${files}/shapes.ttl`, '@prefix sh: <http://www.w3.org/ns/shacl#> .\n@prefix : <http://example.org/film-knowledge-graph#> .\n:FilmShape a sh:NodeShape ; sh:targetClass :Film ;\n  sh:property [ sh:path :releaseDate ; sh:minCount 1 ] .\n');
 fs.writeFileSync(`${files}/classes.csv`, 'Code,Label,Parent\nC1,Class 1,\nC2,Class 2,C1\nC3,Orphan,C9\n');
 fs.writeFileSync(`${files}/films.ttl`, '@prefix : <http://example.org/film-knowledge-graph#> .\n@prefix d: <http://data.example/> .\nd:f1 a :Film .\nd:f2 a :Film .\n');
+
+// A provider that speaks OpenAI's API, for the screens of the assistant: an answer that links an
+// entity of the ontology and one it does not have, and a proposal the reasoner has something to say of.
+const NS = 'http://example.org/film-knowledge-graph#';
+const fake = http.createServer((req, res) => {
+  const cors = { 'Access-Control-Allow-Origin': req.headers.origin ?? '*', 'Access-Control-Allow-Headers': 'authorization, content-type' };
+  if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    if (req.url === '/v1/models') return res.writeHead(200, { 'Content-Type': 'application/json', ...cors }).end(JSON.stringify({ data: [{ id: 'audit-model' }] }));
+    const answered = JSON.parse(body).messages.at(-1).role === 'tool';
+    const operations = [{ action: 'add', type: 'declare', entityKind: 'class', name: 'Short film' }, { action: 'add', type: 'subClassOf', subject: "'Short film'", expression: 'Film' }, { action: 'add', type: 'disjointClasses', subject: 'Documentary', expression: 'Film' }];
+    const chunks = answered
+      ? [{ choices: [{ delta: { content: `I proposed it for your review. **Note** that [Documentary](${NS}Documentary) is a film already, and that [Short film](${NS}ShortFilm) is not in the ontology yet:\n\n- one\n- two` } }] }]
+      : [{ choices: [{ delta: { content: `[Film](${NS}Film) is a class. ` } }] }, { choices: [{ delta: { tool_calls: [{ index: 0, id: 'p', type: 'function', function: { name: 'proposeChanges', arguments: JSON.stringify({ summary: 'Short films, apart from documentaries', explanation: 'Short films are films.', impact: 'Adds a class.', concerns: ['Documentary is a subclass of Film.'], operations }) } }] } }] }];
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', ...cors });
+    res.end(chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n');
+  });
+});
+await new Promise((r) => fake.listen(0, '127.0.0.1', r));
+const fakeEndpoint = `http://127.0.0.1:${fake.address().port}/v1`;
 
 const measure = () => {
   const lum = ([r, g, b]) => {
@@ -404,6 +427,34 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await versions.locator('.difference').waitFor();
     report('Versions · compared with now', await page.evaluate(measure));
     await versions.getByRole('button', { name: 'Close' }).click();
+    // The assistant: not set up, its settings with the connection tested, an answer with a proposal, and the proposal reviewed and edited.
+    const assistant = page.locator('aside.assistant');
+    await page.locator('.header').getByRole('button', { name: 'Assistant' }).click();
+    await assistant.waitFor();
+    report('Assistant · not set up', await page.evaluate(measure));
+    await assistant.getByRole('button', { name: 'Settings' }).click();
+    const aiSettings = page.locator('.dialog.assistant-settings');
+    await aiSettings.getByLabel('Provider', { exact: true }).selectOption('custom');
+    await aiSettings.getByLabel('Base URL').fill(fakeEndpoint);
+    await aiSettings.getByLabel('Model', { exact: true }).fill('audit-model');
+    await aiSettings.getByLabel('API key').fill('sk-audit');
+    await aiSettings.getByRole('button', { name: 'Test connection' }).click();
+    await aiSettings.locator('[role=status]').waitFor();
+    report('Assistant · settings', await page.evaluate(measure));
+    await aiSettings.getByRole('button', { name: 'Save' }).click();
+    await assistant.getByLabel('Ask the assistant').fill('Add short films.');
+    await assistant.getByRole('button', { name: 'Send' }).click();
+    await assistant.locator('.proposal-card').waitFor();
+    await assistant.locator('.assistant-turn[data-streaming="no"]').waitFor();
+    report('Assistant · an answer and a proposal', await page.evaluate(measure));
+    await assistant.locator('.proposal-card').getByRole('button', { name: 'Review…' }).click();
+    const reviewing = page.locator('.dialog.proposal-review');
+    await reviewing.locator('.review-affected summary').first().click();
+    report('Assistant · a proposal reviewed', await page.evaluate(measure));
+    await reviewing.getByRole('button', { name: 'Edit' }).click();
+    report('Assistant · a proposal edited', await page.evaluate(measure));
+    await reviewing.getByRole('button', { name: 'Close' }).click();
+    await assistant.getByRole('button', { name: 'Hide the assistant' }).click();
     // The sidebar folded away to its strip, with and without a search on.
     await page.locator('.term-list').getByLabel('Search terms').fill('film');
     await page.locator('.term-list').getByRole('button', { name: 'Hide the sidebar' }).click();
@@ -413,5 +464,6 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
 }
 console.log('\nTOTALS', JSON.stringify(totals));
 await browser.close();
+fake.close();
 fs.rmSync(files, { recursive: true, force: true });
 process.exit(Object.values(totals).some((n) => n > 0) ? 1 : 0);

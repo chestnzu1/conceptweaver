@@ -72,12 +72,12 @@ export async function prepare(log = console.log) {
 }
 
 /** Starts the service and waits until it answers. `stop` ends it. */
-export async function startReasoner({ port = DEFAULT_PORT, host = '127.0.0.1', allowOrigins = [], log = console.log, quiet = false } = {}) {
+export async function startReasoner({ port = DEFAULT_PORT, host = '127.0.0.1', allowOrigins = [], allowLocalAi = false, log = console.log, quiet = false } = {}) {
   await prepare(log);
   // Something already at that address would answer in place of the service started here, and never be stopped by it.
   const there = await fetch(`http://${host}:${port}/health`).then((r) => r.json()).catch(() => undefined);
   if (there) throw new Error(there.service === 'conceptweaver-reasoner' ? `The reasoning service is already running at http://${host}:${port}.` : `Port ${port} is in use by something else. Start the service on another: --port=<number>.`);
-  const child = spawn('java', ['-Xmx2g', '-Djava.net.preferIPv4Stack=true', '-cp', [BUILD, LIBRARY.file].join(path.delimiter), 'ReasonerService', `--port=${port}`, `--host=${host}`, ...allowOrigins.map((o) => `--allow-origin=${o}`)], { stdio: ['ignore', quiet ? 'ignore' : 'inherit', quiet ? 'ignore' : 'inherit'] });
+  const child = spawn('java', ['-Xmx2g', '-Djava.net.preferIPv4Stack=true', '-cp', [BUILD, LIBRARY.file].join(path.delimiter), 'ReasonerService', `--port=${port}`, `--host=${host}`, ...allowOrigins.map((o) => `--allow-origin=${o}`), ...(allowLocalAi ? ['--allow-local-ai'] : [])], { stdio: ['ignore', quiet ? 'ignore' : 'inherit', quiet ? 'ignore' : 'inherit'] });
   const url = `http://${host}:${port}`;
   let exited;
   child.on('exit', (code) => (exited = code ?? 1));
@@ -99,7 +99,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
   const allowOrigins = process.argv.filter((a) => a.startsWith('--allow-origin=')).map((a) => a.slice('--allow-origin='.length));
   try {
-    const service = await startReasoner({ port: Number(arg('port') ?? DEFAULT_PORT), host: arg('host') ?? '127.0.0.1', allowOrigins });
+    const service = await startReasoner({ port: Number(arg('port') ?? DEFAULT_PORT), host: arg('host') ?? '127.0.0.1', allowOrigins, allowLocalAi: process.argv.includes('--allow-local-ai') });
     const elsewhere = service.url === `http://127.0.0.1:${DEFAULT_PORT}` ? '' : ` and give it this address: ${service.url}`;
     console.log(`Leave this running. In the app: Validation → Reasoning engine → Advanced reasoner (OWL 2 DL)${elsewhere}. Ctrl+C stops it.`);
   } catch (e) {

@@ -84,6 +84,9 @@ import org.semanticweb.owlapi.util.ShortFormProvider;
  *   POST /convert  { document, to? }: the document, in any OWL syntax, as Turtle, or as `to` says:
  *                  rdfxml, owlxml, functional or manchester
  *   POST /compare  { original, exported }: the statements in one document and not the other
+ *   POST /ai/forward { provider, path, method, body?, key, baseUrl? }: a request of the app's
+ *                  assistant, forwarded to the AI provider with the key set on it, and its answer
+ *                  streamed back (see forward)
  */
 public class ReasonerService {
   /** Where an import that was not sent is "found": a file that does not exist, so that it is missing and nothing is fetched. */
@@ -96,6 +99,8 @@ public class ReasonerService {
     return t;
   });
   static final List<String> allowedOrigins = new ArrayList<>();
+  /** Whether /ai/forward may reach an endpoint on this machine or the local network (a model server): off unless asked for. */
+  static boolean allowLocalAi = false;
   static String hermitVersion = "unknown";
   static String owlapiVersion = "unknown";
 
@@ -106,6 +111,7 @@ public class ReasonerService {
       if (a.startsWith("--port=")) port = Integer.parseInt(a.substring(7));
       else if (a.startsWith("--host=")) host = a.substring(7);
       else if (a.startsWith("--allow-origin=")) allowedOrigins.add(a.substring(15));
+      else if (a.equals("--allow-local-ai")) allowLocalAi = true;
     }
     hermitVersion = versionOf("net.sourceforge.owlapi/org.semanticweb.hermit");
     owlapiVersion = versionOf("net.sourceforge.owlapi/owlapi-api");
@@ -114,6 +120,7 @@ public class ReasonerService {
     server.createContext("/reason", ReasonerService::reason);
     server.createContext("/convert", ReasonerService::convert);
     server.createContext("/compare", ReasonerService::compare);
+    server.createContext("/ai/forward", ReasonerService::forward);
     server.setExecutor(Executors.newCachedThreadPool());
     server.start();
     System.out.println("ConceptWeaver reasoning service: HermiT " + hermitVersion + " (OWL API " + owlapiVersion + ") on http://" + host + ":" + port);
@@ -142,6 +149,7 @@ public class ReasonerService {
     // and comparing two documents of an ontology statement by statement.
     o.addProperty("converts", true);
     o.addProperty("compares", true);
+    o.addProperty("forwardsAi", true);
     // The syntaxes /convert writes, besides reading every one of them.
     JsonArray writes = new JsonArray();
     for (String w : WRITES) writes.add(w);
@@ -165,14 +173,7 @@ public class ReasonerService {
 
   static void respond(HttpExchange x, int status, JsonObject body) throws IOException {
     String origin = x.getRequestHeaders().getFirst("Origin");
-    if (origin != null && allowed(origin)) {
-      x.getResponseHeaders().set("Access-Control-Allow-Origin", origin);
-      x.getResponseHeaders().set("Vary", "Origin");
-      x.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      x.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
-      x.getResponseHeaders().set("Access-Control-Allow-Private-Network", "true");
-      x.getResponseHeaders().set("Access-Control-Max-Age", "600");
-    }
+    cors(x);
     if (x.getRequestMethod().equals("OPTIONS")) {
       x.sendResponseHeaders(origin != null && allowed(origin) ? 204 : 403, -1);
       x.close();
@@ -184,6 +185,19 @@ public class ReasonerService {
     x.sendResponseHeaders(status, bytes.length);
     try (OutputStream out = x.getResponseBody()) {
       out.write(bytes);
+    }
+  }
+
+  /** The headers that let an allowed page read the answer. */
+  static void cors(HttpExchange x) {
+    String origin = x.getRequestHeaders().getFirst("Origin");
+    if (origin != null && allowed(origin)) {
+      x.getResponseHeaders().set("Access-Control-Allow-Origin", origin);
+      x.getResponseHeaders().set("Vary", "Origin");
+      x.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      x.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+      x.getResponseHeaders().set("Access-Control-Allow-Private-Network", "true");
+      x.getResponseHeaders().set("Access-Control-Max-Age", "600");
     }
   }
 
@@ -484,6 +498,166 @@ public class ReasonerService {
     for (org.semanticweb.owlapi.model.OWLAnnotation an : o.getAnnotations()) out.put(an.getAnonymousIndividuals().isEmpty() ? an : "annotation " + BLANK_NODE.matcher(plain.render(an)).replaceAll("_:x"), BLANK_NODE.matcher(shown.render(an)).replaceAll("_:x"));
     for (OWLImportsDeclaration d : o.getImportsDeclarations()) out.put(d, "Import(<" + d.getIRI() + ">)");
     return out;
+  }
+
+  // ---------------------------------------------------------------- forwarding the assistant's requests
+
+  /** Where each provider is, fixed: a request for one of them can go nowhere else. */
+  static final java.util.Map<String, String> AI_BASES = java.util.Map.of("openai", "https://api.openai.com/v1", "anthropic", "https://api.anthropic.com/v1", "gemini", "https://generativelanguage.googleapis.com/v1beta");
+  /** The paths each kind of provider is asked at; nothing else is forwarded. */
+  static final java.util.regex.Pattern OPENAI_PATH = java.util.regex.Pattern.compile("^/(chat/completions|models)$");
+  static final java.util.regex.Pattern ANTHROPIC_PATH = java.util.regex.Pattern.compile("^/(messages|models)$");
+  static final java.util.regex.Pattern GEMINI_PATH = java.util.regex.Pattern.compile("^/models(\\?pageSize=\\d{1,4}|/[A-Za-z0-9._-]{1,120}:streamGenerateContent\\?alt=sse)?$");
+  static final java.net.http.HttpClient AI = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NEVER).connectTimeout(java.time.Duration.ofSeconds(15)).build();
+
+  /**
+   * A request of the app's assistant, forwarded to the AI provider it names, and the provider's
+   * answer streamed back as it comes. The page sends the key here, over this machine's loopback;
+   * the service sets it on the request in the provider's own header and sends it nowhere else:
+   * a provider's address is fixed, a custom endpoint has to be https and on the public internet
+   * (unless the service was started with --allow-local-ai, for a model server here), a redirect is
+   * never followed, and only the paths a chat or a list of models needs are forwarded. Nothing of
+   * the request is logged or kept.
+   */
+  static void forward(HttpExchange x) throws IOException {
+    try {
+      if (x.getRequestMethod().equals("OPTIONS")) {
+        respond(x, 204, new JsonObject());
+        return;
+      }
+      if (!allowed(x.getRequestHeaders().getFirst("Origin"))) {
+        respond(x, 403, unread("This page is not allowed to use the service. Start it with --allow-origin=<the page's origin>."));
+        return;
+      }
+      if (!x.getRequestMethod().equals("POST")) {
+        respond(x, 405, unread("POST a request to /ai/forward."));
+        return;
+      }
+      byte[] sent = body(x);
+      JsonObject r;
+      try {
+        r = sent == null ? null : GSON.fromJson(new String(sent, StandardCharsets.UTF_8), JsonObject.class);
+      } catch (RuntimeException e) {
+        r = null;
+      }
+      String provider = text(r, "provider");
+      String path = text(r, "path");
+      String method = text(r, "method");
+      String key = text(r, "key");
+      String content = text(r, "body");
+      if (provider == null || path == null || method == null || key == null) {
+        respond(x, 400, unread("The request is not JSON with the provider, path, method and key."));
+        return;
+      }
+      if (key.isEmpty() || key.length() > 1000 || !key.matches("[\\x21-\\x7e]+")) {
+        respond(x, 400, unread("The key is empty or has characters a key does not have."));
+        return;
+      }
+      if (!method.equals("GET") && !method.equals("POST")) {
+        respond(x, 400, unread("Only GET and POST are forwarded."));
+        return;
+      }
+      String base;
+      java.util.regex.Pattern paths;
+      if (provider.equals("custom")) {
+        base = text(r, "baseUrl");
+        String why = endpointRefused(base);
+        if (why != null) {
+          respond(x, 403, unread(why));
+          return;
+        }
+        base = base.replaceAll("/+$", "");
+        paths = OPENAI_PATH;
+      } else if (AI_BASES.containsKey(provider)) {
+        base = AI_BASES.get(provider);
+        paths = provider.equals("anthropic") ? ANTHROPIC_PATH : provider.equals("gemini") ? GEMINI_PATH : OPENAI_PATH;
+      } else {
+        respond(x, 400, unread("There is no provider \"" + provider + "\" to forward to."));
+        return;
+      }
+      if (!paths.matcher(path).matches()) {
+        respond(x, 400, unread("The path " + path + " is not one the assistant asks a provider at."));
+        return;
+      }
+      java.net.http.HttpRequest.Builder req = java.net.http.HttpRequest.newBuilder(URI.create(base + path)).timeout(java.time.Duration.ofSeconds(120)).header("Accept", "text/event-stream, application/json");
+      if (provider.equals("anthropic")) req.header("x-api-key", key).header("anthropic-version", "2023-06-01");
+      else if (provider.equals("gemini")) req.header("x-goog-api-key", key);
+      else req.header("Authorization", "Bearer " + key);
+      if (method.equals("POST")) req.header("Content-Type", "application/json").POST(java.net.http.HttpRequest.BodyPublishers.ofString(content == null ? "{}" : content));
+      else req.GET();
+      java.net.http.HttpResponse<InputStream> answer;
+      try {
+        answer = AI.send(req.build(), java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+      } catch (java.net.http.HttpTimeoutException e) {
+        respond(x, 504, unread("The provider did not answer in time."));
+        return;
+      } catch (IOException e) {
+        respond(x, 502, unread("The provider could not be reached from this machine (" + URI.create(base).getHost() + ")."));
+        return;
+      }
+      int status = answer.statusCode();
+      if (status >= 300 && status < 400) {
+        answer.body().close();
+        respond(x, 502, unread("The endpoint answered with a redirect, which is not followed, so that the key goes nowhere it was not sent."));
+        return;
+      }
+      cors(x);
+      x.getResponseHeaders().set("Content-Type", answer.headers().firstValue("content-type").orElse("application/json"));
+      x.getResponseHeaders().set("Cache-Control", "no-store");
+      x.sendResponseHeaders(status, 0);
+      try (InputStream in = answer.body(); OutputStream out = x.getResponseBody()) {
+        byte[] buf = new byte[8192];
+        for (int n; (n = in.read(buf)) > 0; ) {
+          out.write(buf, 0, n);
+          out.flush();
+        }
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      x.close();
+    } catch (RuntimeException e) {
+      // Never with the request in it: it holds the key.
+      respond(x, 500, unread("The service failed to forward the request."));
+    }
+  }
+
+  static String text(JsonObject o, String field) {
+    return o != null && o.has(field) && o.get(field).isJsonPrimitive() ? o.get(field).getAsString() : null;
+  }
+
+  /**
+   * Why a custom endpoint is not forwarded to, if it is not: it has to be https with no user name,
+   * password, query or fragment, and every address its host has has to be on the public
+   * internet, so that a request cannot be sent through this service to this machine or the
+   * network it is on. With --allow-local-ai, http and local addresses are allowed: a model server
+   * here. (A host name that changes what it resolves to between this check and the request is
+   * not caught.)
+   */
+  static String endpointRefused(String base) {
+    if (base == null || base.isBlank()) return "A custom endpoint needs its base URL.";
+    URI u;
+    try {
+      u = URI.create(base.trim());
+    } catch (IllegalArgumentException e) {
+      return "The endpoint's base URL is not a URL.";
+    }
+    if (u.getUserInfo() != null || u.getQuery() != null || u.getFragment() != null) return "The endpoint's base URL may not hold a user name, password, query or fragment.";
+    String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase();
+    if (!scheme.equals("https") && !(scheme.equals("http") && allowLocalAi)) return "The endpoint has to be https. (An http endpoint on this machine is reached when the service is started with --allow-local-ai.)";
+    if (u.getHost() == null) return "The endpoint's base URL has no host.";
+    if (allowLocalAi) return null;
+    try {
+      for (java.net.InetAddress a : java.net.InetAddress.getAllByName(u.getHost())) {
+        byte[] b = a.getAddress();
+        boolean uniqueLocal = a instanceof java.net.Inet6Address && (b[0] & 0xfe) == 0xfc;
+        boolean shared = b.length == 4 && (b[0] & 0xff) == 100 && (b[1] & 0xc0) == 64;
+        if (a.isLoopbackAddress() || a.isSiteLocalAddress() || a.isLinkLocalAddress() || a.isAnyLocalAddress() || a.isMulticastAddress() || uniqueLocal || shared)
+          return "The endpoint is on this machine or a private network, which the service does not forward to unless it is started with --allow-local-ai.";
+      }
+    } catch (java.net.UnknownHostException e) {
+      return "The endpoint's host, " + u.getHost() + ", is not known.";
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------- reasoning

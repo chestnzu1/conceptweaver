@@ -504,7 +504,7 @@ Not sequenced strictly; ordered by what users of a team product ask for first.
 | 5.4 | **Audit and notifications.** | FR-M13-6, FR-M13-7 | M |
 | 5.5 | **Publishing.** Generated documentation; release pages; stable IRIs with content negotiation. | FR-M11-5, FR-M11-6 | L |
 | 5.6 | **Alignment at depth.** SSSOM; catalogue search; module extraction. | FR-M8-6 to FR-M8-8 | M |
-| 5.7 | **Assistance.** An embedding matcher behind `MATCHERS`; drafting of definitions; question to query. Each a proposal, each behind an explicit provider setting. | M12, ADR-010 | L |
+| 5.7 | **Assistance.** An embedding matcher behind `MATCHERS`; drafting of definitions; question to query. Each a proposal, each behind an explicit provider setting. Begun 2026-10-16, ahead of its phase: the assistant (bring your own key; read-only tools; typed proposals compiled to change sets, reviewed and accepted; README, *The assistant*). Left: the matcher, drafting and SPARQL, and the server side (the key kept per user, encrypted). | M12, ADR-010, AR-10 | L |
 | 5.8 | **Integration.** A documented public API; webhooks on revisions and releases; export of releases to a Git repository; a read-only SPARQL endpoint. | FR-M9-7 | M |
 | 5.9 | **Editing together in real time.** | FR-M13-8 | XL |
 | 5.10 | **Virtual knowledge graph (DI-4).** A spike on Ontop against the three dialects and the SPARQL features that matter; the virtual graph module managing one engine process per deployed mapping revision; SPARQL through the API with limits; the source and reasoning shown with every answer; the SQL trace; refusal of unsupported features by name. | FR-M16-2 to FR-M16-7, ADR-016, AR-13 | L |
