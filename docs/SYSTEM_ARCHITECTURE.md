@@ -628,6 +628,8 @@ Short form. Each is revisited when its "revisit if" becomes true.
 | **ADR-010** | AI features are optional suggestion services behind existing interfaces, deferred to Phase 5, with no Python runtime until one is unavoidable. | Cost of a third runtime; AR-10. | A required capability has no hosted or JVM option. |
 | **ADR-011** | JDK 21 and the current Spring Boot major line as the server baseline. | Jena's and Spring's stated minimums; avoids a second migration. | — |
 | **ADR-012** | Entities are identified by IRI in every contract; internal ids are private to the local model. | TD-03, TD-18. | — |
+| **ADR-020** | No OWL axiom becomes a SHACL constraint, and no shape an axiom, without the user's review. Shapes drawn from the ontology are proposals, each stating what the axiom means, what the shape would check and where they differ, accepted one by one with their origin kept. | An axiom licenses inferences under the open world and no unique names; a shape checks the data a graph holds. `p exactly 1 C` is not `sh:minCount 1 ; sh:maxCount 1`, and a domain or range infers a type rather than requiring a value. The same rule as ADR-017, from the ontology's side. | — |
+| **ADR-021** | Shapes are SHACL 1.0 Core (the W3C Recommendation of 2017) first, validated by `rdf-validate-shacl` in the page and Jena SHACL on the server; SHACL-SPARQL on the server only; SHACL 1.2 is built on once it is a Recommendation. | A stable standard with a test suite both engines can be held to. | SHACL 1.2 becomes a Recommendation. |
 
 ADR-013 to ADR-019, on data integration, are in §12.11.
 
@@ -639,17 +641,21 @@ the relational databases where the data is.**
 
 ### 12.1 How it fits
 
-Three things are kept apart, and a fourth joins them:
+Four things are kept apart, and a fifth joins them:
 
 | Plane | What it holds | Who owns it | Where it lives |
 | --- | --- | --- | --- |
 | **Conceptual** | The ontology: classes, properties, axioms. | The modeller. | Asserted graph (§3, [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §4). |
+| **Constraint** | What data an application accepts: SHACL shape sets, several per ontology, one per application or source. Added 2026-10-15 (the SHACL track, [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.4). | The data steward, the application's owner. | One shapes graph per shape set; in the model locally. |
 | **Physical** | A database's schema: tables, columns, types, keys. | The database's owner. The application only reads it. | Schema snapshots (metadata store). |
 | **Mapping** | How rows of the physical plane become statements in the terms of the conceptual one. | The data integrator. | Mapping sets, as R2RML. |
 | **Data** | The rows themselves, or triples made from them. | The database. | In the source database; optionally a materialised copy. |
 
 The ontology never mentions a table, and a schema snapshot never mentions a class. Only a
-mapping refers to both. That is what lets each change on its own schedule, and it is the
+mapping refers to both. Shapes name the ontology's classes and properties, since they constrain
+the data a mapping makes in its terms, but they are not axioms (ADR-020): SHACL validates the
+RDF data graph a mapping presents, never the database itself, and a shape set is chosen for
+each validation. That is what lets each change on its own schedule, and it is the
 separation R2RML itself is built on.
 
 Two properties of this capability set it apart from everything in sections 1 to 11:

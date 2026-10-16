@@ -11,6 +11,10 @@ virtual knowledge graphs) was added to this roadmap on 2026-10-13 as a track of 
 DI-1 to DI-5, placed inside the existing phases. §1.3 shows where; the tasks are in Phases 3, 4
 and 5.
 
+A SHACL editor as a first-class constraint model beside the ontology was added on 2026-10-15
+as a second track, SH-1 to SH-5. §1.4 sets out what of it the product already has, what is
+new, and where each stage goes: the three that need no server come next, before task 2.3.
+
 ## 1. Shape of the roadmap
 
 Five phases, in the order given in the brief. Three rules hold throughout:
@@ -48,8 +52,8 @@ magnitude for planning, not commitments.
 | Phase | Outcome in one sentence | Indicative effort | Priority served |
 | --- | --- | --- | --- |
 | 1 Foundations | The same application, with a safety net, stable identity, no data loss and no frozen page. | 2–3 months | P0 |
-| 2 Advanced modelling | An editor an ontology engineer can use for real work: expressions, versions, tabular import, 10,000 classes. | 4–6 months | P0, some P1 |
-| 3 Semantic backend | One Java application replaces the single-file service and answers the existing service interfaces. Then: connect a database and explore its schema (DI-1). | 2–3 months, and 1–1.5 for DI-1 | P1 |
+| 2 Advanced modelling | An editor an ontology engineer can use for real work: expressions, a constraint model of SHACL shapes beside the ontology, versions, tabular import, 10,000 classes. | 6–8 months | P0, some P1 |
+| 3 Semantic backend | One Java application replaces the single-file service and answers the existing service interfaces, validation with Jena SHACL among them. Then: connect a database and explore its schema (DI-1). | 2.5–3.5 months, and 1–1.5 for DI-1 | P1 |
 | 4 Scalable storage | Ontologies live on a server in a triple store; the browser asks instead of loading. In parallel: the mapping workbench and standard mappings (DI-2, DI-3). | 3–5 months, and 3.5–5.5 for DI-2 and DI-3 | P1, P2 |
 | 5 Platform | Teams, review, publishing, assistance; virtual knowledge graphs and enterprise data integration (DI-4, DI-5). | Open-ended; DI-4 alone 2–3 months | P2, P3 |
 
@@ -68,9 +72,11 @@ magnitude for planning, not commitments.
 | MS-9 | **Data-integration MVP** | Classes, properties and keys of one database are mapped in the three-area editor, previewed on real rows, checked in the Validation view and exported as R2RML. | 4 (DI-2) |
 | MS-10 | **Standard, durable mappings** | R2RML is imported without loss; mappings have their own revisions; a schema change lists the rules it breaks; a second dialect works. | 4 (DI-3) |
 | MS-11 | **Ask the data** | A SPARQL query in the ontology's terms is answered from the live database, with its SQL and timings shown. | 5 (DI-4) |
+| MS-12 | **Constraint model** | Shapes are edited in a view of their own, in shape sets beside the ontology; the W3C SHACL Core tests read and write back without loss and validate to their expected reports; a finding opens the property shape and constraint it failed; shapes are proposed from the ontology and accepted one by one. | 2 (SH-1 to SH-3) |
 
-Milestones MS-8 to MS-11 are numbered in the order they were added, not the order they are
-reached: MS-8 follows MS-5, and MS-9 and MS-10 fall within Phase 4 beside MS-6.
+Milestones MS-8 to MS-12 are numbered in the order they were added, not the order they are
+reached: MS-12 comes before MS-4, MS-8 follows MS-5, and MS-9 and MS-10 fall within Phase 4
+beside MS-6.
 
 ### 1.3 The data-integration track
 
@@ -114,6 +120,80 @@ Three consequences of this placement:
 
 Writing back to a database is not a stage of this track. It is a separate future capability
 that needs its own design for transactions, authorisation and integrity (ADR-018).
+
+### 1.4 The SHACL track: a constraint model beside the ontology
+
+Added 2026-10-15, from a proposal to make SHACL an editor of its own, parallel to the OWL editor,
+rather than a few settings on each class. Its central idea is three models, related by mappings
+and not one-to-one:
+
+| Model | Says | Written in | Owned by |
+| --- | --- | --- | --- |
+| **Conceptual** | What the domain is: classes, properties, what follows from what. | OWL (the ontology) | The modeller |
+| **Constraint** | What data an application accepts: which values must be there, of what kind, how many. Several per ontology, one for each application or source. | SHACL shape sets | The data steward, the application's owner |
+| **Physical** | How data is stored: tables, columns, types, keys. | A relational schema | The database's owner |
+
+The planes of [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §12.1 kept the conceptual and
+the physical apart and joined them by a mapping; the constraint plane is added there. SHACL
+validates an RDF data graph, never a database directly: relational data is validated through a
+mapping that presents it as RDF (stage DI-2 on), so the workflow is ontology → shapes →
+mapping → validation of the mapped data.
+
+**What the product already has, and what is new.** Most of the proposal overlaps what exists or
+is planned. The overlaps stay where they are; what is new is the track below.
+
+| The proposal | Already there, or already planned | New |
+| --- | --- | --- |
+| Node and property shapes edited visually; Turtle import and export (P0) | **Existing** (FR-M4-2): a form for targets and 19 SHACL Core constraints (`Shapes.tsx`, `shapes.ts`); the shapes graph imported and exported as Turtle; any other Core construct kept as written and validated. Shapes are their own graph, never in the ontology's export. | Shapes as a view of their own, not a tab of *Validation*; **shape sets**, several constraint models per ontology; the constructs now kept as text made editable; a class's or property's editor listing the shapes about it. (SH-1) |
+| Validation with Jena SHACL, and where each error is (P0) | **Existing** in the browser (FR-M4-1, FR-M4-4): SHACL Core by `rdf-validate-shacl`, a cancellable job in a worker; a finding names its focus node, path, value and shape, and opens the shape. **Planned:** Jena SHACL as the server's validation module (SYSTEM_ARCHITECTURE §3.3, ADR-006), with no task yet. | A finding located to the property shape and the constraint it failed, and to where the data came from; data graphs kept with the project, not for one session; a validation run of a chosen shape set on a chosen data graph. (SH-2) Jena SHACL behind the same interface, given a task. (SH-4) |
+| Shapes generated from the OWL model, reviewed (P1) | **Principle only:** `shapes.ts` turns no restriction into a shape; for database constraints, ADR-017 makes proposals default to SHACL, reviewed (FR-M15-16, DI-3). | Shapes proposed from the ontology, each with what the axiom means and what the shape would check, accepted one by one, with its origin kept. (SH-3, ADR-020) |
+| Database mapping, then SHACL data checks (P1) | **Planned** as the data-integration track: mapping and preview at DI-2 (4.10, 4.11), validation of mapped data against shapes at DI-4 (5.11, FR-M4-11, P2). Needs the backend (ADR-014), so it cannot come before 2.3. | Priority raised: rows previewed through a mapping are validated against a chosen shape set at DI-2 (4.11); materialised data stays at DI-4. |
+| SHACL-SPARQL, further constraints, custom rules (P2) | **Planned:** SHACL-SPARQL with a server engine (FR-M4-9, P3); custom quality rules as SPARQL (FR-M4-7, task 2.12). | FR-M4-9 raised to P2 and given a task with the Jena validator. (SH-5) The further Core constraints are SH-1's. |
+| An OWL restriction is not a SHACL constraint; a domain or range is no data rule | **Existing** as a principle: `shapes.ts`; SYSTEM_ARCHITECTURE §12.7 for database constraints (ADR-017). | Stated for shapes drawn from the ontology (ADR-020). |
+| SHACL 1.0 Core first, 1.2 later | **Existing** in effect: the engine in use, and the one planned for the server, implement SHACL 1.0. | Made a decision (ADR-021). |
+
+**The stages.**
+
+| Stage | Contents | Needs | Placed in |
+| --- | --- | --- | --- |
+| **SH-1** Shapes as a first-class editor | A *Shapes* view; shape sets; every SHACL Core construct in the form; lossless Turtle per set; links with classes and properties. | 1.4, 1.8, 1.9 | Phase 2, next: before 2.3 |
+| **SH-2** Validation one can act on | Data graphs kept with the project; a shape set validated against a data graph; findings to the constraint and the data's source; the W3C SHACL Core tests as the conformance suite. | SH-1 | Phase 2, before 2.3 |
+| **SH-3** Shapes proposed from the ontology | Proposals from axioms, reviewed one by one, with their meaning stated; origin kept; stale when the axiom changes. | SH-1; 2.1 (structured expressions) | Phase 2, before 2.3 |
+| **SH-4** Jena SHACL on the server | `ValidationService` answered by the companion; the same reports as the browser on the conformance suite; data graphs too large for the page. | SH-2; 3.2 | Phase 3, after 3.2 |
+| **SH-5** SHACL-SPARQL and the inferred graph | SPARQL-based constraints and constraint components; validation against the inferred graph; the browser naming what it cannot run. | SH-4 | Phase 3, after SH-4 |
+
+```mermaid
+flowchart LR
+  T22["2.2 Canvas at scale"] --> SH1["SH-1<br/>Shapes editor, shape sets"]
+  SH1 --> SH2["SH-2<br/>Validation to act on"]
+  SH1 --> SH3["SH-3<br/>Shapes from the ontology"]
+  SH2 --> T23["2.3 Versions"]
+  SH3 --> T23
+  T32["3.2 Spring Boot parity"] --> SH4["SH-4<br/>Jena SHACL"]
+  SH2 --> SH4
+  SH4 --> SH5["SH-5<br/>SHACL-SPARQL"]
+  SH2 --> DI2["DI-2 (4.11)<br/>Previewed rows validated"]
+```
+
+**Rules the track keeps.**
+
+- **No restriction becomes a shape by itself, nor a shape a restriction** (ADR-020). An OWL
+  axiom says what is true of the domain and licenses inferences; a shape says what an
+  application accepts. `p exactly 1 C` and `sh:minCount 1 ; sh:maxCount 1` are not the same: in
+  OWL, with no unique-name assumption, two names may be the same individual and an unstated
+  value is unknown, not missing; SHACL counts the value nodes the data graph has. A domain or
+  range infers a type; it requires nothing of a record. Shapes drawn from the ontology are
+  therefore proposals, each saying where it differs, accepted one by one.
+- **SHACL 1.0 Core, then the rest** (ADR-021). What is built rests on the W3C Recommendation
+  of 2017 and its test suite; SHACL 1.2 is followed, and built on once it is a Recommendation.
+- **A class may have any number of shapes**, in one set or several; a shape set is a
+  constraint model of its own, validated, exported and, from 2.3, versioned with the project.
+- **Local first.** SH-1 to SH-3 run in the browser, like everything else in Phase 2; the
+  server validates the same shapes with the same results from SH-4 (rule 2 above).
+
+Consequences: task 2.3 and the MVP milestone (MS-4) move back by the size of SH-1 to SH-3,
+about two months; 2.3's versions and differences include the shape sets; DI-2 gains the
+validation of previewed rows; nothing else moves.
 
 ## 2. Phase 1 — Architecture assessment and refactoring
 
@@ -183,18 +263,24 @@ service interfaces.
 
 - Close the OWL authoring gap.
 - Reach the stated scale in the browser.
+- Make the constraint model (SHACL shape sets) a first-class part of a project, beside the
+  ontology (§1.4).
 - Add versions, tabular import and the missing export syntaxes.
 - Bring every remaining ontology operation behind a service interface.
 
 ### Tasks, in sequence
 
-The first six make the MVP (MS-4).
+The first six numbered tasks make the MVP (MS-4). The three stages of the SHACL track that need
+no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 
 | # | Task | Resolves | Size |
 | --- | --- | --- | --- |
 | 2.1 | **Structured class expressions.** A typed expression model; a parser from and writer to Turtle; existing text expressions parsed on load, with text as the fallback. A Manchester-syntax editor with completion, error marking and a reading in words. Defined classes. | TD-02, FR-M2-2, FR-M2-3 | XL |
 | 2.2 | **Canvas at scale.** Viewport culling; level of detail by zoom; above a threshold, open on a subgraph and never build the full graph. | TD-10, FR-M5-4, FR-M5-5 | L |
-| 2.3 | **Versions and differences, locally.** Named versions in IndexedDB; an axiom-level difference shown by entity; restore as a new version. `ProjectService`. | TD-12, FR-M10-1 to FR-M10-3 | L |
+| SH-1 | **Shapes as a first-class editor.** A *Shapes* view beside Graph, Entities and Structure, no longer a tab of *Validation*: shapes listed, searched and grouped by what they target. **Shape sets**: several named constraint models in one project, each with its own purpose (an application, a source), shapes graph and file (model format 5; a model of format 4 opens with its shapes as one set). Every SHACL 1.0 Core construct in the form: logical constraints (`sh:and`, `sh:or`, `sh:not`, `sh:xone`), qualified value shapes, property pair constraints (`sh:equals`, `sh:disjoint`, `sh:lessThan`, `sh:lessThanOrEquals`), property paths (sequence, alternative, inverse, zero or more, one or more, zero or one), nested and referenced shapes, `sh:closed` with its ignored properties. A shape set imported and exported as Turtle with nothing lost; SHACL-SPARQL kept as written and written back. A class's and a property's editor list the shapes that target or constrain them, with *Add a shape for this class*; one class, any number of shapes. Shape edits are change sets, undone like any other. | FR-M4-2, FR-M4-12, FR-M4-13 | L |
+| SH-2 | **Validation one can act on.** Data graphs kept with the project in IndexedDB, not for one session: several, each named and replaced on demand. A run validates a chosen shape set against a chosen data graph (or the model's own individuals). A finding opens the property shape at the constraint it failed (`sh:sourceConstraintComponent`), shows the value and the path, and for data read from a file the line its focus node is on. The W3C SHACL 1.0 Core test suite as a conformance suite, run in CI: each test's expected report. | FR-M4-1, FR-M4-14 | M |
+| SH-3 | **Shapes proposed from the ontology.** *Propose shapes* for a class, a set of classes or the ontology: from restrictions, domains and ranges, functional properties, datatypes, enumerations and keys. Each proposal says what the axiom means in OWL, what the shape would check, and where the two differ (ADR-020); none is selected to begin with. Accepted, edited or dismissed one by one or by kind, into a chosen shape set, as one change set; an accepted shape keeps its origin and is marked stale when that axiom changes or goes. | FR-M4-15, ADR-020 | M |
+| 2.3 | **Versions and differences, locally.** Named versions in IndexedDB; an axiom-level difference shown by entity, the shape sets' changes with it; restore as a new version. `ProjectService`. | TD-12, FR-M10-1 to FR-M10-3 | L |
 | 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
 | 2.5 | **Export in every OWL syntax** through the conversion the service already performs in the other direction. `ImportExportService`. | TD-13, FR-M11-2 | S |
 | 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. | FR-M3-5 | M |
@@ -207,7 +293,10 @@ The first six make the MVP (MS-4).
 
 ### Dependencies
 
-2.1 needs 1.4 and 1.8. 2.3 needs 1.8 (a version is a sequence of change sets). 2.4 needs 1.4
+2.1 needs 1.4 and 1.8. SH-1 needs 1.4 (shapes name entities by IRI), 1.8 (shape edits as
+change sets) and 1.9 (validation as a job); SH-2 and SH-3 need SH-1, and SH-3 also 2.1 (it reads
+structured expressions). 2.3 comes after SH-3, so that versions cover shape sets from the start.
+2.3 needs 1.8 (a version is a sequence of change sets). 2.4 needs 1.4
 (IRIs from rows) and 1.8 (commit as a change set). 2.5 and 2.6 need only the present service.
 2.8 needs 1.5 and 2.1. 2.10 needs 2.3.
 
@@ -223,12 +312,16 @@ Moderate elsewhere. 2.2 is contained in the canvas component.
 | The expression editor grows into a Protégé clone. | Scope by the corpus: every expression in the test ontologies must open and save. Nothing beyond that in the MVP. |
 | Excel parsing brings a large dependency. | Load it on demand, as oxigraph and Dagre are; CSV works without it. |
 | Culling breaks picture export, which reads the drawn SVG. | Export renders the full picture off screen on request; covered by the existing export checks. |
+| The shapes editor grows into a second product. | Scope by SHACL 1.0 Core and its W3C test suite: every test's shapes open in the form and write back unchanged. SHACL-SPARQL is the server's (SH-5); SHACL 1.2 waits for its Recommendation (ADR-021). |
+| Proposed shapes are taken for what the ontology means, and the difference is lost. | Nothing proposed is selected by default; each proposal states where OWL and SHACL differ; accepted shapes keep their origin and go stale with it (ADR-020). |
 | Local versions fill browser storage. | Compress; keep change sets between snapshots; show usage and offer export. |
 
 ### Deliverables
 
 The MVP: lossless files, expression editing, versions, tabular import, all syntaxes, a graph
-view at scale, two server-grade reasoners in the companion.
+view at scale, two server-grade reasoners in the companion. Before it, the constraint model:
+shape sets edited in a view of their own, validated with findings one can act on, and shapes
+proposed from the ontology.
 
 ### Acceptance criteria
 
@@ -237,6 +330,12 @@ view at scale, two server-grade reasoners in the companion.
 - A defined class authored in the editor is classified by HermiT as the same class written in
   Protégé would be.
 - With 10,000 terms loaded and 300 in view, panning holds 30 frames per second (FR-M5-4).
+- The shapes of every W3C SHACL 1.0 Core test open in the form and are written back statement
+  for statement; validating each test's data gives its expected report (FR-M4-13, FR-M4-14).
+- Two shape sets of one ontology, one class with a different shape in each, validate the same
+  data graph to different results; each set exports as a Turtle file of its own (FR-M4-12).
+- Shapes proposed for the Pizza ontology change nothing until accepted; an accepted shape names
+  the axiom it came from, and goes stale when that axiom is removed (FR-M4-15).
 - The difference between two versions that differ by a rename, a move and a removed
   restriction shows exactly those three changes (FR-M10-2).
 - A 2,000-row spreadsheet with a parent column becomes the right hierarchy; one undo removes it
@@ -260,6 +359,8 @@ view at scale, two server-grade reasoners in the companion.
 | --- | --- | --- | --- |
 | 3.1 | **Dependency spike.** A build with declared versions of the OWL API, HermiT, ELK and Spring Boot on JDK 21; the present service's behaviour reproduced in a test. Decide OWL API 4 or 5 on evidence. | AR-03, ADR-011 | S |
 | 3.2 | **Parity.** `/health`, `/reason` and `/convert` in Spring Boot with the same requests and responses. `src/model/dlReasoning.test.ts`, `src/model/owlSyntaxes.test.ts`, `e2e/dl-reasoning.mjs` and `e2e/open-owl.mjs` pass unchanged against it. Java unit tests for what those do not reach. | TD-14, ADR-003 | M |
+| SH-4 | **Jena SHACL on the server.** `ValidationService` answered by the companion with Jena SHACL, with the requests and reports of the local engine; the W3C SHACL Core conformance suite of SH-2 run through both and the reports compared; data graphs too large for the page validated there, as a job. | FR-M4-16 | M |
+| SH-5 | **SHACL-SPARQL and the inferred graph.** SPARQL-based constraints and constraint components, and validation against the inferred graph, by the server; the browser engine names what it cannot run instead of passing it over. | FR-M4-9 | M |
 | 3.3 | **Reasoning jobs.** Start, status, cancel; a bounded executor; profile check and reasoner choice; results cached by content hash and reasoner. | ADR-005, FR-M3-4, FR-M3-8 | M |
 | 3.4 | **Ontology sessions.** An ontology is uploaded once and held by content hash; `StructureService` and `EntityQueryService` are answered from it over the OWL API. The frontend's `http.test.ts` suites pass against the server. | FR-M6-7 | L |
 | 3.5 | **Change sets on the server.** Apply a change set to a held ontology atomically; return the new content hash. A conformance suite runs every fixture change set through the local and the server implementation and compares the results as axioms. | AR-01, ADR-004 | L |
@@ -270,7 +371,8 @@ view at scale, two server-grade reasoners in the companion.
 
 ### Dependencies
 
-Phase 1 (1.8, 1.9) for the contracts. 3.1 before all. 3.4 and 3.5 are independent of each
+Phase 1 (1.8, 1.9) for the contracts. 3.1 before all. SH-4 needs 3.2 and SH-2, SH-5 needs
+SH-4; neither depends on 3.3 to 3.6. 3.4 and 3.5 are independent of each
 other. 3.8 and 3.9 need only 3.2 and can follow it directly if data integration is the
 priority; they do not depend on 3.4 to 3.6.
 
@@ -332,7 +434,7 @@ sources and the Schema Explorer for PostgreSQL (MS-8).
 | 4.8 | **Offline drafts.** *Work offline*, *push* and *pull* with refusal on a stale base and a visible replay. | AR-04 | L |
 | 4.9 | **Operations.** Backup and restore of both stores together; health endpoints; a container image; an operations page in the documentation. | — | S |
 | 4.10 | **Mapping model and workbench (DI-2).** The mapping model over the shared core; `MappingService`; the three-area editor with coverage on both sides and a non-drag way for every action; class, data-property and object-property rules; IRI templates; conditions. Mappings saved with the project. | FR-M15-1 to FR-M15-5, FR-M15-8, FR-M15-11 | XL |
-| 4.11 | **Preview and mapping checks (DI-2).** The preview evaluator on bounded rows, with reasons; the static mapping checks as a category of the Validation view, stale on a change of mapping, ontology or schema; R2RML export. | FR-M15-7, FR-M15-9, FR-M4-10, the export half of FR-M15-10, AR-12 | L |
+| 4.11 | **Preview and mapping checks (DI-2).** The preview evaluator on bounded rows, with reasons; the previewed rows validated against a chosen shape set, with no new engine (§1.4); the static mapping checks as a category of the Validation view, stale on a change of mapping, ontology or schema; R2RML export. | FR-M15-7, FR-M15-9, FR-M4-10, the preview half of FR-M4-11, the export half of FR-M15-10, AR-12 | L |
 | 4.12 | **Standard and durable mappings (DI-3).** R2RML import with lossless round trip; mapping revisions and their difference; schema change detection against fingerprints; reusable patterns; a SQL query as a logical table, guarded; lexical suggestions; constraint-derived proposals; an offered draft mapping. | FR-M15-6, FR-M15-10, FR-M15-12 to FR-M15-17, ADR-013, ADR-017, AR-14 | L |
 | 4.13 | **Further dialects and the table diagram (DI-3).** SQL Server and MySQL adapters, each with its own integration tests; relationships between tables as a diagram on the existing layouts. | FR-M14-10, FR-M14-11 | M each |
 
@@ -406,7 +508,7 @@ Not sequenced strictly; ordered by what users of a team product ask for first.
 | 5.8 | **Integration.** A documented public API; webhooks on revisions and releases; export of releases to a Git repository; a read-only SPARQL endpoint. | FR-M9-7 | M |
 | 5.9 | **Editing together in real time.** | FR-M13-8 | XL |
 | 5.10 | **Virtual knowledge graph (DI-4).** A spike on Ontop against the three dialects and the SPARQL features that matter; the virtual graph module managing one engine process per deployed mapping revision; SPARQL through the API with limits; the source and reasoning shown with every answer; the SQL trace; refusal of unsupported features by name. | FR-M16-2 to FR-M16-7, ADR-016, AR-13 | L |
-| 5.11 | **Materialisation and data validation (DI-4).** Materialise a mapping set into a data graph as a sized, confirmed job with provenance; validate previewed or materialised data against shapes; a cross-check suite comparing preview and engine. | FR-M16-1, FR-M4-11, AR-12 | M |
+| 5.11 | **Materialisation and data validation (DI-4).** Materialise a mapping set into a data graph as a sized, confirmed job with provenance; validate materialised data against a shape set (previewed rows are validated from DI-2, task 4.11); a cross-check suite comparing preview and engine. | FR-M16-1, the materialisation half of FR-M4-11, AR-12 | M |
 | 5.12 | **Enterprise data integration (DI-5).** Several data sources per project; permissions on a data source; mapping changes through review; lineage in both directions and in governance metadata; stored encrypted secrets and key rotation; value transformations; assisted mapping suggestions. | FR-M14-12, FR-M13-9, FR-M13-10, FR-M15-18, FR-M12-7 | L, then open-ended |
 
 ### Dependencies
@@ -441,17 +543,18 @@ Local profile still works with no server and no account.
 | Priority | Requirements | Phase |
 | --- | --- | --- |
 | **P0** | FR-M1-2, FR-M1-3, FR-M1-8, FR-M2-7, FR-M3-1, FR-M4-4 | 1 |
-| **P0** | FR-M2-2, FR-M2-3, FR-M5-4, FR-M5-5, FR-M7-2 to FR-M7-4, FR-M10-1 to FR-M10-3, FR-M11-2 | 2 |
-| **P1** | FR-M1-4, FR-M1-5, FR-M1-7, FR-M2-4, FR-M2-5, FR-M3-5, FR-M6-5, FR-M6-6, FR-M7-5, FR-M7-6, FR-M8-5, FR-M9-4, FR-M5-7 | 2 |
-| **P1** | FR-M3-4, FR-M3-6, FR-M3-8, FR-M6-7 | 3 |
+| **P0** | FR-M2-2, FR-M2-3, FR-M5-4, FR-M5-5, FR-M4-12 to FR-M4-14, FR-M7-2 to FR-M7-4, FR-M10-1 to FR-M10-3, FR-M11-2 | 2 |
+| **P1** | FR-M1-4, FR-M1-5, FR-M1-7, FR-M2-4, FR-M2-5, FR-M3-5, FR-M4-15, FR-M6-5, FR-M6-6, FR-M7-5, FR-M7-6, FR-M8-5, FR-M9-4, FR-M5-7 | 2 |
+| **P1** | FR-M3-4, FR-M3-6, FR-M3-8, FR-M4-16, FR-M6-7 | 3 |
+| **P2** | FR-M4-9 | 3, stage SH-5 |
 | **P1** | FR-M5-10, FR-M10-4 to FR-M10-6 | 4 |
 | **P2** | FR-M4-6 to FR-M4-8, FR-M5-9, FR-M9-5, FR-M9-6, FR-M1-6, FR-M2-6, FR-M3-7 | 2–4, as capacity allows |
 | **P2** | FR-M7-7, FR-M8-6, FR-M11-5, FR-M11-6, FR-M12-1, FR-M12-2, FR-M12-6, FR-M13-3 to FR-M13-6 | 4–5 |
-| **P3** | FR-M2-8, FR-M4-9, FR-M7-8, FR-M8-7 to FR-M8-9, FR-M9-7, FR-M10-7, FR-M11-7, FR-M12-3 to FR-M12-5, FR-M13-7, FR-M13-8 | 5 and later |
+| **P3** | FR-M2-8, FR-M7-8, FR-M8-7 to FR-M8-9, FR-M9-7, FR-M10-7, FR-M11-7, FR-M12-3 to FR-M12-5, FR-M13-7, FR-M13-8 | 5 and later |
 | **P1** | FR-M14-1 to FR-M14-9 | 3, stage DI-1 |
-| **P1** | FR-M15-1 to FR-M15-5, FR-M15-7 to FR-M15-9, FR-M15-11, FR-M4-10 | 4, stage DI-2 |
+| **P1** | FR-M15-1 to FR-M15-5, FR-M15-7 to FR-M15-9, FR-M15-11, FR-M4-10, FR-M4-11 (previewed rows) | 4, stage DI-2 |
 | **P2** | FR-M15-6, FR-M15-10, FR-M15-12 to FR-M15-17, FR-M14-10, FR-M14-11 | 4, stage DI-3 |
-| **P2** | FR-M16-1 to FR-M16-7, FR-M4-11 | 5, stage DI-4 |
+| **P2** | FR-M16-1 to FR-M16-7, FR-M4-11 (materialised data) | 5, stage DI-4 |
 | **P2** | FR-M14-12, FR-M13-9, FR-M13-10 | 5, stage DI-5 |
 | **P3** | FR-M14-13, FR-M15-18, FR-M16-8, FR-M16-9, FR-M12-7 | later |
 
@@ -495,6 +598,9 @@ purpose:
 - **Build real-time co-editing before review-based collaboration has been tried.**
 - **Turn database constraints into OWL axioms automatically, or a table into a class by
   default.** See ADR-017.
+- **Turn an OWL restriction, domain or range into a SHACL constraint, or a shape into an
+  axiom, without the user's review.** See ADR-020.
+- **Build on SHACL 1.2 before it is a W3C Recommendation.** See ADR-021.
 - **Write a SPARQL-to-SQL engine.** An existing one is adopted at stage DI-4 (ADR-016).
 - **Write to an external database.** See ADR-018.
 - **Support three database dialects in the first release.** See ADR-015.
@@ -503,40 +609,43 @@ purpose:
 
 ## 10. The next concrete development task
 
-**Task 1.1 with 1.2: the safety net.** It is small, changes no behaviour, and every later task
-relies on it.
+Phase 1 is done, and 2.1 and 2.2 with it (see [BASELINES.md](BASELINES.md) and
+[TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for what each measured and left).
+
+**Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
+sets from the start, and SH-2 and SH-3 build on it.
 
 **Scope.**
 
-1. A `verify` script in `package.json` that runs, in order: `tsc --noEmit`, `vitest run`,
-   `vite build`, starts the preview server on a free port, runs every `e2e/*.mjs` against it
-   and then `e2e/ui-audit.mjs`, and stops the server. Exit code non-zero if anything fails.
-2. The eight browser scripts that hard-code the port take the base URL as an argument, as the
-   other thirteen do.
-3. A CI workflow that runs `verify` on every push, with Node 22, pnpm, a JDK (the reasoner
-   tests skip without one) and a cache for `reasoner/lib/robot.jar` keyed by its pinned
-   SHA-256.
-4. A linter configuration consistent with the `eslint-disable` comments already in the source,
-   added to `verify`.
-5. A scheduled job that runs the two benchmark tests and stores their output; a browser
-   measurement of the longest main-thread task for an edit, a reasoner run and a validation run
-   on the 2,600-class generated model.
-6. The timing check in `e2e/sidebar-tree.mjs` made robust (a median of several runs, or a bound
-   relative to a calibration step).
+1. **Shape sets.** The model holds several named shape sets instead of one shapes graph (model
+   format 5); each has a name, a description of what it is for, its own namespace for new shapes,
+   and its shapes. A model of format 4 opens with its shapes as one set, unchanged.
+2. **The *Shapes* view**, a tab beside Graph, Entities and Structure: the sets; within a set the
+   shapes, searched and grouped by target; a shape's form, the one in *Validation* today, moved
+   here. *Validation* links to it.
+3. **Every SHACL 1.0 Core construct in the form**: logical constraints, qualified value shapes,
+   property pair constraints, every kind of property path, nested and referenced shapes, closed
+   shapes with ignored properties. What the form still cannot hold (SHACL-SPARQL) is kept as
+   written, shown, and written back.
+4. **Import and export per set**: a Turtle file in, a set out; nothing lost, checked statement for
+   statement as the ontology's round trip is.
+5. **Shapes from the entities' side**: a class's and a property's editor list the shapes that
+   target or constrain them, in every set, and offer *Add a shape for this class*.
+6. Shape edits are change sets: undone, redone and kept in the working copy like any other edit.
 
-**Out of scope.** Any change to application behaviour.
+**Out of scope.** Validation changes (SH-2), proposals from the ontology (SH-3), SHACL-SPARQL
+(SH-5), and anything of SHACL 1.2.
 
 **Acceptance.**
 
-- On a clean clone, one command runs every check and ends green.
-- A deliberately broken rule (for example, allowing a class to be its own superclass) turns the
-  pipeline red.
-- A baseline report exists with today's numbers, against which Phase 1's "under 100 ms" is
-  later judged.
+- The shapes of the W3C SHACL 1.0 Core test suite open in the form and are written back
+  statement for statement.
+- Two shape sets with a different shape for one class are kept apart, exported apart, and
+  survive a reload and an undo.
+- A model saved before SH-1 opens with the same shapes, now as one set, and validates to the
+  same findings.
 
-**Then.** Task 1.3 (round-trip corpus), so that the loss this roadmap sets out to remove is
-measured before it is fixed, and task 1.4 (stable identity), the first structural change.
+**Then.** SH-2 and SH-3, and with them milestone MS-12; then 2.3.
 
 **The data-integration track does not change this.** Its first task is 3.8, after the backend
-exists. What it asks of the earlier phases is small and already scheduled: entities identified
-by IRI (1.4), and a mapping core in task 2.4 that does not assume its source is a file.
+exists; from SH-2 it can validate what a mapping previews against a chosen shape set (4.11).

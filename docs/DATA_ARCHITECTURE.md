@@ -54,7 +54,7 @@ engine built afresh from the exported Turtle (`src/model/sparql.ts`).
 | --- | --- | --- |
 | Asserted axioms | Model JSON in IndexedDB | Named graph in TDB2 |
 | Inferred axioms | In memory, per session | Named graph in TDB2, per revision and reasoner |
-| SHACL shapes | In the model | Named graph in TDB2 |
+| SHACL shape sets (from SH-1; one set until then) | In the model | A named graph in TDB2 for each set |
 | External ontologies | Turtle in IndexedDB (`externals`) | Named graphs in TDB2, shared between projects |
 | Versions and change sets | IndexedDB | Relational rows; snapshot graphs for releases |
 | Projects, members, roles | — (one user) | Relational |
@@ -87,7 +87,7 @@ the migration map.
 | `relations` | Subclass links, memberships, restrictions, facts, standard-property statements | Axioms in the asserted graph |
 | `relations[].fromCard`, `.toCard` and plain relationships (SKOS mode) | Diagram cardinalities and non-OWL lines | In a vocabulary: SKOS statements in the graph. Cardinality text: diagram metadata |
 | `vocab` | Which labels stand for which standard property | `project.settings` (an authoring convenience) |
-| `shapes` | SHACL shapes (form-edited nodes and extra Turtle) | The shapes graph |
+| `shapes` | SHACL shapes (form-edited nodes and extra Turtle); from SH-1 (model format 5) several named shape sets | One shapes graph for each set |
 | `quality` | Quality rules switched on or off | `project.settings` |
 | `externals` | References to added ontologies | `external_ontology`, `ontology_import`; content in external graphs |
 | `mappings`, `rejected` | Mapping metadata: method, score, status, author, comment; suggestions turned down | `alignment_mapping`, `rejected_suggestion`. The mapping *statement* itself (`owl:equivalentClass`, `skos:exactMatch`) is an axiom in the asserted graph |
@@ -115,7 +115,7 @@ the union default graph is off, so a query always says which graphs it reads.
 | Graph name | Contents | Lifetime |
 | --- | --- | --- |
 | `urn:conceptweaver:project:{projectId}:head` | The asserted axioms of the project's current revision, including the ontology header and all annotations. | Changed only by applying a change set. |
-| `urn:conceptweaver:project:{projectId}:shapes` | SHACL shapes of the project. | Changed by change sets that name this graph. |
+| `urn:conceptweaver:project:{projectId}:shapes:{setId}` | The shapes of one shape set of the project (a constraint model; DEVELOPMENT_ROADMAP.md §1.4). | Changed by change sets that name this graph. |
 | `urn:conceptweaver:project:{projectId}:rev:{seq}` | A full copy of `head` as it was at revision `seq`. | Written once, when a revision is tagged as a release. Immutable. |
 | `urn:conceptweaver:project:{projectId}:inferred:{seq}:{reasoner}` | Axioms inferred from revision `seq` by one reasoner: direct subclass links, equivalences, unsatisfiable classes, inferred types and property assertions. | Written by a reasoning job. Disposable: it can always be recomputed. |
 | `urn:conceptweaver:project:{projectId}:data:{datasetId}` | Instance data: loaded for SHACL validation, or materialised from a relational source through a mapping (§10.8). | Until removed. |
@@ -275,7 +275,7 @@ erDiagram
 | --- | --- | --- |
 | `project` | `id`, `workspace_id`, `name`, `kind` (`ontology`, `skos`), `ontology_iri`, `base_iri`, `default_lang`, `prefixes` (JSON), `settings` (JSON: quality rules, governance fields, label mappings), `head_revision_id`, `created_by`, `created_at`, `archived_at` | PK `id`; FK `workspace_id`; unique (`workspace_id`, `name`); index `ontology_iri` |
 | `ontology_revision` | `id`, `project_id`, `seq`, `parent_id`, `content_hash`, `author_id`, `summary`, `state` (`pending`, `committed`), `axiom_count`, `added`, `removed`, `tag`, `version_iri`, `snapshot_graph`, `created_at` | PK `id`; unique (`project_id`, `seq`); unique (`project_id`, `tag`) where `tag` is set; index (`project_id`, `created_at` descending) |
-| `change_entry` | `revision_id`, `ordinal`, `graph` (`head`, `shapes`), `op` (`add`, `remove`), `axiom_type`, `subject_iri`, `axiom` (OWL functional syntax, or Turtle for unmapped statements) | PK (`revision_id`, `ordinal`); index (`subject_iri`, `revision_id`) for "history of this entity" |
+| `change_entry` | `revision_id`, `ordinal`, `graph` (`head`, or `shapes:{setId}`), `op` (`add`, `remove`), `axiom_type`, `subject_iri`, `axiom` (OWL functional syntax, or Turtle for unmapped statements) | PK (`revision_id`, `ordinal`); index (`subject_iri`, `revision_id`) for "history of this entity" |
 | `external_ontology` | `id`, `ontology_iri`, `version_iri`, `content_hash`, `name`, `namespace`, `source`, `source_kind`, `graph_name`, `class_count`, `object_property_count`, `data_property_count`, `individual_count`, `fetched_at` | PK `id`; unique `content_hash`; index `ontology_iri` |
 | `ontology_import` | `project_id`, `external_ontology_id`, `declared` (whether `owl:imports` is written), `added_at` | PK (`project_id`, `external_ontology_id`) |
 
@@ -296,7 +296,7 @@ These mirror `MappingMeta` and `Model.rejected`, with the same values.
 | Table | Columns | Keys and indexes |
 | --- | --- | --- |
 | `reasoning_job` | `id`, `project_id`, `revision_id`, `requested_engine`, `reasoner`, `reasoner_version`, `state` (`queued`, `running`, `done`, `failed`, `cancelled`), `completeness` (`complete`, `partial`, `failed`), `consistent`, `unsatisfiable_count`, `inferred_count`, `inferred_graph`, `time_limit_ms`, `duration_ms`, `report` (JSON: what was left out, profile violations, errors), `requested_by`, `created_at`, `started_at`, `finished_at` | PK `id`; index (`revision_id`, `reasoner`, `state`); index (`project_id`, `created_at` descending) |
-| `validation_run` | `id`, `project_id`, `revision_id`, `scope` (`all`, `owl`, `shacl`, `quality`), `data_source`, `shapes_hash`, `state`, `conforms`, `error_count`, `warning_count`, `info_count`, `engine`, `created_at`, `finished_at` | PK `id`; index (`project_id`, `revision_id`) |
+| `validation_run` | `id`, `project_id`, `revision_id`, `scope` (`all`, `owl`, `shacl`, `quality`), `data_source`, `shape_set_id`, `shapes_hash`, `state`, `conforms`, `error_count`, `warning_count`, `info_count`, `engine`, `created_at`, `finished_at` | PK `id`; index (`project_id`, `revision_id`) |
 | `validation_finding` | `run_id`, `ordinal`, `category` (`owl`, `shacl`, `quality`), `level` (`error`, `warning`, `info`), `rule`, `entity_iri`, `entity_type`, `message`, `detail` (JSON) | PK (`run_id`, `ordinal`); index (`run_id`, `level`); index (`run_id`, `entity_iri`) |
 | `mapping_template` | `id`, `project_id`, `name`, `source_kind` (`csv`, `xlsx`), `definition` (JSON: which column becomes what), `created_by`, `created_at`, `updated_at` | PK `id`; unique (`project_id`, `name`) |
 | `import_job` | `id`, `project_id`, `template_id`, `file_name`, `row_count`, `state`, `result_revision_id`, `report` (JSON: rows skipped and why), `created_by`, `created_at`, `finished_at` | PK `id`; index (`project_id`, `created_at` descending) |
@@ -346,7 +346,7 @@ CREATE INDEX ontology_revision_recent ON ontology_revision (project_id, created_
 CREATE TABLE change_entry (
   revision_id uuid NOT NULL REFERENCES ontology_revision(id) ON DELETE CASCADE,
   ordinal     integer NOT NULL,
-  graph       text NOT NULL DEFAULT 'head' CHECK (graph IN ('head', 'shapes')),
+  graph       text NOT NULL DEFAULT 'head' CHECK (graph = 'head' OR graph LIKE 'shapes:%'),
   op          text NOT NULL CHECK (op IN ('add', 'remove')),
   axiom_type  text NOT NULL,
   subject_iri text,
