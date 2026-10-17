@@ -208,7 +208,15 @@ ok((await page.locator('.ldm-rel').first().getAttribute('stroke-dasharray')) ===
 ok((await page.locator('.ldm-canvas .ldm-gen-group').count()) === 1, 'the subtype is drawn as a subtype');
 ok((await page.locator('.ldm-canvas .ldm-gen').count()) === 2 && (await page.locator('.ldm-canvas .ldm-gen-symbol').count()) === 1, 'with the notation’s symbol where the line branches to Order');
 ok((await page.locator('.ldm-canvas .ldm-gen-label').textContent()) === 'subtype', 'and is labelled “subtype”');
-const customerNode = nodes.filter({ hasText: 'Customer' });
+const customerNode = nodes.filter({ hasText: /^Customer/ });
+const textOf = async (loc) => flat(await loc.textContent());
+ok((await textOf(customerNode)).includes('PK email'), 'an entity’s own primary key is marked PK in its box');
+const orderNode = nodes.filter({ hasText: /^Order/ });
+ok((await textOf(orderNode)).includes('PK email — inherited from Customer'), 'a subtype shows the primary key it inherits, and from where: ' + (await textOf(orderNode)));
+const associativeText = await textOf(nodes.filter({ hasText: /^buys/ }));
+ok(associativeText.includes('identity of Customer') && associativeText.includes('identity of Order'), 'an associative entity shows the identity its key borrows from both ends: ' + associativeText);
+ok((await page.locator('.ldm-node .ldm-domain-type', { hasText: 'Rating' }).count()) === 1, 'an attribute typed by a domain — what an enumeration becomes in the LDM — shows the domain in its row');
+await page.screenshot({ path: shots + 'logical-diagram.png' });
 const handle = await customerNode.elementHandle();
 const transform = () => page.evaluate((el) => el.getAttribute('transform'), handle);
 const before = await transform();
@@ -305,7 +313,7 @@ await page.screenshot({ path: shots + 'logical-workspace.png' });
 const movedTransform = nudged;
 await part('Diagram').click();
 await page.waitForFunction(() => document.querySelectorAll('.ldm-node').length === 4);
-const customerAgain = page.locator('.ldm-node').filter({ hasText: 'Customer' });
+const customerAgain = page.locator('.ldm-node').filter({ hasText: /^Customer/ });
 ok((await customerAgain.getAttribute('transform')) === movedTransform, 'where the entities sit is kept with the model');
 await page.waitForTimeout(500);
 await page.reload();
@@ -317,7 +325,7 @@ await page.locator('.ldm-list li button', { hasText: 'Customer' }).click();
 ok(flat(await page.locator('.ldm-key').innerText()).includes('email'), 'its keys too');
 await part('Diagram').click();
 await page.waitForFunction(() => document.querySelectorAll('.ldm-node').length === 4);
-ok((await page.locator('.ldm-node').filter({ hasText: 'Customer' }).getAttribute('transform')) === movedTransform, 'and where the diagram put them');
+ok((await page.locator('.ldm-node').filter({ hasText: /^Customer/ }).getAttribute('transform')) === movedTransform, 'and where the diagram put them');
 
 // The diagram's own tools make the same change sets as the forms do.
 await page.getByRole('button', { name: 'New entity' }).click();

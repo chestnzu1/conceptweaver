@@ -177,7 +177,7 @@ export function LdmView() {
       {view.section === 'domains' && (
         <div className="ldm-body">
           <DomainList m={model} selected={domain?.id ?? null} set={set} apply={apply} />
-          {domain ? <DomainEditor m={model} domain={domain} apply={apply} /> : <p className="muted pad">No domain yet. A domain is a base type narrowed by a length, a range, a pattern or a list of values.</p>}
+          {domain ? <DomainEditor m={model} domain={domain} apply={apply} /> : <p className="muted pad">No domain yet. A domain is a base type narrowed by a length, a range, a pattern or a list of values; an enumeration is a domain with its values.</p>}
         </div>
       )}
       {view.section === 'rules' && (

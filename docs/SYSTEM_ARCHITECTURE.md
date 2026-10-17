@@ -1040,7 +1040,8 @@ flowchart LR
 
 - **Not one-to-one.** One class may become several entities (in one LDM or in several), or
   several classes one entity; one datatype property one attribute in each of several entities;
-  an object property a relationship, or an associative entity with attributes of its own; a
+  an object property a relationship, an attribute of the class at one end when the other end is an
+  enumerated class (its domain), or an associative entity with attributes of its own; a
   subclass hierarchy one entity per class, or a single entity with a discriminator. And an LDM may
   have entities with no semantic source at all: an audit trail, a staging record, an application
   setting. Such an element is application-specific, not an error.

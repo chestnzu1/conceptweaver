@@ -995,12 +995,17 @@ edit moves the ontology's revision (NFR-17).
 The ER diagram (`src/components/LdmDiagram.tsx`) is Information Engineering / crow's foot: each
 end drawn with its own cardinality (a foot for many, a stroke for exactly one, a ring for
 optional), solid for an identifying relationship and dashed otherwise, a recursive relationship as
-a loop. It is drawn from the same model in a view of its own: the built-in hierarchy layout places
-the entities, but where they sit is stored only once someone moves one
-(`LogicalModel.diagrams[0].positions`), apart from what the model means, and a name or attribute
-edit does not move the picture. Choosing an entity (click, Enter or Space) opens its editor; arrow
-keys nudge it (Shift for more), `+`, `-` and `0` zoom and fit; a drag is one undoable step. Its
-tools make an entity or a relationship with the same change sets as the sections.
+a loop. A box marks the attributes of a primary key `PK` and of a candidate key `AK`, and writes a
+key its attribute rows cannot show on a line of their own: the identity it borrows from an
+identifying relationship (`identity of Customer`), an attribute past the rows drawn, and every
+inherited key, with the supertype it comes from. An attribute typed by a domain — the LDM's form of
+an enumeration — writes the domain's name, marked apart from the built-in types. It is drawn from the same model in
+a view of its own: the built-in hierarchy layout places the entities, but where they sit is stored
+only once someone moves one (`LogicalModel.diagrams[0].positions`), apart from what the model
+means, and a name or attribute edit does not move the picture. Choosing an entity (click, Enter or
+Space) opens its editor; arrow keys nudge it (Shift for more), `+`, `-` and `0` zoom and fit; a
+drag is one undoable step. Its tools make an entity or a relationship with the same change sets as
+the sections.
 
 Validation (`src/logical/findings.ts`, shown in *Validation*) is a category of its own, worked out
 from the document as it stands rather than from the last validation run, so its findings are never
@@ -1033,7 +1038,8 @@ from the last part of each IRI, as written or lower, upper, Pascal or camel case
 space, nothing, an underscore or a hyphen, entity names optionally singular; the datatype table,
 each XSD type's logical type changeable and kept with the model; hierarchies as a specialization,
 one entity per hierarchy, or attributes copied into each subtype; object properties as
-relationships, or associative entities where both ends are many; definitions read from the
+relationships, as associative entities where both ends are many, or as an attribute of the class at
+one end typed by the domain an enumerated class became; definitions read from the
 ontology or not. Below it the proposals are grouped by what they would make, chosen one by one or
 by kind, each with the axioms it was read from, the elements it would make or change, its
 strategy, why, and where OWL and the LDM differ; structure comes chosen, while a candidate
@@ -1048,7 +1054,8 @@ why. The ontology is never written.
 `src/traceability/transform.test.ts` checks the proposals for the example ontology — a structure
 proposal per class, datatype property, object property and subclass edge; nothing mandatory; one
 relationship for an inverse pair; roll-up and roll-down; associative entities; functionality as a
-reason; restrictions and keys as candidates only; enumerations as domains; scopes and naming —
+reason; restrictions and keys as candidates only; enumerations as domains, and an object property
+to an enumerated class as an attribute typed by its domain; scopes and naming —
 and the service: one change set with the configuration, refusals for a moved base or a missing
 requirement, and the ontology untouched. `e2e/transformation.mjs` checks the dialog in the
 browser, from the configuration through the review, by kind and one by one, to the worker, the

@@ -8655,9 +8655,23 @@ tbody tr.pinned td:first-child {
   fill: var(--ink-3);
 }
 
+.ldm-domain-type {
+  fill: var(--accent);
+  font-style: italic;
+}
+
 .ldm-pk {
   fill: var(--accent);
   font-weight: 700;
+}
+
+.ldm-ak {
+  fill: var(--ink-2);
+  font-weight: 700;
+}
+
+.ldm-node-key {
+  font-style: italic;
 }
 
 .ldm-attr-mark {

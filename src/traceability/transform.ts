@@ -144,6 +144,8 @@ interface Context {
   entityProposal: Map<string, string>;
   /** The enumerated datatype id or the enumerated class IRI each domain was made from. */
   domainByEnum: Map<string, string>;
+  /** The proposal that made each domain, where one in this result did. */
+  domainProposal: Map<string, string>;
   /** The object property IRI each relationship was made from. */
   relationshipByProp: Map<string, string>;
   relationshipProposal: Map<string, string>;
@@ -630,6 +632,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     entityByClass: new Map(),
     entityProposal: new Map(),
     domainByEnum: new Map(),
+    domainProposal: new Map(),
     relationshipByProp: new Map(),
     relationshipProposal: new Map(),
     attributeByProp: new Map(),
@@ -691,7 +694,8 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     const rationale = `The ontology defines ${d.name || iri} by listing its values; an LDM domain holds that list for every attribute typed by it.`;
     const difference = 'A datatype in OWL is a set of literals; an LDM domain is a named, reusable type for attributes. The values are proposed as the domain’s list, which the user may change.';
     const m = mapping(ctx, sources, [{ domain: domain.id }], strategy, rationale, { domain });
-    propose(ctx, { kind: 'domain', title: `Domain from the enumerated datatype ${d.name || localPart(iri)}`, sources, elements: [`Domain ${domain.name}`], changes: [{ op: 'add', element: { kind: 'domain', domain } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires: [], candidate: false });
+    const proposal = propose(ctx, { kind: 'domain', title: `Domain from the enumerated datatype ${d.name || localPart(iri)}`, sources, elements: [`Domain ${domain.name}`], changes: [{ op: 'add', element: { kind: 'domain', domain } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires: [], candidate: false });
+    ctx.domainProposal.set(domain.id, proposal.id);
     ctx.domainByEnum.set('id:' + d.id, domain.id);
     ctx.domainByEnum.set(iri, domain.id);
   }
@@ -721,7 +725,8 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     const rationale = `The ontology defines ${t.name || iri} by listing its members; the LDM keeps the list as a domain of values.`;
     const difference = 'Members of an OWL class are individuals, each with an identity; the values of an LDM domain are codes. The members become codes, which the user may rename.';
     const m = mapping(ctx, sources, [{ domain: domain.id }], strategy, rationale, { domain });
-    propose(ctx, { kind: 'domain', title: `Domain from the enumerated class ${t.name || localPart(iri)}`, sources, elements: [`Domain ${domain.name}`], changes: [{ op: 'add', element: { kind: 'domain', domain } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires: [], candidate: false });
+    const proposal = propose(ctx, { kind: 'domain', title: `Domain from the enumerated class ${t.name || localPart(iri)}`, sources, elements: [`Domain ${domain.name}`], changes: [{ op: 'add', element: { kind: 'domain', domain } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires: [], candidate: false });
+    ctx.domainProposal.set(domain.id, proposal.id);
     ctx.domainByEnum.set(iri, domain.id);
   }
 
@@ -879,8 +884,89 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       seenPairs.add(key);
       pairs.push([domainIri, rangeIri]);
     }
+    // An enumerated class is kept as a domain, not an entity, so a property that links an entity
+    // to one has no second entity to join. The link is an attribute of the entity, typed by that
+    // domain: a logical reference, not a physical foreign key (ADR-026). A property stated in both
+    // directions is named by the one that starts at the entity.
+    interface EnumTarget { entityIri: string; enumIri: string; domain: string; prop: ObjProp; fromEntity: boolean }
+    const enumCandidates: EnumTarget[] = [];
+    for (const dir of [p, ...(inverse ? [inverse] : [])]) {
+      const dirEnds = objectEnds(ctx, dir);
+      for (const d of dirEnds.domains) {
+        for (const r of dirEnds.ranges) {
+          const domainAtRange = classByIri.get(r)?.oneOf ? ctx.domainByEnum.get(r) : undefined;
+          const domainAtDomain = classByIri.get(d)?.oneOf ? ctx.domainByEnum.get(d) : undefined;
+          if (ctx.entityByClass.has(d) && domainAtRange) enumCandidates.push({ entityIri: d, enumIri: r, domain: domainAtRange, prop: dir, fromEntity: true });
+          else if (ctx.entityByClass.has(r) && domainAtDomain) enumCandidates.push({ entityIri: r, enumIri: d, domain: domainAtDomain, prop: dir, fromEntity: false });
+        }
+      }
+    }
+    const enumTargets: EnumTarget[] = [];
+    const seenEnum = new Set<string>();
+    for (const c of [...enumCandidates.filter((x) => x.fromEntity), ...enumCandidates.filter((x) => !x.fromEntity)]) {
+      const key = `${ctx.entityByClass.get(c.entityIri)}|${c.domain}`;
+      if (seenEnum.has(key)) continue;
+      seenEnum.add(key);
+      enumTargets.push(c);
+    }
+    // The same move-up rule as attributes from data properties: one attribute on the topmost
+    // class in scope that an entity was made from.
+    const enumCovered = new Set(enumTargets.map((c) => ctx.entityByClass.get(c.entityIri)!));
+    const topEnumTargets = enumTargets.filter((c) => !superIrisOf(c.entityIri, hierarchy).some((s) => {
+      const above = ctx.entityByClass.get(s);
+      return above !== undefined && above !== ctx.entityByClass.get(c.entityIri) && enumCovered.has(above);
+    }));
+    const dirIris = [iri, ...(inverse ? [propIriOf(model, inverse)] : [])];
+    let madeEnumAttribute = false;
+    for (const target of topEnumTargets) {
+      const entityId = ctx.entityByClass.get(target.entityIri)!;
+      const already = dirIris.some((x) => {
+        const attributeId = ctx.attributeByProp.get(`${x}|${entityId}`);
+        return !!attributeId && refExists(ctx.working, { attribute: attributeId });
+      });
+      if (already) {
+        ctx.skipped.push({ iri, name: p.name, reason: 'already represented by an attribute' });
+        madeEnumAttribute = true;
+        break;
+      }
+      const entity = ctx.working.entities.find((e) => e.id === entityId)!;
+      const targetIri = propIriOf(model, target.prop);
+      const enumName = classByIri.get(target.enumIri)?.name || localPart(target.enumIri);
+      const domain = ctx.working.domains.find((d) => d.id === target.domain)!;
+      const attribute: LogicalAttribute = {
+        id: newId('a'),
+        name: freeName(name(target.prop.name, targetIri, false), attributeNames(ctx, entityId)),
+        definition: config.definitions ? target.prop.description : '',
+        type: { domain: target.domain },
+        optional: true,
+      };
+      const sources = [p, ...(inverse ? [inverse] : [])].map((x) => ({ iri: propIriOf(model, x), label: x.name, axioms: objectAxioms(ctx, x) }));
+      const strategy = 'object property to an enumerated class → attribute typed by its domain';
+      const rationale = target.fromEntity
+        ? `The ontology gives ${entity.name} the object property ${target.prop.name || localPart(targetIri)}, whose range is the enumerated class ${enumName}; the LDM keeps that class as the domain ${domain.name}, and the link as an attribute typed by it.${target.prop.chars.includes('functional') ? ' It is functional, so one value fits.' : ''}`
+        : `The ontology gives the enumerated class ${enumName} the object property ${target.prop.name || localPart(targetIri)}, whose range is ${entity.name}; read from ${entity.name}, it is a reference to a member of ${enumName}, which the LDM keeps as the domain ${domain.name}.${target.prop.chars.includes('functional') ? ' It is functional, so one value fits.' : ''}`;
+      const difference = `In OWL the value is an individual of ${enumName}, and the property may have several; an LDM attribute holds one value of the domain and is optional until the user makes it mandatory (NFR-18). The LDM is logical, so the reference is the attribute’s domain rather than a physical foreign key (ADR-026).`;
+      const m = mapping(ctx, sources, [{ attribute: attribute.id }], strategy, rationale, { attribute });
+      const requires = [target.entityIri].filter((x) => ctx.entityProposal.has(x)).map((x) => ctx.entityProposal.get(x)!);
+      if (ctx.domainProposal.has(target.domain)) requires.push(ctx.domainProposal.get(target.domain)!);
+      const proposal = propose(ctx, {
+        kind: 'attribute',
+        title: `Attribute ${attribute.name} on ${entity.name}`,
+        sources,
+        elements: [`Attribute ${entity.name}.${attribute.name}`],
+        changes: [{ op: 'add', element: { kind: 'attribute', entity: entityId, attribute } }, { op: 'add', element: { kind: 'mapping', mapping: m } }],
+        strategy,
+        rationale,
+        difference,
+        requires,
+        candidate: false,
+      });
+      for (const x of dirIris) ctx.attributeByProp.set(`${x}|${entityId}`, attribute.id);
+      ctx.attributeProposal.set(attribute.id, proposal.id);
+      madeEnumAttribute = true;
+    }
     if (!pairs.length) {
-      ctx.skipped.push({ iri, name: p.name, reason: 'the classes at its ends are not in scope' });
+      if (!madeEnumAttribute) ctx.skipped.push({ iri, name: p.name, reason: 'the classes at its ends are not in scope' });
       continue;
     }
     const sources = [{ iri, label: p.name, axioms: objectAxioms(ctx, p) }, ...(inverse ? [{ iri: propIriOf(model, inverse), label: inverse.name, axioms: objectAxioms(ctx, inverse) }] : [])];
@@ -1045,8 +1131,11 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     const entityId = ctx.entityByClass.get(r.classIri);
     if (!entityId) continue;
     const isData = model.terms.some((t) => t.type === 'property' && termIri(model, t) === r.propIri);
-    if (isData) {
-      const attributeId = ctx.attributeByProp.get(`${r.propIri}|${entityId}`);
+    // An object property to an enumerated class is an attribute too, and a restriction on it
+    // constrains that attribute.
+    const attributeAt = ctx.attributeByProp.get(`${r.propIri}|${entityId}`);
+    if (isData || attributeAt) {
+      const attributeId = attributeAt;
       const entity = ctx.working.entities.find((e) => e.id === entityId);
       const attribute = attributeId ? entity?.attributes.find((a) => a.id === attributeId) : undefined;
       if (!attribute || !attributeId) {

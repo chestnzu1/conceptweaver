@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { withIris } from '../model/iri';
 import { sampleModel } from '../model/sample';
-import type { Model } from '../model/types';
-import type { LogicalModel, TransformationConfig } from '../logical/contracts';
+import { newProp, newTerm, type Model } from '../model/types';
+import type { LogicalAttribute, LogicalModel, TransformationConfig } from '../logical/contracts';
 import { createLocalLogicalServices } from '../logical/local';
 import { applied, emptyLogicalModel, logicalModelFrom, transformationConfigFrom } from '../logical/rules';
 import { createLocalTransformationService, onThePage } from './local';
@@ -23,6 +23,42 @@ function generalizationOf(p: TransformationProposal) {
   const add = p.changes.find((c) => c.op === 'add' && c.element.kind === 'generalization');
   if (!add || add.op !== 'add' || add.element.kind !== 'generalization') throw new Error('no generalization in the proposal');
   return add.element.generalization;
+}
+
+/** The attribute a proposal adds and the entity it is added to. */
+function addedAttribute(p: TransformationProposal): { entity: string; attribute: LogicalAttribute } {
+  const add = p.changes.find((c) => c.op === 'add' && c.element.kind === 'attribute');
+  if (!add || add.op !== 'add' || add.element.kind !== 'attribute') throw new Error('no attribute in the proposal');
+  return { entity: add.element.entity, attribute: add.element.attribute };
+}
+
+/**
+ * The example ontology with an enumerated class and an object property that links Film to it:
+ * from Film to the class (forward), from the class to Film (reversed), or a pair of both.
+ */
+function enumerationModel(kind: 'forward' | 'reversed' | 'pair' = 'forward') {
+  const m = ontology();
+  const red = newTerm({ name: 'Red', type: 'instance' });
+  const green = newTerm({ name: 'Green', type: 'instance' });
+  const signalIri = 'http://example.org/film#SignalColour';
+  m.terms.push(red, green, newTerm({ name: 'Signal colour', oneOf: [red.id, green.id], iri: signalIri }));
+  const filmIri = iriOf(m, 'Film');
+  const forward = newProp({ name: 'has colour', description: '', chars: [] });
+  forward.domains = [{ id: 'd-film', expression: { type: 'Class', iri: filmIri } }];
+  forward.ranges = [{ id: 'r-signal', expression: { type: 'Class', iri: signalIri } }];
+  const backward = newProp({ name: 'is colour of', description: '', chars: [] });
+  backward.domains = [{ id: 'd-signal', expression: { type: 'Class', iri: signalIri } }];
+  backward.ranges = [{ id: 'r-film', expression: { type: 'Class', iri: filmIri } }];
+  if (kind === 'forward') m.props.push(forward);
+  else if (kind === 'reversed') m.props.push(backward);
+  else {
+    forward.inverses = [backward.id];
+    backward.inverses = [forward.id];
+    m.props.push(forward, backward);
+  }
+  const model = withIris(m);
+  const iriOfProp = (p: typeof forward) => model.props.find((x) => x.id === p.id)?.iri ?? '';
+  return { model, filmIri, signalIri, forwardIri: iriOfProp(forward), backwardIri: iriOfProp(backward) };
 }
 
 /** What applying every structural proposal (the acceptance's "accept all") gives. */
@@ -259,6 +295,80 @@ describe('the transformation proposals for the example ontology', () => {
     expect(result.domains[0].constraints.values?.map((v) => v.code)).toEqual(['short', 'feature']);
     expect(result.domains[0].base).toEqual({ base: 'text' });
     expect(result.entities.find((e) => e.name === 'Film')!.attributes.find((a) => a.name === 'Running time')!.type).toEqual({ domain: result.domains[0].id });
+  });
+
+  it('gives an entity an attribute typed by the domain when an object property reaches an enumerated class', () => {
+    const { model, forwardIri } = enumerationModel();
+    const proposed = propose(model, ldm());
+    const [attributeProposal] = proposed.proposals.filter((p) => p.strategy === 'object property to an enumerated class → attribute typed by its domain');
+    expect(attributeProposal).toBeTruthy();
+    const { attribute } = addedAttribute(attributeProposal);
+    expect(attribute.name).toBe('has colour');
+    expect(attribute.optional).toBe(true);
+    expect('domain' in attribute.type).toBe(true);
+    // The enumerated class is a domain, not a second entity: no relationship is proposed for the property.
+    expect(proposed.proposals.filter((p) => p.kind === 'relationship' && p.sources.some((s) => s.iri === forwardIri))).toEqual([]);
+    expect(proposed.skipped.some((s) => s.iri === forwardIri)).toBe(false);
+    // The attribute stays only when the domain and the entity it types are accepted.
+    const domainProposal = proposed.proposals.find((p) => p.kind === 'domain')!;
+    const entityProposal = proposed.proposals.find((p) => p.kind === 'entity' && p.elements.includes('Entity Film'))!;
+    expect(attributeProposal.requires).toEqual(expect.arrayContaining([domainProposal.id, entityProposal.id]));
+
+    const { result } = acceptStructure(model, ldm());
+    const film = result.entities.find((e) => e.name === 'Film')!;
+    const made = film.attributes.find((a) => a.name === 'has colour')!;
+    expect(made.type).toEqual({ domain: result.domains[0].id });
+    expect(made.optional).toBe(true);
+    expect(result.relationships).toHaveLength(5);
+    const mapping = result.mappings.find((m) => m.targets.some((t) => 'attribute' in t && t.attribute === made.id))!;
+    expect(mapping.sources.map((s) => s.iri)).toContain(forwardIri);
+
+    // A later run finds the attribute and says so, rather than claiming the class is out of scope.
+    const again = propose(model, result);
+    expect(again.proposals.filter((p) => p.strategy === 'object property to an enumerated class → attribute typed by its domain')).toEqual([]);
+    expect(again.skipped.find((s) => s.iri === forwardIri)?.reason).toBe('already represented by an attribute');
+  });
+
+  it('reads an object property stated from the enumerated class towards the entity as the entity’s attribute', () => {
+    const { model, backwardIri } = enumerationModel('reversed');
+    const proposed = propose(model, ldm());
+    const attributes = proposed.proposals.filter((p) => p.strategy === 'object property to an enumerated class → attribute typed by its domain');
+    expect(attributes).toHaveLength(1);
+    expect(addedAttribute(attributes[0]).attribute.name).toBe('is colour of');
+    expect(attributes[0].rationale).toContain('read from Film');
+    expect(proposed.proposals.filter((p) => p.kind === 'relationship' && p.sources.some((s) => s.iri === backwardIri))).toEqual([]);
+  });
+
+  it('names the attribute after the direction that starts at the entity when both directions are stated', () => {
+    const { model, forwardIri, backwardIri } = enumerationModel('pair');
+    const proposed = propose(model, ldm());
+    const attributes = proposed.proposals.filter((p) => p.strategy === 'object property to an enumerated class → attribute typed by its domain');
+    expect(attributes).toHaveLength(1);
+    expect(addedAttribute(attributes[0]).attribute.name).toBe('has colour');
+    expect(attributes[0].sources.map((s) => s.iri).sort()).toEqual([forwardIri, backwardIri].sort());
+  });
+
+  it('puts an object property to an enumerated class once, on the topmost entity it is stated at', () => {
+    const { model, filmIri } = enumerationModel();
+    const has = model.props.find((p) => p.name === 'has colour')!;
+    has.domains = [{ id: 'd-film', expression: { type: 'Class', iri: filmIri } }, { id: 'd-documentary', expression: { type: 'Class', iri: iriOf(model, 'Documentary') } }];
+    const { result } = acceptStructure(model, ldm());
+    expect(result.entities.find((e) => e.name === 'Film')!.attributes.map((a) => a.name)).toContain('has colour');
+    expect(result.entities.find((e) => e.name === 'Documentary')!.attributes).toEqual([]);
+  });
+
+  it('turns a restriction on a property to an enumerated class into a candidate on that attribute', () => {
+    const { model, signalIri } = enumerationModel();
+    const has = model.props.find((p) => p.name === 'has colour')!;
+    model.terms.find((t) => t.name === 'Film')!.classAxioms = [{
+      id: 'ax-1',
+      kind: 'SubClassOf',
+      expression: { type: 'ObjectSomeValuesFrom', property: { type: 'ObjectProperty', iri: has.iri! }, filler: { type: 'Class', iri: signalIri } },
+    }];
+    const proposed = propose(model, ldm());
+    const candidate = proposed.proposals.find((p) => p.strategy === 'restriction → candidate mandatory attribute');
+    expect(candidate?.title).toBe('Make the attribute has colour of Film mandatory');
+    expect(proposed.skipped.some((s) => s.reason === 'a restriction on it has no relationship to constrain')).toBe(false);
   });
 
   it('takes a branch or chosen classes as its scope', () => {

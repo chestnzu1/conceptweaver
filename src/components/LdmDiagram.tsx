@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { builtIn } from '../layout/compute';
 import type { LayoutGraph } from '../layout/types';
-import type { Generalization, LogicalEntity, LogicalModel, RelationshipEnd } from '../logical/contracts';
+import type { Generalization, Key, KeyMember, LogicalEntity, LogicalModel, RelationshipEnd } from '../logical/contracts';
+import { supertypesOf } from '../logical/rules';
 import { typeText } from '../logical/text';
 
 /**
@@ -25,12 +26,54 @@ const MAX_W = 300;
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 2.5;
 
-const widthOf = (e: LogicalEntity): number => {
-  const longest = Math.max(e.name.length + 2, ...e.attributes.map((a) => a.name.length + 4));
+const widthOf = (e: LogicalEntity, keys: KeyRow[]): number => {
+  const longest = Math.max(e.name.length + 2, ...e.attributes.map((a) => a.name.length + 4), ...keys.map((k) => k.text.length + 4));
   return Math.min(MAX_W, Math.max(MIN_W, 28 + longest * 7.4));
 };
 const rowsOf = (e: LogicalEntity) => Math.min(e.attributes.length, MAX_ROWS) + (e.attributes.length > MAX_ROWS ? 1 : 0);
-const heightOf = (e: LogicalEntity) => HEAD + rowsOf(e) * ROW + 8;
+const heightOf = (e: LogicalEntity, keys: KeyRow[]) => HEAD + (keys.length + rowsOf(e)) * ROW + 8;
+
+/** A key line the entity box needs because its attribute rows cannot show the key on their own. */
+interface KeyRow {
+  id: string;
+  kind: Key['kind'];
+  text: string;
+}
+
+/**
+ * The key lines of every entity. An attribute the rows draw carries PK or AK itself; an
+ * identifying end, an attribute past the rows drawn, and every inherited key are written as a
+ * line of their own, so no entity in the picture hides the key it has.
+ */
+function keyRowsByEntity(m: LogicalModel): Map<string, KeyRow[]> {
+  const supers = supertypesOf(m);
+  const byId = new Map(m.entities.map((e) => [e.id, e]));
+  const relationships = new Map(m.relationships.map((r) => [r.id, r]));
+  const out = new Map<string, KeyRow[]>();
+  for (const e of m.entities) {
+    const names = new Map<string, string>();
+    for (const id of [e.id, ...(supers.get(e.id) ?? [])]) for (const a of byId.get(id)?.attributes ?? []) names.set(a.id, a.name);
+    const member = (x: KeyMember): string => {
+      if ('attribute' in x) return names.get(x.attribute) ?? 'a missing attribute';
+      const relationship = relationships.get(x.end.relationship);
+      const owner = relationship ? byId.get(relationship.ends[x.end.end].entity) : undefined;
+      return `identity of ${owner?.name ?? 'a missing entity'}`;
+    };
+    const shown = new Set(e.attributes.slice(0, MAX_ROWS).map((a) => a.id));
+    const rows: KeyRow[] = [];
+    for (const key of e.keys) {
+      if (key.members.some((x) => 'end' in x || !shown.has(x.attribute))) rows.push({ id: key.id, kind: key.kind, text: key.members.map(member).join(', ') || 'no member' });
+    }
+    for (const s of supers.get(e.id) ?? []) {
+      const owner = byId.get(s)?.name ?? s;
+      for (const key of byId.get(s)?.keys ?? []) rows.push({ id: key.id, kind: key.kind, text: `${key.members.map(member).join(', ') || 'no member'} — inherited from ${owner}` });
+    }
+    out.set(e.id, rows);
+  }
+  return out;
+}
+
+const boxOf = (e: LogicalEntity, p: P, keys: KeyRow[]): Box => ({ x: p.x, y: p.y, w: widthOf(e, keys), h: heightOf(e, keys) });
 
 interface P {
   x: number;
@@ -49,7 +92,6 @@ interface Viewport {
   k: number;
 }
 
-const boxOf = (e: LogicalEntity, p: P): Box => ({ x: p.x, y: p.y, w: widthOf(e), h: heightOf(e) });
 const centerOf = (b: Box): P => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
 const clampZoom = (k: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k));
 const roundZoom = (k: number) => Math.round(k * 100) / 100;
@@ -67,9 +109,10 @@ function edgePoint(b: Box, toward: P): P {
 }
 
 /** The layout the picture starts from, for an LDM whose entities have no places yet. */
-function layoutOf(m: LogicalModel): Record<string, P> {
+function layoutOf(m: LogicalModel, keyRows: Map<string, KeyRow[]>): Record<string, P> {
+  const keys = (id: string) => keyRows.get(id) ?? [];
   const graph: LayoutGraph = {
-    nodes: m.entities.map((e) => ({ id: e.id, w: widthOf(e), h: heightOf(e) })),
+    nodes: m.entities.map((e) => ({ id: e.id, w: widthOf(e, keys(e.id)), h: heightOf(e, keys(e.id)) })),
     edges: [
       // The child (ends[0]) of an identifying relationship is below its parent, as a key is below what it identifies.
       ...m.relationships.map((r) => ({ from: r.ends[0].entity, to: r.ends[1].entity, up: r.identifying })),
@@ -81,7 +124,7 @@ function layoutOf(m: LogicalModel): Record<string, P> {
   const out: Record<string, P> = {};
   for (const e of m.entities) {
     const c = places.get(e.id);
-    if (c) out[e.id] = { x: Math.round(c.x - widthOf(e) / 2), y: Math.round(c.y - heightOf(e) / 2) };
+    if (c) out[e.id] = { x: Math.round(c.x - widthOf(e, keys(e.id)) / 2), y: Math.round(c.y - heightOf(e, keys(e.id)) / 2) };
   }
   return out;
 }
@@ -157,7 +200,7 @@ function SubtypeLink({ g, superBox, kids, superName, names, discriminator }: { g
   );
 }
 
-/** The four marks of the notation, drawn small beside the toolbar’s words. */
+/** The marks of the notation, drawn small beside the toolbar’s words. */
 function Legend() {
   return (
     <span className="ldm-legend" aria-hidden="true">
@@ -190,6 +233,30 @@ function Legend() {
         optional
       </span>
       <span>
+        <svg width="20" height="11" aria-hidden="true">
+          <text className="ldm-pk" x="0" y="9" fontSize="10">
+            PK
+          </text>
+        </svg>
+        primary key
+      </span>
+      <span>
+        <svg width="20" height="11" aria-hidden="true">
+          <text className="ldm-ak" x="0" y="9" fontSize="10">
+            AK
+          </text>
+        </svg>
+        candidate key
+      </span>
+      <span>
+        <svg width="34" height="11" aria-hidden="true">
+          <text className="ldm-domain-type" x="0" y="9" fontSize="10">
+            domain
+          </text>
+        </svg>
+        domain type
+      </span>
+      <span>
         <svg width="20" height="14" aria-hidden="true">
           <line className="ldm-gen" x1="10" y1="0" x2="10" y2="5" />
           <circle className="ldm-gen-symbol" cx="10" cy="8" r="3" />
@@ -205,8 +272,9 @@ function Legend() {
 export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, onNewRelationship }: { m: LogicalModel; selected: string | null; onSelect: (id: string) => void; onPositions: (positions: Record<string, P>) => void; onNewEntity: () => void; onNewRelationship: () => void }) {
   // The layout is recomputed when entities or lines change, not when a name or an attribute does.
   const shape = `${m.entities.map((e) => e.id).join(',')}|${m.relationships.map((r) => `${r.id}:${r.ends[0].entity}>${r.ends[1].entity}`).join(',')}|${m.generalizations.map((g) => `${g.id}:${g.supertype}>${g.subtypes.join('+')}`).join(',')}`;
+  const keyRows = useMemo(() => keyRowsByEntity(m), [m]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const arranged = useMemo(() => layoutOf(m), [shape]);
+  const arranged = useMemo(() => layoutOf(m, keyRows), [shape]);
   const [moved, setMoved] = useState<Record<string, P>>({});
   const [view, setView] = useState<Viewport>({ x: 0, y: 0, k: 1 });
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -229,7 +297,7 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
   }, [stored]);
 
   const positions = { ...arranged, ...(stored ?? {}), ...moved };
-  const boxes = new Map<string, Box>(m.entities.map((e) => [e.id, boxOf(e, positions[e.id] ?? { x: 0, y: 0 })]));
+  const boxes = new Map<string, Box>(m.entities.map((e) => [e.id, boxOf(e, positions[e.id] ?? { x: 0, y: 0 }, keyRows.get(e.id) ?? [])]));
   const entityNames = new Map(m.entities.map((e) => [e.id, e.name]));
   const all = [...boxes.values()];
   const contentMinX = all.length ? Math.min(...all.map((b) => b.x)) : 0;
@@ -306,7 +374,7 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
 
   const arrange = () => {
     fitAfter.current = true;
-    commit(layoutOf(m));
+    commit(layoutOf(m, keyRows));
   };
 
   // Dragging the background moves the view, as the ontology’s canvas does. A node stops the
@@ -470,7 +538,10 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
               const box = boxes.get(e.id);
               if (!box) return null;
               const pks = new Set(e.keys.filter((k) => k.kind === 'primary').flatMap((k) => k.members.flatMap((x) => ('attribute' in x ? [x.attribute] : []))));
+              const aks = new Set(e.keys.filter((k) => k.kind === 'candidate').flatMap((k) => k.members.flatMap((x) => ('attribute' in x ? [x.attribute] : []))));
+              const lines = keyRows.get(e.id) ?? [];
               const rows = e.attributes.slice(0, MAX_ROWS);
+              const firstAttr = HEAD + 13 + lines.length * ROW;
               const r = 6;
               const headPath = `M 0 ${HEAD} L 0 ${r} Q 0 0 ${r} 0 L ${box.w - r} 0 Q ${box.w} 0 ${box.w} ${r} L ${box.w} ${HEAD} Z`;
               return (
@@ -496,15 +567,24 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
                   <text className="ldm-node-name" x={12} y={20}>
                     {e.name}
                   </text>
-                  {rows.map((a, i) => (
-                    <text key={a.id} className="ldm-node-attr" x={12} y={HEAD + 13 + i * ROW}>
-                      <tspan className={pks.has(a.id) ? 'ldm-pk' : 'ldm-attr-mark'}>{pks.has(a.id) ? 'PK ' : a.optional ? '○ ' : '• '}</tspan>
-                      {a.name}
-                      <tspan className="ldm-node-type"> : {typeText(a.type, m)}</tspan>
+                  {lines.map((k, i) => (
+                    <text key={k.id} className="ldm-node-attr ldm-node-key" x={12} y={HEAD + 13 + i * ROW}>
+                      <tspan className={k.kind === 'primary' ? 'ldm-pk' : 'ldm-ak'}>{k.kind === 'primary' ? 'PK ' : 'AK '}</tspan>
+                      {k.text}
                     </text>
                   ))}
+                  {rows.map((a, i) => {
+                    const mark = pks.has(a.id) ? 'PK ' : aks.has(a.id) ? 'AK ' : a.optional ? '○ ' : '• ';
+                    return (
+                      <text key={a.id} className="ldm-node-attr" x={12} y={firstAttr + i * ROW}>
+                        <tspan className={pks.has(a.id) ? 'ldm-pk' : aks.has(a.id) ? 'ldm-ak' : 'ldm-attr-mark'}>{mark}</tspan>
+                        {a.name}
+                        <tspan className={'domain' in a.type ? 'ldm-node-type ldm-domain-type' : 'ldm-node-type'}> : {typeText(a.type, m)}</tspan>
+                      </text>
+                    );
+                  })}
                   {e.attributes.length > MAX_ROWS && (
-                    <text className="ldm-node-attr muted" x={12} y={HEAD + 13 + MAX_ROWS * ROW}>
+                    <text className="ldm-node-attr muted" x={12} y={firstAttr + MAX_ROWS * ROW}>
                       {e.attributes.length - MAX_ROWS} more…
                     </text>
                   )}
@@ -514,7 +594,7 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
           </g>
         </svg>
         <div className="ldm-canvas-hint" aria-hidden="true">
-          Drag to move · Scroll to zoom · 0 fits
+          Click an entity to edit its attributes and keys · Drag to move · Scroll to zoom · 0 fits
         </div>
       </div>
     </div>
