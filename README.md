@@ -340,6 +340,15 @@ More on what the advanced reasoner does and does not cover is under
   and the rule reasoner infers each class an axiom is, or is an intersection of. Deleting a class
   takes it out of the unions and intersections that name it, and an axiom that is nothing else
   goes; giving it another IRI, the axioms follow.
+- **Further axioms** (model format 8, from 2026-10-17; `src/components/AxiomParts.tsx`).
+  A property chain is stated with its steps in order, each a property or its inverse; a key is a
+  list of data and object properties on a class; a disjoint union is a list of class expressions
+  that together are the class; a negative property assertion says an individual is not related
+  to another, or has no such value; an annotation on a statement names the statement, by its
+  subject, property and target, and the fields it adds. A chain is edited on the object property,
+  a key and a disjoint union on the class, a negative assertion on the individual, and an
+  annotation on the editor of the entity its statement is about. Each is written as OWL states
+  it, deleted with an entity it names, and followed when that entity is given another IRI.
 - **Inferred restrictions** – a class also shows, read-only, the restrictions it inherits from
   the superclasses and equivalent classes the reasoner entails for it, each with its source.
 - **Class restrictions** – a class lists what its object and data properties require of it,
@@ -397,7 +406,8 @@ More on what the advanced reasoner does and does not cover is under
   the same statements and whose findings are the same. `src/model/migration.test.ts` checks
   that on three models saved in format 1, one in format 2, one in format 3 and one in format 4
   (their Turtle byte for byte for formats 1 and 2, statement for statement for 3 and 4). It is
-  saved in format 5 from then on, which a version of the app from before cannot read in full.
+  saved in the current format (8) from then on, which a version of the app from before cannot
+  read in full.
 - **Every entity has an IRI from the moment it exists**: one made from its name or, while it has
   none (a new class is "New class"), one that stands in, in the default namespace. The first real
   name replaces that one, once, and whatever referred to it follows; after that a rename never
@@ -978,8 +988,10 @@ Unions, intersections, complements, restrictions of every kind (on a property or
 qualified or not, nested to any depth), lists of individuals and data ranges have an editor
 wherever they are a domain, a range, a superclass, an equivalent class or a disjoint class (see
 *Class expressions*). What has none: an expression OWL does not have (kept as it was read, and
-removable), a general class axiom (an expression on the left of SubClassOf), `owl:disjointUnionOf`,
-property chains and keys (kept as they were read, see *Reading ontologies*).
+removable) and a general class axiom (an expression on the left of SubClassOf, kept as it was
+read). A property chain is edited on its object property, a key and a disjoint union on their
+class, a negative property assertion on its individual, and an annotation on a statement on the
+editor of the entity it is about (model format 8; see *Reading ontologies*).
 
 An `owl:oneOf` is an enumeration, with an editor of its own, in two places: as the whole of a
 class's definition (`owl:equivalentClass` to a list of named individuals) and as the whole of a
@@ -1000,11 +1012,10 @@ Read as the pairs they stand for: `owl:AllDisjointClasses`, `owl:AllDifferent`,
 `owl:AllDisjointProperties` (named members only). An `owl:AllDifferent` over exactly the
 members of an enumeration is kept as one statement on that enumeration instead.
 
-Not read at all, so lost on import: property chains, keys (`owl:hasKey`), negative property
-assertions, `owl:disjointUnionOf`, a *named* datatype defined by anything but a list of
-literals (facets, unions; a property that has one as its range names it there), annotations on
-axioms, `owl:imports` and the ontology's own annotations other than its name and description. A
-value whose datatype is not one of the twelve the app offers is kept as plain text.
+Not read at all, so lost on import: a *named* datatype defined by anything but a list of
+literals (facets, unions; a property that has one as its range names it there), `owl:imports`
+and the ontology's own annotations other than its name and description. A value whose datatype
+is not one of the twelve the app offers is kept as plain text.
 
 ## Moving the Structure Explorer to a semantic backend
 
@@ -1272,9 +1283,9 @@ What the answer covers, and where it stops:
 - HermiT reasons over what the app exports. Everything the app keeps is in it, including class
   expressions kept as text (unions, intersections, complements, nested restrictions, `hasValue`,
   unqualified cardinalities), enumerations, datatype restrictions and RDF lists. What the app
-  does not keep when it reads a file is not: property chains, keys, negative property
-  assertions (see *OWL constructs without an editor*). A relationship kept plain is not an OWL
-  axiom and plays no part.
+  does not keep when it reads a file is not: a named datatype defined by facets or a union, an
+  import, and the ontology's annotations beyond its name and description (see *OWL constructs
+  without an editor*). A relationship kept plain is not an OWL axiom and plays no part.
 - The status says how far the answer goes. *Complete*: the ontology is OWL 2 DL and all of it
   was reasoned over; "consistent" is then proved. *Partial*: reasoned, with something taken
   loosely or left out, which is named: a datatype outside the OWL 2 datatype map (`xsd:date`,
@@ -1493,15 +1504,23 @@ it, and nothing was replaced):
   property is drawn only where its datatype is the property's range (or `rdfs:Literal`, where
   the property has none), as a drawn one is written; one to another datatype is an axiom of the
   class, with its datatype.
-- **What the model has no place for is kept, not editable here**: SWRL rules, property chains
-  (`owl:propertyChainAxiom`), keys (`owl:hasKey`), negative property assertions, annotations on
-  axioms, an ontology's version IRI and its annotations beyond name and description, a class
-  defined by an `owl:intersectionOf` stated on itself (as older RDF/XML files write it), datatype
-  definitions, equivalent and disjoint annotation properties, and whatever else the reader takes
-  nothing from. Each such statement is kept whole, as it was read (`src/model/unmapped.ts`), saved
+- **Further axioms are typed** (model format 8, from 2026-10-17): a property chain
+  (`owl:propertyChainAxiom`, each step a property or its inverse), a key (`owl:hasKey`), a
+  disjoint union (`owl:disjointUnionOf`), a negative property assertion (of an individual or a
+  value) and an annotation on a statement (`owl:Axiom`). Each is read where every entity it
+  names is declared; one that names an entity the ontology does not declare stays as it was
+  read. It is written as OWL states it (a list, a blank node, a reification), edited on the
+  object property, class or individual it belongs to, and deleted with an entity it names or
+  follows that entity to another IRI.
+- **What the model has no place for is kept, not editable here**: SWRL rules, an ontology's
+  version IRI and its annotations beyond name and description, a class defined by an
+  `owl:intersectionOf` stated on itself (as older RDF/XML files write it), datatype definitions,
+  equivalent and disjoint annotation properties, and whatever else the reader takes nothing
+  from. Each such statement is kept whole, as it was read (`src/model/unmapped.ts`), saved
   with the model, and written back at the end of every Turtle and JSON-LD export; the OWL 2 DL
   reasoner gets it too, the app's own reasoner does not. It is not shown or edited. The message
-  on opening says what was kept ("2 property chains, 1 key and 12 other statements"). A
+  on opening says what was kept ("2 property chains, 1 key, 1 negative property assertion and 26
+  other statements"). A
   statement the reader took into the model is never kept a second time: deleting a class
   deletes it, without a copy left behind; and a kept statement that mentions a deleted entity
   goes with it, as it would in any other editor, while one that mentions an entity given a new

@@ -103,6 +103,14 @@ export type Axiom =
   | { type: 'DataPropertyAssertion'; property: Iri; source: Iri; value: Literal }
   | { type: 'SameIndividual' | 'DifferentIndividuals'; individuals: Iri[] }
   | { type: 'SubObjectPropertyOf' | 'SubDataPropertyOf' | 'SubAnnotationPropertyOf'; sub: Iri; sup: Iri }
+  /** A property chain: `sup` holds wherever the chain of properties does (owl:propertyChainAxiom). */
+  | { type: 'SubPropertyChainOf'; chain: ObjectPropertyExpression[]; sup: Iri }
+  /** The properties that together identify a member of a class (owl:hasKey), in the order stated. */
+  | { type: 'HasKey'; class: Iri; properties: (ObjectProperty | DataProperty)[] }
+  /** A class is the disjoint union of its members (owl:disjointUnionOf). */
+  | { type: 'DisjointUnion'; class: Iri; classes: ClassExpression[] }
+  | { type: 'NegativeObjectPropertyAssertion'; property: Iri; source: Iri; target: Iri }
+  | { type: 'NegativeDataPropertyAssertion'; property: Iri; source: Iri; value: Literal }
   | { type: 'EquivalentObjectProperties' | 'DisjointObjectProperties' | 'EquivalentDataProperties' | 'DisjointDataProperties'; properties: Iri[] }
   | { type: 'InverseObjectProperties'; first: Iri; second: Iri }
   | { type: 'ObjectPropertyDomain' | 'DataPropertyDomain'; property: Iri; domain: ClassExpression }

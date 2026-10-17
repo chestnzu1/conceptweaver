@@ -2,10 +2,10 @@ OWL 2 Primer example (primer.owl, read as RDF/XML), opened in ConceptWeaver and 
 unchanged, then compared with the original by the OWL API: axioms by structure, and the
 ontology's IRI, annotations and imports.
 
-Original: 93 axioms. Saved: 126 axioms.
+Original: 93 axioms. Saved: 128 axioms.
 Lost: 0.
-Added: 34 (AnnotationAssertion 29, Declaration 4, Annotation 1).
-Kept as it was, not editable here: 2 property chains, 1 key, 1 annotation on an axiom, 3 negative property assertions, 26 other statements.
+Added: 36 (AnnotationAssertion 30, Declaration 5, Annotation 1).
+Kept as it was, not editable here: 2 property chains, 1 key, 1 negative property assertion, 26 other statements.
 
 Lost: in the original, not in what was saved
 
@@ -19,6 +19,7 @@ Added: in what was saved, not in the original
   AnnotationAssertion(rdfs:label <http://example.com/owl/families/Grandfather> "Grandfather"^^xsd:string)
   AnnotationAssertion(rdfs:label <http://example.com/owl/families/HappyPerson> "Happy Person"^^xsd:string)
   AnnotationAssertion(rdfs:label <http://example.com/owl/families/Human> "Human"^^xsd:string)
+  AnnotationAssertion(rdfs:label <http://example.com/owl/families/Jack> "Jack"^^xsd:string)
   AnnotationAssertion(rdfs:label <http://example.com/owl/families/James> "James"^^xsd:string)
   AnnotationAssertion(rdfs:label <http://example.com/owl/families/John> "John"^^xsd:string)
   AnnotationAssertion(rdfs:label <http://example.com/owl/families/JohnsChildren> "Johns Children"^^xsd:string)
@@ -43,4 +44,5 @@ Added: in what was saved, not in the original
   Declaration(Class(:Human))
   Declaration(Class(otherOnt:Grownup))
   Declaration(NamedIndividual(:Bill))
+  Declaration(NamedIndividual(:Jack))
   Declaration(NamedIndividual(:Mary))

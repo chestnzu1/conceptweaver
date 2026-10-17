@@ -1,6 +1,6 @@
 import { MODEL_PARTS, type Model, type Term } from './types';
 
-const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'ranges', 'domains', 'classAxioms', 'functional', 'values', 'external', 'oneOf', 'allDifferent'];
+const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'ranges', 'domains', 'classAxioms', 'functional', 'values', 'external', 'oneOf', 'allDifferent', 'keys', 'disjointUnions', 'negativeAssertions'];
 
 /**
  * How many earlier models are remembered. Undo and redo come back to one of them (the edit

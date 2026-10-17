@@ -39,7 +39,7 @@ Each limitation says:
 | # | Limitation | Kind | Data |
 | --- | --- | --- | --- |
 | 1 | Expressions OWL has no class expression for are read-only | By design | kept |
-| 2 | Frames, axiom annotations, general class axioms, property chains, keys and disjoint unions are not edited | Gap | kept |
+| 2 | Frames and general class axioms are not edited | Gap | kept |
 | 3 | The OWL API reads one facet value differently from the app | External | — |
 | 4 | Deleting a class inside a restriction removes the whole axiom | By design | changed by the user's action |
 | 5 | The app's own reasoner does not interpret expressions | Gap | — |
@@ -80,22 +80,27 @@ file says.
 **Now.** Remove it and state what was meant with the editor. A remedy, should one be wanted, is
 a "replace with…" that starts the editor from the parts that do read.
 
-### 2. Frames, axiom annotations, general class axioms, property chains, keys and disjoint unions are not edited
+### 2. Frames and general class axioms are not edited
 
 **What.** The editor edits expressions where a class or a property's domain or range takes one.
 These are not edited:
 
 - whole Manchester frames (`Class: … SubClassOf: …`);
-- annotations on axioms;
 - general class axioms (an expression on the left of SubClassOf);
-- `owl:propertyChainAxiom`, `owl:hasKey` and `owl:disjointUnionOf`;
 - SWRL rules.
 
-**Data.** Kept as the statements they were read as (`Model.unmapped`), written back with every
+**Data.** A frame is not read as an expression at all; a general class axiom and a SWRL rule
+are kept as the statements they were read as (`Model.unmapped`), written back with every
 export, and sent to HermiT.
 
-**Next.** The roadmap item FR-M2-4 (property chains, keys, disjoint unions, general class
-axioms), and FR-M2-5 (axiom annotations).
+**Status, 2026-10-17 (roadmap task 2.8).** Annotations on axioms, `owl:propertyChainAxiom`,
+`owl:hasKey`, `owl:disjointUnionOf` and negative property assertions are typed axioms now (model
+format 8) with editors of their own (`src/components/AxiomParts.tsx`), and are no longer kept as
+text. What remains as text is what this item now names: frames, general class axioms and SWRL
+rules.
+
+**Next.** A general class axiom editor. Frames are a syntax the app does not read; SWRL rules
+are FR-M2-8.
 
 ### 3. The OWL API reads one facet value differently from the app
 

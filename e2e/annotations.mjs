@@ -95,7 +95,7 @@ ok(block(ttl, ':provenanceNote').includes('rdfs:subPropertyOf :sourceNote'), 'so
 // ---------------------------------------------------------------- used as an annotation
 await kindTab('Classes');
 await pick('Film');
-await panel.getByRole('button', { name: 'Add field' }).click();
+await panel.locator('[data-section=annotations]').getByRole('button', { name: 'Add field' }).click();
 await panel.getByLabel('Property', { exact: true }).fill('provenance note');
 await panel.getByLabel('Value', { exact: true }).fill('From the archive');
 await panel.getByRole('button', { name: 'Confirm' }).click();
@@ -110,13 +110,13 @@ ok((await panel.locator('.rel-list li').count()) === 1 && flat(await panel.locat
 // ---------------------------------------------------------------- names in several languages
 await kindTab('Classes');
 await pick('Film');
-await panel.getByRole('button', { name: 'Add field' }).click();
+await panel.locator('[data-section=annotations]').getByRole('button', { name: 'Add field' }).click();
 await panel.getByLabel('Property', { exact: true }).fill('rdfs:label');
 await panel.getByLabel('Value', { exact: true }).fill('Filmwerk');
 await panel.getByLabel('Language', { exact: true }).fill('de');
 await panel.getByRole('button', { name: 'Confirm' }).click();
 // A second language is what makes a choice of display language meaningful.
-await panel.getByRole('button', { name: 'Add field' }).click();
+await panel.locator('[data-section=annotations]').getByRole('button', { name: 'Add field' }).click();
 await panel.getByLabel('Property', { exact: true }).fill('rdfs:label');
 await panel.getByLabel('Value', { exact: true }).fill('Film');
 await panel.getByLabel('Language', { exact: true }).fill('en');

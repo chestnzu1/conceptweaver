@@ -1,7 +1,7 @@
 import { Parser } from 'n3';
 import { graphOf, readClass as readModelClass, readDataRange as readModelRange, type Graph, type RdfTerm } from '../model/expressions';
 import { statements, type Quad, type Statement, type Term as Node } from '../model/unmapped';
-import { OBJECT_PROPERTY_CHARACTERISTICS, type AnnotationValue, type Axiom, type ClassExpression, type DataProperty, type DataRange, type EntityType, type Iri, type Literal, type ObjectPropertyCharacteristic, type ObjectPropertyExpression } from './contracts';
+import { OBJECT_PROPERTY_CHARACTERISTICS, type AnnotationValue, type Axiom, type ClassExpression, type DataProperty, type DataRange, type EntityType, type Iri, type Literal, type ObjectProperty, type ObjectPropertyCharacteristic, type ObjectPropertyExpression } from './contracts';
 
 /**
  * Axioms as RDF statements, and statements as axioms.
@@ -125,6 +125,15 @@ function listOf(g: Graph, head: RdfTerm | undefined): RdfTerm[] | undefined {
   return undefined;
 }
 
+/** An object property expression as a chain or a key states it: a declared object property, or an inverse of one. */
+function objectPropertyExpression(g: Graph, kinds: Kinds, t: RdfTerm): ObjectPropertyExpression | undefined {
+  if (t.termType === 'NamedNode') return isA(kinds, t.value, 'ObjectProperty') ? { type: 'ObjectProperty', iri: t.value } : undefined;
+  if (t.termType !== 'BlankNode') return undefined;
+  const inverse = g.objects(t, OWL + 'inverseOf');
+  if (inverse.length !== 1 || inverse[0].termType !== 'NamedNode' || !isA(kinds, inverse[0].value, 'ObjectProperty')) return undefined;
+  return { type: 'ObjectInverseOf', property: { type: 'ObjectProperty', iri: inverse[0].value } };
+}
+
 /** The axiom a statement is, if it has a typed form here. */
 function typedOf(s: Statement, kinds: Kinds): Axiom | undefined {
   const g = graphOf(s.quads, (p) => {
@@ -140,6 +149,25 @@ function typedOf(s: Statement, kinds: Kinds): Axiom | undefined {
   if (top.length !== 1) return undefined;
   const node: RdfTerm = { termType: 'BlankNode', value: top[0] };
   const type = g.objects(node, RDF + 'type').map((t) => t.value);
+  if (type.length !== 1) return undefined;
+  // A negative property assertion: a blank node saying what is not the case.
+  if (type[0] === OWL + 'NegativePropertyAssertion') {
+    const source = g.objects(node, OWL + 'sourceIndividual');
+    const property = g.objects(node, OWL + 'assertionProperty');
+    const target = g.objects(node, OWL + 'targetIndividual');
+    const value = g.objects(node, OWL + 'targetValue');
+    const allowed = new Set([RDF + 'type', OWL + 'sourceIndividual', OWL + 'assertionProperty', OWL + 'targetIndividual', OWL + 'targetValue']);
+    if (s.quads.some((q) => !allowed.has(q.predicate.value))) return undefined;
+    if (source.length !== 1 || source[0].termType !== 'NamedNode' || property.length !== 1 || property[0].termType !== 'NamedNode') return undefined;
+    const pk = propertyKind(kinds, property[0].value);
+    if (pk === 'object' && target.length === 1 && target[0].termType === 'NamedNode' && !value.length) {
+      return { type: 'NegativeObjectPropertyAssertion', property: property[0].value, source: source[0].value, target: target[0].value };
+    }
+    if (pk === 'data' && value.length === 1 && value[0].termType === 'Literal' && !target.length) {
+      return { type: 'NegativeDataPropertyAssertion', property: property[0].value, source: source[0].value, value: literalOf(value[0]) };
+    }
+    return undefined;
+  }
   const members = listOf(g, g.objects(node, OWL + 'members')[0]);
   if (!members || type.length !== 1) return undefined;
   if (type[0] === OWL + 'AllDisjointClasses') return { type: 'DisjointClasses', classes: members.map((m) => readClass(g, m)) };
@@ -190,6 +218,31 @@ function tripleAxiom(g: Graph, kinds: Kinds, s: Iri, p: Iri, o: RdfTerm): Axiom 
       return iri ? { type: 'SameIndividual', individuals: [s, iri] } : undefined;
     case OWL + 'differentFrom':
       return iri ? { type: 'DifferentIndividuals', individuals: [s, iri] } : undefined;
+    case OWL + 'propertyChainAxiom': {
+      if (!isA(kinds, s, 'ObjectProperty')) return undefined;
+      const items = listOf(g, o);
+      if (!items?.length) return undefined;
+      const chain = items.map((m) => objectPropertyExpression(g, kinds, m));
+      return chain.every((x): x is ObjectPropertyExpression => x !== undefined) ? { type: 'SubPropertyChainOf', chain, sup: s } : undefined;
+    }
+    case OWL + 'hasKey': {
+      if (!isA(kinds, s, 'Class')) return undefined;
+      const items = listOf(g, o);
+      if (!items?.length) return undefined;
+      const properties: (ObjectProperty | DataProperty)[] = [];
+      for (const m of items) {
+        if (m.termType !== 'NamedNode') return undefined;
+        if (isA(kinds, m.value, 'ObjectProperty')) properties.push({ type: 'ObjectProperty', iri: m.value });
+        else if (isA(kinds, m.value, 'DataProperty')) properties.push({ type: 'DataProperty', iri: m.value });
+        else return undefined;
+      }
+      return { type: 'HasKey', class: s, properties };
+    }
+    case OWL + 'disjointUnionOf': {
+      if (!isA(kinds, s, 'Class')) return undefined;
+      const items = listOf(g, o);
+      return items && items.length >= 2 ? { type: 'DisjointUnion', class: s, classes: items.map((m) => readClass(g, m)) } : undefined;
+    }
   }
   const pk = propertyKind(kinds, p);
   if (s === kinds.ontology) {
@@ -378,6 +431,29 @@ class Writer {
       case 'SubDataPropertyOf':
       case 'SubAnnotationPropertyOf':
         this.add(s(a.sub), RDFS + 'subPropertyOf', s(a.sup));
+        return;
+      case 'SubPropertyChainOf':
+        this.add(s(a.sup), OWL + 'propertyChainAxiom', this.list(a.chain.map((p) => this.property(p))));
+        return;
+      case 'HasKey':
+        this.add(s(a.class), OWL + 'hasKey', this.list(a.properties.map((p) => s(p.iri))));
+        return;
+      case 'DisjointUnion':
+        this.add(s(a.class), OWL + 'disjointUnionOf', this.list(a.classes.map(this.cls)));
+        return;
+      case 'NegativeObjectPropertyAssertion':
+        this.node(OWL + 'NegativePropertyAssertion', [
+          [OWL + 'sourceIndividual', s(a.source)],
+          [OWL + 'assertionProperty', s(a.property)],
+          [OWL + 'targetIndividual', s(a.target)],
+        ]);
+        return;
+      case 'NegativeDataPropertyAssertion':
+        this.node(OWL + 'NegativePropertyAssertion', [
+          [OWL + 'sourceIndividual', s(a.source)],
+          [OWL + 'assertionProperty', s(a.property)],
+          [OWL + 'targetValue', this.literal(a.value)],
+        ]);
         return;
       case 'EquivalentObjectProperties':
       case 'EquivalentDataProperties':

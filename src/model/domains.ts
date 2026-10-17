@@ -98,28 +98,69 @@ export function withDatatype(t: Pick<Term, 'ranges'>, key: string | undefined): 
 /**
  * The model without what its domains and ranges say of entities that are deleted (by IRI) and
  * of enumerated datatypes that are (by id): see `prunedAxioms`. The same model when none is named.
+ * Axioms that name a deleted entity by id go too: a property chain with a step gone, a key one of
+ * whose properties is gone, a negative assertion of an entity or property gone, and an annotation
+ * on an axiom whose statement is about one gone.
  */
 export function withoutEntities(m: Model, iris: Set<string>, enums: Set<string> = new Set()): Model {
   if (!iris.size && !enums.size) return m;
+  const propIds = new Set(m.props.map((p) => p.id));
+  const termIds = new Set(m.terms.map((t) => t.id));
+  /** The list without what `prune` takes away: the list itself when it takes nothing. */
+  const prunedList = <T>(list: T[] | undefined, prune: (x: T) => T | undefined): T[] | undefined => {
+    if (!list) return undefined;
+    const out = list.map(prune).filter((x): x is T => x !== undefined);
+    return out.length === list.length && out.every((x, i) => x === list[i]) ? list : out;
+  };
   let termsChanged = false;
   let propsChanged = false;
+  let annotationsChanged = false;
   const terms = m.terms.map((t) => {
-    if (!t.domains && !t.ranges && !t.classAxioms) return t;
+    if (!t.domains && !t.ranges && !t.classAxioms && !t.keys && !t.disjointUnions && !t.negativeAssertions) return t;
     const domains = t.domains && prunedAxioms(t.domains, iris, enums);
     const ranges = t.ranges && prunedAxioms(t.ranges, iris, enums);
     const stated = t.classAxioms && (prunedAxioms(t.classAxioms, iris, enums) as ClassExpressionAxiom[]);
-    if (domains === t.domains && ranges === t.ranges && stated === t.classAxioms) return t;
+    const keys = prunedList(t.keys, (k) => (k.properties.every((x) => ('prop' in x ? propIds.has(x.prop) : termIds.has(x.data))) ? k : undefined));
+    const unions = prunedList(t.disjointUnions, (u) => {
+      const classes = u.classes.map((c) => without(c, iris, enums)).filter((c): c is ClassExpression => c !== undefined);
+      // A disjoint union of fewer than two classes says nothing.
+      if (classes.length < 2) return undefined;
+      return classes.every((c, i) => c === u.classes[i]) ? u : { ...u, classes };
+    });
+    const negatives = prunedList(t.negativeAssertions, (n) => ((n.kind === 'object' ? propIds.has(n.prop) && termIds.has(n.target) : termIds.has(n.prop)) ? n : undefined));
+    if (domains === t.domains && ranges === t.ranges && stated === t.classAxioms && keys === t.keys && unions === t.disjointUnions && negatives === t.negativeAssertions) return t;
     termsChanged = true;
-    const { ranges: _was, classAxioms: _had, ...rest } = t;
-    return { ...rest, ...(domains ? { domains } : {}), ...(ranges?.length ? { ranges } : {}), ...(stated?.length ? { classAxioms: stated } : {}) };
+    const { ranges: _was, classAxioms: _had, keys: _keys, disjointUnions: _unions, negativeAssertions: _negatives, ...rest } = t;
+    return {
+      ...rest,
+      ...(domains ? { domains } : {}),
+      ...(ranges?.length ? { ranges } : {}),
+      ...(stated?.length ? { classAxioms: stated } : {}),
+      ...(keys?.length ? { keys } : {}),
+      ...(unions?.length ? { disjointUnions: unions } : {}),
+      ...(negatives?.length ? { negativeAssertions: negatives } : {}),
+    };
   });
   const props = m.props.map((p) => {
-    if (!p.domains && !p.ranges) return p;
+    if (!p.domains && !p.ranges && !p.chains) return p;
     const domains = p.domains && prunedAxioms(p.domains, iris, enums);
     const ranges = p.ranges && prunedAxioms(p.ranges, iris, enums);
-    if (domains === p.domains && ranges === p.ranges) return p;
+    // A chain missing a step is no chain.
+    const chains = prunedList(p.chains, (c) => (c.properties.every((s) => propIds.has(s.prop)) ? c : undefined));
+    if (domains === p.domains && ranges === p.ranges && chains === p.chains) return p;
     propsChanged = true;
-    return { ...p, ...(domains ? { domains } : {}), ...(ranges ? { ranges } : {}) };
+    const { domains: _wasDomains, ranges: _wereRanges, chains: _wereChains, ...rest } = p;
+    return { ...rest, ...(domains ? { domains } : {}), ...(ranges ? { ranges } : {}), ...(chains?.length ? { chains } : {}) };
   });
-  return termsChanged || propsChanged ? { ...m, ...(termsChanged ? { terms } : {}), ...(propsChanged ? { props } : {}) } : m;
+  // An annotation on a statement about an entity that is gone goes with it, as the statement would.
+  const mentions = (text: string) => [...iris].some((iri) => text.includes(`<${iri}>`));
+  const annotations = m.axiomAnnotations?.filter((a) => !iris.has(a.subject) && !iris.has(a.property) && !mentions(a.target) && !a.fields.some((f) => f.iri && iris.has(f.value)));
+  if (annotations && annotations.length !== m.axiomAnnotations!.length) annotationsChanged = true;
+  if (!termsChanged && !propsChanged && !annotationsChanged) return m;
+  const out: Model = { ...m, ...(termsChanged ? { terms } : {}), ...(propsChanged ? { props } : {}) };
+  if (annotationsChanged) {
+    if (annotations?.length) out.axiomAnnotations = annotations;
+    else delete out.axiomAnnotations;
+  }
+  return out;
 }

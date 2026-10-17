@@ -92,6 +92,7 @@ the migration map.
 | `terms[].x`, `.y`, `.color` | Where a term is drawn and in which colour | `diagram.positions`, `diagram.style` |
 | `props` | Object properties with characteristics, domains and ranges (an axiom for each statement, model format 3), hierarchy | Axioms in the asserted graph |
 | `annProps` (model format 7, since 2026-10-17, roadmap 2.7) | Annotation properties as entities of their own, with a name and description in their own language, superproperties, domains, ranges and annotations | Axioms and annotation assertions in the asserted graph: `owl:AnnotationProperty` declarations, `rdfs:subPropertyOf`, `rdfs:domain`/`rdfs:range`, and the annotations on them |
+| Further axioms (model format 8, since 2026-10-17, roadmap 2.8) | A property chain on its object property (`ObjProp.chains`, steps a property or its inverse); a key, a disjoint union and a negative property assertion on a term (`Term.keys`, `.disjointUnions`, `.negativeAssertions`); an annotation on a statement (`Model.axiomAnnotations`: its subject, property and target, and its annotation fields) | Axioms in the asserted graph: `owl:propertyChainAxiom`, `owl:hasKey`, `owl:disjointUnionOf`, `owl:NegativePropertyAssertion` (source, assertion property, one target individual or value), and `owl:Axiom` reification |
 | `relations` | Subclass links, memberships, restrictions, facts, standard-property statements | Axioms in the asserted graph |
 | `relations[].fromCard`, `.toCard` and plain relationships (SKOS mode) | Diagram cardinalities and non-OWL lines | In a vocabulary: SKOS statements in the graph. Cardinality text: diagram metadata |
 | `vocab` | Which labels stand for which standard property | `project.settings` (an authoring convenience) |
@@ -1033,6 +1034,10 @@ tables with the rest (§9).
 
 ### 11.8 Compatibility
 
+- Model format 8 adds `ObjProp.chains`, `Term.keys`, `.disjointUnions` and
+  `.negativeAssertions`, and `Model.axiomAnnotations`, for the axioms OWL states with a list or
+  a blank node (roadmap 2.8). A model of format 7 or earlier opens with none of them and is
+  otherwise unchanged; the statements it kept as text stay as they were read.
 - Model format 7 adds `annProps`, an empty list by default, for annotation properties as entities
   (roadmap 2.7); the labels, definitions and notes of an entity in other languages stay the
   annotation fields they were. A model of format 6 or earlier opens with no annotation

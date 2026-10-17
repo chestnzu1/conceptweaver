@@ -23,8 +23,8 @@ const P = `@prefix : <http://example.org/o#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 `;
-// A class defined on itself as an intersection (OWL 1 style), a chain, a version IRI and an
-// axiom annotation: none has a place in the model. The restriction and the subclass do.
+// A class defined on itself as an intersection (OWL 1 style) and a version IRI: neither has a
+// place in the model. The restriction, the subclass, the chain and the axiom annotation do.
 const ONTOLOGY = `${P}
 <http://example.org/o> a owl:Ontology ; rdfs:label "O"@en ; owl:versionIRI <http://example.org/o/1.0> .
 :A a owl:Class ; rdfs:label "A"@en .
@@ -68,13 +68,16 @@ describe('reading an ontology', () => {
   it('keeps what it has no place for, and nothing it has', () => {
     const kept = lines(m).join('\n');
     expect(kept).toContain('#intersectionOf> ( <http://example.org/o#A> <http://example.org/o#B> )');
-    expect(kept).toContain('#propertyChainAxiom>');
     expect(kept).toContain('#versionIRI> <http://example.org/o/1.0>');
-    expect(kept).toContain('"because"@en');
+    // The chain and the annotation on the subclass are the model's now.
+    expect(kept).not.toContain('#propertyChainAxiom>');
+    expect(kept).not.toContain('"because"@en');
+    expect(m.props.find((p) => p.name === 'q')?.chains).toHaveLength(1);
+    expect(m.axiomAnnotations?.[0]?.fields).toEqual([{ key: 'rdfs:comment', value: 'because', lang: 'en' }]);
     // The subclass, the restriction, the declarations and the labels are the model's.
     expect(kept).not.toMatch(/someValuesFrom|#Class>|"A"@en/);
     expect(m.relations).toHaveLength(2);
-    expect(keptSummary(m.unmapped)).toEqual(['1 property chain', '1 annotation on an axiom', '2 other statements']);
+    expect(keptSummary(m.unmapped)).toEqual(['2 statements']);
   });
 
   it('writes it back with the ontology, and reads the same back again', () => {

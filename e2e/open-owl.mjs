@@ -60,7 +60,7 @@ AnnotationAssertion(rdfs:label :buys "buys")
 SubClassOf(:Book :Product)
 SubClassOf(:Customer ObjectSomeValuesFrom(:buys :Product))
 )`;
-const CHAINS = `<?xml version="1.0"?>
+const KEPT = `<?xml version="1.0"?>
 <rdf:RDF xmlns="http://example.org/kin#" xml:base="http://example.org/kin" xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
     <owl:Ontology rdf:about="http://example.org/kin"><rdfs:label>Kinship</rdfs:label></owl:Ontology>
     <owl:Class rdf:about="#Person"><rdfs:label>Person</rdfs:label></owl:Class>
@@ -69,8 +69,13 @@ const CHAINS = `<?xml version="1.0"?>
         <rdfs:label>has grandparent</rdfs:label>
         <owl:propertyChainAxiom rdf:parseType="Collection"><rdf:Description rdf:about="#hasParent"/><rdf:Description rdf:about="#hasParent"/></owl:propertyChainAxiom>
     </owl:ObjectProperty>
+    <rdf:Description>
+        <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#Class"/>
+        <owl:unionOf rdf:parseType="Collection"><rdf:Description rdf:about="#Mother"/><rdf:Description rdf:about="#Father"/></owl:unionOf>
+        <rdfs:subClassOf rdf:resource="#Person"/>
+    </rdf:Description>
 </rdf:RDF>`;
-const files = { 'kin.owl': CHAINS, 'pizza.owl': PIZZA_XML, 'zoo.jsonld': ZOO_JSONLD, 'shop.owl': SHOP_FUNCTIONAL, 'broken.owl': PIZZA_XML.slice(0, PIZZA_XML.indexOf('<owl:Class rdf:about="#Topping">')), 'people.ttl': '@prefix : <http://example.org/people#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n:Person a owl:Class ; rdfs:label "Person" .\n:Clerk a owl:Class ; rdfs:label "Clerk" ; rdfs:subClassOf :Person .\n' };
+const files = { 'kin.owl': KEPT, 'pizza.owl': PIZZA_XML, 'zoo.jsonld': ZOO_JSONLD, 'shop.owl': SHOP_FUNCTIONAL, 'broken.owl': PIZZA_XML.slice(0, PIZZA_XML.indexOf('<owl:Class rdf:about="#Topping">')), 'people.ttl': '@prefix : <http://example.org/people#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n:Person a owl:Class ; rdfs:label "Person" .\n:Clerk a owl:Class ; rdfs:label "Clerk" ; rdfs:subClassOf :Person .\n' };
 for (const [name, text] of Object.entries(files)) fs.writeFileSync(tmp + name, text);
 
 // A server that has the pizza ontology: for other sites to fetch, for this site only, and not at all.
@@ -222,13 +227,15 @@ await page.waitForFunction(() => /none answers/.test(document.querySelector('.to
 ok((await toast()).startsWith('OWL/XML is written by the app\'s local OWL service, and none answers at http://127.0.0.1:5195.'), 'without the OWL service, OWL/XML says why it cannot be written: ' + (await toast()).slice(0, 100));
 
 // ---------------------------------------------------------------- what the model has no place for
+// A property chain is taken as an axiom of its own now; a general class axiom (an expression on the left of SubClassOf) is still kept.
 await openFile('kin.owl');
 await message.waitFor();
 const left = flat(await message.locator('p').innerText());
-ok(/^opened, with statements kept that cannot be edited here$/i.test(flat(await message.locator('h2').innerText())) && left.startsWith('Opened “Kinship” from RDF/XML: 1 terms, 0 relations. The file also has 1 property chain, which the editor has no place for. It is kept as it was and written back whenever the ontology is saved or exported, but it is not shown or edited here.') && (await name()) === 'Kinship', 'an ontology with something the model has no place for opens, saying that it is kept: ' + left.slice(0, 160));
+ok(/^opened, with statements kept that cannot be edited here$/i.test(flat(await message.locator('h2').innerText())) && left.startsWith('Opened “Kinship” from RDF/XML: 1 terms, 0 relations. The file also has 1 statement, which the editor has no place for. It is kept as it was and written back whenever the ontology is saved or exported, but it is not shown or edited here.') && (await name()) === 'Kinship', 'an ontology with something the model has no place for opens, saying that it is kept: ' + left.slice(0, 160));
 await message.getByRole('button', { name: 'OK' }).click();
 ttl = await turtle();
-ok(/#propertyChainAxiom> \( <http:\/\/example\.org\/kin#hasParent> <http:\/\/example\.org\/kin#hasParent> \)/.test(ttl), 'and it is written back with the ontology, as it was read');
+ok(ttl.includes('owl:propertyChainAxiom ( :hasParent :hasParent )'), 'its property chain is taken into the model, written as OWL states it');
+ok(/#Mother/.test(ttl) && /owl#unionOf/.test(ttl) && /rdf-schema#subClassOf/.test(ttl), 'and the general class axiom it has no place for is written back as it was read');
 
 // ---------------------------------------------------------------- the formats there were
 await openFile('people.ttl');

@@ -143,6 +143,16 @@ looks like a link stays text; and RDF/XML attribute values are read with XML's w
 rules. What it still adds that says more than the original is a domain or range that follows a
 property's uses where the file states none (3 axioms over the nine). Step 2 is Phase 3.
 
+**Status, 2026-10-17: roadmap task 2.8.** Property chains, keys (`owl:hasKey`), disjoint unions,
+negative property assertions and annotations on axioms are typed (`ObjProp.chains`,
+`Term.keys`/`.disjointUnions`/`.negativeAssertions`, `Model.axiomAnnotations`, model format 8)
+and edited in the object property, class and individual editors, where every entity they name is
+declared; a statement that names an undeclared entity is still kept as it was read. Over the
+corpus, 28 statements fewer are kept in `unmapped` and none more is lost (BASELINES.md). What
+remains outside the model is SWRL rules, `owl:imports`, the ontology's own annotations beyond
+its name and description, general class axioms and a class defined by an `owl:intersectionOf`
+stated on itself. Step 2 is Phase 3.
+
 ### TD-02 Class expressions are kept as raw Turtle text — High
 
 **Where.** `Term.axioms` in `src/model/types.ts`; written back at `src/model/rdf.ts:293`.
@@ -183,8 +193,10 @@ individuals, and a printer to OWL functional syntax, the OWL API's form. The edi
 Manchester syntax with completion of the next name or keyword, highlighting, bracket matching,
 formatting and errors in place; the reader is checked against the OWL API's own Manchester
 parser (`src/model/expressionConformance.test.ts`). What remains as text is what OWL has no class
-expression for (`Unparsed`, read-only); general class axioms, property chains, keys and
-`owl:disjointUnionOf` are still kept as statements (TD-01). The app's own rule reasoner still
+expression for (`Unparsed`, read-only); general class axioms are still kept as statements
+(TD-01), while property chains, keys, disjoint unions, negative property assertions and
+annotations on axioms are typed since 2026-10-17 (task 2.8; TD-01's latest status). The app's
+own rule reasoner still
 does not interpret expressions (`REASONER_LIMITS`); HermiT does. The limits that remain are listed in
 [EXPRESSION_EDITOR_LIMITATIONS.md](EXPRESSION_EDITOR_LIMITATIONS.md).
 

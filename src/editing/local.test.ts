@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { withDatatype } from '../model/domains';
 import { withIris } from '../model/iri';
-import { toTurtle } from '../model/rdf';
+import { toTurtle, fromTurtle } from '../model/rdf';
 import { isDirty, useStore } from '../model/store';
 import { newProp, newRelation, newTerm, emptyModel, type Model } from '../model/types';
 import { statementsOf } from '../model/unmapped';
@@ -165,6 +165,38 @@ describe('a change set made elsewhere', () => {
     st().undo();
     expect(texts(st().model)).toEqual(texts(before));
     expect(revisionOf(st().model)).toBe(revisionOf(before));
+  });
+
+  it('gives the axioms it states back the ids they had, so an editor of one keeps it', async () => {
+    st().replaceModel(
+      fromTurtle(`@prefix : <${S}> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix rdfs: <${RDFS}> .
+        :Film a owl:Class . :Work a owl:Class .
+        :Award a owl:Class ; rdfs:subClassOf :Film ; owl:disjointUnionOf ( :Film :Work ) ; owl:hasKey ( :title ) .
+        :title a owl:DatatypeProperty .
+        :dir a owl:ObjectProperty . :assistant a owl:ObjectProperty ; owl:propertyChainAxiom ( :dir :dir ) .
+        :parasite a owl:NamedIndividual . :bong a owl:NamedIndividual .
+        [] a owl:NegativePropertyAssertion ; owl:sourceIndividual :parasite ; owl:assertionProperty :dir ; owl:targetIndividual :bong .
+        [] a owl:Axiom ; owl:annotatedSource :Award ; owl:annotatedProperty rdfs:subClassOf ; owl:annotatedTarget :Film ; rdfs:comment "why" .`),
+    );
+    const before = st().model;
+    const award = before.terms.find((t) => t.iri === S + 'Award')!;
+    const chain = before.props.find((p) => p.iri === S + 'assistant')!.chains![0];
+    const negative = before.terms.find((t) => t.iri === S + 'parasite')!.negativeAssertions![0];
+    const annotation = before.axiomAnnotations![0];
+    await st().editService.apply(
+      changeSet(
+        [add({ type: 'Declaration', entity: 'Class', iri: S + 'Studio' }), add({ type: 'AnnotationAssertion', property: RDFS + 'label', subject: S + 'Studio', value: { value: 'Studio' } })],
+        'A studio class',
+      ),
+    );
+    const after = st().model;
+    expect(after.terms.find((t) => t.iri === S + 'Award')!.keys![0].id).toBe(award.keys![0].id);
+    expect(after.terms.find((t) => t.iri === S + 'Award')!.disjointUnions![0].id).toBe(award.disjointUnions![0].id);
+    expect(after.props.find((p) => p.iri === S + 'assistant')!.chains![0].id).toBe(chain.id);
+    expect(after.terms.find((t) => t.iri === S + 'parasite')!.negativeAssertions![0].id).toBe(negative.id);
+    expect(after.axiomAnnotations![0].id).toBe(annotation.id);
+    // Their statements still say what they said, and read again they are still typed.
+    expect(texts(after).has(`<${S}Award> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <${S}Film> .`)).toBe(true);
   });
 
   it('is refused whole when one of its changes makes no sense, and nothing changes', async () => {

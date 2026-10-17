@@ -343,11 +343,17 @@ describe('what a file states that the model has no place for', () => {
 
   it('is kept as it was, written back with the ontology, and counted for whoever opens the file', async () => {
     const { model, kept } = await readModelFile(EXTRAS, 'extras.ttl');
-    expect(kept).toEqual(['2 property chains', '1 key', '1 annotation on an axiom', '1 SWRL rule']);
+    // Property chains, keys and annotations on axioms have a place in the model now; a SWRL rule does not.
+    expect(kept).toEqual(['1 SWRL rule']);
+    const p = model.props.find((x) => x.name === 'p')!.id;
+    expect(model.props.find((x) => x.name === 'q')!.chains).toEqual([{ id: expect.any(String), properties: [{ prop: p }, { prop: p }] }]);
+    expect(model.props.find((x) => x.name === 'r')!.chains).toEqual([{ id: expect.any(String), properties: [{ prop: model.props.find((x) => x.name === 'q')!.id }, { prop: p }] }]);
+    expect(model.terms.find((t) => t.name === 'C')!.keys).toEqual([{ id: expect.any(String), properties: [{ prop: p }] }]);
+    expect(model.axiomAnnotations).toEqual([{ id: expect.any(String), subject: 'http://example.org/o#B', property: 'http://www.w3.org/2000/01/rdf-schema#subClassOf', target: '<http://example.org/o#A>', fields: [{ key: 'rdfs:comment', value: 'because' }] }]);
     // Written back, beside what the model does have a place for.
     const written = toTurtle(model);
-    expect(written).toMatch(/owl#propertyChainAxiom/);
-    expect(written).toMatch(/owl#hasKey/);
+    expect(written).toMatch(/owl:propertyChainAxiom/);
+    expect(written).toMatch(/owl:hasKey/);
     expect(written).toContain('"because"');
     expect(written).toMatch(/swrl#Imp/);
     expect(written).toContain('owl:disjointWith');

@@ -326,7 +326,9 @@ while the typed list grows.
 **Status, 2026-10-15 (roadmap task 1.8).** `src/editing/contracts.ts` is this contract, with the
 axiom list grown to what the editor states (declarations, class axioms with full class
 expressions, assertions, property axioms and characteristics, datatype definitions, annotations,
-the ontology's IRI, annotations and imports), and `Refusal`s with codes (`invalid`, `refused`,
+the ontology's IRI, annotations and imports; and, since 2026-10-17, property chains, keys,
+disjoint unions and negative property assertions, while an annotation on an axiom stays the
+`owl:Axiom` statement it is), and `Refusal`s with codes (`invalid`, `refused`,
 `unsupported`). The local implementation (`src/editing/local.ts`) differs from the sketch above in
 one respect, as §5.1's risk asked: an edit made in the editor is applied as the parts of the model
 it replaced (a step), and its axioms are worked out at the document boundary when they are asked

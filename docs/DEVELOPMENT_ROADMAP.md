@@ -386,7 +386,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | 2.5 | **Export in every OWL syntax** through the conversion the service already performs in the other direction. `ImportExportService`. Done 2026-10-16. | TD-13, FR-M11-2 | S |
 | 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. Done 2026-10-17. | FR-M3-5 | M |
 | 2.7 | Annotation properties as entities; labels in several languages with a display language. Done 2026-10-17. | FR-M1-4, FR-M1-5 | M |
-| 2.8 | Further axioms: property chains, keys, disjoint unions, negative assertions, annotations on axioms, moved out of the unmapped block one kind at a time. | FR-M2-4, FR-M2-5 | L |
+| 2.8 | Further axioms: property chains, keys, disjoint unions, negative assertions, annotations on axioms, moved out of the unmapped block one kind at a time. Done 2026-10-17. | FR-M2-4, FR-M2-5 | L |
 | 2.9 | Imports: `owl:imports` declared on export; the closure resolved transitively; missing imports reported. `AlignmentService`. | FR-M8-5 | M |
 | 2.10 | Structure: property hierarchies; comparison of two versions or two ontologies, reusing the difference from 2.3. | FR-M6-5, FR-M6-6 | M |
 | 2.11 | Remaining interfaces: `GraphService` over `extractSubgraph`, `SparqlService` with a choice of asserted or inferred graph. Views moved off direct model reads as each is touched. | TD-05, FR-M9-4 | M |
@@ -758,9 +758,11 @@ integration deferred (§11). Nothing completed changed.
 **2026-10-17: 2.6 done, then LM-1, LM-2, LM-3 and LM-4** (each with its status below). **The
 logical data modelling workstream's browser stages are done, and milestone MS-15 with them; LM-5
 waits for Phase 4. 2.7 is done too**: annotation properties are entities and labels, definitions
-and notes may be in several languages, with a display language (FR-M1-4, FR-M1-5). **The next
-task is 2.8**, further axioms (FR-M2-4, FR-M2-5), set out in §3; then 2.9 to 2.12 as demand and
-dependencies allow.
+and notes may be in several languages, with a display language (FR-M1-4, FR-M1-5). **2.8 is done
+as well**: property chains, keys, disjoint unions, negative property assertions and annotations
+on axioms are typed axioms (model format 8), edited in the property, class and individual
+editors, and no longer kept as text (FR-M2-4, FR-M2-5). **The next task is 2.9**, imports, set
+out in §3; then 2.10 to 2.12 as demand and dependencies allow.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
 
@@ -1134,6 +1136,31 @@ entity's own name is edited in the model language (a name in another language is
 field), and the language a file gave the primary label is not itself editable; a few auxiliary
 screens (the import mapping and the logical model editor) still name entities in the model
 language. The derivation's naming uses the ontology's own label, not the display language.
+
+**Status, 2026-10-17: 2.8 done** (FR-M2-4, FR-M2-5). Property chains are on the object property
+they make (`ObjProp.chains`), keys and disjoint unions on the class (`Term.keys`,
+`Term.disjointUnions`), negative property assertions on the individual (`Term.negativeAssertions`,
+an object target or a data value with its language), and annotations on axioms on the model
+(`Model.axiomAnnotations`: the statement's subject, property and target, and the fields added to
+it), all model format 8. `src/model/rdf.ts` reads each where every entity it names is declared
+and writes it as OWL states it — a list, a blank node, an `owl:Axiom` reification — and follows
+an entity given another IRI; `withoutEntities` in `src/model/domains.ts` takes an axiom with an
+entity it names. `src/components/AxiomParts.tsx` edits them: *Property chains* on an object
+property (each step a property, with *inverse*), *Keys and disjoint unions* on a class, *Negative
+assertions* on an individual, and *Annotations on axioms* on the editor of the entity a statement
+is about. `src/editing/axioms.ts` types the statements as `SubPropertyChainOf`, `HasKey`,
+`DisjointUnion`, `NegativeObjectPropertyAssertion` and `NegativeDataPropertyAssertion`, so a
+change set states or removes them; an annotation on an axiom is still the reification statement
+it is. A model saved in the format of today (8) keeps them; one of format 7 or earlier opens
+with none, and the statements it kept as text stay so. The round-trip corpus loses nothing more
+and keeps 28 statements fewer as text (BASELINES.md).
+
+`src/model/typedAxioms.test.ts` checks reading, writing, partial typing, formats, deletion and
+IRI renaming; `src/editing/axioms.test.ts` the contract's typed forms; `src/editing/local.test.ts`
+that a change set made elsewhere keeps each axiom's id; `src/model/corpus.test.ts` the corpus.
+`e2e/axioms.mjs` drives the editors and the RDF in the browser. What it left: general class
+axioms have no editor, and a statement that names an entity the ontology does not declare stays
+as it was read, as before.
 
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.

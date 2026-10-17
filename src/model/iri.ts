@@ -90,7 +90,31 @@ function axiomsFollow<T extends Pick<Term, 'domains' | 'ranges'> | Pick<ObjProp,
   const own = (x as Pick<Term, 'classAxioms'>).classAxioms;
   const stated = own?.map((a) => (renamed(a.expression, changed) === a.expression ? a : { ...a, expression: renamed(a.expression, changed) }));
   const classAxioms = stated?.some((a, i) => a !== own![i]) ? stated : own;
-  return domains === x.domains && rangesNow === x.ranges && classAxioms === own ? x : ({ ...x, ...(domains ? { domains } : {}), ...(rangesNow ? { ranges: rangesNow } : {}), ...(classAxioms ? { classAxioms } : {}) } as T);
+  // The members of a disjoint union are class expressions, as a class axiom's is.
+  const unions = (x as Pick<Term, 'disjointUnions'>).disjointUnions;
+  const shown = unions?.map((u) => {
+    const classes = u.classes.map((c) => renamed(c, changed));
+    return classes.some((c, i) => c !== u.classes[i]) ? { ...u, classes } : u;
+  });
+  const disjointUnions = shown?.some((u, i) => u !== unions![i]) ? shown : unions;
+  return domains === x.domains && rangesNow === x.ranges && classAxioms === own && disjointUnions === unions
+    ? x
+    : ({ ...x, ...(domains ? { domains } : {}), ...(rangesNow ? { ranges: rangesNow } : {}), ...(classAxioms ? { classAxioms } : {}), ...(disjointUnions ? { disjointUnions } : {}) } as T);
+}
+
+/** Annotations on axioms keep naming their axiom after its entity's IRI changes, and their targets follow too. */
+function annotationsFollow(m: Model, changed: Map<string, string>): Model {
+  if (!m.axiomAnnotations?.length) return m;
+  const swap = (x: string) => changed.get(x) ?? x;
+  return {
+    ...m,
+    axiomAnnotations: m.axiomAnnotations.map((a) => {
+      const subject = swap(a.subject);
+      const property = swap(a.property);
+      const target = renameIris(a.target, changed) ?? a.target;
+      return subject === a.subject && property === a.property && target === a.target ? a : { ...a, subject, property, target };
+    }),
+  };
 }
 
 /**
@@ -103,16 +127,19 @@ export function followIris(m: Model, changed: Map<string, string>): Model {
   if (!changed.size) return m;
   const swap = (x: string) => changed.get(x) ?? x;
   const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && changed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && changed.has(f.value) ? { ...f, value: swap(f.value) } : f)) } : x);
-  return {
-    ...m,
-    terms: m.terms.map((t) => axiomsFollow(refs(t), changed)),
-    props: m.props.map((p) => axiomsFollow(refs(p), changed)),
-    annProps: m.annProps.map((p) => axiomsFollow(refs(p), changed)),
-    shapeSets: renamedSets(m.shapeSets, changed),
-    mappings: m.mappings.map((x) => (changed.has(x.source) || changed.has(x.target) ? { ...x, source: swap(x.source), target: swap(x.target) } : x)),
-    rejected: m.rejected.map((r) => r.split('|').map(swap).join('|')),
-    ...(m.unmapped ? { unmapped: renameIris(m.unmapped, changed) } : {}),
-  };
+  return annotationsFollow(
+    {
+      ...m,
+      terms: m.terms.map((t) => axiomsFollow(refs(t), changed)),
+      props: m.props.map((p) => axiomsFollow(refs(p), changed)),
+      annProps: m.annProps.map((p) => axiomsFollow(refs(p), changed)),
+      shapeSets: renamedSets(m.shapeSets, changed),
+      mappings: m.mappings.map((x) => (changed.has(x.source) || changed.has(x.target) ? { ...x, source: swap(x.source), target: swap(x.target) } : x)),
+      rejected: m.rejected.map((r) => r.split('|').map(swap).join('|')),
+      ...(m.unmapped ? { unmapped: renameIris(m.unmapped, changed) } : {}),
+    },
+    changed,
+  );
 }
 
 /**
@@ -145,8 +172,8 @@ export function moveNamespace(m: Model, from: string, to: string): Model {
   const refs = <T extends { fields?: ExtraField[] }>(x: T): T => (x.fields?.some((f) => f.iri && renamed.has(f.value)) ? { ...x, fields: x.fields.map((f) => (f.iri && renamed.has(f.value) ? { ...f, value: renamed.get(f.value)! } : f)) } : x);
   // And so do the statements kept as they were read.
   const unmapped = renameIris(m.unmapped, renamed);
-  // And so do domains, ranges and class axioms.
-  return { ...m, props: props.map((p) => axiomsFollow(refs(p), renamed)), annProps: annProps.map((p) => axiomsFollow(refs(p), renamed)), terms: terms.map((t) => axiomsFollow(refs(t), renamed)), ...(unmapped ? { unmapped } : {}) };
+  // And so do domains, ranges, class axioms and annotations on axioms.
+  return annotationsFollow({ ...m, props: props.map((p) => axiomsFollow(refs(p), renamed)), annProps: annProps.map((p) => axiomsFollow(refs(p), renamed)), terms: terms.map((t) => axiomsFollow(refs(t), renamed)), ...(unmapped ? { unmapped } : {}) }, renamed);
 }
 
 /** Where the last part of an IRI starts: after its final # or /. */

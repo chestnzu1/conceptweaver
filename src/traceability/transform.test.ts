@@ -148,7 +148,9 @@ describe('the transformation proposals for the example ontology', () => {
     model.terms.find((t) => t.name === 'Director')!.classAxioms = [{ id: 'ax-1', kind: 'SubClassOf', expression: { type: 'ObjectSomeValuesFrom', property: { type: 'ObjectProperty', iri: directs }, filler: { type: 'Class', iri: film } } }];
     model.terms.find((t) => t.name === 'Film')!.classAxioms = [{ id: 'ax-2', kind: 'SubClassOf', expression: { type: 'DataSomeValuesFrom', property: { type: 'DataProperty', iri: running }, filler: { type: 'Datatype', iri: 'http://www.w3.org/2001/XMLSchema#integer' } } }];
     const release = iriOf(model, 'Release date');
-    model.unmapped = `@prefix owl: <http://www.w3.org/2002/07/owl#> .\n<${film}> owl:hasKey ( <${release}> <${running}> ) .`;
+    const releaseTerm = model.terms.find((t) => t.name === 'Release date')!;
+    const runningTerm = model.terms.find((t) => t.name === 'Running time')!;
+    model.terms.find((t) => t.name === 'Film')!.keys = [{ id: 'key-1', properties: [{ data: releaseTerm.id }, { data: runningTerm.id }] }];
 
     expect(hasKeyStatements(model)).toEqual([{ classIri: film, properties: [release, running], axiom: `HasKey(<${film}> (<${release}> <${running}>))` }]);
     const proposed = propose(model, ldm());

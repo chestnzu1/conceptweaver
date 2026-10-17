@@ -206,6 +206,14 @@ function aboutOf(a: Axiom): { iri: string; kind: EntityKind } {
     case 'SubDataPropertyOf':
     case 'SubAnnotationPropertyOf':
       return of(a.sub);
+    case 'SubPropertyChainOf':
+      return of(a.sup);
+    case 'HasKey':
+    case 'DisjointUnion':
+      return of(a.class);
+    case 'NegativeObjectPropertyAssertion':
+    case 'NegativeDataPropertyAssertion':
+      return of(a.source);
     case 'EquivalentObjectProperties':
     case 'DisjointObjectProperties':
     case 'EquivalentDataProperties':
@@ -265,6 +273,16 @@ export function axiomText(a: Axiom, n: Naming): string {
       return `${dat(a.sub)} SubPropertyOf ${dat(a.sup)}`;
     case 'SubAnnotationPropertyOf':
       return `${any(a.sub)} SubPropertyOf ${any(a.sup)}`;
+    case 'SubPropertyChainOf':
+      return `${a.chain.map((p) => (p.type === 'ObjectInverseOf' ? `inverse ${obj(p.property.iri)}` : obj(p.iri))).join(' o ')} SubPropertyOf ${obj(a.sup)}`;
+    case 'HasKey':
+      return `${c({ type: 'Class', iri: a.class })} HasKey: ${a.properties.map((p) => (p.type === 'ObjectProperty' ? obj(p.iri) : dat(p.iri))).join(', ')}`;
+    case 'DisjointUnion':
+      return `${c({ type: 'Class', iri: a.class })} DisjointUnionOf: ${a.classes.map(c).join(', ')}`;
+    case 'NegativeObjectPropertyAssertion':
+      return `${ind(a.source)} not ${obj(a.property)} ${ind(a.target)}`;
+    case 'NegativeDataPropertyAssertion':
+      return `${ind(a.source)} not ${dat(a.property)} ${literalText(a.value, n)}`;
     case 'EquivalentObjectProperties':
     case 'DisjointObjectProperties':
       return `${a.type.startsWith('Equivalent') ? 'EquivalentProperties' : 'DisjointProperties'}: ${a.properties.map(obj).join(', ')}`;

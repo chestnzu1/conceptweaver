@@ -272,6 +272,20 @@ of the model now, so the statements that declare it are the model's rather than 
 Nothing more is lost or added; 14 statements fewer are kept as text (FOAF 96 → 86, Pizza 24 →
 22, Relation Ontology 10 → 8 other statements).
 
+**Since then: further axioms** (task 2.8, model format 8, 2026-10-17). Property chains, keys
+(`owl:hasKey`), disjoint unions, negative property assertions and annotations on axioms are
+typed axioms now, editable where they belong, where every entity they name is declared; a
+statement that names an entity the ontology does not declare stays as it was read. Nothing more
+is lost or added; 28 statements fewer are kept as text (PROV-O 21, Relation Ontology 4, the
+Primer 3). PROV-O keeps 61 statements, its 13 property chains and 8 annotations on axioms being
+typed; Relation Ontology keeps 4 SWRL rules and 8 other statements, its 2 chains and 2
+annotations on axioms being typed; the Primer keeps 2 property chains, 1 key, 1 negative
+property assertion and 26 other statements, 2 negative assertions and an annotation on an axiom
+being typed, and one negative assertion staying because its property (`hasDaughter`) is
+undeclared. The Primer also gains a declaration and a label for `:Jack`: he is the source of a
+negative assertion the reader now takes into the model, so the writer states him as an entity
+with a name.
+
 The rest of this section describes the baseline as it was before these tasks.
 
 Only Koala comes back with nothing lost. What is lost, by cause, from the lists:

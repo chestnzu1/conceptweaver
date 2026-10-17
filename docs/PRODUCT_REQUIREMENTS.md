@@ -245,7 +245,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | Module | Status | Strongest evidence | Largest gap |
 | --- | --- | --- | --- |
 | M1 Modelling and entity management | **Existing** | `src/components/Entities.tsx`, `EntityEditor.tsx`, `src/model/iri.ts`, `src/model/identity.ts` | Lossless round trip (property identity done 2026-10-14) |
-| M2 Axiom and restriction editing | **Partially Implemented** | `src/model/axioms.ts`, `props.ts` | Class expressions are text |
+| M2 Axiom and restriction editing | **Partially Implemented** | `src/model/axioms.ts`, `props.ts`, `expressions.ts`, `src/components/AxiomParts.tsx` | General class axioms and SWRL rules have no editor |
 | M3 Reasoning | **Existing**, job handling partial | `src/model/reasoner.ts`, `reasoning.ts`, `src/reasoning/`, `reasoner/ReasonerService.java` (HermiT and ELK, chosen by profile) | No server-side jobs or size budget |
 | M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shacl.ts`, `quality.ts`, `src/validation/` | No SHACL-SPARQL; no server engine; keys and nested class expressions are not proposed as shapes (SHACL track, SH-4 and SH-5) |
 | M5 Graph and subgraph | **Existing** | `src/components/Canvas.tsx`, `src/layout/`, `src/model/subgraph.ts` | About 2,000 terms |
@@ -374,11 +374,11 @@ qualified restrictions on one property with a named class or datatype, several o
 (`restrictionSpecs` in `src/model/props.ts`); equivalent and disjoint classes and properties,
 same and different individuals (`LINKS` in `src/model/axioms.ts`); enumerated classes and
 datatypes; property characteristics; every edit checked by rule functions that refuse with a
-reason. Class expressions from imported ontologies are shown read-only.
+reason. Class expressions are structured data since 2026-10-14 (model format 4, FR-M2-2 and
+FR-M2-3); property chains, keys, disjoint unions, negative property assertions and annotations
+on axioms are typed since 2026-10-17 (model format 8, FR-M2-4 and FR-M2-5).
 
-**Gaps.** No editor for unions, intersections, complements, nested restrictions, `hasValue`,
-`hasSelf` (TD-02). No property chains, keys, disjoint unions, negative assertions, general class
-axioms, annotations on axioms, datatype facets or rules.
+**Gaps.** No editor for general class axioms, datatype facets or rules.
 
 **User stories.**
 
@@ -393,8 +393,8 @@ axioms, annotations on axioms, datatype facets or rules.
 | FR-M2-1 | Qualified restrictions (some, only, min, max, exactly) on a property, drawn as a line or edited in a form. | Existing | P0 |
 | FR-M2-2 | Class expressions are structured data: named class, and, or, not, some, only, min, max, exactly, value, self, one-of, nested to any depth. | Implemented 2026-10-14: domains and ranges (model format 3) and superclasses, equivalent and disjoint classes (model format 4, `Term.classAxioms`), with inverse properties and data ranges; `src/model/expressions.ts` | P0 |
 | FR-M2-3 | A Manchester-syntax editor for superclass and equivalent-class expressions, with completion of entity names, syntax errors shown in place, and a rendering in words. | Implemented 2026-10-14: a visual editor (nested blocks) and a Manchester-syntax editor (CodeMirror: completion, highlighting, bracket matching, formatting, errors in place) on one expression; checked against the OWL API's Manchester parser. A rendering in words since 2026-10-15 (`src/model/inWords.ts`), under the editor and every axiom listed | P0 |
-| FR-M2-4 | Property chains, keys, disjoint unions, negative property assertions and general class axioms can be stated and edited. | Recommended | P1 |
-| FR-M2-5 | Annotations on axioms are kept, shown and editable. | Recommended | P1 |
+| FR-M2-4 | Property chains, keys, disjoint unions, negative property assertions and general class axioms can be stated and edited. | Partially implemented 2026-10-17: property chains, keys, disjoint unions and negative property assertions are typed axioms (model format 8), read and written as OWL states them, and edited on the object property, class and individual (`src/components/AxiomParts.tsx`, `src/model/typedAxioms.test.ts`, `e2e/axioms.mjs`); general class axioms are still kept as they were read | P1 |
+| FR-M2-5 | Annotations on axioms are kept, shown and editable. | Implemented 2026-10-17: `Model.axiomAnnotations` (model format 8), shown and edited on the statement they are about, written as `owl:Axiom` | P1 |
 | FR-M2-6 | Datatype restrictions with facets (ranges, patterns, lengths). | Partly implemented 2026-10-14: in any data range of an expression or a range axiom (`xsd:integer[>= 0]`); not as a named datatype | P2 |
 | FR-M2-7 | Every edit goes through one rule service that accepts it or refuses it with a reason, whichever control was used. | Partially Implemented (since 2026-10-15 one rule for moving an end from the canvas, the panel and the table, TD-06; every edit is a change set of `OntologyEditService`, and one made elsewhere is held to the editor's rule functions, with a reason for each refusal; the editor's own controls still call those functions directly) | P0 |
 | FR-M2-8 | SWRL rules. | Future | P3 |
@@ -1450,7 +1450,7 @@ behave.
 | 5 | Sets a property transitive, functional, and so on | Stated; combinations that exclude each other are reported by validation. | Existing |
 | 6 | Opens a class imported with a complex definition | The expression is shown as text and cannot be edited. | Partially Implemented |
 | 7 | Types `Pizza and (hasTopping some MeatTopping)` as an equivalent class | — | Recommended (FR-M2-3) |
-| 8 | States a property chain or a key | — | Recommended (FR-M2-4) |
+| 8 | States a property chain or a key | The axiom is stated on the property or class; RDF writes it as a list. | Implemented (2.8) |
 
 **Difficulties.**
 

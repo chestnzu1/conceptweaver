@@ -60,6 +60,39 @@ describe('a statement as an axiom', () => {
     }
   });
 
+  it('types the axioms OWL states with a list or a blank node', () => {
+    const ttl = `@prefix : <http://e.org/#> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+      :A a owl:Class . :B a owl:Class . :C a owl:Class ; owl:disjointUnionOf ( :A :B ) .
+      :C owl:hasKey ( :name :p ) .
+      :name a owl:DatatypeProperty . :p a owl:ObjectProperty . :inv a owl:ObjectProperty .
+      :chain a owl:ObjectProperty ; owl:propertyChainAxiom ( :p [ owl:inverseOf :inv ] ) .
+      :i a owl:NamedIndividual . :j a owl:NamedIndividual .
+      [] a owl:NegativePropertyAssertion ; owl:sourceIndividual :i ; owl:assertionProperty :p ; owl:targetIndividual :j .
+      [] a owl:NegativePropertyAssertion ; owl:sourceIndividual :i ; owl:assertionProperty :name ; owl:targetValue "x" .
+      [] a owl:Axiom ; owl:annotatedSource :C ; owl:annotatedProperty rdfs:subClassOf ; owl:annotatedTarget :A ; rdfs:comment "why" .`;
+    const stmts = statementsOf(ttl);
+    const kinds = kindsOf(stmts);
+    const read = stmts.map((s) => ({ s, axiom: axiomOf(s, kinds) }));
+    const of = (part: string): Axiom => read.find(({ s }) => s.text.includes(part))!.axiom;
+    expect(of('owl#propertyChainAxiom')).toEqual({
+      type: 'SubPropertyChainOf',
+      chain: [{ type: 'ObjectProperty', iri: 'http://e.org/#p' }, { type: 'ObjectInverseOf', property: { type: 'ObjectProperty', iri: 'http://e.org/#inv' } }],
+      sup: 'http://e.org/#chain',
+    });
+    expect(of('owl#hasKey')).toEqual({
+      type: 'HasKey',
+      class: 'http://e.org/#C',
+      properties: [{ type: 'DataProperty', iri: 'http://e.org/#name' }, { type: 'ObjectProperty', iri: 'http://e.org/#p' }],
+    });
+    expect(of('owl#disjointUnionOf')).toEqual({ type: 'DisjointUnion', class: 'http://e.org/#C', classes: [{ type: 'Class', iri: 'http://e.org/#A' }, { type: 'Class', iri: 'http://e.org/#B' }] });
+    expect(of('owl#targetIndividual')).toEqual({ type: 'NegativeObjectPropertyAssertion', property: 'http://e.org/#p', source: 'http://e.org/#i', target: 'http://e.org/#j' });
+    expect(of('owl#targetValue')).toEqual({ type: 'NegativeDataPropertyAssertion', property: 'http://e.org/#name', source: 'http://e.org/#i', value: { value: 'x' } });
+    // An annotation on an axiom names a statement to say something about it; the model files it
+    // with the axiom (see typedAxioms.test.ts), and as a change it is still the statement it is.
+    expect(of('owl#annotatedTarget').type).toBe('Unmapped');
+    for (const { s, axiom } of read) expect(statementOf(axiom), s.text).toBe(s.text);
+  });
+
   it('reads what a property is from the ontology: a triple with it is an assertion of its kind', () => {
     const ttl = `@prefix : <http://e.org/#> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
       :o a owl:Ontology ; rdfs:label "O" ; owl:imports <http://e.org/other> .

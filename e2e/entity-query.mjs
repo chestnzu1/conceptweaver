@@ -150,7 +150,7 @@ ok(same(found.map((r) => r.name), ['Course']) && same(found[0].marks, ['Lesson']
 // A label in another language is an annotation: the row has no place for it, so it is shown where it was found.
 await find(':LectureCourse');
 await rows.first().locator('td').nth(1).click();
-await panel.getByRole('button', { name: 'Add field' }).click();
+await panel.locator('[data-section=annotations]').getByRole('button', { name: 'Add field' }).click();
 await panel.getByLabel('Property', { exact: true }).fill('rdfs:label');
 await panel.getByLabel('Value', { exact: true }).fill('Vorlesung');
 await panel.getByLabel('Language', { exact: true }).fill('de');

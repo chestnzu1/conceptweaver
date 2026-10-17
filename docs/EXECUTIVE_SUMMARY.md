@@ -103,8 +103,9 @@ The first five, the MVP path, are done (2026-10-16). In order from here:
 | 4 | ~~Ontology-to-LDM transformation (LM-3)~~ | Done 2026-10-17: logical models proposed from the ontology, constraints decided by the designer. |
 | 5 | ~~Semantic traceability and change impact (LM-4)~~ | Done 2026-10-17: every element traced, every ontology change reported per model. |
 | 6 | ~~Annotation properties as entities, with labels in several languages and a display language (task 2.7)~~ | Done 2026-10-17. |
-| 7 | The remaining Phase 2 tasks, then the Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
-| 8 | Collaboration, publishing, assistance with LDM tools | The platform. |
+| 7 | ~~Further axioms: property chains, keys, disjoint unions, negative assertions and annotations on axioms (task 2.8)~~ | Done 2026-10-17. |
+| 8 | The remaining Phase 2 tasks, then the Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
+| 9 | Collaboration, publishing, assistance with LDM tools | The platform. |
 
 ## 5. MVPs
 
@@ -124,7 +125,7 @@ assistance, server-side LDMs.
 
 **MS-15, traceable and impact-aware**, is reached (2026-10-17) with LM-4. The next milestone is
 MS-16, server-side logical models, through LM-5 in Phase 4, after the remaining Phase 2 tasks;
-2.7 is done (2026-10-17), and the next task is 2.8
+2.8 is done (2026-10-17), and the next task is 2.9
 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §10).
 
 ## 7. Logical data modelling in brief

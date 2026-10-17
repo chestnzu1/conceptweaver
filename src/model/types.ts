@@ -1,6 +1,6 @@
 import { noLayout, normalizeLayout, type GraphLayout } from '../layout/types';
 import { noStyle, normalizeGraphStyle, type GraphStyle } from './graphStyle';
-import { classExpressionAxiomFrom, classExpressionFrom, dataRangeFrom, expressionOfTurtle, rangeOfKey, WELL_KNOWN, type ClassAxiom, type ClassAxiomKind, type ClassExpressionAxiom, type DataRangeAxiom } from './expressions';
+import { classExpressionAxiomFrom, classExpressionFrom, dataRangeFrom, expressionOfTurtle, rangeOfKey, WELL_KNOWN, type ClassAxiom, type ClassAxiomKind, type ClassExpression, type ClassExpressionAxiom, type DataRangeAxiom } from './expressions';
 import { statementsOf } from './unmapped';
 import { withIris } from './iri';
 import { compactIri, STANDARD } from './prefixes';
@@ -103,6 +103,11 @@ export interface ObjProp {
   inverses?: string[];
   equivalents?: string[];
   disjoints?: string[];
+  /**
+   * The chains it is the head of (owl:propertyChainAxiom): it holds from the start of the first
+   * property to the end of the last. Each is an axiom of its own.
+   */
+  chains?: PropertyChain[];
   /** Annotations other than the name and description, as on a term. */
   fields?: ExtraField[];
   /** Full IRI: kept from an import, or made once from the name. */
@@ -165,6 +170,69 @@ export interface DataValue {
   lang?: string;
   /** Datatype stated on the value itself, when it is not simply the property's range. */
   dt?: string;
+}
+
+/**
+ * One property of a property chain, by id: an object property, used the way it is (or, with
+ * `inverse`, from its object to its subject, as owl:inverseOf states it).
+ */
+export interface ChainProperty {
+  prop: string;
+  inverse?: true;
+}
+
+/**
+ * A property chain (owl:propertyChainAxiom) of the object property it is stated on: whenever the
+ * first property holds from a to b, the second from b to c, and so on, the property itself holds
+ * from a to the last one's end.
+ */
+export interface PropertyChain {
+  id: string;
+  properties: ChainProperty[];
+}
+
+/** One property of a key: an object property (its id), or a data property (its term id). */
+export type KeyProperty = { prop: string } | { data: string };
+
+/**
+ * A key of a class (owl:hasKey): the properties whose values, together, tell one member from
+ * another. Each is an object property of the model or a data property (a term).
+ */
+export interface HasKey {
+  id: string;
+  properties: KeyProperty[];
+}
+
+/**
+ * A class that is exactly the union of its members (owl:disjointUnionOf), which are also stated
+ * to be pairwise disjoint: a member is in the class if and only if it is in one of them.
+ */
+export interface DisjointUnion {
+  id: string;
+  classes: ClassExpression[];
+}
+
+/**
+ * A negative property assertion (owl:NegativePropertyAssertion): an individual does not have a
+ * value for a property. An object assertion names the other individual; a data assertion gives
+ * the literal it does not have.
+ */
+export type NegativeAssertion =
+  | { id: string; kind: 'object'; prop: string; inverse?: true; target: string }
+  | { id: string; kind: 'data'; prop: string; value: string; lang?: string; dt?: string };
+
+/**
+ * An annotation on an axiom (owl:Axiom): the axiom stays as it is, and this says something about
+ * it — where it came from, why it holds. The axiom is named by its subject (a full IRI), its
+ * property (a full IRI) and its target (as the Turtle it is, which is a literal for a data
+ * axiom), and the annotation is a field, as on an entity.
+ */
+export interface AxiomAnnotation {
+  id: string;
+  subject: string;
+  property: string;
+  target: string;
+  fields: ExtraField[];
 }
 
 /** One of the values of an enumerated datatype: a literal, with its datatype or its language where it has one. */
@@ -297,6 +365,12 @@ export interface Term {
    * Unless this is set nothing is assumed about that: two members may be one and the same thing.
    */
   allDifferent?: boolean;
+  /** For a class: its keys (owl:hasKey), each the properties that together identify a member. */
+  keys?: HasKey[];
+  /** For a class: the unions it is exactly (owl:disjointUnionOf), each of classes that do not overlap. */
+  disjointUnions?: DisjointUnion[];
+  /** For an individual: what it is stated not to have (owl:NegativePropertyAssertion). */
+  negativeAssertions?: NegativeAssertion[];
   /**
    * Defined in another ontology and only referred to here, under its own IRI: the id of that
    * ontology (see Model.externals), or '' if it is not known. Its definition is not part of
@@ -382,9 +456,12 @@ export interface Prefix {
  * models (`logicalModels`, src/logical), none for a model of an earlier format. 7 (from 2026-10-17):
  * annotation properties are entities of their own (`annProps`), where an annotation was only a
  * metadata field of the entity it annotated; a model of an earlier format has none until one is
- * declared. A model of an earlier version is read and brought up to date by normalizeModel.
+ * declared. 8 (from 2026-10-17): property chains (`ObjProp.chains`), keys, disjoint unions and
+ * negative assertions (`Term.keys`, `Term.disjointUnions`, `Term.negativeAssertions`), and
+ * annotations on axioms (`axiomAnnotations`), where they were kept as Turtle text in `unmapped`.
+ * A model of an earlier version is read and brought up to date by normalizeModel.
  */
-export const MODEL_VERSION = 7;
+export const MODEL_VERSION = 8;
 
 export interface Model {
   format: 'conceptweaver';
@@ -449,10 +526,15 @@ export interface Model {
    */
   logicalModels: LogicalModel[];
   /**
-   * Statements of an ontology that was read which the model has no place for (property chains,
-   * keys, axiom annotations, an ontology's version IRI, …), kept as they were and written back
-   * with it: Turtle, one statement at a time, with full IRIs (see unmapped.ts). Not shown or
-   * edited here. Left out when there are none.
+   * Annotations stated on the axioms themselves (owl:Axiom), rather than on an entity: each says
+   * something about one statement — where it came from, why it holds. Left out when there are none.
+   */
+  axiomAnnotations?: AxiomAnnotation[];
+  /**
+   * Statements of an ontology that was read which the model has no place for (an ontology's
+   * version IRI, SWRL rules, …), kept as they were and written back with it: Turtle, one statement
+   * at a time, with full IRIs (see unmapped.ts). Not shown or edited here. Left out when there are
+   * none.
    */
   unmapped?: string;
 }
@@ -492,6 +574,7 @@ export const MODEL_PARTS: Record<keyof Model, 'revision' | 'picture' | 'logical'
   rejected: 'revision',
   governance: 'revision',
   datatypes: 'revision',
+  axiomAnnotations: 'revision',
   unmapped: 'revision',
   style: 'picture',
   layout: 'picture',
@@ -931,6 +1014,21 @@ export function normalizeModel(raw: unknown): Model {
       if (list.length) entry[link] = list;
     }
   }
+  // Property chains (format 8): each step is an object property of the model.
+  for (const { raw, entry } of read) {
+    const chains: PropertyChain[] = [];
+    for (const c of (Array.isArray(raw.chains) ? raw.chains : []) as Record<string, unknown>[]) {
+      if (!c || typeof c !== 'object') continue;
+      const properties: ChainProperty[] = [];
+      for (const p of (Array.isArray(c.properties) ? c.properties : []) as Record<string, unknown>[]) {
+        if (!p || typeof p !== 'object' || !propIds.has(str(p.prop))) continue;
+        properties.push({ prop: str(p.prop), ...(p.inverse === true ? { inverse: true as const } : {}) });
+      }
+      const id = str(c.id);
+      if (properties.length) chains.push({ id: id && !chains.some((x) => x.id === id) ? id : uid(), properties });
+    }
+    if (chains.length) entry.chains = chains;
+  }
   // Annotation properties are entities of their own (format 7). An earlier format has none.
   const annProps: AnnotationProp[] = [];
   const annRead: { raw: Record<string, unknown>; entry: AnnotationProp }[] = [];
@@ -974,6 +1072,63 @@ export function normalizeModel(raw: unknown): Model {
     ids.delete(t.id);
     for (let i = relations.length - 1; i >= 0; i--) if (relations[i].from === t.id || relations[i].to === t.id) relations.splice(i, 1);
     for (const d of domain) for (const r of range) relations.push(newRelation({ from: d, to: r, label: t.name.trim() }));
+  }
+  // Keys, disjoint unions and negative assertions (format 8). A key or an assertion can only
+  // name entities that are in the model; a disjoint union's members are class expressions, read
+  // as a class axiom's is.
+  const termById = new Map(terms.map((t) => [t.id, t]));
+  const dataPropIds = new Set(terms.filter((t) => t.type === 'property').map((t) => t.id));
+  const literalDt = (v: unknown): string | undefined => {
+    const dt = str(v);
+    return DATATYPES.some((d) => d.id === dt) || /^xsd:[A-Za-z]+$/.test(dt) || /^<[^<>]+>$/.test(dt) ? dt : undefined;
+  };
+  for (const [id, raw] of rawTerms) {
+    const term = termById.get(id);
+    if (!term || version < 8) continue;
+    const keys: HasKey[] = [];
+    for (const k of (Array.isArray(raw.keys) ? raw.keys : []) as Record<string, unknown>[]) {
+      if (!k || typeof k !== 'object') continue;
+      const properties: KeyProperty[] = [];
+      for (const p of (Array.isArray(k.properties) ? k.properties : []) as Record<string, unknown>[]) {
+        if (!p || typeof p !== 'object') continue;
+        if (propIds.has(str(p.prop))) properties.push({ prop: str(p.prop) });
+        else if (dataPropIds.has(str(p.data))) properties.push({ data: str(p.data) });
+      }
+      const keyId = str(k.id);
+      if (properties.length) keys.push({ id: keyId && !keys.some((x) => x.id === keyId) ? keyId : uid(), properties });
+    }
+    if (keys.length) term.keys = keys;
+    const unions: DisjointUnion[] = [];
+    for (const u of (Array.isArray(raw.disjointUnions) ? raw.disjointUnions : []) as Record<string, unknown>[]) {
+      if (!u || typeof u !== 'object') continue;
+      const classes = (Array.isArray(u.classes) ? u.classes : []).map((c) => classExpressionFrom(c)).filter((c): c is ClassExpression => !!c);
+      const unionId = str(u.id);
+      if (classes.length >= 2) unions.push({ id: unionId && !unions.some((x) => x.id === unionId) ? unionId : uid(), classes });
+    }
+    if (unions.length) term.disjointUnions = unions;
+    const negatives: NegativeAssertion[] = [];
+    for (const n of (Array.isArray(raw.negativeAssertions) ? raw.negativeAssertions : []) as Record<string, unknown>[]) {
+      if (!n || typeof n !== 'object') continue;
+      const stated = str(n.id);
+      const id = stated && !negatives.some((x) => x.id === stated) ? stated : uid();
+      if (n.kind === 'object' && propIds.has(str(n.prop)) && ids.has(str(n.target))) {
+        negatives.push({ id, kind: 'object', prop: str(n.prop), ...(n.inverse === true ? { inverse: true as const } : {}), target: str(n.target) });
+      } else if (n.kind === 'data' && dataPropIds.has(str(n.prop))) {
+        const dt = literalDt(n.dt);
+        negatives.push({ id, kind: 'data', prop: str(n.prop), value: str(n.value), ...(LANG.test(str(n.lang)) ? { lang: str(n.lang).toLowerCase() } : {}), ...(dt ? { dt } : {}) });
+      }
+    }
+    if (negatives.length) term.negativeAssertions = negatives;
+  }
+  // Annotations on axioms (format 8): the axiom is named by its subject, property and target,
+  // and the annotation itself is a field, as on an entity.
+  const axiomAnnotations: AxiomAnnotation[] = [];
+  for (const a of (version >= 8 && Array.isArray(o.axiomAnnotations) ? o.axiomAnnotations : []) as Record<string, unknown>[]) {
+    if (!a || typeof a !== 'object' || !str(a.subject) || !str(a.property) || !str(a.target)) continue;
+    const fields = fieldList(a.fields);
+    if (!fields.length) continue;
+    const stated = str(a.id);
+    axiomAnnotations.push({ id: stated && !axiomAnnotations.some((x) => x.id === stated) ? stated : uid(), subject: str(a.subject), property: str(a.property), target: str(a.target), fields });
   }
   const model: Model = {
     format: 'conceptweaver',
@@ -1042,6 +1197,7 @@ export function normalizeModel(raw: unknown): Model {
       .map((g): DataGraphRef => ({ id: str(g.id), name: str(g.name) || str(g.file) || 'Data', file: str(g.file), format: str(g.format) || 'turtle', triples: num(g.triples), fingerprint: str(g.fingerprint), includeOntology: g.includeOntology !== false, read: num(g.read) })),
     // Format 6 has logical data models; an earlier one has none.
     logicalModels: logicalModelsFrom(o.logicalModels),
+    ...(axiomAnnotations.length ? { axiomAnnotations } : {}),
     ...(typeof o.unmapped === 'string' && o.unmapped.trim() ? { unmapped: o.unmapped } : {}),
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],

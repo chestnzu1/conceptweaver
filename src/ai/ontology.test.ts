@@ -133,8 +133,8 @@ describe('a proposal', () => {
 
   it('can state chains, keys, property and individual axioms, datatypes, ontology annotations and imports, and take each back', async () => {
     const cases: [string, Operation[], string][] = [
-      ['a property chain', [{ action: 'add', type: 'propertyChain', property: 'wins', members: ['directs', 'wins'] }], '#propertyChainAxiom> ( <' + NS + 'directs> <' + NS + 'wins> )'],
-      ['a key', [{ action: 'add', type: 'hasKey', subject: 'Film', members: ["'Release date'"] }], '#hasKey> ( <' + NS + 'releaseDate> )'],
+      ['a property chain', [{ action: 'add', type: 'propertyChain', property: 'wins', members: ['directs', 'wins'] }], 'owl:propertyChainAxiom ( :directs :wins )'],
+      ['a key', [{ action: 'add', type: 'hasKey', subject: 'Film', members: ["'Release date'"] }], 'owl:hasKey ( :releaseDate )'],
       ['equivalent properties', [{ action: 'add', type: 'declare', entityKind: 'objectProperty', name: 'is director of' }, { action: 'add', type: 'equivalentProperties', subject: 'directs', members: ["'is director of'"] }], 'owl:equivalentProperty'],
       ['disjoint properties', [{ action: 'add', type: 'disjointProperties', subject: "'acts in'", members: ['directs'] }], 'owl:propertyDisjointWith'],
       ['the same individual', [{ action: 'add', type: 'declare', entityKind: 'individual', name: 'Gisaengchung' }, { action: 'add', type: 'sameIndividual', subject: 'Parasite', members: ['Gisaengchung'] }], 'owl:sameAs'],

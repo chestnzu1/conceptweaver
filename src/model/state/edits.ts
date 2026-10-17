@@ -17,7 +17,7 @@ import type { SettingsDraft } from '../prefixes';
 import { declaredProp, isInstanceOf, relChoices, type RelChoice } from '../props';
 import { reconnect, type End } from '../reconnect';
 import { cannotRelate, settleRelation, typed } from '../relating';
-import { INSTANCE_OF, newAnnotationProp, newProp, newRelation, newTerm, PROP_LINKS, type AnnotationProp, type DataGraphRef, type EntityKind, type ExtraField, type Model, type ModelMode, type ObjProp, type Relation, type Term, type TermType } from '../types';
+import { INSTANCE_OF, newAnnotationProp, newProp, newRelation, newTerm, PROP_LINKS, type AnnotationProp, type AxiomAnnotation, type DataGraphRef, type EntityKind, type ExtraField, type Model, type ModelMode, type ObjProp, type Relation, type Term, type TermType } from '../types';
 import { labelKey, suggestFor } from '../vocab';
 import { prune } from './document';
 import type { Slice } from './types';
@@ -60,6 +60,8 @@ export interface EditsSlice {
   setShapeSets: (fn: (sets: ShapeSet[]) => ShapeSet[]) => void;
   /** Changes the data graphs the model names (not their content, which is kept apart: dataGraphs.ts): one step of the history. */
   setDataGraphs: (fn: (graphs: DataGraphRef[]) => DataGraphRef[]) => void;
+  /** Changes the annotations on axioms, each kept with the statement it annotates: one step of the history. */
+  setAxiomAnnotations: (fn: (list: AxiomAnnotation[] | undefined) => AxiomAnnotation[] | undefined) => void;
 
   addTerm: (p?: Partial<Term>) => string;
   updateTerm: (id: string, patch: Partial<Term>, history?: boolean) => void;
@@ -173,6 +175,12 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
     }),
   setShapeSets: (fn) => get().apply((m) => ({ ...m, shapeSets: fn(m.shapeSets) })),
   setDataGraphs: (fn) => get().apply((m) => ({ ...m, dataGraphs: fn(m.dataGraphs) })),
+  setAxiomAnnotations: (fn) =>
+    get().apply((m) => {
+      const { axiomAnnotations: _was, ...rest } = m;
+      const list = fn(m.axiomAnnotations);
+      return list?.length ? { ...rest, axiomAnnotations: list } : rest;
+    }),
 
   addTerm: (p = {}) => {
     // A term is of a kind the type of model has: in a vocabulary everything new is a concept.

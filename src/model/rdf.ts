@@ -3,11 +3,11 @@ import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
 import { fieldAnnProp } from './annotationProps';
 import { baseIriOf, localName } from './iri';
 import { arrangeAsHierarchy } from '../layout/graph';
-import { DATATYPES, ENUM_RANGE, emptyModel, type AnnotationProp, type DescriptionProperty, type NameProperty, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
+import { DATATYPES, ENUM_RANGE, emptyModel, type AnnotationProp, type AxiomAnnotation, type ChainProperty, type DescriptionProperty, type KeyProperty, type NameProperty, type NegativeAssertion, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
 import { enumOf, isEnumRange } from './datatypes';
 import { propDatatype } from './domains';
-import { classesOfUnion, graphOf, readClass, readDataRange, withIrisIn, type ClassAxiom, type ClassExpression, type DataProperty, type DataRange, type DataRangeAxiom, type Graph, type Literal, type ObjectPropertyExpression, type ClassAxiomKind } from './expressions';
+import { classesOfUnion, graphOf, readClass, readDataRange, turtleOf, withIrisIn, type ClassAxiom, type ClassExpression, type DataProperty, type DataRange, type DataRangeAxiom, type Graph, type Literal, type ObjectPropertyExpression, type ClassAxiomKind } from './expressions';
 import { keyIri } from './governance';
 import { linkProps } from './identity';
 import { CHARACTERISTICS, dataDomain, DEFAULT_PROP, objectProperties, restrictionSpecs, specsPatch } from './props';
@@ -328,6 +328,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   const propRef = new Map<string, string>();
   for (const v of views) if (v.iri) propRef.set(v.id, short(v.iri));
   for (const v of views) if (!v.iri) propRef.set(v.id, ':' + unique(localName(v.name, true)));
+  const chainsOf = new Map(m.props.map((p) => [p.id, p.chains ?? []]));
   const objProps: RdfNode[] = views.map((v) => {
     const n: RdfNode = { id: propRef.get(v.id)!, props: [['rdf:type', { id: 'owl:ObjectProperty' }]] };
     for (const c of CHARACTERISTICS) if (v.chars.includes(c.id)) n.props.push(['rdf:type', { id: c.owl }]);
@@ -342,6 +343,16 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
     else if (v.usedFrom.length && v.external === undefined) n.props.push(['rdfs:domain', classes(v.usedFrom.map((id) => ref.get(id)!))]);
     if (!v.rangeAuto) for (const a of v.ranges) n.props.push(['rdfs:range', classVal(a.expression)]);
     else if (v.usedTo.length && v.external === undefined) n.props.push(['rdfs:range', classes(v.usedTo.map((id) => ref.get(id)!))]);
+    // A chain is a list of the object properties it steps through, an inverse one written in place.
+    for (const chain of chainsOf.get(v.id) ?? []) {
+      const steps: Val[] = [];
+      for (const s of chain.properties) {
+        const step = propRef.get(s.prop);
+        if (!step) break;
+        steps.push(s.inverse ? { bnode: { id: '', props: [['owl:inverseOf', { id: step }]] } } : { id: step });
+      }
+      if (steps.length && steps.length === chain.properties.length) n.props.push(['owl:propertyChainAxiom', { list: steps }]);
+    }
     return n;
   });
   // A class restricted by a property: "every member has it to some / only / N members of the target".
@@ -409,7 +420,20 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   const AXIOM_PREDICATE: Record<ClassAxiomKind, string> = { SubClassOf: 'rdfs:subClassOf', EquivalentClasses: 'owl:equivalentClass', DisjointClasses: 'owl:disjointWith' };
   for (const t of m.terms) {
     if (t.external !== undefined) continue;
-    for (const a of t.classAxioms ?? []) nodes.get(t.id)!.props.push([AXIOM_PREDICATE[a.kind], classVal(a.expression)]);
+    const n = nodes.get(t.id)!;
+    for (const a of t.classAxioms ?? []) n.props.push([AXIOM_PREDICATE[a.kind], classVal(a.expression)]);
+    // A key is a list of the properties whose values identify a member: object properties by
+    // their declaration, data properties by their term.
+    for (const k of t.keys ?? []) {
+      const members: Val[] = [];
+      for (const p of k.properties) {
+        const property = 'prop' in p ? propRef.get(p.prop) : ref.get(p.data);
+        if (property) members.push({ id: property });
+      }
+      if (members.length && members.length === k.properties.length) n.props.push(['owl:hasKey', { list: members }]);
+    }
+    // The union a class is exactly: a list of class expressions, at least two of them.
+    for (const u of t.disjointUnions ?? []) if (u.classes.length >= 2) n.props.push(['owl:disjointUnionOf', { list: u.classes.map(classVal) }]);
   }
   for (const t of m.terms) {
     if (t.type !== 'property' || t.external !== undefined) continue;
@@ -438,6 +462,42 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       nodes.get(t.id)!.props.push([ref.get(prop.id)!, v.lang ? { lit: v.value, lang: v.lang } : plain ? { lit: v.value } : { lit: v.value, dt }]);
     }
   }
+  // What individuals are stated not to have (owl:NegativePropertyAssertion): a statement of its
+  // own, naming the source, the property and the individual or literal it does not have.
+  const negativeNodes: RdfNode[] = [];
+  for (const t of m.terms) {
+    if (t.type !== 'instance') continue;
+    for (const a of t.negativeAssertions ?? []) {
+      const props: [string, Val][] = [['rdf:type', { id: 'owl:NegativePropertyAssertion' }], ['owl:sourceIndividual', { id: ref.get(t.id)! }]];
+      if (a.kind === 'object') {
+        const property = propRef.get(a.prop);
+        const target = ref.get(a.target);
+        if (!property || !target) continue;
+        props.push(['owl:assertionProperty', a.inverse ? { bnode: { id: '', props: [['owl:inverseOf', { id: property }]] } } : { id: property }], ['owl:targetIndividual', { id: target }]);
+      } else {
+        const property = ref.get(a.prop);
+        if (!property) continue;
+        const value: Val = a.lang ? { lit: a.value, lang: a.lang } : a.dt && a.dt !== 'xsd:string' ? { lit: a.value, dt: a.dt } : { lit: a.value };
+        props.push(['owl:assertionProperty', { id: property }], ['owl:targetValue', value]);
+      }
+      negativeNodes.push({ id: '', props });
+    }
+  }
+  // Annotations on axioms: a blank node naming the statement by its subject, property and target,
+  // and carrying what is said about it as annotations.
+  const axiomNodes: RdfNode[] = (m.axiomAnnotations ?? []).map((a) => {
+    const n: RdfNode = {
+      id: '',
+      props: [
+        ['rdf:type', { id: 'owl:Axiom' }],
+        ['owl:annotatedSource', { id: short(a.subject) }],
+        ['owl:annotatedProperty', { id: short(a.property) }],
+        ['owl:annotatedTarget', kept(a.target)],
+      ],
+    };
+    annotate(n, a);
+    return n;
+  });
   // An enumeration: the class is exactly the individuals listed (owl:equivalentClass with owl:oneOf).
   // The list is a class expression of its own. No triple here says "class oneOf individual".
   const allDifferent: RdfNode[] = [];
@@ -451,7 +511,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   }
   for (const g of whole.values()) allDifferent.push({ id: '', props: [['rdf:type', { id: g.predicate === 'owl:disjointWith' ? 'owl:AllDisjointClasses' : 'owl:AllDifferent' }], ['owl:members', { list: g.members.map((id): Val => ({ id: ref.get(id)! })) }]] });
   const of = (type: Term['type']) => m.terms.filter((t) => t.type === type).map((t) => nodes.get(t.id)!);
-  return { base, nodes: [ontology, ...declarations, ...customNodes, ...annPropNodes, ...of('concept'), ...objProps, ...datatypeNodes, ...of('property'), ...of('instance'), ...allDifferent], ref, propRef };
+  return { base, nodes: [ontology, ...declarations, ...customNodes, ...annPropNodes, ...of('concept'), ...objProps, ...datatypeNodes, ...of('property'), ...of('instance'), ...negativeNodes, ...allDifferent, ...axiomNodes], ref, propRef };
 }
 
 /**
@@ -709,6 +769,40 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     }
     return t;
   };
+  /** The items of a well-formed RDF list, or undefined when it is not one (a loop, a fork, something else). */
+  const listTerms = (head: N3Term): N3Term[] | undefined => {
+    const out: N3Term[] = [];
+    const seen = new Set<string>();
+    let list = head;
+    for (let guard = 0; list.termType === 'BlankNode' && guard < 5000; guard++) {
+      const cell = key(list);
+      const first = objs(cell, NS.rdf + 'first');
+      const rest = objs(cell, NS.rdf + 'rest');
+      if (seen.has(cell) || first.length !== 1 || rest.length !== 1) return undefined;
+      seen.add(cell);
+      out.push(first[0]);
+      list = rest[0];
+    }
+    return list.termType === 'NamedNode' && list.value === NS.rdf + 'nil' ? out : undefined;
+  };
+  /**
+   * The property an OWL property expression names: a named one, or a blank node that says nothing
+   * but that it is the inverse of one.
+   */
+  const propertyOf = (t: N3Term): { iri: string; inverse?: true } | undefined => {
+    if (t.termType === 'NamedNode') return { iri: t.value };
+    if (t.termType !== 'BlankNode') return undefined;
+    const preds = spo.get(key(t));
+    if (!preds) return undefined;
+    const inverse = preds.get(NS.owl + 'inverseOf') ?? [];
+    if (inverse.length !== 1 || inverse[0].termType !== 'NamedNode') return undefined;
+    for (const [p, os] of preds) {
+      if (p === NS.owl + 'inverseOf') continue;
+      if (p === NS.rdf + 'type' && os.every((o) => o.value === NS.owl + 'ObjectProperty')) continue;
+      return undefined;
+    }
+    return { iri: inverse[0].value, inverse: true };
+  };
   const relKeys = new Set<string>();
   // A use of an object property carries the property's id (`prop`), so that two properties with one label stay two.
   const relate = (from: string, to: string, kind: Relation['kind'], label = '', predicate?: string, restriction?: Pick<Relation, 'restriction' | 'restrictionN' | 'plain' | 'prop'>) => {
@@ -771,6 +865,15 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   for (const p of [...objProps, ...dataProps, ...ownAnnProps]) {
     for (const pred of objProps.has(p) || ownAnnProps.has(p) ? ['domain', 'range'] : ['domain']) {
       objs(p, NS.rdfs + pred).flatMap(expand).forEach((c) => ensure(c, 'concept'));
+    }
+  }
+  // A class stated to have a key or to be a disjoint union is one, even where the file does not
+  // declare it so; so is each named class a disjoint union lists.
+  for (const [s, preds] of spo) {
+    if (s.startsWith('_:') || builtin(s) || datatypeIris.has(s)) continue;
+    if (preds.has(NS.owl + 'hasKey') || preds.has(NS.owl + 'disjointUnionOf')) ensure(s, 'concept');
+    for (const o of preds.get(NS.owl + 'disjointUnionOf') ?? []) {
+      for (const item of listTerms(o) ?? []) if (item.termType === 'NamedNode' && !builtin(item.value) && !datatypeIris.has(item.value)) ensure(item.value, 'concept');
     }
   }
   const classes = new Set(terms.keys());
@@ -953,6 +1056,25 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       // Kept on whichever property the file states it, even where both do: nothing stated is dropped.
       if (ids.length) entry[link] = ids;
     }
+    // Property chains: a list of object properties, each used as it is or inverted.
+    for (const o of objs(p, NS.owl + 'propertyChainAxiom')) {
+      const items = listTerms(o);
+      if (!items?.length) continue;
+      const properties: ChainProperty[] = [];
+      let good = true;
+      for (const item of items) {
+        const property = propertyOf(item);
+        const id = property && objProps.has(property.iri) ? propIdOf.get(property.iri) : undefined;
+        if (!property || !id) {
+          good = false;
+          break;
+        }
+        properties.push({ prop: id, ...(property.inverse ? { inverse: true as const } : {}) });
+      }
+      if (!good) continue;
+      entry.chains = [...(entry.chains ?? []), { id: uid(), properties }];
+      markWith(p, NS.owl + 'propertyChainAxiom', o);
+    }
     m.props.push(entry);
     propEntries.set(p, entry);
   }
@@ -1029,6 +1151,41 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   }
   for (const p of dataProps) for (const o of objs(p, NS.rdfs + 'subPropertyOf')) if (o.termType === 'NamedNode' && relate(p, o.value, 'generalization')) mark(p, NS.rdfs + 'subPropertyOf', o);
 
+  // Keys and disjoint unions stated on a class, once the properties and classes they name are known.
+  for (const c of classes) {
+    const t = terms.get(c);
+    if (!t) continue;
+    for (const o of objs(c, NS.owl + 'hasKey')) {
+      const items = listTerms(o);
+      if (!items?.length) continue;
+      const properties: KeyProperty[] = [];
+      let good = true;
+      for (const item of items) {
+        if (item.termType !== 'NamedNode') {
+          good = false;
+          break;
+        }
+        const object = objProps.has(item.value) ? propIdOf.get(item.value) : undefined;
+        const data = dataProps.has(item.value) ? terms.get(item.value) : undefined;
+        if (object) properties.push({ prop: object });
+        else if (data?.type === 'property') properties.push({ data: data.id });
+        else {
+          good = false;
+          break;
+        }
+      }
+      if (!good) continue;
+      t.keys = [...(t.keys ?? []), { id: uid(), properties }];
+      markWith(c, NS.owl + 'hasKey', o);
+    }
+    for (const o of objs(c, NS.owl + 'disjointUnionOf')) {
+      const items = listTerms(o);
+      if (!items || items.length < 2) continue;
+      t.disjointUnions = [...(t.disjointUnions ?? []), { id: uid(), classes: items.map((item) => readClass(graph, item)) }];
+      markWith(c, NS.owl + 'disjointUnionOf', o);
+    }
+  }
+
   // Individuals and the facts stated about them.
   for (const [s, preds] of spo) {
     if (s.startsWith('_:') || terms.has(s)) continue;
@@ -1073,6 +1230,43 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
         mark(s, p, o);
       }
     }
+  }
+  // Negative property assertions: an individual is stated not to have a value for a property.
+  // Both the source and the individual it does not have are individuals of the model, whether or
+  // not the file says anything else about them.
+  for (const [node, preds] of spo) {
+    if (!node.startsWith('_:') || !preds.get(NS.rdf + 'type')?.some((o) => o.value === NS.owl + 'NegativePropertyAssertion')) continue;
+    const source = preds.get(NS.owl + 'sourceIndividual') ?? [];
+    const asserted = preds.get(NS.owl + 'assertionProperty') ?? [];
+    const individual = preds.get(NS.owl + 'targetIndividual') ?? [];
+    const value = preds.get(NS.owl + 'targetValue') ?? [];
+    if (source.length !== 1 || asserted.length !== 1 || individual.length + value.length !== 1) continue;
+    const src = source[0];
+    const property = propertyOf(asserted[0]);
+    if (src.termType !== 'NamedNode' || builtin(src.value) || !property) continue;
+    const existing = terms.get(src.value);
+    if (existing && existing.type !== 'instance') continue;
+    if (individual.length === 1) {
+      const to = individual[0];
+      const prop = objProps.has(property.iri) ? propIdOf.get(property.iri) : undefined;
+      if (to.termType !== 'NamedNode' || builtin(to.value) || !prop) continue;
+      const target = terms.get(to.value);
+      if (target && target.type !== 'instance') continue;
+      const from = existing ?? ensure(src.value, 'instance');
+      const other = target ?? ensure(to.value, 'instance');
+      from.negativeAssertions = [...(from.negativeAssertions ?? []), { id: uid(), kind: 'object', prop, ...(property.inverse ? { inverse: true as const } : {}), target: other.id }];
+      markTree({ termType: 'BlankNode', value: node.slice(2) });
+      continue;
+    }
+    const literal = value[0];
+    const prop = !property.inverse && dataProps.has(property.iri) ? terms.get(property.iri) : undefined;
+    if (literal.termType !== 'Literal' || prop?.type !== 'property') continue;
+    const iri = literal.language ? undefined : literal.datatype?.value;
+    const dt = iri && iri !== XSD + 'string' && iri !== NS.rdf + 'langString' ? (iri.startsWith(XSD) ? 'xsd:' + iri.slice(XSD.length) : `<${iri}>`) : undefined;
+    const from = existing ?? ensure(src.value, 'instance');
+    const assertion: NegativeAssertion = { id: uid(), kind: 'data', prop: prop.id, value: literal.value, ...(literal.language ? { lang: literal.language } : {}), ...(dt ? { dt } : {}) };
+    from.negativeAssertions = [...(from.negativeAssertions ?? []), assertion];
+    markTree({ termType: 'BlankNode', value: node.slice(2) });
   }
   // "All of these are different" (or disjoint) written as one list is the same as saying it of each pair.
   const members = (node: string, ...preds: string[]): string[] => {
@@ -1268,6 +1462,50 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       }
     }
   }
+
+  // Annotations on axioms (owl:Axiom): a blank node that names one statement — its subject,
+  // property and target — and says something about it. It is read only when every other
+  // statement on it is an annotation that can be filed (a field) and its subject is an entity of
+  // the model; otherwise the whole statement stays as it was read.
+  const axiomAnnotations: AxiomAnnotation[] = [];
+  for (const [node, preds] of spo) {
+    if (!node.startsWith('_:') || !preds.get(NS.rdf + 'type')?.some((o) => o.value === NS.owl + 'Axiom')) continue;
+    const source = preds.get(NS.owl + 'annotatedSource') ?? [];
+    const stated = preds.get(NS.owl + 'annotatedProperty') ?? [];
+    const target = preds.get(NS.owl + 'annotatedTarget') ?? [];
+    if (source.length !== 1 || stated.length !== 1 || target.length !== 1) continue;
+    if (source[0].termType !== 'NamedNode' || stated[0].termType !== 'NamedNode') continue;
+    const about = source[0].value;
+    if (!terms.has(about) && !propEntries.has(about) && !annPropEntries.has(about)) continue;
+    const fields: ExtraField[] = [];
+    let good = true;
+    for (const [p, os] of preds) {
+      if (p === NS.rdf + 'type') {
+        if (!os.every((o) => o.value === NS.owl + 'Axiom')) good = false;
+        if (!good) break;
+        continue;
+      }
+      if (p === NS.owl + 'annotatedSource' || p === NS.owl + 'annotatedProperty' || p === NS.owl + 'annotatedTarget') continue;
+      const key_ = annotationKey(p);
+      if (!key_) {
+        good = false;
+        break;
+      }
+      for (const o of os) {
+        if (o.termType === 'BlankNode') {
+          good = false;
+          break;
+        }
+        fields.push({ key: key_, value: o.value, ...typedValue(o) });
+        declaredAs(p, key_);
+      }
+      if (!good) break;
+    }
+    if (!good || !fields.length) continue;
+    axiomAnnotations.push({ id: uid(), subject: about, property: stated[0].value, target: turtleOf(graph, target[0]), fields });
+    markTree({ termType: 'BlankNode', value: node.slice(2) });
+  }
+  if (axiomAnnotations.length) m.axiomAnnotations = axiomAnnotations;
 
   // A file of SKOS concepts is a concept scheme; anything else is read as an ontology.
   if (typed(NS.skos + 'Concept').length > typed(NS.owl + 'Class').length) m.mode = 'skos';

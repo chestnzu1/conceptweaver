@@ -1,6 +1,5 @@
 import { functionalSyntax, namedProperty, type ClassAxiom, type ClassExpression, type ClassExpressionAxiom, type DataRange, type DataRangeAxiom } from '../model/expressions';
 import { baseIriOf, localName } from '../model/iri';
-import { statementsOf } from '../model/unmapped';
 import type { EnumDatatype, Model, ObjProp, Term } from '../model/types';
 import type { BaseType, BaseTypeName, ElementRef, Key, LogicalAttribute, LogicalChange, LogicalDomain, LogicalElement, LogicalEntity, LogicalModel, LogicalType, Relationship, RelationshipEnd, SemanticMapping, TransformationConfig } from '../logical/contracts';
 import { newId } from '../logical/rules';
@@ -18,7 +17,6 @@ import type { ProposalSource, SkippedSource, TransformationProposal, Transformat
  * one.
  */
 
-const OWL = 'http://www.w3.org/2002/07/owl#';
 const XSD = 'http://www.w3.org/2001/XMLSchema#';
 
 /** The logical type each standard datatype is given, before the LDM's own table says otherwise. */
@@ -542,37 +540,20 @@ interface HasKeyStatement {
   axiom: string;
 }
 
-/** The owl:hasKey statements the reader kept as they were (Model.unmapped), read as keys. */
+/** The owl:hasKey axioms the model holds, as the keys they state. */
 export function hasKeyStatements(model: Model): HasKeyStatement[] {
-  if (!model.unmapped) return [];
-  const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
-  let statements;
-  try {
-    statements = statementsOf(model.unmapped);
-  } catch {
-    return [];
-  }
+  const props = new Map(model.props.map((p) => [p.id, p.iri]));
+  const terms = new Map(model.terms.map((t) => [t.id, t.iri]));
   const out: HasKeyStatement[] = [];
-  for (const statement of statements) {
-    const hasKey = statement.quads.find((q) => q.predicate.value === OWL + 'hasKey' && q.subject.termType === 'NamedNode');
-    if (!hasKey) continue;
-    const firsts = new Map<string, string>();
-    const rests = new Map<string, string>();
-    for (const q of statement.quads) {
-      if (q.subject.termType !== 'BlankNode') continue;
-      if (q.predicate.value === RDF + 'first' && q.object.termType === 'NamedNode') firsts.set(q.subject.value, q.object.value);
-      if (q.predicate.value === RDF + 'rest' && (q.object.termType === 'BlankNode' || q.object.value === RDF + 'nil')) rests.set(q.subject.value, q.object.value === RDF + 'nil' ? '' : q.object.value);
+  for (const term of model.terms) {
+    if (!term.iri || !term.keys?.length) continue;
+    for (const key of term.keys) {
+      const properties = key.properties.map((x) => ('prop' in x ? props.get(x.prop) : terms.get(x.data)));
+      // A key that names a property the model no longer holds says nothing.
+      if (properties.length && properties.every((iri): iri is string => !!iri)) {
+        out.push({ classIri: term.iri, properties, axiom: `HasKey(<${term.iri}> (${properties.map((p) => `<${p}>`).join(' ')}))` });
+      }
     }
-    if (hasKey.object.termType !== 'BlankNode') continue;
-    const properties: string[] = [];
-    for (let cell: string | undefined = hasKey.object.value; cell; ) {
-      const first = firsts.get(cell);
-      if (!first) break;
-      properties.push(first);
-      cell = rests.get(cell);
-    }
-    if (!properties.length) continue;
-    out.push({ classIri: hasKey.subject.value, properties, axiom: `HasKey(<${hasKey.subject.value}> (${properties.map((p) => `<${p}>`).join(' ')}))` });
   }
   return out;
 }

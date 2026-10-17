@@ -89,12 +89,12 @@ ok((await panel.locator('[data-section=inferred-domain] li').count()) >= 1, 'pro
 await page.screenshot({ path: shots + 'editor-class-inferred.png', fullPage: false });
 
 // annotations in several languages
-await panel.getByRole('button', { name: 'Add field' }).click();
+await panel.locator('[data-section=annotations]').getByRole('button', { name: 'Add field' }).click();
 await panel.getByLabel('Property', { exact: true }).fill('rdfs:label');
 await panel.getByLabel('Value', { exact: true }).fill('Documentaire');
 await panel.getByLabel('Language', { exact: true }).fill('nl');
 await panel.getByRole('button', { name: 'Confirm' }).click();
-await panel.getByRole('button', { name: 'Add field' }).click();
+await panel.locator('[data-section=annotations]').getByRole('button', { name: 'Add field' }).click();
 await panel.getByLabel('Property', { exact: true }).fill('rdfs:label');
 await panel.getByLabel('Value', { exact: true }).fill('纪录片');
 await panel.getByLabel('Language', { exact: true }).fill('zh');

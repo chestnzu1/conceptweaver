@@ -23,6 +23,7 @@ import { Metadata } from './Metadata';
 import { EntityPicker, type Choice } from './EntityPicker';
 import { TermChips } from './TermChips';
 import { AxiomList } from './AxiomList';
+import { AxiomAnnotations, ClassKeys, DisjointUnions, NegativeAssertions, PropertyChains } from './AxiomParts';
 import { ClassAxioms } from './ClassAxioms';
 import { ShapesAbout } from './Shapes';
 import { definedClasses } from '../model/axioms';
@@ -272,6 +273,10 @@ function TermPanel({ term }: { term: Term }) {
             <LinkEditor term={term} kind="disjointWith" noun="disjoint class" label="Disjoint classes" hint="nothing can belong to both" />
           </Section>
           <ClassAxioms term={term} />
+          <Section id="class-axioms-more" title="Keys and disjoint unions">
+            <ClassKeys term={term} />
+            <DisjointUnions term={term} />
+          </Section>
           {has('restrictions') && <ClassRestrictions term={term} />}
           <ClassProperties term={term} />
           {supports(model, 'validation') && <ShapesAbout iri={term.iri} name={term.name} isClass />}
@@ -315,6 +320,7 @@ function TermPanel({ term }: { term: Term }) {
             <LinkEditor term={term} kind="differentFrom" noun="different individual" label="Different individuals" hint="definitely not the same thing" />
           </Section>
           <IndividualAssertions term={term} />
+          <NegativeAssertions term={term} />
           <InferredSupers term={term} />
         </>
       )}
@@ -369,6 +375,7 @@ function TermPanel({ term }: { term: Term }) {
           .
         </p>
       )}
+      {has('axioms') && <AxiomAnnotations iri={term.iri} />}
       <button className="btn danger" onClick={() => st().remove([term.id], [])}>
         Delete {kind.toLowerCase()}
       </button>
@@ -746,6 +753,7 @@ function AnnotationPropertyPanel({ prop }: { prop: AnnotationProp }) {
         </label>
         <Metadata title="Other annotations" fields={prop.fields ?? []} onChange={(fields) => set({ fields })} />
       </Section>
+      <AxiomAnnotations iri={prop.iri} />
       <h3>Used by ({used.length})</h3>
       {used.length === 0 && <p className="muted">Nothing uses it yet. Add it as a metadata field of an entity, under Governance &amp; Metadata or in the entity's annotations.</p>}
       <ul className="rel-list">
@@ -828,6 +836,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
         <CharacteristicWarnings chars={prop.chars} />
       </fieldset>
         <PropLinks prop={prop} />
+        <PropertyChains prop={prop} />
       </Section>
       {supports(model, 'validation') && <ShapesAbout iri={prop.iri} name={prop.name} isClass={false} />}
       <Section id="annotations" title="Annotations" count={prop.fields.length + (prop.description ? 1 : 0)}>
@@ -839,6 +848,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
         </label>
         <Metadata title="Other annotations" fields={prop.fields} onChange={(fields) => set({ fields })} />
       </Section>
+      <AxiomAnnotations iri={prop.iri} />
 
       <h3>Used by ({prop.rels.length})</h3>
       {prop.rels.length === 0 && <p className="muted">Nothing uses it yet. Add a restriction to a class, or on the canvas drag from one term to another and pick this name as the label.</p>}

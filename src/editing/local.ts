@@ -1,6 +1,5 @@
 import { addFact, addIsA, addLink, addPropLink, addValue, makeInstanceOf, type Edit, type LinkKind } from '../model/axioms';
 import { termOfIri } from '../model/domains';
-import type { ClassAxiom, ClassExpressionAxiom, DataRangeAxiom } from '../model/expressions';
 import type { PropLink } from '../model/types';
 import { fromTurtle, toTurtle } from '../model/rdf';
 import { stable } from '../model/stable';
@@ -341,7 +340,7 @@ function equal(a: unknown, b: unknown): boolean {
 }
 
 /** Axioms read back with the ids of the axioms they were before, where they are the same: an editor that has one open keeps it. */
-function withIdsOf<T extends ClassAxiom | DataRangeAxiom | ClassExpressionAxiom>(read: T[] | undefined, old: T[] | undefined): T[] | undefined {
+function withIdsOf<T extends { id: string }>(read: T[] | undefined, old: T[] | undefined): T[] | undefined {
   if (!read || !old?.length) return read;
   const free = [...old];
   return read.map((a) => {
@@ -389,7 +388,10 @@ function carriedOver(old: Model, read: Model): Model {
   const props = read.props.map((p): ObjProp => {
     const was = p.iri ? oldProps.get(p.iri) : undefined;
     const links = Object.fromEntries((['parents', 'inverses', 'equivalents', 'disjoints'] as PropLink[]).filter((l) => p[l]).map((l) => [l, p[l]!.map(prop)]));
-    const now: ObjProp = { ...p, ...links, id: prop(p.id), domains: withIdsOf(withEnums(p.domains, datatype), was?.domains), ranges: withIdsOf(withEnums(p.ranges, datatype), was?.ranges) };
+    // A chain's steps are object properties of the model, as its links are.
+    const chains = p.chains?.map((c) => ({ ...c, properties: c.properties.map((s) => ({ ...s, prop: prop(s.prop) })) }));
+    const now: ObjProp = { ...p, ...links, id: prop(p.id), chains: withIdsOf(chains, was?.chains), domains: withIdsOf(withEnums(p.domains, datatype), was?.domains), ranges: withIdsOf(withEnums(p.ranges, datatype), was?.ranges) };
+    if (now.chains === undefined) delete now.chains;
     if (now.domains === undefined) delete now.domains;
     if (now.ranges === undefined) delete now.ranges;
     if (was?.external !== undefined) now.external = was.external;
@@ -404,6 +406,19 @@ function carriedOver(old: Model, read: Model): Model {
     if (t.ranges) now.ranges = withIdsOf(withEnums(t.ranges, datatype), was?.ranges);
     if (t.domains) now.domains = withIdsOf(withEnums(t.domains, datatype), was?.domains);
     if (t.classAxioms) now.classAxioms = withIdsOf(withEnums(t.classAxioms, datatype), was?.classAxioms);
+    if (t.keys) {
+      now.keys = withIdsOf(
+        t.keys.map((k) => ({ ...k, properties: k.properties.map((x) => ('prop' in x ? { prop: prop(x.prop) } : { data: term(x.data) })) })),
+        was?.keys,
+      );
+    }
+    if (t.disjointUnions) now.disjointUnions = withIdsOf(t.disjointUnions, was?.disjointUnions);
+    if (t.negativeAssertions) {
+      now.negativeAssertions = withIdsOf(
+        t.negativeAssertions.map((n) => (n.kind === 'object' ? { ...n, prop: prop(n.prop), target: term(n.target) } : { ...n, prop: term(n.prop) })),
+        was?.negativeAssertions,
+      );
+    }
     if (was) {
       now.x = was.x;
       now.y = was.y;
@@ -432,6 +447,7 @@ function carriedOver(old: Model, read: Model): Model {
   const externals: ExternalRef[] = [...old.externals.map((e) => (e.imports === imported.has(e.iri) ? e : { ...e, imports: imported.has(e.iri) })), ...read.externals.filter((e) => !old.externals.some((o) => o.iri === e.iri))];
   return {
     ...read,
+    ...(read.axiomAnnotations ? { axiomAnnotations: withIdsOf(read.axiomAnnotations, old.axiomAnnotations) } : {}),
     terms,
     props,
     relations,
