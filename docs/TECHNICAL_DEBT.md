@@ -632,6 +632,13 @@ own contract, the logical change set, never axioms (ADR-023); the version differ
 per LDM; on the server, change entries say which artifact they belong to
 ([DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.7).
 
+**Status, 2026-10-17: done (roadmap LM-1)** for the page. `artifactsOf` in `src/editing/local.ts`
+says which artifacts a step changed (`ontology`, `shapes`, `dataGraphs`, `picture`, `ldm:{id}`),
+read from the parts of the model its patch replaced, a step that only moved terms being the
+picture's; an LDM step is named for its LDM ("Changed the logical model “Films”"). LDM edits are
+logical change sets (`src/logical/contracts.ts`), never axioms, and the version difference has a
+list per LDM. Left for the server: change entries that say their artifact (LM-5).
+
 ### TD-20 The ontology's revision follows a hand-kept list of model fields — Medium
 
 **Where.** `sameMeaning` and `stable` in `src/model/stable.ts`; `revisionOf` in
@@ -649,6 +656,17 @@ models: an LDM edit must not move the ontology's revision (NFR-17), and must not
 covered by a test that fails when a field of `Model` is in neither the ontology's parts nor a
 declared list of other artifacts' parts; LDMs get revisions of their own and are never read
 through `stable()`.
+
+**Status, 2026-10-17: done (roadmap LM-1).** `MODEL_PARTS` in `src/model/types.ts` says of every
+field of `Model` whether it is the ontology's (`revision`), the picture's, a logical model's or
+the file's; it is a `Record` over the model's keys, so a field left out does not compile, and
+`stable.ts` follows the ontology's parts and nothing else. Doing so put fields on the list
+that had been left off it: the statements kept as written (`unmapped`), and the properties names
+and descriptions are read from with their languages (`namedBy`, `describedBy`, `nameLang`,
+`descriptionLang`), which now move the revision as they should.
+`src/model/stable.test.ts` checks that a kept statement moves the revision and an LDM, a style, the
+layout or a term's place do not. Each LDM has a revision of its own, which moves with every change
+to it and nothing else.
 
 ## 4. Architectural risks
 
@@ -897,5 +915,5 @@ In the order they should be done. Each step leaves the application working and s
 | 9 | TD-12 Versions and diff | Needs 2; unlocks governance and publishing. |
 | 10 | TD-05 Views behind services | Continuous, one view per release. |
 | 11 | TD-14, TD-13 Service to Spring Boot; remaining export syntaxes | Start of Phase 3. |
-| 12 | TD-19, TD-20 Steps that name their artifact; revisions per artifact | Before any LDM edit exists: part of roadmap LM-1. |
+| 12 | TD-19, TD-20 Steps that name their artifact; revisions per artifact | Before any LDM edit exists: part of roadmap LM-1. Done 2026-10-17. |
 | — | TD-07, TD-16, TD-17 | When the area is next changed. |

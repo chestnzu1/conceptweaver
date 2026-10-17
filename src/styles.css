@@ -8025,3 +8025,71 @@ tbody tr.pinned td:first-child {
 .lookup-ask summary {
   cursor: pointer;
 }
+
+/* ---------------------------------------------------------------- logical data models */
+
+.dialog.logical-models {
+  width: min(860px, 100%);
+}
+
+.logical-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.logical-new .field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.logical-new .field.grow {
+  flex: 2 1 240px;
+}
+
+.logical-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.logical-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.logical-row .what {
+  flex: 1 1 320px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.logical-row .what input {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: 30px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+
+.logical-row .counts {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+.diff-entities li.update code {
+  color: var(--ink);
+}

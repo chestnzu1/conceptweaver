@@ -49,7 +49,7 @@ await tab('Graph');
 await page.locator('.node').first().locator('.node-box').click();
 const json = await (async () => { await page.keyboard.press('ArrowRight'); return saved(); })();
 const kept = json ?? (await saved());
-ok(kept === null || (kept.version === 5 && kept.props.every((p) => typeof p.id === 'string' && p.id) && kept.relations.some((r) => r.prop)), `kept in the format of today (5): every object property with an id, and its uses naming it${kept ? ` (version ${kept.version}, ${kept.props.length} properties)` : ' (no change written yet)'}`);
+ok(kept === null || (kept.version === 6 && kept.props.every((p) => typeof p.id === 'string' && p.id) && kept.relations.some((r) => r.prop)), `kept in the format of today (6): every object property with an id, and its uses naming it${kept ? ` (version ${kept.version}, ${kept.props.length} properties)` : ' (no change written yet)'}`);
 
 // ---------------------------------------------------------------- renaming a property renames its uses, and no others
 await tab('Entities');

@@ -1,0 +1,105 @@
+@prefix : <http://example.org/staff#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:PersonShape
+    a sh:NodeShape ;
+    rdfs:label "Person shape" ;
+    sh:targetClass :Person ;
+    sh:property _:6nzf1yakszm ;
+    sh:property _:jxevkldjszm ;
+    sh:property _:xltsp5wyszm .
+
+_:6nzf1yakszm
+    sh:path :name ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:message "A person has a name." .
+
+_:jxevkldjszm
+    sh:path :age ;
+    sh:datatype xsd:integer ;
+    sh:maxCount 1 .
+
+_:xltsp5wyszm
+    sh:path :worksFor ;
+    sh:class :Organisation ;
+    sh:severity sh:Warning .
+
+:OrganisationShape
+    a sh:NodeShape ;
+    rdfs:label "OrganisationShape" ;
+    sh:targetClass :Organisation ;
+    sh:property _:x15i2zntszm .
+
+_:x15i2zntszm
+    sh:path :name ;
+    sh:minCount 1 ;
+    sh:maxLength 40 .
+
+:ContactShape
+    a sh:NodeShape ;
+    sh:targetClass :Person ;
+    sh:or ( _:sm65aamzszm _:e6gbwhakszm ) .
+
+_:sm65aamzszm
+    sh:path :name ;
+    sh:minCount 1 .
+
+_:e6gbwhakszm
+    sh:path :worksFor ;
+    sh:minCount 1 .
+
+@prefix : <http://example.org/staff#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:PersonShape
+    a sh:NodeShape ;
+    rdfs:label "Person shape" ;
+    sh:targetClass :Person ;
+    sh:property _:6nzf1yakszm ;
+    sh:property _:jxevkldjszm ;
+    sh:property _:xltsp5wyszm .
+
+_:6nzf1yakszm
+    sh:path :name ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:message "A person has a name." .
+
+_:jxevkldjszm
+    sh:path :age ;
+    sh:datatype xsd:integer ;
+    sh:maxCount 1 .
+
+_:xltsp5wyszm
+    sh:path :worksFor ;
+    sh:class :Organisation ;
+    sh:severity sh:Warning .
+
+:OrganisationShape
+    a sh:NodeShape ;
+    rdfs:label "OrganisationShape" ;
+    sh:targetClass :Organisation ;
+    sh:property _:x15i2zntszm .
+
+_:x15i2zntszm
+    sh:path :name ;
+    sh:minCount 1 ;
+    sh:maxLength 40 .
+
+:ContactShape
+    a sh:NodeShape ;
+    sh:targetClass :Person ;
+    sh:or ( _:sm65aamzszm _:e6gbwhakszm ) .
+
+_:sm65aamzszm
+    sh:path :name ;
+    sh:minCount 1 .
+
+_:e6gbwhakszm
+    sh:path :worksFor ;
+    sh:minCount 1 .

@@ -89,6 +89,7 @@ export function Header() {
     { label: 'Import a table…', onClick: () => st().setDialog('import'), hint: 'CSV, TSV, Excel' },
     { label: 'My Models…', onClick: () => st().setDialog('library'), hint: 'saved in this browser' },
     { label: 'Versions…', onClick: () => st().setDialog('versions'), hint: 'named, compared, restored' },
+    { label: 'Logical models…', onClick: () => st().setDialog('logical'), hint: 'kept with the project' },
     { label: 'Ontology settings…', onClick: () => st().setDialog('settings'), hint: 'IRI, prefixes' },
     { label: 'Load the SKOS example', onClick: () => confirmDiscard() && st().replaceModel(skosSample()) },
     { label: 'Load the ontology example', onClick: () => confirmDiscard() && st().replaceModel(sampleModel()) },

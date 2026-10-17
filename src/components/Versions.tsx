@@ -200,6 +200,7 @@ function DifferenceView({ d, title }: { d: Difference; title: string }) {
         <p className="muted">
           {[count('changed') && `${count('changed')} entit${count('changed') === 1 ? 'y' : 'ies'} changed`, count('added') && `${count('added')} added`, count('removed') && `${count('removed')} removed`].filter(Boolean).join(', ') || 'No entity changed'} · {d.axioms.added} axiom{d.axioms.added === 1 ? '' : 's'} added, {d.axioms.removed} removed
           {d.shapeSets.length ? ` · ${d.shapeSets.length} shape set${d.shapeSets.length === 1 ? '' : 's'}` : ''}
+          {d.logicalModels.length ? ` · ${d.logicalModels.length} logical model${d.logicalModels.length === 1 ? '' : 's'}` : ''}
           {d.drawing ? ' · and the drawing' : ''}
         </p>
       )}
@@ -250,6 +251,32 @@ function DifferenceView({ d, title }: { d: Difference; title: string }) {
                     <li key={i} className={l.op}>
                       <code>
                         {sign(l.op)} {l.text}
+                      </code>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {d.logicalModels.length > 0 && (
+        <>
+          <h4>Logical models</h4>
+          <ul className="diff-entities diff-logical">
+            {d.logicalModels.map((l) => (
+              <li key={l.id} data-ldm={l.id}>
+                <div className="diff-head">
+                  <strong>{l.name}</strong>
+                  <span className="muted">logical model</span>
+                  <span className={'tag ' + l.status}>{l.status}</span>
+                </div>
+                <ul>
+                  {l.changes.map((c, i) => (
+                    <li key={i} className={c.op === 'update' ? 'update' : c.op}>
+                      <code>
+                        {c.op === 'add' ? '+' : c.op === 'remove' ? '−' : '~'} {c.kind === 'model' ? 'the model' : `${c.kind} ${c.name}`}
+                        {c.fields ? `: ${c.fields.map((f) => `${f.field} ${f.before} → ${f.after}`).join('; ')}` : ''}
                       </code>
                     </li>
                   ))}

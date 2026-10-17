@@ -1,0 +1,42 @@
+@prefix : <http://example.org/staff#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/staff> a owl:Ontology ;
+    rdfs:label "A project of format 5" .
+
+:Person a owl:Class ;
+    rdfs:label "Person" .
+
+:Organisation a owl:Class ;
+    rdfs:label "Organisation" .
+
+:worksFor a owl:ObjectProperty ;
+    rdfs:label "works for" .
+
+:name a owl:DatatypeProperty ;
+    rdfs:label "name" .
+
+:age a owl:DatatypeProperty ;
+    rdfs:label "age" .
+
+:ann a owl:NamedIndividual , :Person ;
+    rdfs:label "Ann" ;
+    :worksFor :acme ;
+    :name "Ann" ;
+    :age "34"^^xsd:integer .
+
+:bob a owl:NamedIndividual , :Person ;
+    rdfs:label "Bob" ;
+    :worksFor :ann ;
+    :age "unknown" .
+
+:acme a owl:NamedIndividual , :Organisation ;
+    rdfs:label "Acme" ;
+    :name "Acme" .
+
+# Kept as they were read: statements this editor has no place for.
+<http://example.org/staff#knows> <http://www.w3.org/2002/07/owl#propertyChainAxiom> ( <http://example.org/staff#knows> <http://example.org/staff#knows> ) .

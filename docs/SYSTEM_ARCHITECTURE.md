@@ -261,8 +261,8 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `SparqlService` | `query(revision, text, graph)` | `sparql.ts` | Recommended, Phase 2 |
 | `AlignmentService` | external ontologies, mappings, suggestions | `external.ts`, `alignment.ts`, `matcher.ts` | Recommended, Phase 2 |
 | `ProjectService` | versions, save a version, a version's model, diff, restore; list, open and save | `src/projects/local.ts` over `library.ts` | **Existing** for versions (2026-10-16); list, open and save are still `library.ts` called directly |
-| `LogicalModelQueryService` | models, summary, entities (searched, paged), describe an element, relationships of an entity, keys, generalizations | `src/logical/local.ts` over the project document (§13.4) | Recommended, roadmap LM-1 |
-| `LogicalModelEditService` | create, duplicate, delete an LDM; `validate(changeSet)`, `apply(changeSet)` of a logical change set | `src/logical/local.ts` | Recommended, LM-1 |
+| `LogicalModelQueryService` | models, summary, entities (searched, paged), describe an element, relationships of an entity, keys, generalizations | `src/logical/local.ts` over the project document (§13.4): the models with their counts, a model, entities, an element described (keys and generalizations among them), an entity's relationships | **Existing** (2026-10-17, LM-1) |
+| `LogicalModelEditService` | create, duplicate, delete an LDM; `validate(changeSet)`, `apply(changeSet)` of a logical change set | `src/logical/local.ts`, over the rules of `rules.ts`; each change one step of the document's history | **Existing** (2026-10-17, LM-1) |
 | `TransformationService` | propose (job): proposals for a scope of the ontology under a configuration; apply a selection as a logical change set with its mappings | In a worker, over the ontology's statements and the LDM | Recommended, LM-3 |
 | `TraceabilityService` | mappings of an element or an IRI, coverage, staleness, impact (job), synchronization proposals; mappings made and edited by hand | Over the LDMs' mappings and `changesBetween` | Recommended, LM-4 |
 | `DataSourceService` | list, create, update, remove, test; never answers with a secret | None: backend only | **Deferred** (§12) |
@@ -1016,7 +1016,7 @@ roadmap's logical data modelling track, LM-1 to LM-5
 | **How many** | One per project | Several per ontology | Several per ontology |
 | **Edited in** | Graph, Entities, Structure, the entity editor | The Shapes view (SH-1) | The LDM workspace and its ER diagram (LM-2) |
 | **Changed by** | Axiom change sets (§4.3) | Steps of the history (SH-1) | Logical change sets (§13.5) |
-| **Status** | **Existing** | **Existing** | Recommended (LM-1) |
+| **Status** | **Existing** | **Existing** | **Existing** as a kept, versioned artifact (LM-1); its workspace is LM-2 |
 
 They are related by mappings, never by one being stored in or generated from another:
 

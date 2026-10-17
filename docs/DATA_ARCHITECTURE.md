@@ -101,7 +101,7 @@ the migration map.
 | `governance` | How metadata fields are configured | `project.settings`. The metadata *values* are annotations in the graph |
 | `style`, `layout` | Graph style, layout choice, line ends | `diagram.style`, `diagram.layout` |
 | `datatypes` | Enumerated datatypes | Datatype definitions in the asserted graph |
-| `logicalModels` (proposed, model format 6, roadmap LM-1) | The project's logical data models, each with its entities, relationships, keys, generalizations, rules, domains, semantic mappings, transformation configuration and diagrams | `logical_model` and its revisions (§11.7). Never in a graph: an LDM is not ontology content (ADR-022) |
+| `logicalModels` (model format 6, since 2026-10-17, roadmap LM-1) | The project's logical data models, each with its entities, relationships, keys, generalizations, rules, domains, semantic mappings, transformation configuration and diagrams | `logical_model` and its revisions (§11.7). Never in a graph: an LDM is not ontology content (ADR-022) |
 
 Two consequences worth stating:
 

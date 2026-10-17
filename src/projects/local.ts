@@ -21,7 +21,8 @@ export interface ProjectHost {
 }
 
 /** A fingerprint of what a model states: the ontology, the shapes and the data graphs it names. Equal content, equal fingerprint. */
-export const contentHash = (m: Model): string => fingerprint(`${toTurtle(m)}\n${shapesToTurtle(m)}\n${m.dataGraphs.map((g) => `${g.id} ${g.fingerprint} ${g.includeOntology}`).join('\n')}`);
+export const contentHash = (m: Model): string =>
+  fingerprint(`${toTurtle(m)}\n${shapesToTurtle(m)}\n${m.dataGraphs.map((g) => `${g.id} ${g.fingerprint} ${g.includeOntology}`).join('\n')}${m.logicalModels.length ? `\n${JSON.stringify(m.logicalModels.map(({ revision: _r, diagrams: _d, ...content }) => content))}` : ''}`);
 
 async function pack(model: Model): Promise<Pick<StoredVersion, 'packed' | 'data'>> {
   const json = JSON.stringify(model);

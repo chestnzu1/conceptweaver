@@ -5,6 +5,8 @@ import { statementsOf } from './unmapped';
 import { withIris } from './iri';
 import { compactIri, STANDARD } from './prefixes';
 import { shapeSetsFrom, type ShapeSet } from './shacl';
+import type { LogicalModel } from '../logical/contracts';
+import { logicalModelsFrom } from '../logical/rules';
 import { shapeSetOfFormat4 } from './shapesLegacy';
 
 export type TermType = 'concept' | 'property' | 'instance';
@@ -339,10 +341,11 @@ export interface Prefix {
  * structured expression (Term.classAxioms), where they were kept as Turtle text (Term.axioms). 5
  * (from 2026-10-15): the SHACL shapes are shape sets, several named shapes graphs each holding
  * every SHACL Core construct as structure (shacl.ts), where they were one graph of node shapes in
- * fixed fields with Turtle for the rest (`shapes`). A model of an earlier version is read and
- * brought up to date by normalizeModel.
+ * fixed fields with Turtle for the rest (`shapes`). 6 (from 2026-10-17): the project's logical data
+ * models (`logicalModels`, src/logical), none for a model of an earlier format. A model of an
+ * earlier version is read and brought up to date by normalizeModel.
  */
-export const MODEL_VERSION = 5;
+export const MODEL_VERSION = 6;
 
 export interface Model {
   format: 'conceptweaver';
@@ -395,6 +398,12 @@ export interface Model {
   /** The enumerated datatypes of the model: datatypes defined by listing their values. */
   datatypes: EnumDatatype[];
   /**
+   * The project's logical data models (src/logical, roadmap LM-1): artifacts of their own beside
+   * the ontology and the shape sets, each with its own revisions. No part of the ontology, never
+   * written to RDF, and not followed by the ontology's revision (MODEL_PARTS).
+   */
+  logicalModels: LogicalModel[];
+  /**
    * Statements of an ontology that was read which the model has no place for (property chains,
    * keys, axiom annotations, an ontology's version IRI, …), kept as they were and written back
    * with it: Turtle, one statement at a time, with full IRIs (see unmapped.ts). Not shown or
@@ -402,6 +411,46 @@ export interface Model {
    */
   unmapped?: string;
 }
+
+/**
+ * What each part of a model is (TD-20). *revision*: what the ontology's revision follows: the
+ * ontology, and the shape sets and data graphs validated with it; a change to any of these is a
+ * new revision, and what was worked out for the old one is not current. *picture*: how it is
+ * drawn. *logical*: the logical data models, which have revisions of their own (ADR-023).
+ * *format*: the file's own marks. A field added to Model has to be put here, or the code does not
+ * compile.
+ */
+export const MODEL_PARTS: Record<keyof Model, 'revision' | 'picture' | 'logical' | 'format'> = {
+  format: 'format',
+  version: 'format',
+  name: 'revision',
+  description: 'revision',
+  describedBy: 'revision',
+  namedBy: 'revision',
+  nameLang: 'revision',
+  descriptionLang: 'revision',
+  baseIri: 'revision',
+  ontologyIri: 'revision',
+  prefixes: 'revision',
+  mode: 'revision',
+  lang: 'revision',
+  vocab: 'revision',
+  props: 'revision',
+  terms: 'revision',
+  relations: 'revision',
+  shapeSets: 'revision',
+  dataGraphs: 'revision',
+  quality: 'revision',
+  externals: 'revision',
+  mappings: 'revision',
+  rejected: 'revision',
+  governance: 'revision',
+  datatypes: 'revision',
+  unmapped: 'revision',
+  style: 'picture',
+  layout: 'picture',
+  logicalModels: 'logical',
+};
 
 /** The kinds of entity a metadata field can apply to. The last two are metadata profiles an entity is given. */
 export const ENTITY_KINDS = ['class', 'objectProperty', 'dataProperty', 'individual', 'businessAsset', 'technicalAsset'] as const;
@@ -528,7 +577,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapeSets: [], dataGraphs: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [] };
+  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapeSets: [], dataGraphs: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [], logicalModels: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -913,6 +962,8 @@ export function normalizeModel(raw: unknown): Model {
     dataGraphs: (Array.isArray(o.dataGraphs) ? (o.dataGraphs as Record<string, unknown>[]) : [])
       .filter((g) => g && typeof g === 'object' && str(g.id))
       .map((g): DataGraphRef => ({ id: str(g.id), name: str(g.name) || str(g.file) || 'Data', file: str(g.file), format: str(g.format) || 'turtle', triples: num(g.triples), fingerprint: str(g.fingerprint), includeOntology: g.includeOntology !== false, read: num(g.read) })),
+    // Format 6 has logical data models; an earlier one has none.
+    logicalModels: logicalModelsFrom(o.logicalModels),
     ...(typeof o.unmapped === 'string' && o.unmapped.trim() ? { unmapped: o.unmapped } : {}),
     quality: {
       off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],

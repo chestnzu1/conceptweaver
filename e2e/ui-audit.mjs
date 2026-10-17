@@ -433,6 +433,20 @@ for (const size of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }])
     await versions.locator('.difference').waitFor();
     report('Versions · compared with now', await page.evaluate(measure));
     await versions.getByRole('button', { name: 'Close' }).click();
+    // Logical data models: none yet, then two, with a name refused.
+    const logical = page.locator('.dialog.logical-models');
+    await page.locator('.header').getByRole('button', { name: /^File/ }).click();
+    await page.getByRole('menuitem', { name: /^Logical models…/ }).click();
+    await logical.waitFor();
+    report('Logical models · none yet', await page.evaluate(measure));
+    for (const [name, purpose] of [['Film catalogue', 'The catalogue application'], ['Box office', 'Takings by week and cinema'], ['box office', '']]) {
+      await logical.getByLabel('Name of the new logical model').fill(name);
+      await logical.getByLabel('What the new logical model is for').fill(purpose);
+      await logical.getByRole('button', { name: 'Make a logical model' }).click();
+    }
+    await logical.getByRole('alert').waitFor();
+    report('Logical models · two, and a name refused', await page.evaluate(measure));
+    await logical.getByRole('button', { name: 'Close' }).click();
     // The assistant: not set up, its settings with the connection tested, an answer with a proposal, and the proposal reviewed and edited.
     const assistant = page.locator('aside.assistant');
     await page.locator('.header').getByRole('button', { name: 'Assistant' }).click();

@@ -8,7 +8,7 @@ import { withIris } from './iri';
 import { dataDomain, objectProperties, plainRelationships, relChoice, type PropView } from './props';
 import { fromTurtle, toTurtle } from './rdf';
 import { MODEL_VERSION, normalizeModel, type Model } from './types';
-import { findShape, ownerOf, setTurtle } from './shapes';
+import { findShape, ownerOf, setTurtle, shapesToTurtle } from './shapes';
 import { statementsOf } from './unmapped';
 import { shaclFindings } from './validation';
 
@@ -274,6 +274,41 @@ describe('a model saved in format 4', () => {
     const saved = JSON.parse(JSON.stringify(m));
     expect(saved.version).toBe(MODEL_VERSION);
     expect(saved.shapes).toBeUndefined();
+    expect(open(saved)).toEqual(m);
+  });
+});
+
+/**
+ * A project saved in format 5 (fixtures/v5, written by the code of that format and not since),
+ * before a project kept logical data models: two shape sets, a data graph and a statement the
+ * editor keeps as it was written. Opened today it has no logical model, and says what it said.
+ */
+describe('a project saved in format 5', () => {
+  const dir5 = new URL('./fixtures/v5/', import.meta.url).pathname;
+  const read5 = (file: string) => fs.readFileSync(dir5 + file, 'utf8');
+  const raw = JSON.parse(read5('project.json'));
+  const m = open(raw);
+  const statements = (ttl: string) => statementsOf(ttl).map((s) => s.text).sort();
+
+  it('was saved in format 5, with no logical models, and opens in the format of today with none', () => {
+    expect(raw.version).toBe(5);
+    expect(raw.logicalModels).toBeUndefined();
+    expect(m.version).toBe(MODEL_VERSION);
+    expect(m.logicalModels).toEqual([]);
+  });
+
+  it('says what format 5 said: the same ontology, the same shape sets, the same data', () => {
+    expect(statements(toTurtle(m))).toEqual(statements(read5('project.ttl')));
+    expect(m.shapeSets.map((s) => s.name)).toEqual(['Shapes', 'Catalogue']);
+    expect(statements(shapesToTurtle(m))).toEqual(statements(read5('project.shapes.ttl')));
+    expect(m.dataGraphs).toEqual(raw.dataGraphs);
+    expect(m.unmapped).toBe(raw.unmapped);
+  });
+
+  it('is saved in the format of today, and opens from that unchanged', () => {
+    const saved = JSON.parse(JSON.stringify(m));
+    expect(saved.version).toBe(MODEL_VERSION);
+    expect(saved.logicalModels).toEqual([]);
     expect(open(saved)).toEqual(m);
   });
 });

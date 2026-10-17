@@ -23,7 +23,7 @@ export interface VersionInfo {
   name: string;
   summary: string;
   created: number;
-  /** A fingerprint of what the ontology, the shapes and the data graphs' references state. */
+  /** A fingerprint of what the ontology, the shapes, the data graphs' references and the logical models state. */
   hash: string;
   entities: number;
 }
@@ -63,11 +63,32 @@ export interface DataGraphDifference {
   status: 'added' | 'removed' | 'replaced' | 'changed';
 }
 
+/** One element of a logical data model added, removed or changed, in words. */
+export interface LogicalElementDifference {
+  op: 'add' | 'remove' | 'update';
+  /** entity, attribute, key, relationship, generalization, rule, domain, mapping; model for its name, description and purpose. */
+  kind: string;
+  /** What it is called, with the entity it belongs to for an attribute or a key. */
+  name: string;
+  /** For a change: each field that changed, before and after, in words. */
+  fields?: { field: string; before: string; after: string }[];
+}
+
+/** What differs in one logical data model, element by element (roadmap LM-1, FR-M17-14). */
+export interface LogicalModelDifference {
+  id: string;
+  name: string;
+  status: 'added' | 'removed' | 'changed';
+  changes: LogicalElementDifference[];
+}
+
 /** What differs between two states of a project. */
 export interface Difference {
   entities: EntityDifference[];
   shapeSets: ShapeSetDifference[];
   dataGraphs: DataGraphDifference[];
+  /** The logical data models, each apart from the ontology. */
+  logicalModels: LogicalModelDifference[];
   /** Settings of the model that are no part of the ontology, in words: "the quality rules", "the mappings". */
   settings: string[];
   /** Where terms sit or how the graph is drawn: never a change to the ontology. */

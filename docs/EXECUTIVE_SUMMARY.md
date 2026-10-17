@@ -60,11 +60,10 @@ what each left). What remains:
 1. **Much is still in the page** (TD-05, TD-10 in part). Views not yet behind services read the
    model directly; the browser's limits are raised, not removed, until Phase 4.
 2. **No server history or collaboration** (TD-12 in part): versions are kept in one browser.
-3. **The history and the revisions know one artifact** (TD-19, TD-20). A step of the history is
-   described as ontology axioms, and the ontology's revision follows a hand-kept list of the
-   model's fields. Both must be generalised before logical data models exist, or every LDM edit
-   would either invalidate what was worked out for the ontology or be read stale. It is the first
-   part of roadmap stage LM-1.
+3. ~~**The history and the revisions know one artifact** (TD-19, TD-20).~~ Done with roadmap
+   stage LM-1 (2026-10-17): a step names the artifacts it changed, every field of the model is
+   said to be the ontology's or another artifact's, and an LDM edit leaves the ontology's revision
+   as it was.
 
 None requires a rewrite.
 
@@ -97,8 +96,8 @@ The first five, the MVP path, are done (2026-10-16). In order from here:
 | # | Improvement | Why |
 | --- | --- | --- |
 | 1 | ~~ELK in the companion, with the reasoner chosen by profile (task 2.6)~~ | Done 2026-10-17. |
-| 2 | **Logical data model metamodel and services** (LM-1), with revisions per artifact | The next task: the foundation of the product's objective; makes LDMs a saved, versioned, undoable artifact. |
-| 3 | **The LDM editor and its ER diagram** (LM-2) | Logical models authored and reviewed as their designers expect. |
+| 2 | ~~Logical data model metamodel and services (LM-1), with revisions per artifact~~ | Done 2026-10-17. |
+| 3 | **The LDM editor and its ER diagram** (LM-2) | The next task: logical models authored and reviewed as their designers expect. |
 | 4 | **Ontology-to-LDM transformation** (LM-3) | The objective itself: logical models proposed from the ontology, constraints decided by the designer. |
 | 5 | **Semantic traceability and change impact** (LM-4) | What makes the derivation last: every element traced, every ontology change reported per model. |
 | 6 | The remaining Phase 2 tasks, then the Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
@@ -120,8 +119,8 @@ assistance, server-side LDMs.
 ## 6. Suggested next development milestone
 
 **MS-13, independent logical models** ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.2),
-through LM-1 and LM-2. Task 2.6 (ELK) is done; LM-1 is next, its scope and acceptance criteria
-set out in the roadmap's §10.
+through LM-1 and LM-2. Task 2.6 (ELK) and LM-1 are done; LM-2 is next, its scope and acceptance
+criteria set out in the roadmap's §10.
 
 ## 7. Logical data modelling in brief
 

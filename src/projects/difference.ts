@@ -5,7 +5,10 @@ import { classText, dataText, literalText, namingFor, type Naming } from '../mod
 import { setTurtle, shapeNaming } from '../model/shapes';
 import type { Model } from '../model/types';
 import { statementsOf } from '../model/unmapped';
-import type { AxiomLine, DataGraphDifference, Difference, EntityDifference, EntityKind, ShapeSetDifference } from './contracts';
+import type { LogicalElement, LogicalModel } from '../logical/contracts';
+import { same } from '../logical/rules';
+import { fieldText } from '../logical/text';
+import type { AxiomLine, DataGraphDifference, Difference, EntityDifference, EntityKind, LogicalElementDifference, LogicalModelDifference, ShapeSetDifference } from './contracts';
 
 /**
  * What differs between two states of a project (roadmap task 2.3, FR-M10-2): the axioms one
@@ -80,14 +83,101 @@ export function difference(before: Model, after: Model): Difference {
   )
     .filter(([k]) => !same(before[k], after[k]))
     .map(([, label]) => label);
-  const drawing = !same(before.style, after.style) || !same(before.layout, after.layout) || !same(positions(before), positions(after));
-  return { entities, shapeSets, dataGraphs, settings, drawing, axioms: { added: changes.filter((c) => c.op === 'add').length, removed: changes.filter((c) => c.op === 'remove').length } };
+  const logical = logicalDifference(before.logicalModels, after.logicalModels);
+  const drawing = !same(before.style, after.style) || !same(before.layout, after.layout) || !same(positions(before), positions(after)) || logical.diagrams;
+  return { entities, shapeSets, dataGraphs, logicalModels: logical.models, settings, drawing, axioms: { added: changes.filter((c) => c.op === 'add').length, removed: changes.filter((c) => c.op === 'remove').length } };
+}
+
+/** The elements of an LDM by id, each as a change would name it; a diagram is the picture and is not among them. */
+function elementsOf(m: LogicalModel): Map<string, LogicalElement> {
+  const out = new Map<string, LogicalElement>();
+  for (const entity of m.entities) {
+    out.set(entity.id, { kind: 'entity', entity });
+    for (const attribute of entity.attributes) out.set(attribute.id, { kind: 'attribute', entity: entity.id, attribute });
+    for (const key of entity.keys) out.set(key.id, { kind: 'key', entity: entity.id, key });
+  }
+  for (const relationship of m.relationships) out.set(relationship.id, { kind: 'relationship', relationship });
+  for (const generalization of m.generalizations) out.set(generalization.id, { kind: 'generalization', generalization });
+  for (const rule of m.rules) out.set(rule.id, { kind: 'rule', rule });
+  for (const domain of m.domains) out.set(domain.id, { kind: 'domain', domain });
+  for (const mapping of m.mappings) out.set(mapping.id, { kind: 'mapping', mapping });
+  return out;
+}
+
+/** An element's own fields: for an entity, not its attributes and keys, which are elements of their own. */
+function fieldsOf(e: LogicalElement): Record<string, unknown> {
+  const { id: _id, ...rest } = (e as unknown as Record<string, Record<string, unknown>>)[e.kind];
+  if (e.kind === 'entity') {
+    const { attributes: _a, keys: _k, ...own } = rest;
+    return own;
+  }
+  return rest;
+}
+
+function elementName(e: LogicalElement, m: LogicalModel): string {
+  const owner = (id: string) => m.entities.find((x) => x.id === id)?.name ?? id;
+  switch (e.kind) {
+    case 'entity':
+      return e.entity.name;
+    case 'attribute':
+      return `${owner(e.entity)}.${e.attribute.name}`;
+    case 'key':
+      return `${e.key.name || e.key.kind} of ${owner(e.entity)}`;
+    case 'relationship':
+      return e.relationship.name || `${owner(e.relationship.ends[0].entity)} to ${owner(e.relationship.ends[1].entity)}`;
+    case 'generalization':
+      return `the subtypes of ${owner(e.generalization.supertype)}`;
+    case 'rule':
+      return e.rule.name;
+    case 'domain':
+      return e.domain.name;
+    default:
+      return e.kind;
+  }
+}
+
+/**
+ * What differs between two lists of LDMs: each LDM added, removed or changed, and in a changed one
+ * each element added, removed or changed, with the fields that changed. Revisions are no change;
+ * where entities sit on a diagram is the drawing.
+ */
+function logicalDifference(before: LogicalModel[], after: LogicalModel[]): { models: LogicalModelDifference[]; diagrams: boolean } {
+  const models: LogicalModelDifference[] = [];
+  let diagrams = false;
+  const ORDER = ['model', 'entity', 'attribute', 'key', 'relationship', 'generalization', 'domain', 'rule', 'mapping'];
+  for (const id of new Set([...before, ...after].map((m) => m.id))) {
+    const a = before.find((m) => m.id === id);
+    const b = after.find((m) => m.id === id);
+    if (!a || !b) {
+      models.push({ id, name: (b ?? a)!.name, status: !a ? 'added' : 'removed', changes: [] });
+      continue;
+    }
+    if (!same(a.diagrams, b.diagrams)) diagrams = true;
+    const changes: LogicalElementDifference[] = [];
+    const header = (['name', 'description', 'purpose'] as const).filter((k) => a[k] !== b[k]);
+    if (header.length) changes.push({ op: 'update', kind: 'model', name: b.name, fields: header.map((k) => ({ field: k, before: a[k] || '(empty)', after: b[k] || '(empty)' })) });
+    const ea = elementsOf(a);
+    const eb = elementsOf(b);
+    for (const [eid, x] of eb) if (!ea.has(eid)) changes.push({ op: 'add', kind: x.kind, name: elementName(x, b) });
+    for (const [eid, x] of ea) if (!eb.has(eid)) changes.push({ op: 'remove', kind: x.kind, name: elementName(x, a) });
+    for (const [eid, y] of eb) {
+      const x = ea.get(eid);
+      if (!x) continue;
+      const fa = fieldsOf(x);
+      const fb = fieldsOf(y);
+      const fields = [...new Set([...Object.keys(fa), ...Object.keys(fb)])].filter((k) => !same(fa[k], fb[k])).map((k) => ({ field: k, before: fieldText(k, fa[k], a), after: fieldText(k, fb[k], b) }));
+      if (fields.length) changes.push({ op: 'update', kind: y.kind, name: elementName(y, b), fields });
+    }
+    changes.sort((p, q) => ORDER.indexOf(p.kind) - ORDER.indexOf(q.kind) || p.name.localeCompare(q.name));
+    if (changes.length) models.push({ id, name: b.name, status: 'changed', changes });
+  }
+  return { models, diagrams };
 }
 
 const positions = (m: Model) => m.terms.map((t) => `${t.id} ${Math.round(t.x)} ${Math.round(t.y)}`).join('\n');
 
 /** Whether a difference has anything to tell but the drawing. */
-export const nothingChanged = (d: Difference): boolean => !d.entities.length && !d.shapeSets.length && !d.dataGraphs.length && !d.settings.length;
+export const nothingChanged = (d: Difference): boolean => !d.entities.length && !d.shapeSets.length && !d.dataGraphs.length && !d.logicalModels.length && !d.settings.length;
 
 const DECLARED: Record<string, EntityKind> = { Class: 'class', ObjectProperty: 'object property', DataProperty: 'data property', AnnotationProperty: 'annotation property', NamedIndividual: 'individual', Datatype: 'datatype' };
 const declaredKind = (a: Axiom): EntityKind | undefined => (a.type === 'Declaration' ? DECLARED[a.entity] : undefined);

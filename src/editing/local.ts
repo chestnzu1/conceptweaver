@@ -4,7 +4,7 @@ import type { ClassAxiom, ClassExpressionAxiom, DataRangeAxiom } from '../model/
 import type { PropLink } from '../model/types';
 import { fromTurtle, toTurtle } from '../model/rdf';
 import { stable } from '../model/stable';
-import { newRelation, type EnumDatatype, type ExternalRef, type Model, type ObjProp, type Relation, type Term } from '../model/types';
+import { MODEL_PARTS, newRelation, type EnumDatatype, type ExternalRef, type Model, type ObjProp, type Relation, type Term } from '../model/types';
 import { statementsOf, type Statement } from '../model/unmapped';
 import { revisionOf } from '../structure/local';
 import { axiomOf, brief, kindsOf, statementOf, type Kinds } from './axioms';
@@ -278,10 +278,53 @@ export function summaryOf(p: Patch): string {
   counted('datatypes', 'datatype', 'datatypes');
   const settings = (['name', 'description', 'baseIri', 'ontologyIri', 'mode', 'lang'] as (keyof Model)[]).some((k) => k in p.after);
   if (settings) parts.push('changed the ontology’s settings');
+  // The logical data models, each by name: added, removed or changed.
+  if ('logicalModels' in p.after) {
+    const before = new Map(((p.before.logicalModels as Named[] | undefined) ?? []).map((x) => [x.id, x]));
+    const after = (p.after.logicalModels as Named[] | undefined) ?? [];
+    for (const x of after) if (!before.has(x.id)) parts.push(`added the logical model “${x.name}”`);
+    for (const x of before.values()) if (!after.some((y) => y.id === x.id)) parts.push(`removed the logical model “${x.name}”`);
+    for (const x of after) if (before.has(x.id) && before.get(x.id) !== x) parts.push(`changed the logical model “${x.name}”`);
+  }
   for (const part of [...new Set(Object.keys(p.after).flatMap((k) => PARTS[k as keyof Model] ?? []))]) parts.push(`changed ${part}`);
   const line = parts.length ? parts.join('; ') : 'changed the model';
   return line[0].toUpperCase() + line.slice(1);
 }
+
+/** What the history needs of a logical data model: which it is, and what it is called. */
+type Named = { id: string; name: string };
+
+/**
+ * Which artifacts a step changed (TD-19): the ontology, its shape sets, its data graphs, the
+ * picture, and each logical data model by id ("ldm:…"), read from the parts of the model it
+ * replaced. A step that changed only logical models changed nothing of the ontology, and one that
+ * only moved terms on the canvas changed only the picture.
+ */
+/** Whether a step changed the terms only in where they sit on the canvas. */
+function moved(p: Patch): boolean {
+  const [before, after] = [p.before.terms as Term[] | undefined, p.after.terms as Term[] | undefined];
+  const place = (t: Term) => ({ ...t, x: 0, y: 0 });
+  return !!before && !!after && before.length === after.length && after.every((t, i) => t === before[i] || equal(place(t), place(before[i])));
+}
+
+export function artifactsOf(p: Patch): string[] {
+  const out = new Set<string>();
+  for (const k of Object.keys(p.after) as (keyof Model)[]) {
+    const part = MODEL_PARTS[k];
+    if (part === 'picture' || (k === 'terms' && moved(p))) out.add('picture');
+    else if (part === 'revision') out.add(k === 'shapeSets' ? 'shapes' : k === 'dataGraphs' ? 'dataGraphs' : 'ontology');
+    else if (part === 'logical') {
+      const before = new Map(((p.before.logicalModels as Named[] | undefined) ?? []).map((x) => [x.id, x]));
+      const after = (p.after.logicalModels as Named[] | undefined) ?? [];
+      for (const x of after) if (before.get(x.id) !== x) out.add(`ldm:${x.id}`);
+      for (const id of before.keys()) if (!after.some((x) => x.id === id)) out.add(`ldm:${id}`);
+    }
+  }
+  return [...out];
+}
+
+/** Which artifacts a step of the history changed. */
+export const stepArtifacts = (step: Step): string[] => artifactsOf(step.patch);
 
 // ---------------------------------------------------------------- change sets from elsewhere
 
@@ -405,6 +448,8 @@ function carriedOver(old: Model, read: Model): Model {
     governance: old.governance,
     mappings: old.mappings,
     rejected: old.rejected,
+    // Never read from the ontology, so never changed by a change to it (NFR-17).
+    logicalModels: old.logicalModels,
   };
 }
 

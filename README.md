@@ -150,6 +150,24 @@ More on what the advanced reasoner does and does not cover is under
   on the canvas is no change to the ontology, and is said to be only the drawing. *Restore…* makes
   the model what a version was, as one edit that undo takes back, and saves that as a new version:
   no version is ever taken away. Deleting a model from My Models deletes its versions.
+- **Logical data models** (since 2026-10-17; `src/logical/`) – *File → Logical models…*: how
+  applications organise the project's data, as models of their own beside the ontology and its
+  shape sets, never written into either: entities, attributes with technology-neutral types
+  (text, integer, decimal, boolean, date, time, date-time, duration, binary, identifier) or named
+  domains, relationships with a role, a minimum and a maximum at each end, primary and candidate
+  keys, generalizations and business rules in words. A project has as many as it needs, each with
+  a name, what it is for and an identity of its own; they are made, renamed, duplicated (with new
+  ids throughout), exported to a file of their own (`.ldm.json`, format `conceptweaver-ldm`),
+  imported and deleted there, each change one step that undo takes back. They are kept in the
+  project's file, the working copy, My Models and every version; the difference between two
+  versions lists their changes element by element, apart from the ontology's. A change to one
+  never changes the ontology, its revision or another logical model, and a change to the ontology
+  never changes them, so reasoning, validation and the assistant's proposals stay current while
+  they are edited. A change that would break a model's rules (two entities of one name, a key of
+  an attribute that is not there, a relationship to an entity that is gone, a generalization
+  going round in a circle, a second primary key) is refused with its reason. Their entities are
+  edited through `LogicalModelEditService` today; the workspace and its ER diagram come next
+  (roadmap LM-2).
 - **Ontology settings** – File → Ontology settings: the ontology IRI, the default namespace new
   IRIs are made in, and namespace prefixes. Prefixes only change how an IRI is written (`ex:Actor`
   in tables, Turtle, SPARQL and search); they are kept on import and written on export.
@@ -842,7 +860,15 @@ that *Layered* says so and uses the built-in hierarchical layout.
   `templates.ts` (mappings kept by name).
 - `src/projects` – the versions of the models in My Models (`ProjectService` in `contracts.ts`):
   `local.ts` keeps them in IndexedDB, compressed, and restores one as a new version;
-  `difference.ts` says what differs between two models, entity by entity, over `changesBetween`.
+  `difference.ts` says what differs between two models, entity by entity, over `changesBetween`,
+  and each logical model element by element.
+- `src/logical` – logical data models, apart from the ontology (ADR-022). `contracts.ts` is the
+  metamodel, the logical change set and the two services (`LogicalModelQueryService`,
+  `LogicalModelEditService`); `rules.ts` the rules a model is held to, changes applied and checked,
+  and removals with what names the element; `local.ts` the services over the project in the
+  editor; `exchange.ts` the file of one model; `text.ts` types, cardinalities and fields in
+  words. It takes nothing of the project but its type, and a test (`boundaries.test.ts`) keeps it
+  so.
 - `src/editing` – what an edit is, and the service that makes edits (see *Edits as change sets*).
   `contracts.ts` is the change set, by OWL 2's axiom names and IRIs, and `OntologyEditService`
   (apply, validate, and the axioms about an entity). `axioms.ts` reads an RDF statement as an
@@ -1606,9 +1632,10 @@ proposals would stay change sets for the same edit service.
 
 ## Not there yet
 
-Logical data models designed from the ontology (the roadmap's logical data modelling track, LM-1
-to LM-5: an LDM editor with an ER diagram, reviewed transformation from the ontology, semantic
-traceability and change impact; docs/DEVELOPMENT_ROADMAP.md §1.3), Excel/PowerPoint/PDF export,
+Logical data models are kept and changed through their services (LM-1), but the rest of the
+roadmap's logical data modelling track is not there yet (LM-2 to LM-5: an LDM editor with an ER
+diagram, reviewed transformation from the ontology, semantic traceability and change impact;
+docs/DEVELOPMENT_ROADMAP.md §1.3), Excel/PowerPoint/PDF export,
 multiple saved models.
 Colours, positions, the layout and cardinalities live only in the JSON format; the Turtle export carries the
 terms, descriptions, synonyms and relations.

@@ -1,0 +1,765 @@
+{
+ "format": "conceptweaver",
+ "version": 5,
+ "name": "A project of format 5",
+ "description": "",
+ "baseIri": "http://example.org/staff#",
+ "ontologyIri": "http://example.org/staff",
+ "prefixes": [],
+ "mode": "ontology",
+ "lang": "",
+ "vocab": {
+  "enabled": false,
+  "map": {}
+ },
+ "props": [
+  {
+   "id": "3v7p6us9ba3",
+   "name": "works for",
+   "description": "",
+   "chars": [],
+   "iri": "http://example.org/staff#worksFor"
+  }
+ ],
+ "terms": [
+  {
+   "id": "tiqh5488ba3",
+   "name": "Person",
+   "description": "",
+   "type": "concept",
+   "color": "",
+   "x": 0,
+   "y": 0,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#Person"
+  },
+  {
+   "id": "l9xnnu50ba3",
+   "name": "Organisation",
+   "description": "",
+   "type": "concept",
+   "color": "",
+   "x": -60,
+   "y": 220,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#Organisation"
+  },
+  {
+   "id": "dv2xjsj8ba3",
+   "name": "name",
+   "description": "",
+   "type": "property",
+   "color": "",
+   "x": -60,
+   "y": 470,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#name"
+  },
+  {
+   "id": "53r95zzoba3",
+   "name": "age",
+   "description": "",
+   "type": "property",
+   "color": "",
+   "x": 60,
+   "y": 470,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#age"
+  },
+  {
+   "id": "396bjjm9ba3",
+   "name": "Ann",
+   "description": "",
+   "type": "instance",
+   "color": "",
+   "x": 79,
+   "y": 220,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#ann",
+   "values": [
+    {
+     "prop": "dv2xjsj8ba3",
+     "value": "Ann"
+    },
+    {
+     "prop": "53r95zzoba3",
+     "value": "34",
+     "dt": "xsd:integer"
+    }
+   ]
+  },
+  {
+   "id": "w549uf81ba4",
+   "name": "Bob",
+   "description": "",
+   "type": "instance",
+   "color": "",
+   "x": 0,
+   "y": 110,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#bob",
+   "values": [
+    {
+     "prop": "53r95zzoba3",
+     "value": "unknown"
+    }
+   ]
+  },
+  {
+   "id": "39e1wfkgba4",
+   "name": "Acme",
+   "description": "",
+   "type": "instance",
+   "color": "",
+   "x": 0,
+   "y": 330,
+   "synonyms": "",
+   "fields": [],
+   "iri": "http://example.org/staff#acme",
+   "values": [
+    {
+     "prop": "dv2xjsj8ba3",
+     "value": "Acme"
+    }
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "id": "p0kyb3kwba4",
+   "from": "396bjjm9ba3",
+   "to": "tiqh5488ba3",
+   "label": "",
+   "kind": "generalization",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "h5gz0dfvba4",
+   "from": "w549uf81ba4",
+   "to": "tiqh5488ba3",
+   "label": "",
+   "kind": "generalization",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "3st52j4sba4",
+   "from": "39e1wfkgba4",
+   "to": "l9xnnu50ba3",
+   "label": "",
+   "kind": "generalization",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "uyq1zhpjba4",
+   "from": "396bjjm9ba3",
+   "to": "39e1wfkgba4",
+   "label": "works for",
+   "kind": "association",
+   "prop": "3v7p6us9ba3",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  },
+  {
+   "id": "s7w5z0g6ba4",
+   "from": "w549uf81ba4",
+   "to": "396bjjm9ba3",
+   "label": "works for",
+   "kind": "association",
+   "prop": "3v7p6us9ba3",
+   "description": "",
+   "fromCard": "",
+   "toCard": ""
+  }
+ ],
+ "shapeSets": [
+  {
+   "id": "1a3nx2epszm",
+   "name": "Shapes",
+   "description": "",
+   "namespace": "",
+   "shapes": [
+    {
+     "id": "5wjxxielszm",
+     "iri": "http://example.org/staff#PersonShape",
+     "props": [
+      {
+       "p": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#NodeShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/2000/01/rdf-schema#label",
+       "v": {
+        "lit": "Person shape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#targetClass",
+       "v": {
+        "iri": "http://example.org/staff#Person"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "6nzf1yakszm"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "jxevkldjszm"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "xltsp5wyszm"
+       }
+      }
+     ]
+    },
+    {
+     "id": "6nzf1yakszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#name"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#datatype",
+       "v": {
+        "iri": "http://www.w3.org/2001/XMLSchema#string"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#message",
+       "v": {
+        "lit": "A person has a name."
+       }
+      }
+     ]
+    },
+    {
+     "id": "jxevkldjszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#age"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#datatype",
+       "v": {
+        "iri": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#maxCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    },
+    {
+     "id": "xltsp5wyszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#worksFor"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#class",
+       "v": {
+        "iri": "http://example.org/staff#Organisation"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#severity",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#Warning"
+       }
+      }
+     ]
+    },
+    {
+     "id": "c6vx6b8xszm",
+     "iri": "http://example.org/staff#OrganisationShape",
+     "props": [
+      {
+       "p": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#NodeShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/2000/01/rdf-schema#label",
+       "v": {
+        "lit": "OrganisationShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#targetClass",
+       "v": {
+        "iri": "http://example.org/staff#Organisation"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "x15i2zntszm"
+       }
+      }
+     ]
+    },
+    {
+     "id": "x15i2zntszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#name"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#maxLength",
+       "v": {
+        "lit": "40",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    },
+    {
+     "id": "eer08q22szm",
+     "iri": "http://example.org/staff#ContactShape",
+     "props": [
+      {
+       "p": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#NodeShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#targetClass",
+       "v": {
+        "iri": "http://example.org/staff#Person"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#or",
+       "v": {
+        "list": [
+         {
+          "shape": "sm65aamzszm"
+         },
+         {
+          "shape": "e6gbwhakszm"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "id": "sm65aamzszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#name"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    },
+    {
+     "id": "e6gbwhakszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#worksFor"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    }
+   ],
+   "extra": "",
+   "prefixes": {
+    "sh": "http://www.w3.org/ns/shacl#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+   }
+  },
+  {
+   "id": "set-catalogue",
+   "name": "Catalogue",
+   "description": "What the catalogue application accepts.",
+   "namespace": "",
+   "shapes": [
+    {
+     "id": "5wjxxielszm",
+     "iri": "http://example.org/staff#PersonShape",
+     "props": [
+      {
+       "p": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#NodeShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/2000/01/rdf-schema#label",
+       "v": {
+        "lit": "Person shape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#targetClass",
+       "v": {
+        "iri": "http://example.org/staff#Person"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "6nzf1yakszm"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "jxevkldjszm"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "xltsp5wyszm"
+       }
+      }
+     ]
+    },
+    {
+     "id": "6nzf1yakszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#name"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#datatype",
+       "v": {
+        "iri": "http://www.w3.org/2001/XMLSchema#string"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#message",
+       "v": {
+        "lit": "A person has a name."
+       }
+      }
+     ]
+    },
+    {
+     "id": "jxevkldjszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#age"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#datatype",
+       "v": {
+        "iri": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#maxCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    },
+    {
+     "id": "xltsp5wyszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#worksFor"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#class",
+       "v": {
+        "iri": "http://example.org/staff#Organisation"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#severity",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#Warning"
+       }
+      }
+     ]
+    },
+    {
+     "id": "c6vx6b8xszm",
+     "iri": "http://example.org/staff#OrganisationShape",
+     "props": [
+      {
+       "p": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#NodeShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/2000/01/rdf-schema#label",
+       "v": {
+        "lit": "OrganisationShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#targetClass",
+       "v": {
+        "iri": "http://example.org/staff#Organisation"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#property",
+       "v": {
+        "shape": "x15i2zntszm"
+       }
+      }
+     ]
+    },
+    {
+     "id": "x15i2zntszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#name"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#maxLength",
+       "v": {
+        "lit": "40",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    },
+    {
+     "id": "eer08q22szm",
+     "iri": "http://example.org/staff#ContactShape",
+     "props": [
+      {
+       "p": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+       "v": {
+        "iri": "http://www.w3.org/ns/shacl#NodeShape"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#targetClass",
+       "v": {
+        "iri": "http://example.org/staff#Person"
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#or",
+       "v": {
+        "list": [
+         {
+          "shape": "sm65aamzszm"
+         },
+         {
+          "shape": "e6gbwhakszm"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "id": "sm65aamzszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#name"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    },
+    {
+     "id": "e6gbwhakszm",
+     "props": [
+      {
+       "p": "http://www.w3.org/ns/shacl#path",
+       "v": {
+        "path": {
+         "iri": "http://example.org/staff#worksFor"
+        }
+       }
+      },
+      {
+       "p": "http://www.w3.org/ns/shacl#minCount",
+       "v": {
+        "lit": "1",
+        "dt": "http://www.w3.org/2001/XMLSchema#integer"
+       }
+      }
+     ]
+    }
+   ],
+   "extra": "",
+   "prefixes": {
+    "sh": "http://www.w3.org/ns/shacl#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#"
+   }
+  }
+ ],
+ "externals": [],
+ "mappings": [],
+ "rejected": [],
+ "governance": {
+  "custom": [],
+  "overrides": {}
+ },
+ "style": {
+  "theme": "standard",
+  "nodeTypes": {},
+  "edgeTypes": {},
+  "nodes": {},
+  "edges": {},
+  "anchors": {}
+ },
+ "layout": {
+  "kind": "hierarchy",
+  "direction": "TB",
+  "nodeSpacing": 36,
+  "layerSpacing": 70,
+  "repulsion": 1,
+  "routing": "auto",
+  "root": ""
+ },
+ "datatypes": [],
+ "dataGraphs": [
+  {
+   "id": "graph-people",
+   "name": "People",
+   "file": "people.ttl",
+   "format": "turtle",
+   "triples": 12,
+   "fingerprint": "f-people-1",
+   "includeOntology": true,
+   "read": 1792000000000
+  }
+ ],
+ "unmapped": "<http://example.org/staff#knows> <http://www.w3.org/2002/07/owl#propertyChainAxiom> ( <http://example.org/staff#knows> <http://example.org/staff#knows> ) .",
+ "quality": {
+  "off": [],
+  "on": []
+ }
+}

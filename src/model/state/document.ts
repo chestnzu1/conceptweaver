@@ -2,6 +2,8 @@ import { drawnWhole } from '../culling';
 import { checkpointed, committed, createLocalEditService, discarded, opened, redone, stepChangeSet, undone, type DocumentState, type Step, type Version } from '../../editing/local';
 import type { ChangeSet, OntologyEditService } from '../../editing/contracts';
 import { WORKING_COPY } from '../../structure/local';
+import { createLocalLogicalServices } from '../../logical/local';
+import type { LogicalModelEditService, LogicalModelQueryService } from '../../logical/contracts';
 import { withoutEntities } from '../domains';
 import { linkProps } from '../identity';
 import { withIris } from '../iri';
@@ -123,6 +125,10 @@ export interface DocumentSlice {
   editService: OntologyEditService;
   /** A step that undo would take back (`index` into `past`), as a change set of axioms. Worked out when asked for, one at a time. */
   changeSetOf: (index: number) => ChangeSet | undefined;
+  /** Questions about the project's logical data models (src/logical). */
+  logicalQuery: LogicalModelQueryService;
+  /** Changes to them: each one step of the history, never a change to the ontology. */
+  logicalEdit: LogicalModelEditService;
 }
 
 export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
@@ -246,4 +252,17 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     commit: (next) => get().apply(() => next),
   }),
   changeSetOf: (index) => stepChangeSet(documentOf(get()), index, get().doc.id ?? WORKING_COPY),
+  ...(() => {
+    // A change to the logical models changes nothing an entity's IRI or a property's link depends
+    // on, so it is committed as it is, without what an edit of the ontology is prepared with.
+    const { query, edit } = createLocalLogicalServices({
+      current: () => ({ model: get().model }),
+      commit: (next) =>
+        set((s) => {
+          const d = committed(documentOf(s), next);
+          return d.model === s.model ? s : held(d);
+        }),
+    });
+    return { logicalQuery: query, logicalEdit: edit };
+  })(),
 });

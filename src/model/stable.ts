@@ -1,4 +1,4 @@
-import type { Model, Term } from './types';
+import { MODEL_PARTS, type Model, type Term } from './types';
 
 const SAME: (keyof Term)[] = ['id', 'name', 'description', 'type', 'color', 'synonyms', 'fields', 'iri', 'ranges', 'domains', 'classAxioms', 'functional', 'values', 'external', 'oneOf', 'allDifferent'];
 
@@ -12,27 +12,16 @@ let recent: Model[] = [];
 /** The answer given for each model so far: models are never changed, so it stays the answer. */
 const given = new WeakMap<Model, Model>();
 
-/** Whether two models say the same, apart from where terms sit on the canvas. */
+/** The fields of a model the ontology's revision follows, apart from the terms, which are compared field by field. */
+const FOLLOWED = (Object.keys(MODEL_PARTS) as (keyof Model)[]).filter((k) => MODEL_PARTS[k] === 'revision' && k !== 'terms');
+
+/**
+ * Whether two models say the same, apart from where terms sit on the canvas, how the graph is
+ * drawn, and the logical data models, which have revisions of their own (MODEL_PARTS).
+ */
 function sameMeaning(prev: Model, model: Model): boolean {
   return (
-    prev.relations === model.relations &&
-    prev.props === model.props &&
-    prev.vocab === model.vocab &&
-    prev.mode === model.mode &&
-    prev.lang === model.lang &&
-    prev.name === model.name &&
-    prev.description === model.description &&
-    prev.baseIri === model.baseIri &&
-    prev.ontologyIri === model.ontologyIri &&
-    prev.prefixes === model.prefixes &&
-    prev.shapeSets === model.shapeSets &&
-    prev.dataGraphs === model.dataGraphs &&
-    prev.quality === model.quality &&
-    prev.governance === model.governance &&
-    prev.datatypes === model.datatypes &&
-    prev.externals === model.externals &&
-    prev.mappings === model.mappings &&
-    prev.rejected === model.rejected &&
+    FOLLOWED.every((k) => prev[k] === model[k]) &&
     prev.terms.length === model.terms.length &&
     model.terms.every((t, i) => t === prev.terms[i] || SAME.every((k) => t[k] === prev.terms[i][k]))
   );
