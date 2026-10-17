@@ -54,6 +54,85 @@ describe.skipIf(!!why)('OWL 2 DL reasoning with HermiT', () => {
     expect(service.health).toMatchObject({ engine: 'HermiT', engineVersion: '1.4.5.456', owlapi: '4.5.29' });
   });
 
+  describe('ELK, and the reasoner chosen by the ontology\'s profile (task 2.6)', () => {
+    const askWith = (ontology: string, reasoner: 'auto' | 'hermit' | 'elk'): Promise<DlReport> =>
+      askReasoner(service.url, { ontology: ontology.includes('@prefix') ? ontology : PREFIXES + ontology, imports: [], timeoutMs: 60_000, explanations: { perSubject: 0, max: 0, timeoutMs: 0 }, reasoner });
+    const pairs = (r: DlReport) => (r.subclasses ?? []).map((p) => `${local(p.sub)} < ${local(p.sup)}`).sort();
+
+    /**
+     * An OWL 2 EL ontology generated for the test: a tree of 500 classes, a transitive part-of
+     * property, existential restrictions on every tenth class, and defined classes that classify
+     * what has a part of a kind; one class under two disjoint ones.
+     */
+    const generatedEl = () => {
+      const lines = [':partOf a owl:ObjectProperty , owl:TransitiveProperty .', ':hasPart a owl:ObjectProperty .'];
+      for (let i = 0; i < 500; i++) {
+        lines.push(`:C${i} a owl:Class${i ? ` ; rdfs:subClassOf :C${Math.floor((i - 1) / 4)}` : ''} .`);
+        if (i % 10 === 5) lines.push(`:C${i} rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :partOf ; owl:someValuesFrom :C${i - 5} ] .`);
+      }
+      for (let k = 0; k < 20; k++) lines.push(`:WithPart${k} a owl:Class ; owl:equivalentClass [ a owl:Class ; owl:intersectionOf ( :C1 [ a owl:Restriction ; owl:onProperty :partOf ; owl:someValuesFrom :C${k} ] ) ] .`);
+      lines.push(':Odd a owl:Class ; rdfs:subClassOf :C2 , :C3 .', ':C2 owl:disjointWith :C3 .', ':x a owl:NamedIndividual , :C45 .');
+      return PREFIXES + lines.join('\n');
+    };
+
+    it('says which reasoners the service has', () => {
+      expect(service.health).toMatchObject({ reasoners: [{ engine: 'HermiT', covers: 'OWL 2 DL' }, { engine: 'ELK', engineVersion: '0.6.0', covers: 'OWL 2 EL' }] });
+    });
+
+    it('chooses ELK for an ontology in OWL 2 EL, says why, and classifies it as HermiT does', async () => {
+      const el = generatedEl();
+      const byElk = await askWith(el, 'auto');
+      expect(byElk).toMatchObject({ engine: 'ELK', engineVersion: '0.6.0', status: 'complete', consistency: 'consistent', choice: { requested: 'auto', reasoner: 'ELK', why: expect.stringMatching(/the ontology is in OWL 2 EL/) }, profile: { owl2el: true, elViolationCount: 0 } });
+      const byHermit = await askWith(el, 'hermit');
+      expect(byHermit).toMatchObject({ engine: 'HermiT', status: 'complete', choice: { requested: 'hermit', reasoner: 'HermiT' } });
+      // Both complete for OWL 2 EL: the same hierarchy, the same unsatisfiable class, the same memberships.
+      expect(pairs(byElk).length).toBeGreaterThan(500);
+      expect(pairs(byElk)).toEqual(pairs(byHermit));
+      expect(locals(byElk.unsatisfiable)).toEqual(['Odd']);
+      expect(locals(byElk.unsatisfiable)).toEqual(locals(byHermit.unsatisfiable));
+      expect((byElk.types ?? []).map((t) => local(t.class))).toEqual((byHermit.types ?? []).map((t) => local(t.class)));
+    }, 120_000);
+
+    it('chooses HermiT for an ontology outside OWL 2 EL, and says which axiom puts it outside', async () => {
+      const r = await askWith(PARTY, 'auto');
+      expect(r).toMatchObject({ engine: 'HermiT', status: 'complete', choice: { reasoner: 'HermiT', why: expect.stringMatching(/not in OWL 2 EL \(1 axiom outside it, first: .*only/) }, profile: { owl2el: false } });
+      expect(locals(r.unsatisfiable)).toEqual(['OrganisationLocalProfile', 'PartyLocalProfile']);
+    });
+
+    it('asked of ELK directly, an ontology outside OWL 2 EL is answered as partial, with what ELK left out', async () => {
+      const r = await askWith(PARTY, 'elk');
+      expect(r).toMatchObject({ engine: 'ELK', status: 'partial', consistency: 'consistent' });
+      expect(r.warnings[0]).toMatch(/^ELK covers OWL 2 EL and left out what it does not support/);
+      expect(r.warnings.join(' ')).toMatch(/ObjectAllValuesFrom/);
+      // What it left out is exactly why it misses what HermiT finds.
+      expect(r.unsatisfiable).toEqual([]);
+    });
+
+    it('finds a contradiction in OWL 2 EL, and says that a justification is HermiT\'s', async () => {
+      const r = await askWith(':A a owl:Class . :B a owl:Class . :A owl:disjointWith :B . :x a owl:NamedIndividual , :A , :B .', 'auto');
+      expect(r).toMatchObject({ engine: 'ELK', status: 'complete', consistency: 'inconsistent' });
+      expect(r.warnings).toContain('ELK found a contradiction, and gives no justification for it: ask HermiT to see why.');
+    });
+
+    it('refuses a reasoner it does not have', async () => {
+      const r = await askWith(PARTY, 'fact' as 'elk');
+      expect(r).toMatchObject({ status: 'failed', errors: ['There is no reasoner "fact": ask for hermit, elk or auto.'] });
+    });
+
+    it('is credited, through the app, to ELK and OWL 2 EL, with why it was chosen', async () => {
+      const model = fromTurtle(generatedEl());
+      const report = await askReasoner(service.url, dlRequest(model, [], { reasoner: 'auto', justifications: 0 }));
+      const { summary, result } = dlFindings(model, report);
+      expect(result.engine).toMatchObject({ name: 'ELK', version: '0.6.0', covers: 'OWL 2 EL', chosen: expect.stringMatching(/^Chosen automatically/) });
+      expect(summary).toMatchObject({ engineName: 'ELK 0.6.0', proved: true, profile: expect.stringMatching(/^OWL 2 EL, by ELK/), chosen: expect.stringMatching(/^Chosen automatically/) });
+      const sub = model.terms.find((t) => t.name === 'C45' || t.iri?.endsWith('#C45'))!;
+      expect(entailed(model, reason(model), result)).toBeTruthy();
+      expect(result.subclasses.some((x) => x.subclass === sub.id)).toBe(true);
+      const { creditOf } = await import('./reasoning');
+      expect(creditOf(result)).toBe('Entailed, according to ELK 0.6.0 (OWL 2 EL).');
+    }, 120_000);
+  });
+
   describe('the PartyLocalProfile case', () => {
     it('finds both classes unsatisfiable in an ontology that is still consistent', async () => {
       const r = await ask(PARTY);

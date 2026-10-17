@@ -120,7 +120,9 @@ export interface DlReport {
   ms: number;
   axioms?: number;
   logicalAxioms?: number;
-  profile?: { owl2dl: boolean; violations: DlViolation[]; violationCount: number; undeclared: string[]; undeclaredCount: number };
+  profile?: { owl2dl: boolean; violations: DlViolation[]; violationCount: number; undeclared: string[]; undeclaredCount: number; owl2el?: boolean; elViolationCount?: number };
+  /** Which reasoner answered, and why: the one asked for, or, asked to choose, ELK for OWL 2 EL and HermiT otherwise. */
+  choice?: { requested: 'auto' | 'hermit' | 'elk'; reasoner: string; why: string };
   imports?: { resolved: string[]; missing: string[] };
   unsatisfiable?: string[];
   /** Each class with the classes directly above it in the inferred hierarchy. */

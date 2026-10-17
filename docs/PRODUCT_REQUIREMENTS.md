@@ -246,7 +246,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | --- | --- | --- | --- |
 | M1 Modelling and entity management | **Existing** | `src/components/Entities.tsx`, `EntityEditor.tsx`, `src/model/iri.ts`, `src/model/identity.ts` | Lossless round trip (property identity done 2026-10-14) |
 | M2 Axiom and restriction editing | **Partially Implemented** | `src/model/axioms.ts`, `props.ts` | Class expressions are text |
-| M3 Reasoning | **Existing**, job handling partial | `src/model/reasoner.ts`, `reasoning.ts`, `reasoner/ReasonerService.java` | Blocks the page; no ELK; no jobs |
+| M3 Reasoning | **Existing**, job handling partial | `src/model/reasoner.ts`, `reasoning.ts`, `src/reasoning/`, `reasoner/ReasonerService.java` (HermiT and ELK, chosen by profile) | No server-side jobs or size budget |
 | M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shacl.ts`, `quality.ts`, `src/validation/` | No SHACL-SPARQL; no server engine; keys and nested class expressions are not proposed as shapes (SHACL track, SH-4 and SH-5) |
 | M5 Graph and subgraph | **Existing** | `src/components/Canvas.tsx`, `src/layout/`, `src/model/subgraph.ts` | About 2,000 terms |
 | M6 Structure exploration | **Existing** | `src/structure/` | No ontology-level comparison |
@@ -432,7 +432,7 @@ service's library bundle. No progress, no cancel, no cache across sessions.
 | FR-M3-2 | Complete OWL 2 DL reasoning with HermiT, reporting complete, partial or failed with reasons. | Existing | P0 |
 | FR-M3-3 | Inferred statements are shown apart from asserted ones, never stored among them, and exportable on request. | Existing | P0 |
 | FR-M3-4 | Reasoning is a job: started, followed, cancelled; one result per revision and reasoner, reused until the ontology changes. | Recommended | P1 |
-| FR-M3-5 | ELK is offered for OWL 2 EL ontologies; "automatic" chooses a reasoner from the ontology's profile and says which it chose. | Recommended | P1 |
+| FR-M3-5 | ELK is offered for OWL 2 EL ontologies; "automatic" chooses a reasoner from the ontology's profile and says which it chose. | **Existing** (2026-10-17, roadmap 2.6): in the local service; the reasoner list in Validation, automatic by default | P1 |
 | FR-M3-6 | A justification can be asked for any inferred subclass relationship, type or inconsistency. | Partially Implemented (for HermiT findings; the hierarchy's `explain` has none for HermiT) | P1 |
 | FR-M3-7 | An inferred statement can be made an asserted one by an explicit command, as a normal edit. | Recommended | P2 |
 | FR-M3-8 | Time and memory limits are settings, shown with each result. | Partially Implemented (fixed defaults) | P1 |
@@ -1920,7 +1920,6 @@ mappings were made" (Recommended; roadmap LM-4).
 | Is the SKOS-centred user (taxonomist) or the OWL-centred user (ontology engineer) the first audience? | They pull the MVP in different directions: multilingual labels and import versus class expressions and reasoning. | Ontology engineer first, because lossless OWL is the harder credibility gap. |
 | How large are the ontologies the first users actually have? | Sets how early Phase 4 is needed. | 10,000 classes as the Local-profile target. |
 | Is hosting a service something the developer wants to operate? | The Server profile can be delivered as software to self-host only. | Self-hosted. |
-| Should the first task of the logical modelling track (LM-1) come before task 2.6 (ELK)? | The new objective against the scheduled order. | 2.6 first: it is small and LM-1 needs nothing of it. |
 | Which ER notation, and is more than one needed? | Designers are trained on different notations. | Information Engineering (crow's foot) only. |
 | Must LDMs be exchanged with other data modelling tools, and in which format? | No common logical-model format is used by every tool. | The product's own documented JSON; others when users ask. |
 | Should individuals (reference data, code lists) become anything in an LDM? | Code lists often live as individuals in ontologies. | Not at first: enumerations become domains; reference data is Future. |

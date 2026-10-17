@@ -4164,6 +4164,21 @@ code.pred {
   flex-basis: 100%;
 }
 
+.owl-card .service select {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--canvas);
+  font-size: 12px;
+}
+
+.owl-card .chosen {
+  font-size: 12px;
+}
+
 .owl-card .health {
   color: var(--ink-2);
 }

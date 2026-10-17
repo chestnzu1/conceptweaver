@@ -107,6 +107,8 @@ export interface OwlSummary {
   /** The reasoner stopped early or left something out, so "consistent" is about what it looked at. */
   partial: boolean;
   profile: string;
+  /** For a reasoner chosen by the ontology's profile, which one, and why. */
+  chosen?: string;
   ms: number;
   /** What kept the reasoner from answering, or from answering for all of the ontology. */
   errors?: string[];

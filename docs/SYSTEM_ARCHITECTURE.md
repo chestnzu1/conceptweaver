@@ -496,10 +496,16 @@ flowchart TD
   E --> G
 ```
 
-- The profile check uses the OWL API's profile classes, which the current service already calls
-  for OWL 2 DL (`OWL2DLProfile` in `reasoner/ReasonerService.java`).
+- The profile check uses the OWL API's profile classes (`OWL2DLProfile`, and since 2026-10-17
+  `OWL2ELProfile`, in `reasoner/ReasonerService.java`).
 - "Auto" is a default, not a constraint: the user can ask for a specific reasoner.
 - The size budget is configuration, set from measurement, not a constant in code.
+
+**Status, 2026-10-17 (roadmap task 2.6).** The local service has the first two branches: *auto*
+gives ELK for an ontology in OWL 2 EL and HermiT otherwise, and the answer says which and why;
+HermiT or ELK can be asked for. ELK's result is complete only where none of its own
+incompleteness monitors reports an unsupported feature, and lists what they report. The size
+budget and ELK on the EL part of a larger OWL 2 DL ontology are the server's (task 3.3).
 
 ### 7.2 Rules that hold for every reasoner
 
@@ -1452,7 +1458,6 @@ Each has a default the roadmap assumes; each could become an ADR of its own when
 
 | Question | Why it matters | Default assumed |
 | --- | --- | --- |
-| Should LM-1 come before 2.6 (ELK)? | The new objective against the scheduled order. | 2.6 first: it is small and LM-1 needs nothing of it. |
 | Which ER notation, and more than one? | Users are trained on different ones (IE, Barker, IDEF1X, UML class diagrams). | Information Engineering (crow's foot) only. |
 | What language for formal business rules? | A rule in words cannot be checked; a full language is a product of its own. | Words first; a small expression language over attributes later (FR-M17-9). |
 | Default strategy for subclass hierarchies? | Specialization keeps the ontology's shape; roll-up is what many applications store. | Specialization, with roll-up and roll-down per hierarchy. |

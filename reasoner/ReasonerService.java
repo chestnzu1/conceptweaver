@@ -59,10 +59,12 @@ import org.semanticweb.owlapi.model.OWLOntologyLoaderConfiguration;
 import org.semanticweb.owlapi.model.OWLOntologyManager;
 import org.semanticweb.owlapi.model.parameters.Imports;
 import org.semanticweb.owlapi.profiles.OWL2DLProfile;
+import org.semanticweb.owlapi.profiles.OWL2ELProfile;
 import org.semanticweb.owlapi.profiles.OWLProfileReport;
 import org.semanticweb.owlapi.profiles.OWLProfileViolation;
 import org.semanticweb.owlapi.reasoner.InferenceType;
 import org.semanticweb.owlapi.reasoner.Node;
+import org.semanticweb.owlapi.reasoner.NodeSet;
 import org.semanticweb.owlapi.reasoner.OWLReasoner;
 import org.semanticweb.owlapi.util.AnnotationValueShortFormProvider;
 import org.semanticweb.owlapi.util.ShortFormProvider;
@@ -80,7 +82,9 @@ import org.semanticweb.owlapi.util.ShortFormProvider;
  * reported as missing, not looked up on the network.
  *
  *   GET  /health   which reasoner this is
- *   POST /reason   { ontology, imports?: [{ iri, text }], timeoutMs?, explanations?: { max, perSubject, timeoutMs } }
+ *   POST /reason   { ontology, imports?: [{ iri, text }], timeoutMs?, explanations?: { max, perSubject, timeoutMs },
+ *                    reasoner?: hermit (the default) | elk | auto }: auto uses ELK for an ontology in
+ *                  OWL 2 EL and HermiT otherwise, and the answer says which it chose and why
  *   POST /convert  { document, to? }: the document, in any OWL syntax, as Turtle, or as `to` says:
  *                  rdfxml, owlxml, functional or manchester
  *   POST /compare  { original, exported }: the statements in one document and not the other
@@ -104,6 +108,7 @@ public class ReasonerService {
   /** Whether /ai/forward may reach an endpoint on this machine or the local network (a model server): off unless asked for. */
   static boolean allowLocalAi = false;
   static String hermitVersion = "unknown";
+  static String elkVersion = "unknown";
   static String owlapiVersion = "unknown";
 
   public static void main(String[] args) throws IOException {
@@ -116,6 +121,7 @@ public class ReasonerService {
       else if (a.equals("--allow-local-ai")) allowLocalAi = true;
     }
     hermitVersion = versionOf("net.sourceforge.owlapi/org.semanticweb.hermit");
+    elkVersion = versionOf("io.github.liveontologies/elk-owlapi");
     owlapiVersion = versionOf("net.sourceforge.owlapi/owlapi-api");
     HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 16);
     server.createContext("/health", x -> respond(x, 200, health()));
@@ -154,6 +160,16 @@ public class ReasonerService {
     o.addProperty("converts", true);
     o.addProperty("compares", true);
     o.addProperty("forwardsAi", true);
+    // The reasoners /reason can be asked for, beside HermiT, which the fields above name.
+    JsonArray reasoners = new JsonArray();
+    for (String[] r : new String[][] {{"HermiT", hermitVersion, "OWL 2 DL"}, {"ELK", elkVersion, "OWL 2 EL"}}) {
+      JsonObject one = new JsonObject();
+      one.addProperty("engine", r[0]);
+      one.addProperty("engineVersion", r[1]);
+      one.addProperty("covers", r[2]);
+      reasoners.add(one);
+    }
+    o.add("reasoners", reasoners);
     // It holds a key for the assistant, by a handle, so that the page need not (POST /ai/key).
     o.addProperty("holdsAiKeys", true);
     // The syntaxes /convert writes, besides reading every one of them.
@@ -1149,8 +1165,44 @@ public class ReasonerService {
     profile.addProperty("violationCount", outside);
     profile.add("undeclared", undeclaredNames);
     profile.addProperty("undeclaredCount", undeclared.size());
+    // Whether it is in OWL 2 EL, the profile ELK is complete for. Undeclared entities are left out of
+    // this count as of the one above: they change no axiom.
+    int outsideEl = 0;
+    String firstOutsideEl = null;
+    for (OWLProfileViolation v : new OWL2ELProfile().checkOntology(ontology).getViolations()) {
+      if (v.getClass().getSimpleName().startsWith("UseOfUndeclared")) continue;
+      outsideEl++;
+      if (firstOutsideEl == null) {
+        OWLAxiom axiom = v.getAxiom();
+        String rule = v.toString().replaceAll("\\s+", " ").trim();
+        int cut = rule.indexOf(" [");
+        if (cut > 0) rule = rule.substring(0, cut);
+        rule = rule.replaceAll(":? ?<[^>]*>|:? ?[A-Z][A-Za-z]+\\(.*$", "").trim();
+        firstOutsideEl = rule + (axiom == null ? "" : ", in " + plain.render(axiom).replaceAll("\\s+", " ").trim());
+      }
+    }
+    profile.addProperty("owl2el", outsideEl == 0);
+    profile.addProperty("elViolationCount", outsideEl);
     synchronized (out) {
       out.add("profile", profile);
+    }
+
+    // Which reasoner: the one asked for, or, asked to choose, ELK for an ontology in OWL 2 EL and HermiT otherwise.
+    String requested = request.has("reasoner") && request.get("reasoner").isJsonPrimitive() ? request.get("reasoner").getAsString() : "hermit";
+    if (!requested.equals("auto") && !requested.equals("elk") && !requested.equals("hermit")) throw new Refused("There is no reasoner \"" + requested + "\": ask for hermit, elk or auto.");
+    boolean useElk = requested.equals("elk") || (requested.equals("auto") && outsideEl == 0);
+    JsonObject choice = new JsonObject();
+    choice.addProperty("requested", requested);
+    choice.addProperty("reasoner", useElk ? "ELK" : "HermiT");
+    choice.addProperty("why", requested.equals("auto")
+        ? (useElk ? "Chosen automatically: the ontology is in OWL 2 EL, for which ELK is complete and fast." : "Chosen automatically: the ontology is not in OWL 2 EL (" + outsideEl + " axiom" + (outsideEl == 1 ? "" : "s") + " outside it, first: " + firstOutsideEl + "), so HermiT, which covers OWL 2 DL.")
+        : (useElk ? "ELK, as asked." : "HermiT, as asked."));
+    synchronized (out) {
+      out.add("choice", choice);
+    }
+    if (useElk) {
+      elk(ontology, out, running, missing.size() == 0);
+      return;
     }
 
     ReasonerFactory factory = new ReasonerFactory();
@@ -1329,6 +1381,136 @@ public class ReasonerService {
       running.set(null);
       reasoner.dispose();
     }
+  }
+
+  /**
+   * Reasons with ELK: consistency, unsatisfiable classes, the inferred hierarchy and the most
+   * specific classes of each individual. ELK is complete for OWL 2 EL and leaves out what it does not
+   * support; each of its answers carries a monitor of what it left out, so the result is complete
+   * only where none of them reports anything, and otherwise says, in ELK's words, what was left out.
+   * Which individuals are the same, how individuals are related, and justifications are HermiT's.
+   */
+  static void elk(OWLOntology ontology, JsonObject out, AtomicReference<OWLReasoner> running, boolean importsHere) {
+    org.semanticweb.elk.owlapi.ElkReasoner reasoner = (org.semanticweb.elk.owlapi.ElkReasoner) new org.semanticweb.elk.owlapi.ElkReasonerFactory().createReasoner(ontology);
+    synchronized (out) {
+      out.addProperty("engine", "ELK");
+      out.addProperty("engineVersion", elkVersion);
+    }
+    running.set(reasoner);
+    List<org.semanticweb.elk.reasoner.completeness.IncompletenessMonitor> monitors = new ArrayList<>();
+    try {
+      boolean consistent = reasoner.isConsistent();
+      synchronized (out) {
+        out.addProperty("consistency", consistent ? "consistent" : "inconsistent");
+      }
+      if (!consistent) {
+        synchronized (out) {
+          out.add("explanations", new JsonArray());
+          strings(out, "warnings").add("ELK found a contradiction, and gives no justification for it: ask HermiT to see why.");
+          // ELK is sound: a contradiction it finds is one.
+          out.addProperty("status", "complete");
+        }
+        return;
+      }
+      org.semanticweb.elk.reasoner.completeness.IncompleteResult<Node<OWLClass>> bottom = reasoner.computeUnsatisfiableClasses();
+      monitors.add(bottom.getIncompletenessMonitor());
+      Set<OWLClass> unsat = org.semanticweb.elk.reasoner.completeness.Incompleteness.getValue(bottom).getEntitiesMinusBottom();
+      JsonArray unsatisfiable = new JsonArray();
+      for (OWLClass c : sorted(unsat)) unsatisfiable.add(c.getIRI().toString());
+
+      JsonArray subclasses = new JsonArray();
+      JsonArray equivalents = new JsonArray();
+      Set<String> grouped = new HashSet<>();
+      for (OWLClass c : sorted(ontology.getClassesInSignature(Imports.INCLUDED))) {
+        if (c.isOWLThing() || c.isOWLNothing() || unsat.contains(c)) continue;
+        org.semanticweb.elk.reasoner.completeness.IncompleteResult<Node<OWLClass>> sameR = reasoner.computeEquivalentClasses(c);
+        monitors.add(sameR.getIncompletenessMonitor());
+        Node<OWLClass> same = org.semanticweb.elk.reasoner.completeness.Incompleteness.getValue(sameR);
+        if (same.getSize() > 1 && !same.isTopNode()) {
+          List<OWLClass> group = sorted(same.getEntities());
+          if (grouped.add(group.get(0).getIRI().toString())) {
+            JsonArray g = new JsonArray();
+            for (OWLClass e : group) g.add(e.getIRI().toString());
+            equivalents.add(g);
+          }
+        }
+        org.semanticweb.elk.reasoner.completeness.IncompleteResult<NodeSet<OWLClass>> upR = reasoner.computeSuperClasses(c, true);
+        monitors.add(upR.getIncompletenessMonitor());
+        for (OWLClass sup : sorted(org.semanticweb.elk.reasoner.completeness.Incompleteness.getValue(upR).getFlattened())) {
+          if (sup.isOWLThing()) continue;
+          JsonObject pair = new JsonObject();
+          pair.addProperty("sub", c.getIRI().toString());
+          pair.addProperty("sup", sup.getIRI().toString());
+          subclasses.add(pair);
+        }
+      }
+      List<OWLNamedIndividual> individuals = sorted(ontology.getIndividualsInSignature(Imports.INCLUDED));
+      JsonArray types = new JsonArray();
+      for (OWLNamedIndividual i : individuals) {
+        org.semanticweb.elk.reasoner.completeness.IncompleteResult<NodeSet<OWLClass>> typesR = reasoner.computeTypes(i, true);
+        monitors.add(typesR.getIncompletenessMonitor());
+        for (OWLClass c : sorted(org.semanticweb.elk.reasoner.completeness.Incompleteness.getValue(typesR).getFlattened())) {
+          if (c.isOWLThing()) continue;
+          JsonObject pair = new JsonObject();
+          pair.addProperty("individual", i.getIRI().toString());
+          pair.addProperty("class", c.getIRI().toString());
+          types.add(pair);
+        }
+      }
+      // What ELK says it left out, once for each kind of answer, in its own words.
+      Set<String> leftOut = new java.util.LinkedHashSet<>();
+      Set<org.semanticweb.elk.reasoner.completeness.IncompletenessMonitor> said = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+      boolean incomplete = false;
+      for (org.semanticweb.elk.reasoner.completeness.IncompletenessMonitor m : monitors) {
+        if (!m.isIncompletenessDetected()) continue;
+        incomplete = true;
+        if (said.add(m)) m.logStatus(capturing(leftOut));
+      }
+      synchronized (out) {
+        out.add("unsatisfiable", unsatisfiable);
+        out.add("subclasses", subclasses);
+        out.add("equivalents", equivalents);
+        out.add("types", types);
+        out.add("explanations", new JsonArray());
+        JsonArray warnings = strings(out, "warnings");
+        if (incomplete) {
+          warnings.add("ELK covers OWL 2 EL and left out what it does not support, so its answer may be missing entailments" + (leftOut.isEmpty() ? "." : ":"));
+          // ELK's own lines, without what only its log could act on ("Enable DEBUG for details") and
+          // without the heading each count already says.
+          int n = 0;
+          for (String line : leftOut) {
+            String l = line.replaceAll("\\s*Enable (INFO|DEBUG|TRACE) for details\\.?", "").replace('!', '.').trim();
+            if (l.isEmpty() || l.startsWith("Potential incompleteness due to") || l.equals("Ontology satisfiability cannot be checked.")) continue;
+            if (n++ < 12) warnings.add(l);
+          }
+        }
+        if (!individuals.isEmpty()) warnings.add("ELK does not work out which individuals are the same or how individuals are related: HermiT does.");
+        if (!unsat.isEmpty()) warnings.add("ELK gives no justification for an unsatisfiable class: ask HermiT to see why.");
+        out.addProperty("status", !incomplete && importsHere ? "complete" : "partial");
+      }
+    } finally {
+      running.set(null);
+      reasoner.dispose();
+    }
+  }
+
+  /** A logger that keeps what is said to it, for what ELK reports of itself: nothing of it reaches the console. */
+  static org.slf4j.Logger capturing(Set<String> lines) {
+    return (org.slf4j.Logger) java.lang.reflect.Proxy.newProxyInstance(ReasonerService.class.getClassLoader(), new Class<?>[] {org.slf4j.Logger.class}, (proxy, method, args) -> {
+      String name = method.getName();
+      if (name.startsWith("is") && name.endsWith("Enabled")) return true;
+      if (name.equals("getName")) return "conceptweaver.elk";
+      if ((name.equals("info") || name.equals("warn")) && args != null) {
+        int at = args.length > 0 && args[0] instanceof org.slf4j.Marker ? 1 : 0;
+        if (at < args.length && args[at] instanceof String) {
+          Object[] rest = java.util.Arrays.copyOfRange(args, at + 1, args.length);
+          if (rest.length == 1 && rest[0] instanceof Object[]) rest = (Object[]) rest[0];
+          String line = org.slf4j.helpers.MessageFormatter.arrayFormat((String) args[at], rest).getMessage();
+          if (line != null && !line.isBlank()) lines.add(line.trim());
+        }
+      }
+      return null;
+    });
   }
 
   /** The entities an axiom is about, for finding them in the editor. */

@@ -2,9 +2,9 @@ Wine (wine.rdf, read as RDF/XML), opened in ConceptWeaver and saved as Turtle
 unchanged, then compared with the original by the OWL API: axioms by structure, and the
 ontology's IRI, annotations and imports.
 
-Original: 747 axioms. Saved: 1159 axioms.
+Original: 747 axioms. Saved: 1157 axioms.
 Lost: 0.
-Added: 412 (AnnotationAssertion 247, Declaration 163, ObjectPropertyDomain 1, ObjectPropertyRange 1).
+Added: 410 (AnnotationAssertion 247, Declaration 163).
 Kept as it was, not editable here: 135 statements.
 
 Lost: in the original, not in what was saved
@@ -420,5 +420,3 @@ Added: in what was saved, not in the original
   Declaration(NamedIndividual(vin:WhitehallLanePrimavera))
   Declaration(NamedIndividual(vin:Year1998))
   Declaration(NamedIndividual(vin:ZinfandelGrape))
-  ObjectPropertyDomain(vin:hasMaker vin:Wine)
-  ObjectPropertyRange(vin:hasMaker vin:Winery)

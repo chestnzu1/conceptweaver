@@ -198,6 +198,23 @@ describe('a domain that only repeats the uses', () => {
   });
 });
 
+describe('a domain or range the file does not state', () => {
+  it('is none, and nothing is written out for it, however the property is used', () => {
+    // Found while adding ELK (task 2.6): read and written back, :p gained the domain (A or C) and the
+    // range (A or B) of its uses, axioms the ontology never had, with their consequences.
+    const SOURCE = `${P}
+:p a owl:ObjectProperty . :d a owl:DatatypeProperty .
+:A a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :p ; owl:someValuesFrom :B ] , [ a owl:Restriction ; owl:onProperty :d ; owl:someValuesFrom xsd:string ] .
+:B a owl:Class .
+:C a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty :p ; owl:someValuesFrom :A ] .`;
+    const m = fromTurtle(SOURCE);
+    expect(prop(m, 'p')).toMatchObject({ domains: [], ranges: [] });
+    expect(m.terms.find((t) => t.iri === D + 'd')!.domains).toEqual([]);
+    expect(domainsAndRanges(toTurtle(m))).toEqual([]);
+    expect(domainsAndRanges(toTurtle(fromTurtle(toTurtle(m))))).toEqual([]);
+  });
+});
+
 describe('an expression the editor has no structure for', () => {
   // A restriction with two quantifiers on one node is no class expression OWL has.
   const SOURCE = `${P}

@@ -7,7 +7,7 @@ import { fileText, FORMAT_LABEL, ONTOLOGY_FILES, type DocumentFormat } from '../
 import { useReasoning, WORKING } from './reasoning';
 import type { Inference } from '../model/store';
 import { currentDl, runIsStale, useStore } from '../model/store';
-import { creditOf, ENGINES, reasonerHealth, type ReasoningResult } from '../model/reasoning';
+import { creditOf, DL_REASONERS, ENGINES, reasonerHealth, type DlReasonerChoice, type ReasoningResult } from '../model/reasoning';
 import { MODEL_DATA, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../validation/contracts';
 import { fixOf } from '../validation/local';
 import { categoryLabel, DL_LIMITS, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE } from '../validation/report';
@@ -305,7 +305,7 @@ export function ValidationView() {
  */
 function OwlCard() {
   const model = useStore((s) => s.model);
-  const { run, running, engine, reasonerUrl } = useStore((s) => s.validation);
+  const { run, running, engine, reasonerUrl, dlReasoner } = useStore((s) => s.validation);
   const st = useStore.getState;
   const owl = run?.owl;
   const [health, setHealth] = useState<Awaited<ReturnType<typeof reasonerHealth>> | 'asking' | null>(null);
@@ -379,6 +379,24 @@ function OwlCard() {
                 <span>Reasoning service</span>
                 <CommitInput aria-label="Address of the reasoning service" value={reasonerUrl} spellCheck={false} onCommit={(v) => st().setValidation({ reasonerUrl: v.trim() || 'http://localhost:5190' })} />
               </label>
+              <label title={DL_REASONERS.find((r) => r.id === dlReasoner)?.about}>
+                <span>Reasoner</span>
+                <select
+                  aria-label="Which reasoner the service uses"
+                  value={dlReasoner}
+                  disabled={running}
+                  onChange={(e) => {
+                    st().setValidation({ dlReasoner: e.target.value as DlReasonerChoice });
+                    void st().runValidation('owl');
+                  }}
+                >
+                  {DL_REASONERS.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <span className={'health ' + (health === 'asking' || !health ? '' : health.ok ? 'up' : 'down')} role="status">
                 {health === 'asking' || !health ? 'Looking for it…' : health.ok ? `${health.engine} ${health.engineVersion} is running` : 'Not running'}
               </span>
@@ -398,6 +416,7 @@ function OwlCard() {
               <p className="reasoner">
                 Reasoner: <strong>{owl.engineName}</strong>
               </p>
+              {owl.chosen && <p className="muted chosen">{owl.chosen}</p>}
               <p className="status">
                 Status: <strong>{status}</strong>
                 {contradiction && dl && (

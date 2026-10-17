@@ -162,7 +162,15 @@ describe('switching reasoners', () => {
     const answer = report({ relations: [{ subject: N + 'CompanyA', property: N + 'hasMember', object: N + 'John' }] });
     const run = dlFindings(m, answer);
     // An answer of the OWL 2 DL reasoner about the model as it is now.
-    useStore.setState((s) => ({ validation: { ...s.validation, engine: 'dl' }, reasoning: { ...s.reasoning, dl: { revisionId: s.version.revision, report: answer, result: run.result } } }));
+    useStore.setState((s) => ({ validation: { ...s.validation, engine: 'dl' }, reasoning: { ...s.reasoning, dl: { revisionId: s.version.revision, reasoner: s.validation.dlReasoner, report: answer, result: run.result } } }));
+    expect(currentDl(st())?.relations).toHaveLength(1);
+    // Another of the service's reasoners chosen: the answer of the one before is dropped, not shown as this one's.
+    const before = st().validation.dlReasoner;
+    st().setValidation({ dlReasoner: before === 'elk' ? 'hermit' : 'elk' });
+    expect(st().reasoning.dl).toBeNull();
+    expect(currentDl(st())).toBeUndefined();
+    st().setValidation({ dlReasoner: before });
+    useStore.setState((s) => ({ reasoning: { ...s.reasoning, dl: { revisionId: s.version.revision, reasoner: s.validation.dlReasoner, report: answer, result: run.result } } }));
     expect(currentDl(st())?.relations).toHaveLength(1);
     // The other engine chosen: its answer is not used any longer, though the run is still on the page until the next one.
     st().setValidation({ engine: 'fast' });

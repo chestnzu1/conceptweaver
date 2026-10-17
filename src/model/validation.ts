@@ -7,7 +7,7 @@ import { objectProperties, restrictionsOf, type Restriction } from './props';
 import { QUALITY_RULES, qualityDiagnostics, ruleById, ruleEnabled, type QuickFix } from './quality';
 import { termIris, toTurtle } from './rdf';
 import { reason, type Reasoning } from './reasoner';
-import { dlResult, entityLinks, readable, type DlReport, type EntityLink, type ReasoningResult } from './reasoning';
+import { coverageOf, dlResult, entityLinks, readable, type DlReport, type EntityLink, type ReasoningResult } from './reasoning';
 import { describedData, MODEL_DATA, sameData, type Category, type DataGraph, type EntityRef, type EntityType, type Finding, type JustifiedEntity, type Level, type OntologyRef, type OwlSummary, type QualitySummary, type Scope, type ShaclSummary, type ValidationReport } from '../validation/contracts';
 import { subjectLines } from './dataLines';
 import { isPropertyShape, PARAM, pathOf, pathToSparql } from './shacl';
@@ -207,6 +207,7 @@ function findOwl(model: Model, reasoning: Reasoning): { summary: OwlSummary; fin
 
 
 export const DL_PROFILE = 'OWL 2 DL, by a complete reasoner: every class expression and restriction the ontology states, property characteristics and hierarchies, individuals, and the datatypes of the OWL 2 datatype map';
+export const EL_PROFILE = 'OWL 2 EL, by ELK: intersections and existential restrictions, class and property hierarchies, property chains, transitive properties, domains and ranges, and class memberships of individuals; what is outside OWL 2 EL is left out, and said';
 
 const ROLE: Record<string, EntityType> = { Class: 'class', ObjectProperty: 'object property', DataProperty: 'data property', NamedIndividual: 'individual' };
 
@@ -312,7 +313,8 @@ export function dlFindings(model: Model, report: DlReport): { summary: OwlSummar
       asserted: report.logicalAxioms ?? 0,
       inferred,
       partial: report.status === 'partial',
-      profile: DL_PROFILE,
+      profile: coverageOf(report.engine || 'HermiT') === 'OWL 2 EL' ? EL_PROFILE : DL_PROFILE,
+      ...(report.choice?.requested === 'auto' ? { chosen: report.choice.why } : {}),
       ms: report.roundTripMs ?? report.ms,
       ...(report.status === 'failed' ? { errors: report.errors.map(say) } : {}),
       ...(notes.length ? { notes } : {}),

@@ -42,7 +42,7 @@ all run by one command (`pnpm verify`) and in CI.
 | Visual modelling, entity editing, IRIs and namespaces | **Strong.** The diagram is the editor, and every line is checked against OWL rules as it is drawn. Every entity has a stable IRI. |
 | OWL authoring and fidelity | **Good.** Class expressions are authored in Manchester syntax with completion; what the editor has no form for is kept and written back; a corpus of nine public ontologies round-trips with nothing lost. |
 | Structure exploration, entity search | **Strong, and already built for a backend.** Handles 200,000 classes through a service interface. |
-| Reasoning | **Good.** A rule reasoner in a worker and HermiT through a local service, with honest reporting of what a result covers. |
+| Reasoning | **Good.** A rule reasoner in a worker; HermiT and ELK through a local service, chosen by the ontology's profile; honest reporting of what a result covers. |
 | SHACL | **Strong.** Shape sets edited in a view of their own, every SHACL 1.0 Core construct, held to the W3C Core test suite; shapes proposed from the ontology and reviewed one by one. |
 | Versions and differences | **Good, locally.** Named versions in the browser, compared axiom by axiom and told entity by entity. No server history yet. |
 | Import and export | **Good.** CSV, TSV and Excel through a mapping screen; every OWL syntax written. |
@@ -96,8 +96,8 @@ The first five, the MVP path, are done (2026-10-16). In order from here:
 
 | # | Improvement | Why |
 | --- | --- | --- |
-| 1 | **ELK in the companion**, with the reasoner chosen by profile (task 2.6) | Small; the next scheduled task. |
-| 2 | **Logical data model metamodel and services** (LM-1), with revisions per artifact | The foundation of the product's objective; makes LDMs a saved, versioned, undoable artifact. |
+| 1 | ~~ELK in the companion, with the reasoner chosen by profile (task 2.6)~~ | Done 2026-10-17. |
+| 2 | **Logical data model metamodel and services** (LM-1), with revisions per artifact | The next task: the foundation of the product's objective; makes LDMs a saved, versioned, undoable artifact. |
 | 3 | **The LDM editor and its ER diagram** (LM-2) | Logical models authored and reviewed as their designers expect. |
 | 4 | **Ontology-to-LDM transformation** (LM-3) | The objective itself: logical models proposed from the ontology, constraints decided by the designer. |
 | 5 | **Semantic traceability and change impact** (LM-4) | What makes the derivation last: every element traced, every ontology change reported per model. |
@@ -120,9 +120,8 @@ assistance, server-side LDMs.
 ## 6. Suggested next development milestone
 
 **MS-13, independent logical models** ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.2),
-through LM-1 and LM-2, after task 2.6 (ELK), which remains the next scheduled task. LM-1's scope
-and acceptance criteria are set out in the roadmap's §10. Whether LM-1 should come before 2.6 is
-left to the product owner (§9).
+through LM-1 and LM-2. Task 2.6 (ELK) is done; LM-1 is next, its scope and acceptance criteria
+set out in the roadmap's §10.
 
 ## 7. Logical data modelling in brief
 
@@ -168,7 +167,6 @@ built for spreadsheet import (task 2.4) was designed to serve them as well and s
 | First audience: ontology engineers, taxonomists, or data architects designing from an ontology? | Ontology engineers and the data architects who design from their ontologies. |
 | Will a hosted service be operated, or only software to self-host? | Self-hosted. |
 | How large are the first users' ontologies and logical models? | 10,000 classes; LDMs of up to 2,000 entities in the browser. |
-| Should the first logical modelling task (LM-1) come before ELK (2.6)? | 2.6 first: it is small, and LM-1 needs nothing of it. |
 | Which ER notation? | Information Engineering (crow's foot) only. |
 | Is an exchange format with other data modelling tools needed? | The product's own documented JSON format first. |
 | When, if ever, is data integration resumed? | Not scheduled. |

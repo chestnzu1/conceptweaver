@@ -6,7 +6,7 @@ import { currentData, currentShapeSet, graphText } from '../dataGraphs';
 import { importsClosure } from '../external';
 import type { Model } from '../types';
 import { supports } from '../modelTypes';
-import { DEFAULT_REASONER_URL, type EngineId, type ReasoningResult } from '../reasoning';
+import { DEFAULT_REASONER_URL, type DlReasonerChoice, type EngineId, type ReasoningResult } from '../reasoning';
 import type { Slice, State } from './types';
 
 /**
@@ -21,7 +21,7 @@ import type { Slice, State } from './types';
  */
 export const currentDl = (s: Pick<State, 'version' | 'validation' | 'reasoning'>): ReasoningResult | undefined => {
   const dl = s.reasoning.dl;
-  return s.validation.engine === 'dl' && dl?.revisionId === s.version.revision && dl.result.status !== 'failed' ? dl.result : undefined;
+  return s.validation.engine === 'dl' && dl?.revisionId === s.version.revision && dl.reasoner === s.validation.dlReasoner && dl.result.status !== 'failed' ? dl.result : undefined;
 };
 
 /**
@@ -71,6 +71,8 @@ export interface ValidationSlice {
     engine: EngineId;
     /** Where the reasoning service is. */
     reasonerUrl: string;
+    /** Which of its reasoners: chosen by the ontology's profile (the default), HermiT or ELK. */
+    dlReasoner: DlReasonerChoice;
     /** A finding to open in the results, asked for from elsewhere on the page. */
     focus: string | null;
     /** The last report of each of the checks that run by themselves. */
@@ -84,7 +86,7 @@ export interface ValidationSlice {
   cancelValidation: () => void;
   /** Asks for checks that run by themselves about the model as it is, unless their report is of it already. */
   requestChecks: (kind: CheckKind) => void;
-  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'shapeSet' | 'tab' | 'engine' | 'reasonerUrl' | 'focus'>>) => void;
+  setValidation: (patch: Partial<Pick<State['validation'], 'data' | 'shapeSet' | 'tab' | 'engine' | 'reasonerUrl' | 'dlReasoner' | 'focus'>>) => void;
 }
 
 export const validationSlice: Slice<ValidationSlice> = (set, get) => {
@@ -121,9 +123,14 @@ export const validationSlice: Slice<ValidationSlice> = (set, get) => {
       checks: {},
       ...(() => {
         try {
-          return { engine: (localStorage.getItem('conceptweaver:reasoning-engine') === 'dl' ? 'dl' : 'fast') as EngineId, reasonerUrl: localStorage.getItem('conceptweaver:reasoner-url') || DEFAULT_REASONER_URL };
+          const chosen = localStorage.getItem('conceptweaver:dl-reasoner');
+          return {
+            engine: (localStorage.getItem('conceptweaver:reasoning-engine') === 'dl' ? 'dl' : 'fast') as EngineId,
+            reasonerUrl: localStorage.getItem('conceptweaver:reasoner-url') || DEFAULT_REASONER_URL,
+            dlReasoner: (chosen === 'hermit' || chosen === 'elk' ? chosen : 'auto') as DlReasonerChoice,
+          };
         } catch {
-          return { engine: 'fast' as EngineId, reasonerUrl: DEFAULT_REASONER_URL };
+          return { engine: 'fast' as EngineId, reasonerUrl: DEFAULT_REASONER_URL, dlReasoner: 'auto' as DlReasonerChoice };
         }
       })(),
     },
@@ -184,10 +191,13 @@ export const validationSlice: Slice<ValidationSlice> = (set, get) => {
       try {
         if (patch.engine) localStorage.setItem('conceptweaver:reasoning-engine', patch.engine);
         if (patch.reasonerUrl !== undefined) localStorage.setItem('conceptweaver:reasoner-url', patch.reasonerUrl);
+        if (patch.dlReasoner) localStorage.setItem('conceptweaver:dl-reasoner', patch.dlReasoner);
       } catch {
         // Remembered for this visit only.
       }
-      set((s) => ({ validation: { ...s.validation, ...patch } }));
+      // Another reasoner chosen: the last one's answer is not left standing as if it were this one's.
+      const switched = patch.dlReasoner !== undefined && patch.dlReasoner !== get().validation.dlReasoner;
+      set((s) => ({ validation: { ...s.validation, ...patch }, ...(switched ? { reasoning: { ...s.reasoning, dl: null } } : {}) }));
     },
   };
 };

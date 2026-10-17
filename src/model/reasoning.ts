@@ -9,9 +9,10 @@ import { resolveModel } from './vocab';
  *
  *   fast  The app's own rule reasoner (reasoner.ts): RDFS and part of OWL 2 RL, in the page, at
  *         once. It finds the contradictions its rules reach, so finding none proves nothing.
- *   dl    HermiT, a complete OWL 2 DL reasoner. It is a Java program, so it runs in a service
- *         beside the app (reasoner/ReasonerService.java) that is given the ontology as RDF and
- *         answers with what follows from it. When it says "consistent", that is proved.
+ *   dl    The reasoning service beside the app (reasoner/ReasonerService.java), given the ontology
+ *         as RDF: HermiT, a complete OWL 2 DL reasoner, or ELK, complete for OWL 2 EL and fast on
+ *         large ontologies, as chosen (DlReasonerChoice); "automatic" lets the service choose by
+ *         the ontology's profile. When it says "consistent" of a complete answer, that is proved.
  *
  * Whatever engine it comes from, a result is said in the terms below, so that what shows results
  * does not have to know which engine made them. Results are never written into the model.
@@ -27,8 +28,20 @@ export interface EngineInfo {
 
 export const ENGINES: EngineInfo[] = [
   { id: 'fast', label: 'Fast reasoner (RDFS / partial OWL RL)', about: 'The app’s own rules, in the page, at once. Incomplete: it finds the contradictions its rules reach, and finding none does not prove the ontology consistent.' },
-  { id: 'dl', label: 'Advanced reasoner (OWL 2 DL)', about: 'HermiT, a complete OWL 2 DL reasoner, run by the reasoning service on this machine. It works out consistency, unsatisfiable classes, the inferred hierarchy and class memberships, with justifications.' },
+  { id: 'dl', label: 'Advanced reasoner (OWL 2 DL)', about: 'The reasoning service on this machine: HermiT, a complete OWL 2 DL reasoner, or ELK, complete for OWL 2 EL and fast on large ontologies, chosen by the ontology\'s profile unless one is chosen. It works out consistency, unsatisfiable classes, the inferred hierarchy and class memberships; HermiT also gives justifications.' },
 ];
+
+/** Which reasoner the service is to use: chosen by the ontology's profile, or one of the two. */
+export type DlReasonerChoice = 'auto' | 'hermit' | 'elk';
+
+export const DL_REASONERS: { id: DlReasonerChoice; label: string; about: string }[] = [
+  { id: 'auto', label: 'Automatic, by the ontology’s profile', about: 'ELK for an ontology in OWL 2 EL, HermiT otherwise; the answer says which, and why.' },
+  { id: 'hermit', label: 'HermiT (OWL 2 DL)', about: 'Complete for OWL 2 DL; gives justifications.' },
+  { id: 'elk', label: 'ELK (OWL 2 EL)', about: 'Complete for OWL 2 EL and fast on large ontologies; leaves out what is outside OWL 2 EL, and says so.' },
+];
+
+/** What a DL reasoner's answer covers, by its name. */
+export const coverageOf = (engine: string): string => (/^ELK\b/.test(engine) ? 'OWL 2 EL' : 'OWL 2 DL');
 
 /** Where the reasoning service is, unless told otherwise. Started with `pnpm reasoner`. */
 export const DEFAULT_REASONER_URL = 'http://localhost:5190';
@@ -42,6 +55,8 @@ export interface DlRequest {
   imports: { iri: string; text: string }[];
   timeoutMs: number;
   explanations: { perSubject: number; max: number; timeoutMs: number };
+  /** HermiT unless said otherwise. */
+  reasoner?: DlReasonerChoice;
 }
 
 export interface DlOptions {
@@ -49,6 +64,8 @@ export interface DlOptions {
   timeoutMs?: number;
   /** Justifications for each unsatisfiable class or for the inconsistency; 0 asks for none. */
   justifications?: number;
+  /** Which reasoner; HermiT when not given. */
+  reasoner?: DlReasonerChoice;
   fetch?: typeof fetch;
   /** Gives the question up: the request is stopped, and the answer is a refusal rather than a report. */
   signal?: AbortSignal;
@@ -69,7 +86,7 @@ export class ReasonerCancelled extends Error {
  */
 export function dlRequest(model: Model, imports: { iri: string; text: string }[] = [], options: DlOptions = {}): DlRequest {
   const timeoutMs = options.timeoutMs ?? 60_000;
-  return { ontology: toTurtle(model), imports, timeoutMs, explanations: { perSubject: options.justifications ?? 1, max: 25, timeoutMs: Math.min(20_000, timeoutMs) } };
+  return { ontology: toTurtle(model), imports, timeoutMs, explanations: { perSubject: options.justifications ?? 1, max: 25, timeoutMs: Math.min(20_000, timeoutMs) }, ...(options.reasoner ? { reasoner: options.reasoner } : {}) };
 }
 
 const failed = (url: string, message: string, unreachable: boolean, t0: number): DlReport => ({
@@ -173,7 +190,7 @@ export interface ReasoningExplanation {
 
 /** What a reasoning engine found, in the terms of the model: ids of its terms. */
 export interface ReasoningResult {
-  engine: { id: EngineId; name: string; version?: string };
+  engine: { id: EngineId; name: string; version?: string; covers?: string; chosen?: string };
   /** complete: the engine finished over all of the ontology. partial: with something left out. failed: no result. */
   status: 'complete' | 'partial' | 'failed';
   consistency: 'consistent' | 'inconsistent' | 'unknown';
@@ -297,10 +314,10 @@ export function dlResult(model: Model, report: DlReport): ReasoningResult {
   });
 
   return {
-    engine: { id: 'dl', name: report.engine || 'HermiT', ...(report.engineVersion ? { version: report.engineVersion } : {}) },
+    engine: { id: 'dl', name: report.engine || 'HermiT', ...(report.engineVersion ? { version: report.engineVersion } : {}), covers: coverageOf(report.engine || 'HermiT'), ...(report.choice?.requested === 'auto' ? { chosen: report.choice.why } : {}) },
     status: report.status,
     consistency: report.consistency,
-    // Proved only when HermiT finished over an ontology that is OWL 2 DL, all of it.
+    // Proved only when the reasoner finished over all of the ontology: HermiT over OWL 2 DL, ELK over OWL 2 EL.
     proves: report.status === 'complete',
     unsatisfiableClasses: ok ? (report.unsatisfiable ?? []).map(id).filter((x): x is string => !!x && classes.has(x)) : [],
     subclasses,
@@ -330,7 +347,9 @@ export function entailmentsOf(result: ReasoningResult, id: string) {
 }
 
 /** How an entailment of a reasoner other than the app's own is credited where it is shown. */
-export const creditOf = (result: ReasoningResult) => `Entailed, according to ${result.engine.name}${result.engine.version ? ' ' + result.engine.version : ''} (OWL 2 DL).`;
+/** A DL reasoner with its version and what it covers: "HermiT 1.4.5.456 (OWL 2 DL)", "ELK 0.6.0 (OWL 2 EL)". */
+export const engineLabel = (engine: ReasoningResult['engine']) => `${engine.name}${engine.version ? ' ' + engine.version : ''} (${engine.covers ?? 'OWL 2 DL'})`;
+export const creditOf = (result: ReasoningResult) => `Entailed, according to ${engineLabel(result.engine)}.`;
 
 /** Names instead of IRIs in a message of the reasoner, where the IRI is of something in the model. */
 export function readable(model: Model, message: string): string {

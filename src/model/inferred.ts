@@ -3,7 +3,7 @@ import { nameKey } from './identity';
 import { classText, namingFor } from './manchester';
 import { objectProperties, restrictionsOf, type Restriction } from './props';
 import type { Reasoning, SuperLink } from './reasoner';
-import { creditOf, type ReasoningResult } from './reasoning';
+import { creditOf, engineLabel, type ReasoningResult } from './reasoning';
 import type { Model, Relation } from './types';
 import { resolveModel } from './vocab';
 
@@ -199,7 +199,7 @@ export const FAST_CREDIT = 'the fast reasoner (RDFS / partial OWL RL)';
 export function entailed(model: Model, reasoning: Reasoning | undefined, dl?: ReasoningResult): Entailed {
   const own = reasoning ? inferredMemberships(model, reasoning) : { consistent: true, truncated: false, memberships: [] };
   const facts = reasoning ? inferredFacts(model, reasoning) : { facts: [] };
-  const by = dl ? `${dl.engine.name}${dl.engine.version ? ' ' + dl.engine.version : ''} (OWL 2 DL)` : FAST_CREDIT;
+  const by = dl ? engineLabel(dl.engine) : FAST_CREDIT;
   if (!own.consistent || (dl && dl.consistency !== 'consistent')) return { consistent: false, partial: false, by, memberships: [], facts: [] };
   const out: Entailed = { consistent: true, partial: own.truncated || (!!dl && dl.status !== 'complete'), by, memberships: [...own.memberships], facts: [...facts.facts], ...(reasoning ? {} : { working: true }) };
   if (!dl) return out;

@@ -283,7 +283,10 @@ More on what the advanced reasoner does and does not cover is under
   A data property's datatype is still chosen in its list; any other range axiom is listed under
   it. An expression with something in it the editor has no structure for is shown as it was read
   and written back so, and can be taken away but not changed. A
-  domain or range that nobody stated follows the uses, as it always did. Validation holds a use
+  domain or range that nobody stated follows the uses for a property drawn in the editor, as it
+  always did; for a property read from a file that states none, it is none, and none is written
+  out (since 2026-10-17: before, the uses were written out as a domain and range the ontology
+  never had). Validation holds a use
   between classes to every axiom (a union is met by any of its classes, an intersection by all),
   and the rule reasoner infers each class an axiom is, or is an intersection of. Deleting a class
   takes it out of the unions and intersections that name it, and an axiom that is nothing else
@@ -1142,8 +1145,8 @@ pnpm reasoner          # http://localhost:5190; Ctrl+C stops it
 
 - **What it needs**: Java 11 or later, as a JDK (the service is one source file,
   `reasoner/ReasonerService.java`, compiled on the first start). The first start also fetches
-  the libraries, once, about 90 MB: the OWL API 4.5.29, HermiT 1.4.5.456 and the OWL API's
-  explanation library 2.0.0, in the one file the ROBOT project publishes them in. It is checked
+  the libraries, once, about 90 MB: the OWL API 4.5.29, HermiT 1.4.5.456, ELK 0.6.0 and the OWL
+  API's explanation library 2.0.0, in the one file the ROBOT project publishes them in. It is checked
   against a pinned SHA-256 and kept in `reasoner/lib/`.
 - **What it does with an ontology**: nothing but reason over it. The app sends the ontology as
   the Turtle it exports, and the ontologies it imports as the Turtle that is cached in the
@@ -1164,6 +1167,26 @@ pnpm reasoner          # http://localhost:5190; Ctrl+C stops it
 - **Without it** the app is what it was. The fast reasoner needs nothing. Choosing the advanced
   reasoner while the service is not running gives the status "Unknown: the reasoner gave no
   answer" and says how to start it; it is never reported as consistent.
+- **Which reasoner** (since 2026-10-17, roadmap task 2.6): beside the service's address, the
+  *Reasoner* list offers *Automatic, by the ontology's profile* (the default), *HermiT (OWL 2 DL)*
+  and *ELK (OWL 2 EL)*, remembered in this browser. Automatic has the service check the ontology
+  against the OWL 2 EL profile with the OWL API: ELK for an ontology in it, HermiT otherwise. The
+  card says which reasoner answered and, when it chose, why: "the ontology is in OWL 2 EL, for
+  which ELK is complete and fast", or "not in OWL 2 EL (3 axioms outside it, first: …)". What a
+  reasoner entails is credited to it and to what it covers: "according to ELK 0.6.0 (OWL 2 EL)".
+  Choosing another reasoner asks it at once; the answer of the one before is not shown as this
+  one's. The service's API keeps HermiT when nothing is asked (`/reason` takes `reasoner`:
+  `hermit`, `elk` or `auto`), and `/health` lists both reasoners.
+- **ELK's answer** covers what ELK supports: OWL 2 EL (intersections, existential restrictions,
+  class and property hierarchies, property chains, transitive properties, domains and ranges)
+  and the most specific classes of each individual. It is *complete* only where ELK reports
+  nothing left out: every answer of ELK carries its own account of the features it did not
+  support, and where there is any, the result is *partial* and the card lists them in ELK's
+  words ("26 occurrences of ObjectAllValuesFrom found in the current ontology"). Which
+  individuals are the same, how individuals are related, and justifications are HermiT's: ELK's
+  answer says so where it matters. A contradiction ELK finds is one (it is sound). On an
+  ontology in OWL 2 EL, ELK and HermiT give the same hierarchy (`src/model/dlReasoning.test.ts`
+  compares them on 500 generated classes).
 
 What the answer covers, and where it stops:
 
@@ -1417,11 +1440,12 @@ it, and nothing was replaced):
   the Relation Ontology), saves it as Turtle unchanged, and has the OWL API compare the two
   statement by statement. Over the nine, nothing is lost (790 statements were before what is not
   understood was kept, and 24 before the n-ary axioms, the data restrictions, the text that looks
-  like a link and the RDF/XML white space above). SKOS comes back exactly. What is added (521
+  like a link and the RDF/XML white space above). SKOS comes back exactly. What is added (518
   statements) is an `rdfs:label` for each entity that had none, a declaration where OWL 1 used
-  an entity without one, the ontology's name, and, for a property of which the file states no
-  domain or range, the one that follows its uses (Pizza's `hasSpiciness`, Wine's `hasMaker`):
-  the only additions that say more than the original. The lists are
+  an entity without one, and the ontology's name: nothing that says more than the original. (Until
+  2026-10-17 a property of which the file states no domain or range was given the one its uses
+  implied, Pizza's `hasSpiciness` and Wine's `hasMaker` among them; found when an ontology in OWL
+  2 EL came back out of it with a union as a range, and fixed.) The lists are
   in `corpus/expected/`, one file for each ontology, and the test fails when one changes: a fix
   shows there as statements no longer lost. `pnpm corpus` fetches the corpus once.
 - **Imports are not followed.** What an ontology imports is listed under *Align* by its IRI;

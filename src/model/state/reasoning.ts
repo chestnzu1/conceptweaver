@@ -3,7 +3,7 @@ import { createLocalReasoningService } from '../../reasoning/local';
 import { WORKING_COPY } from '../../structure/local';
 import { cachedOntology } from '../library';
 import { adopt, type Inference, type Reasoning } from '../reasoner';
-import { askReasoner, dlRequest, dlResult, type ReasoningResult } from '../reasoning';
+import { askReasoner, dlRequest, dlResult, type DlReasonerChoice, type ReasoningResult } from '../reasoning';
 import type { Slice, State } from './types';
 import type { Model } from '../types';
 
@@ -26,7 +26,7 @@ export interface ReasoningSlice {
     /** The fast reasoner's answer, and the revision it is of. */
     fast: { revisionId: string; reasoning: Reasoning } | null;
     /** The OWL 2 DL reasoner's last answer, and the revision it is of: its report, and the same in the terms of the model. */
-    dl: { revisionId: string; report: DlReport; result: ReasoningResult } | null;
+    dl: { revisionId: string; reasoner: DlReasonerChoice; report: DlReport; result: ReasoningResult } | null;
     /** The jobs under way. */
     jobs: ReasoningJob[];
     /** Why the fast reasoner could not answer about a revision, when it could not. */
@@ -64,7 +64,7 @@ export const reasoningSlice: Slice<ReasoningSlice> = (set, get) => {
   let asked = '';
   const service = createLocalReasoningService({
     current: () => ({ model: get().model, ontologyId: get().doc.id ?? WORKING_COPY, revisionId: get().version.revision }),
-    askDl: async (model, signal) => askReasoner(get().validation.reasonerUrl, dlRequest(model, await importsOf(model)), { signal }),
+    askDl: async (model, signal) => askReasoner(get().validation.reasonerUrl, dlRequest(model, await importsOf(model), { reasoner: get().validation.dlReasoner }), { signal }),
     changed: (job) =>
       set((s) => {
         const others = s.reasoning.jobs.filter((j) => j.job !== job.job);
@@ -107,12 +107,15 @@ export const reasoningSlice: Slice<ReasoningSlice> = (set, get) => {
     },
     reasonWithDl: async () => {
       const model = get().model;
+      const reasoner = get().validation.dlReasoner;
       for (const j of get().reasoning.jobs) if (j.engine === 'dl') await service.cancel(j.job);
       try {
         const job = await service.start({ ...ref(), engine: 'dl' });
         const answer = await service.result(job.job);
         if (answer.engine !== 'dl') return undefined;
-        set((x) => ({ reasoning: { ...x.reasoning, dl: { revisionId: answer.revisionId, report: answer.report, result: dlResult(model, answer.report) } } }));
+        // Kept only if the reasoner it was asked of is still the one chosen.
+        if (get().validation.dlReasoner !== reasoner) return undefined;
+        set((x) => ({ reasoning: { ...x.reasoning, dl: { revisionId: answer.revisionId, reasoner, report: answer.report, result: dlResult(model, answer.report) } } }));
         return answer.report;
       } catch {
         return undefined;

@@ -877,10 +877,15 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     };
     mark(p, NS.rdf + 'type', NS.owl + 'ObjectProperty');
     for (const o of objs(p, NS.rdf + 'type')) if (charOf.has(o.value)) mark(p, NS.rdf + 'type', o);
-    // A domain or range that only repeats where the property is used is left to follow its use.
+    // A domain or range that only repeats where the property is used is left to follow its use. One
+    // the file does not state is none: left to follow the uses, it would be written out as a domain
+    // or range the ontology never had, with what follows from it (a range makes every value of the
+    // property a member of the class).
     const uses = m.relations.filter((r) => r.prop === entry.id);
-    if (domains.length && !followsUse(domains, uses.map((r) => r.from))) entry.domains = domains;
-    if (ranges.length && !followsUse(ranges, uses.map((r) => r.to))) entry.ranges = ranges;
+    if (!domains.length) entry.domains = [];
+    else if (!followsUse(domains, uses.map((r) => r.from))) entry.domains = domains;
+    if (!ranges.length) entry.ranges = [];
+    else if (!followsUse(ranges, uses.map((r) => r.to))) entry.ranges = ranges;
     for (const link of PROP_LINKS) {
       const ids = others(p, expandCurie(LINK_PREDICATE[link]));
       // Kept on whichever property the file states it, even where both do: nothing stated is dropped.
@@ -956,7 +961,9 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     }
     const domains = axiomsOf(p, NS.rdfs + 'domain');
     const owners = [...new Set(m.relations.filter((r) => r.kind === 'property' && r.to === t.id).map((r) => r.from))];
-    if (domains.length && !followsUse(domains, owners)) t.domains = domains;
+    // As for an object property: none stated is none, not the classes it is attached to.
+    if (!domains.length) t.domains = [];
+    else if (!followsUse(domains, owners)) t.domains = domains;
   }
   for (const p of dataProps) for (const o of objs(p, NS.rdfs + 'subPropertyOf')) if (o.termType === 'NamedNode' && relate(p, o.value, 'generalization')) mark(p, NS.rdfs + 'subPropertyOf', o);
 

@@ -2,9 +2,9 @@ Pizza (pizza.owl, read as RDF/XML), opened in ConceptWeaver and saved as Turtle
 unchanged, then compared with the original by the OWL API: axioms by structure, and the
 ontology's IRI, annotations and imports.
 
-Original: 801 axioms. Saved: 815 axioms.
+Original: 801 axioms. Saved: 814 axioms.
 Lost: 0.
-Added: 14 (AnnotationAssertion 13, ObjectPropertyDomain 1).
+Added: 13 (AnnotationAssertion 13).
 Kept as it was, not editable here: 24 statements.
 
 Lost: in the original, not in what was saved
@@ -23,4 +23,3 @@ Added: in what was saved, not in the original
   AnnotationAssertion(rdfs:label <http://www.co-ode.org/ontologies/pizza/pizza.owl#isBaseOf> "is base of"@en)
   AnnotationAssertion(rdfs:label <http://www.co-ode.org/ontologies/pizza/pizza.owl#isIngredientOf> "is ingredient of"@en)
   AnnotationAssertion(rdfs:label <http://www.co-ode.org/ontologies/pizza/pizza.owl#isToppingOf> "is topping of"@en)
-  ObjectPropertyDomain(pizza:hasSpiciness ObjectUnionOf(pizza:ArtichokeTopping pizza:AsparagusTopping pizza:CajunSpiceTopping pizza:CaperTopping pizza:ChickenTopping pizza:FishTopping pizza:FourCheesesTopping pizza:GarlicTopping pizza:GoatsCheeseTopping pizza:GorgonzolaTopping pizza:HotGreenPepperTopping pizza:HotSpicedBeefTopping pizza:JalapenoPepperTopping pizza:LeekTopping pizza:MozzarellaTopping pizza:MushroomTopping pizza:NutTopping pizza:OliveTopping pizza:OnionTopping pizza:ParmaHamTopping pizza:ParmesanTopping pizza:PeperonataTopping pizza:PeperoniSausageTopping pizza:PetitPoisTopping pizza:RocketTopping pizza:RosemaryTopping pizza:SlicedTomatoTopping pizza:SpinachTopping pizza:SultanaTopping pizza:SundriedTomatoTopping pizza:SweetPepperTopping pizza:TobascoPepperSauce pizza:TomatoTopping))

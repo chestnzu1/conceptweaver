@@ -200,8 +200,8 @@ flowchart LR
 
 **Consequences of this placement.**
 
-- **The next scheduled task is unchanged: 2.6**, ELK in the companion. LM-1 follows it, and the
-  rest of the workstream proceeds beside 2.7 to 2.12, ordered by demand (§3).
+- **2.6, ELK in the companion, came first** (done 2026-10-17). LM-1 follows it, and the rest of
+  the workstream proceeds beside 2.7 to 2.12, ordered by demand (§3).
 - **Phase 3 has no prerequisite of the LDM work**: database connection and schema discovery
   (3.8, 3.9) are deferred with data integration.
 - **Phase 4 gains LM-5** and no longer carries the mapping workbench (4.10 to 4.13, deferred).
@@ -383,7 +383,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | 2.3 | **Versions and differences, locally.** Named versions in IndexedDB; an axiom-level difference shown by entity, the shape sets' changes with it; restore as a new version. `ProjectService`. Done 2026-10-16. | TD-12, FR-M10-1 to FR-M10-3 | L |
 | 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2 (deferred, §11). Done 2026-10-16. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
 | 2.5 | **Export in every OWL syntax** through the conversion the service already performs in the other direction. `ImportExportService`. Done 2026-10-16. | TD-13, FR-M11-2 | S |
-| 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. | FR-M3-5 | M |
+| 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. Done 2026-10-17. | FR-M3-5 | M |
 | 2.7 | Annotation properties as entities; labels in several languages with a display language. | FR-M1-4, FR-M1-5 | M |
 | 2.8 | Further axioms: property chains, keys, disjoint unions, negative assertions, annotations on axioms, moved out of the unmapped block one kind at a time. | FR-M2-4, FR-M2-5 | L |
 | 2.9 | Imports: `owl:imports` declared on export; the closure resolved transitively; missing imports reported. `AlignmentService`. | FR-M8-5 | M |
@@ -753,11 +753,9 @@ and with them milestone MS-4, the MVP; then 2.5** (each with its status below). 
 **2026-10-17: the roadmap realigned** with ontology-driven logical data modelling (§1.3); data
 integration deferred (§11). Nothing completed changed.
 
-**The next scheduled task is still 2.6, ELK in the companion.** The first task of the logical
-data modelling track, **LM-1**, follows it; both are set out below. Whether LM-1 should go first
-is a question for the product owner ([PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) §7): 2.6
-is an M, LM-1 needs nothing of it, and the order costs little either way. After them come SH-1 as
-it was set out, and the status of each stage and task done.
+**2026-10-17: 2.6 done** (its status below). **The next task is LM-1**, the first of the logical
+data modelling track, set out below with 2.6 as it was. After them come SH-1 as it was set out,
+and the status of each stage and task done.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
 
@@ -843,6 +841,36 @@ beyond the empty list each LDM has (LM-4), the server (LM-5), formal rule expres
   (NFR-19).
 
 *Then.* LM-2, the editor and its ER diagram, and with it milestone MS-13.
+
+**Status, 2026-10-17: 2.6 done** (FR-M3-5). The OWL service reasons with ELK 0.6.0 beside HermiT
+(both in `robot.jar`); `/reason` takes `reasoner` (`hermit`, the default for the API; `elk`;
+`auto`), and `/health` lists both. *auto* checks the ontology against the OWL 2 EL profile with
+the OWL API (`OWL2ELProfile`) and uses ELK for an ontology in it, HermiT otherwise; the answer
+says which and why, naming the first axiom outside OWL 2 EL where there is one. ELK's answer is
+*complete* only where none of the incompleteness monitors ELK returns with each result reports an
+unsupported feature; otherwise it is *partial*, and what ELK reports (captured from its own
+account, its logging being off) is listed, tidied: "26 occurrences of ObjectAllValuesFrom found
+in the current ontology". Sameness of individuals, relations between them and justifications stay
+HermiT's, and ELK's answer says so. In the app, the OWL card has a *Reasoner* list beside the
+service's address (automatic by default, remembered), shows why an automatic choice was made,
+and credits entailments to the reasoner and what it covers ("according to ELK 0.6.0 (OWL 2 EL)");
+choosing another reasoner drops the last one's answer. `src/model/dlReasoning.test.ts` checks the
+acceptance: a generated OWL 2 EL ontology of 500 classes goes to ELK under automatic, complete,
+with exactly HermiT's hierarchy, unsatisfiable class and memberships; the PartyLocalProfile
+ontology goes to HermiT, and asked of ELK is *partial*, names `ObjectAllValuesFrom`, and misses
+the two classes HermiT finds unsatisfiable; the existing DL tests and `e2e/dl-reasoning.mjs`
+pass unchanged. `e2e/reasoner-choice.mjs` checks the same in the browser, with the choice
+remembered across a reload.
+
+Doing it found a fidelity bug: a property read from a file that states no domain or range was
+given, on the way out, the union of the classes using it as its domain and range, axioms the
+ontology never had (Pizza's `hasSpiciness`, Wine's `hasMaker`, recorded in the corpus as accepted
+additions). That took any such ontology out of OWL 2 EL, and gave HermiT inferences the source did
+not license. A domain or range a file does not state is now none (`src/model/rdf.ts`); the corpus
+records lost those three additions and nothing else; a test in `domains.test.ts` keeps it so.
+What it left: the size budget, ELK on the EL part of a larger ontology, and results cached by
+reasoner on the server (3.3); a model saved before this from a file keeps the domains and ranges
+it was given then.
 
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.

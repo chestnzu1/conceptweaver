@@ -6,7 +6,7 @@ import { configOf, supports } from '../model/modelTypes';
 import { compactIri } from '../model/prefixes';
 import { assertedSuperclasses, CHARACTERISTICS, dataDomain, objectProperties, propLinks, relChoice, restrictionsOf } from '../model/props';
 import type { Reasoning } from '../model/reasoner';
-import type { ReasoningResult } from '../model/reasoning';
+import { engineLabel, type ReasoningResult } from '../model/reasoning';
 import { stable } from '../model/stable';
 import type { ExtraField, Model, Term } from '../model/types';
 import { resolveModel } from '../model/vocab';
@@ -196,7 +196,7 @@ function build(model: Model): Index {
 
   /** Who answers a question put to a reasoner, and how far that answer goes. */
   const credit = (dl: ReasoningResult | undefined) =>
-    dl ? `${dl.engine.name}${dl.engine.version ? ' ' + dl.engine.version : ''} (OWL 2 DL)${dl.status === 'complete' ? '' : ', which did not finish over all of the ontology'}` : `${FAST_CREDIT}, which does not find everything an OWL 2 DL reasoner would`;
+    dl ? `${engineLabel(dl.engine)}${dl.status === 'complete' ? '' : ', which did not finish over all of the ontology'}` : `${FAST_CREDIT}, which does not find everything an OWL 2 DL reasoner would`;
   /** Why nothing that rests on a reasoner can be answered, when that is so: it has not answered yet, or it finds a contradiction. */
   const noReasoning = (dl: ReasoningResult | undefined, fast: Reasoning | undefined): string | undefined =>
     !fast ? 'the reasoner is still working out what follows; this filter is there once it has.' : !fast.consistent || dl?.consistency === 'inconsistent' ? 'the reasoner finds the ontology inconsistent, and from a contradiction anything follows. See the Validation tab.' : undefined;
