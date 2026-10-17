@@ -830,7 +830,8 @@ that *Layered* says so and uses the built-in hierarchical layout.
   the store (`state/reasoning.ts`, `state/validation.ts`, and `useReasoning` in
   `src/components/reasoning.ts`).
 - `src/mapping` – the mapping core (ADR-019), which does not know where rows come from, for
-  tabular import now and database mapping at stage DI-2: `template.ts` (IRI templates),
+  tabular import now and database mapping if the deferred data-integration track is resumed
+  (DEVELOPMENT_ROADMAP.md §11): `template.ts` (IRI templates),
   `values.ts` (value conversion), `plan.ts` (what an import would do, row by row with reasons,
   and the model it makes). `src/import` reads tables from files: `delimited.ts` (CSV and TSV, in
   an encoding), `xlsx.ts` (Excel workbooks, unzipped with the browser's DecompressionStream, no
@@ -1581,6 +1582,9 @@ proposals would stay change sets for the same edit service.
 
 ## Not there yet
 
-Excel/PowerPoint/PDF export, multiple saved models.
+Logical data models designed from the ontology (the roadmap's logical data modelling track, LM-1
+to LM-5: an LDM editor with an ER diagram, reviewed transformation from the ontology, semantic
+traceability and change impact; docs/DEVELOPMENT_ROADMAP.md §1.3), Excel/PowerPoint/PDF export,
+multiple saved models.
 Colours, positions, the layout and cardinalities live only in the JSON format; the Turtle export carries the
 terms, descriptions, synonyms and relations.

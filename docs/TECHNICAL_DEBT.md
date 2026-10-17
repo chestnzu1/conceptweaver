@@ -1,7 +1,8 @@
 # Technical Debt and Architectural Risk Assessment
 
 Assessed against the repository as of 2026-10-13 (branch `instance-of-and-iri-suffix`, commit
-`ce6419e`). Companion documents: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md),
+`ce6419e`); extended on 2026-10-17 with TD-19, TD-20 and AR-17 to AR-21 for the logical data
+modelling track, AR-11 to AR-16 dormant with the deferred data-integration track. Companion documents: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md),
 [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md), [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md).
 
 ## 1. How to read this document
@@ -50,6 +51,8 @@ to introduce a new one.
 | TD-16 | One global 6,400-line stylesheet | Low | when touched |
 | TD-17 | Bulk add reads pasted text only | Low | 2 |
 | TD-18 | Two identity schemes for entities | Medium | 1 |
+| TD-19 | History steps and change sets describe ontology axioms only | Medium | 2 (LM-1) |
+| TD-20 | The ontology's revision follows a hand-kept list of model fields | Medium | 2 (LM-1) |
 
 | Id | Risk | Likelihood | Impact |
 | --- | --- | --- | --- |
@@ -63,12 +66,17 @@ to introduce a new one.
 | AR-08 | SVG has a ceiling that culling does not remove | Medium | Medium |
 | AR-09 | The browser evicts locally stored work | Low | High |
 | AR-10 | AI suggestions introduce wrong axioms or leak content | Medium | High |
-| AR-11 | A database credential or row data leaks through the new backend surface | Medium | High |
-| AR-12 | The preview evaluator and the query engine read one mapping differently | Medium | High |
-| AR-13 | The OBDA engine's dependencies and limits constrain the backend | Medium | Medium |
-| AR-14 | A schema changes and mappings break unnoticed | High | Medium |
-| AR-15 | Database constraints or query answers are taken for ontological facts | Medium | High |
-| AR-16 | The product overloads or exposes a production database | Low | High |
+| AR-11 | A database credential or row data leaks through the new backend surface (dormant: data integration deferred) | Medium | High |
+| AR-12 | The preview evaluator and the query engine read one mapping differently (dormant) | Medium | High |
+| AR-13 | The OBDA engine's dependencies and limits constrain the backend (dormant) | Medium | Medium |
+| AR-14 | A schema changes and mappings break unnoticed (dormant) | High | Medium |
+| AR-15 | Database constraints or query answers are taken for ontological facts (dormant) | Medium | High |
+| AR-16 | The product overloads or exposes a production database (dormant) | Low | High |
+| AR-17 | The logical data model becomes a projection of the ontology, or a second ontology | Medium | High |
+| AR-18 | Open-world axioms become closed-world constraints by default | High | High |
+| AR-19 | Synchronization overwrites what the designer decided, or mappings drift unnoticed | Medium | High |
+| AR-20 | LDM edits invalidate what was worked out for the ontology, or are read stale | High | Medium |
+| AR-21 | A second editor, with its diagram, outruns one developer | Medium | Medium |
 
 ## 3. Confirmed technical debt
 
@@ -604,6 +612,44 @@ named datatype has one from creation, a stand-in marked `pendingIri` until its f
 replaces it, once. The Structure service speaks IRIs only; the Entities service keeps keys of its
 own choosing, which its contract already treats as opaque. Internal ids remain the editor's.
 
+### TD-19 History steps and change sets describe ontology axioms only — Medium
+
+**Where.** `ChangeSet` in `src/editing/contracts.ts` (its changes are OWL axioms); `Step` and
+`Patch` in `src/editing/local.ts` (a step is the model's fields before and after, its axioms
+worked out on request); the SH-1 status in [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §10 ("a
+step that changes shapes says so in its summary and has no axioms"); `Difference` in
+`src/projects/contracts.ts`.
+
+**What.** A step that changes something other than the ontology (a shape set, a data graph's
+reference) has an empty list of axioms and is named only by its summary. Nothing records which
+artifact a step changed. With logical data models (roadmap §1.3) most edits of a session may be
+of an LDM, and the history, versions and, on the server, change entries need to tell them apart
+from ontology changes.
+
+**Remediation.** Part of roadmap LM-1: a step names the artifacts it changed (`ontology`,
+`shapes`, `dataGraphs`, `ldm:{id}`), read from the fields its patch replaced; LDM edits have their
+own contract, the logical change set, never axioms (ADR-023); the version difference gains a list
+per LDM; on the server, change entries say which artifact they belong to
+([DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.7).
+
+### TD-20 The ontology's revision follows a hand-kept list of model fields — Medium
+
+**Where.** `sameMeaning` and `stable` in `src/model/stable.ts`; `revisionOf` in
+`src/structure/local.ts`, which every cached result (reasoning, validation, shape proposals, the
+assistant's proposals) is keyed by.
+
+**What.** Whether two models "mean the same" is decided by comparing a list of fields written out
+by hand (relations, props, shape sets, data graphs, …), and `revisionOf` gives the same revision
+to models that do. A field added to the model and left off the list is invisible to every
+revision-keyed result: anything that reads through `stable()` sees the earlier copy. A field put
+on the list moves the ontology's revision whenever it changes. Neither is right for logical data
+models: an LDM edit must not move the ontology's revision (NFR-17), and must not be read stale.
+
+**Remediation.** Part of roadmap LM-1: the list becomes the ontology's parts, named as such and
+covered by a test that fails when a field of `Model` is in neither the ontology's parts nor a
+declared list of other artifacts' parts; LDMs get revisions of their own and are never read
+through `stable()`.
+
 ## 4. Architectural risks
 
 ### AR-01 The TypeScript model and the server's axiom model drift apart
@@ -713,7 +759,8 @@ the HermiT check is asked for, not made by itself.
 
 **Risks introduced by ontology-to-relational data integration.** Added with the extension of 2026-10-13 ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §12).
 None is debt: nothing of this capability is built yet. They are listed so that each is designed
-against from the first stage.
+against from the first stage. **Dormant since 2026-10-17**, when the track was deferred
+([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11): they apply again if it is resumed.
 
 ### AR-11 A database credential or row data leaks through the new backend surface
 
@@ -779,6 +826,60 @@ materialisation started at the wrong hour can hurt a system the product does not
 small connection pool per source; jobs sized and confirmed before they start; the advice, on
 the connection form, to point the product at a replica where there is one.
 
+**Risks introduced by ontology-driven logical data modelling.** Added on 2026-10-17 with the
+roadmap's logical data modelling track ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13).
+Nothing of it is built yet; each is designed against from LM-1.
+
+### AR-17 The logical data model becomes a projection of the ontology, or a second ontology
+
+The easy implementation makes an entity of every class and an attribute of every property, and
+keeps them in step mechanically; or it puts OWL constructs into the LDM so that nothing is lost.
+Either way the LDM stops being a design of its own.
+
+*Mitigation.* ADR-022 and ADR-026: a metamodel with no OWL construct and no physical one;
+transformation as proposals over a chosen scope, many to many (FR-M18-6); elements with no
+semantic source are normal, not findings; the LDM is edited freely after it is made.
+
+### AR-18 Open-world axioms become closed-world constraints by default
+
+`some`, `min`, `exactly`, domains and ranges look like mandatory fields and foreign keys. Turned
+into constraints by default they make an application refuse records the domain allows: a film
+whose director is unknown. The same error ADR-017 and ADR-020 guard against for database
+constraints and shapes.
+
+*Mitigation.* ADR-024: candidate constraints are never chosen to begin with, and each says what
+the axiom means and what the constraint would require; NFR-18 is a test; the assistant's LDM
+proposals follow the same rule.
+
+### AR-19 Synchronization overwrites what the designer decided, or mappings drift unnoticed
+
+An ontology change that rewrites an LDM undoes design decisions; one that is not reported leaves
+the LDM silently out of step with the domain.
+
+*Mitigation.* ADR-025: mappings record their sources by axiom and their origin revision; status
+(current, stale, broken) is worked out against the ontology as it is; customisation is detected
+against what a mapping last made, and a customised element is only ever proposed for; impact
+reports per LDM (FR-M18-11).
+
+### AR-20 LDM edits invalidate what was worked out for the ontology, or are read stale
+
+Every result in the application is keyed by the ontology's revision (TD-20). If LDM edits move it,
+each one discards reasoning and validation results and makes pending proposals out of date; if
+they are kept out of it carelessly, anything reading through `stable()` sees an old LDM.
+
+*Mitigation.* Revisions per artifact from LM-1 (ADR-023); a test that an LDM edit leaves the
+ontology's results and proposals current (NFR-17); LDMs never read through `stable()`.
+
+### AR-21 A second editor, with its diagram, outruns one developer
+
+An LDM workspace with an ER diagram is an editor the size of the ontology's, on top of the
+remaining Phase 2 tasks (AR-05).
+
+*Mitigation.* One notation; the existing layouts, geometry and culling; no free drawing; forms
+first, the diagram as a view of the same operations; the proposal and difference machinery of
+SH-3 and 2.3 reused for review and comparison; several diagrams per LDM and formal rules deferred
+(FR-M17-13, FR-M17-9).
+
 ## 5. Refactoring priorities
 
 In the order they should be done. Each step leaves the application working and shippable.
@@ -796,4 +897,5 @@ In the order they should be done. Each step leaves the application working and s
 | 9 | TD-12 Versions and diff | Needs 2; unlocks governance and publishing. |
 | 10 | TD-05 Views behind services | Continuous, one view per release. |
 | 11 | TD-14, TD-13 Service to Spring Boot; remaining export syntaxes | Start of Phase 3. |
+| 12 | TD-19, TD-20 Steps that name their artifact; revisions per artifact | Before any LDM edit exists: part of roadmap LM-1. |
 | — | TD-07, TD-16, TD-17 | When the area is next changed. |

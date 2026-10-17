@@ -1,11 +1,18 @@
 # Product Requirements Document
 
 ConceptWeaver: from a browser-based ontology editor to a platform for semantic modelling,
-ontology management and ontology-to-relational data integration.
+ontology management and ontology-driven logical data modelling.
 
-The data-integration scope (modules M14 to M16, journeys J10 to J12, and the parts of sections
-2 to 4 that mention relational databases) was added on 2026-10-13 as an extension of the first
-version of this document.
+**Realigned on 2026-10-17.** The product's objective is to use an OWL ontology as the semantic
+foundation for designing relational logical data models (LDMs): OWL ontology → semantic-to-logical
+transformation → editable logical data model → semantic traceability and change impact analysis.
+Modules M17 and M18, journeys J13 to J15, NFR-17 to NFR-20 and FR-M12-8 to FR-M12-11 were added for
+it. Physical data models, database schema generation, SQL DDL and deployment are out of scope.
+
+The data-integration scope (modules M14 to M16, journeys J10 to J12, NFR-12 to NFR-16, and the
+requirements of other modules that serve it), added on 2026-10-13, is **deferred**: kept with its
+identifiers, marked so, and not scheduled
+([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11).
 
 Current state assessed against the repository as of 2026-10-13 (commit `ce6419e`). Companion
 documents: [EXECUTIVE_SUMMARY.md](EXECUTIVE_SUMMARY.md),
@@ -23,18 +30,19 @@ intended:
 | **Partially Implemented** | Present but incomplete; the gap is stated. |
 | **Recommended** | Proposed; not in the code. |
 | **Future** | Long-term; scoped but not specified in detail. |
+| **Deferred** | Specified, then set aside by a decision of the product owner (2026-10-17: data integration). Kept with its identifier and, in its table, the status it had; not scheduled. |
 
 **Priorities.**
 
 | Priority | Meaning | Roadmap |
 | --- | --- | --- |
 | **P0** | Needed for the MVP: a single-user editor an ontology engineer can trust with a real ontology. | Phases 1–2 |
-| **P1** | Needed for the platform: server-side storage, scale, history. | Phases 3–4 |
+| **P1** | Needed for the platform: logical data modelling from the ontology, server-side storage, scale, history. | The LDM workstream of Phase 2; Phases 3–4 |
 | **P2** | Team and enterprise use. | Phase 5 |
 | **P3** | Long-term. | After Phase 5 |
 
-**Identifiers.** Modules are `M1`–`M16`; functional requirements `FR-Mx-n`; non-functional
-requirements `NFR-n`; journeys `J1`–`J12`. Debt items (`TD-n`), risks (`AR-n`) and decisions
+**Identifiers.** Modules are `M1`–`M18`; functional requirements `FR-Mx-n`; non-functional
+requirements `NFR-n`; journeys `J1`–`J15`. Identifiers of deferred requirements are never reused. Debt items (`TD-n`), risks (`AR-n`) and decisions
 (`ADR-n`) are defined in the companion documents.
 
 ## 2. Product vision and positioning
@@ -45,19 +53,21 @@ Ontology engineering that starts in a browser tab and grows into a managed platf
 changing tools on the way: the same application for sketching a first model on a laptop and for
 maintaining a governed, versioned, reasoned-over ontology in a team.
 
-And an ontology that does not stop at the diagram. The same tool connects the conceptual model
-to the relational databases where the organisation's data is: it reads their schemas, lets a
-person say how tables and columns correspond to classes and properties, and lets the data be
-asked for in the ontology's terms. Conceptual model, physical schema and the mapping between
-them are three things, each visible, each owned, none inferred from another.
+And an ontology that does not stop at the diagram. The same tool turns the ontology into the
+foundation of application data design: from what the domain *is*, the logical data models of
+the applications that hold its data are designed, by transformations the user reviews, and kept
+traceable to the ontology as both evolve. Ontology, constraint model (SHACL shape sets) and
+logical data models are three artifacts, each visible, each owned, related by mappings and none
+generated from another by itself.
 
 ### 2.2 Mission
 
 Make formal ontologies approachable without making them informal. Every picture the product
 draws is a faithful view of OWL axioms, every limit of a reasoner or an import is stated to the
 user, and nothing is lost between opening a file and saving it. The same holds across the
-bridge to data: a database constraint is never passed off as an ontological fact, and an answer
-from a database says by what mapping and with what reasoning it was obtained.
+bridge to data design: an open-world axiom is never passed off as a mandatory data constraint, a
+design decision is never passed off as an ontological fact, and an ontology change never
+overwrites a decision the designer made.
 
 ### 2.3 Core value proposition
 
@@ -67,7 +77,7 @@ from a database says by what mapping and with what reasoning it was obtained.
 | People who must be right | Two reasoners, SHACL and quality rules in one place, each result saying what it covers and for which revision. | Tools that report "consistent" without saying by what standard. |
 | People who start small | No installation, no account; a file or a URL is enough. | Desktop installs and enterprise server deployments. |
 | People who end up large | The same interface over a server-side store, with history, review and publishing. | Outgrowing a lightweight tool and migrating to another. |
-| People who have the data elsewhere | The ontology and its mapping to relational databases in one place: schema, mapping and preview side by side, exchanged as standard R2RML. | Authoring an ontology in one tool and hand-writing mapping files for another. |
+| People who design application data | Logical data models derived from the ontology by reviewed transformation, edited freely, and traced to it: which element came from which axiom, and what an ontology change means for each model. | Designing data models in one tool from a domain model kept in another, with the link between them in people's heads. |
 
 ### 2.4 Target users
 
@@ -75,11 +85,12 @@ from a database says by what mapping and with what reasoning it was obtained.
 | --- | --- | --- | --- |
 | **Ontology engineer** | Authors and maintains OWL ontologies; uses restrictions, defined classes, reasoning. | Complete OWL 2 editing, lossless files, reliable reasoning, explanations. | Partly: authoring of class expressions and lossless round trips are missing (TD-01, TD-02). |
 | **Knowledge engineer / taxonomist** | Builds vocabularies, taxonomies, thesauri. | Fast hierarchy editing, labels in several languages, SKOS export, bulk import. | Well, for one language and pasted input. |
-| **Data architect** | Aligns a domain model with data assets and standards. | Reuse of standard ontologies, mappings, tabular import, SHACL for data. | Well for reuse and SHACL; import is basic. |
+| **Data architect** | Aligns a domain model with data assets and standards; designs the logical data models of applications from it. | Reuse of standard ontologies, SHACL for data; logical models derived from the ontology, with keys, cardinalities and rules decided by them, and traced back. | Well for reuse, SHACL and import; logical models not at all (M17, M18). |
+| **Logical data modeller / application designer** | Designs the entities, attributes, relationships and keys an application stores. | An ER editor; a starting point from the domain model that does not decide for them; to know what an ontology change means for their model. | Not at all (M17, M18). |
 | **Semantic modeller / analyst** | Reads and reviews models more than writes them. | Clear pictures, hierarchy exploration, search, comparison. | Well. |
 | **Data governance professional** | Owns definitions, status, stewardship. | Metadata, lifecycle status, change history, approval. | Metadata yes; history and approval no. |
-| **Data engineer / integration specialist** | Makes data from operational databases available in shared terms. | To see a schema, map it to an ontology without guesswork, check the result on real rows, and hand the mapping to a standard engine. | Not at all. |
-| **Database architect** | Owns physical schemas. | Assurance of read-only, bounded access; to see which columns a semantic layer depends on before changing them. | Not at all. |
+| **Data engineer / integration specialist** (deferred track) | Makes data from operational databases available in shared terms. | To see a schema, map it to an ontology without guesswork, check the result on real rows, and hand the mapping to a standard engine. | Not at all; deferred. |
+| **Database architect** (deferred track) | Owns physical schemas. | Assurance of read-only, bounded access; to see which columns a semantic layer depends on before changing them. | Not at all; deferred. |
 
 ### 2.5 Primary use cases
 
@@ -91,10 +102,18 @@ from a database says by what mapping and with what reasoning it was obtained.
 6. Maintain an ontology over time: versions, differences, releases.
 7. Share a model with people who do not have the tool.
 8. (Later) Curate an ontology as a team, with review and governance.
-9. (Later) Inspect a relational database's schema beside the ontology.
-10. (Later) Map tables, columns and keys to classes and properties, and check the mapping on
+9. (Deferred) Inspect a relational database's schema beside the ontology.
+10. (Deferred) Map tables, columns and keys to classes and properties, and check the mapping on
     real rows.
-11. (Later) Ask for relational data in the ontology's terms, without copying it.
+11. (Deferred) Ask for relational data in the ontology's terms, without copying it.
+12. Design a logical data model for an application from the ontology, deciding keys,
+    cardinalities and rules oneself.
+13. Edit a logical data model as a model of its own: entities, attributes, relationships, keys,
+    specializations, rules, on an ER diagram.
+14. Know where each element of a logical model came from in the ontology, and which elements
+    have no semantic source.
+15. See what an ontology change means for every logical model derived from it, and bring each up
+    to date by reviewed proposals.
 
 ### 2.6 Competitive positioning
 
@@ -114,6 +133,7 @@ writing; the others were not re-verified. Check before quoting externally.
 | Collaboration, roles, review | No | **Yes** | **Yes, with approval workflow** | **Yes** | No | Phase 5 |
 | Taxonomy and thesaurus focus | No | No | **Core strength** | **Core strength** | A SKOS model type | Yes |
 | Text mining, entity extraction | No | No | **Yes** | No | No | Not planned |
+| Logical data models derived from the ontology, traced to it | No | No | — | — | No | Yes (M17, M18) |
 | Cost and openness | Free, open source | Free, open source | Commercial | Free, open source | No licence file in the repository | To be decided |
 
 A dash means the point was not established from the sources consulted; it is not a claim that
@@ -141,18 +161,27 @@ Sources consulted on 2026-10-13:
 5. **Explanations in words.** The in-page reasoner derives each inference from stated facts and
    says so in sentences; HermiT findings carry justifications.
 
-6. **Model and map in one place.** The tools that author ontologies and the tools that map
-   them to databases are mostly different tools. Here the mapping is made against the live
-   ontology and a real schema, checked by the same validation workbench, and exported as
-   R2RML for any standard engine.
+6. **From meaning to logical design, traceably.** The tools that author ontologies and the
+   tools that design logical data models are mostly different tools, and the link between a
+   domain model and an application's data model lives in documents or in people's heads. Here a
+   logical model is proposed from the live ontology, every constraint decided by the designer,
+   every element traced to the axioms it came from, and every ontology change reported against
+   every model derived from it. (The earlier sixth point, mapping the ontology to existing
+   databases, is deferred with the data-integration track.)
 
 Where the product should *not* compete: enterprise text mining and search (PoolParty's
-middleware), plug-in ecosystems (Protégé's), and query engines. The virtual knowledge graph is
-provided by an existing open-source engine (Ontop), not rebuilt; the product's contribution is
-making the mapping easy to author, check and govern.
+middleware), plug-in ecosystems (Protégé's), query engines, and physical database design and
+deployment (data modelling suites' forward engineering to DDL).
 
-**Positioning in data integration.** From general knowledge, with Ontop's facts checked against
-its documentation (see [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13): Ontop is the
+**Positioning in logical data modelling.** From general knowledge, not verified for this
+document: established data modelling tools (erwin Data Modeler, ER/Studio, SAP PowerDesigner and
+others) author conceptual, logical and physical models and generate DDL, and some import
+glossaries or business vocabularies; OWL editors stop at the ontology. A tool in which logical
+models are derived from an OWL ontology by reviewed transformation and kept traceable to its
+axioms is the gap this product aims at. Verify before using externally.
+
+**Positioning in data integration (deferred).** From general knowledge, with Ontop's facts checked against
+its documentation (see [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §14): Ontop is the
 leading open-source virtual-knowledge-graph engine, with mapping authoring available as text in
 a Protégé plug-in; commercial knowledge-graph platforms offer virtual graphs and visual mapping
 as part of a server product. No lightweight, standards-first tool combines visual ontology
@@ -181,9 +210,23 @@ publishing portals, AI assistance, SWRL, branches.
 **Long-term scope** is the remainder of this document: server-side storage and scale (P1),
 collaboration and governance (P2), AI assistance and publishing infrastructure (P2–P3).
 
-**A second MVP, for data integration: "map one database, and trust the mapping".** It does not
-change the first one, and cannot precede the backend, because a browser cannot connect to a
-database.
+**The logical data modelling MVP: "design a logical model from the ontology, and trust the
+link".** After the first MVP (reached 2026-10-16), in the browser, with no server.
+
+| In the LDM MVP | Why |
+| --- | --- |
+| Logical data models as an artifact of their own, several per project, saved and versioned with it (FR-M17-1 to FR-M17-8, FR-M17-14) | The thing designed has to exist on its own before it can be derived or traced. |
+| The LDM workspace and an ER diagram (FR-M17-10 to FR-M17-12) | A logical model is read and reviewed as a diagram. |
+| Proposals from the ontology, reviewed, with no constraint imposed (FR-M18-1 to FR-M18-6, NFR-18) | The product's objective, and its main risk if done carelessly. |
+| Semantic mappings, stale detection and impact reports with reviewed synchronization (FR-M18-8 to FR-M18-14) | What makes the derivation last beyond the first day. |
+
+**Not in it, deliberately:** physical models and DDL (out of scope altogether), several
+diagrams per LDM, formal rule expressions, shape sets as transformation input, LDM assistance,
+server-side LDMs.
+
+**A second MVP, for data integration: "map one database, and trust the mapping"** (deferred,
+2026-10-17). It did not change the first one, and could not precede the backend, because a
+browser cannot connect to a database.
 
 | In the data-integration MVP | Why |
 | --- | --- |
@@ -214,9 +257,11 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M11 Publishing and export | **Partially Implemented** | `src/model/files.ts`, `htmlExport.ts`, `src/io/` | No generated documentation; no publishing |
 | M12 AI assistance | **Partially Implemented** | `src/ai/`, `src/components/assistant/` (the assistant, bring your own key; 2026-10-16); matcher seam in `matcher.ts` | No mapping, drafting or query suggestions |
 | M13 Collaboration and governance | **Partially Implemented** | `src/model/governance.ts` | No users, review or audit |
-| M14 Database connectivity and schema exploration | **Not implemented** | Free-text `database`, `schema`, `table`, `column` fields in `src/model/governance.ts` | Everything; needs the backend |
-| M15 Ontology-to-relational semantic mapping | **Not implemented** | Reusable parts only (entity lists, validation, matcher, IRI handling) | Everything |
-| M16 Relational data access: materialisation and virtual knowledge graph | **Not implemented** | SPARQL view over the ontology (`src/model/sparql.ts`) | Everything |
+| M14 Database connectivity and schema exploration | **Deferred**; not implemented | Free-text `database`, `schema`, `table`, `column` fields in `src/model/governance.ts` | Everything; needs the backend |
+| M15 Ontology-to-relational semantic mapping | **Deferred**; not implemented | Reusable parts only (entity lists, validation, matcher, IRI handling) | Everything |
+| M16 Relational data access: materialisation and virtual knowledge graph | **Deferred**; not implemented | SPARQL view over the ontology (`src/model/sparql.ts`) | Everything |
+| M17 Logical data model authoring | **Recommended**; not implemented | Parts to build from: layouts and culling (`src/layout/`, `src/model/culling.ts`), validation findings, the version difference (`src/projects/`) | Everything (roadmap LM-1, LM-2, LM-5) |
+| M18 Ontology-to-LDM transformation and semantic traceability | **Recommended**; not implemented | The proposal pattern of SH-3 (`src/model/proposals.ts`), the axiom difference (`changesBetween`), structured class expressions | Everything (roadmap LM-3, LM-4) |
 
 ## 4. Non-functional requirements (apply to every module)
 
@@ -233,11 +278,16 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | NFR-9 | **Compatibility.** Model files written by earlier versions open in later ones. | A fixture file per format version, opened in CI. |
 | NFR-10 | **Privacy.** No ontology content leaves the user's machine unless they chose a server or a provider. | Network assertions in browser checks. |
 | NFR-11 | **Maintainability.** Views do not contain ontology rules; services do not import views. | Boundary tests, as `src/structure/boundaries.test.ts`. |
+| | *NFR-12 to NFR-16 serve the deferred data-integration track; they stand as written for when it is resumed.* | |
 | NFR-12 | **Secrets stay on the backend.** No database credential reaches the browser's storage, a model file, an export, a log or an API response. | A browser check that inspects storage and every response after a connection is defined; a test that greps exports and logs for the test password. |
 | NFR-13 | **External databases are read, never written, and never overloaded.** Every statement is read-only, time-limited and row-limited. | Integration tests against a database whose account can write: an attempted write fails; a slow query is cut off at the limit. |
 | NFR-14 | **No silent semantics.** No OWL axiom is created from a database constraint without an explicit, undoable confirmation. | A test that maps a schema with keys and constraints and asserts the ontology revision is unchanged. |
 | NFR-15 | **Rows stay out of the browser's storage** and cross to it only in bounded pages. | Storage inspection in browser checks; response size limits asserted. |
 | NFR-16 | **Mapping fidelity.** An R2RML document imported and exported unchanged is an equivalent RDF graph. | Graph isomorphism over the W3C R2RML test-case mappings and a corpus of published mappings. |
+| NFR-17 | **Artifact independence.** An LDM edit never changes the ontology, its revision or its shape sets; an ontology edit never changes an LDM or its revision; an edit of one LDM never changes another. | Tests that edit each artifact and assert the others' content and revisions unchanged, and that reasoning results and pending proposals about the ontology stay current across an LDM edit. |
+| NFR-18 | **No silent constraints.** No mandatory attribute or relationship end, no bound taken from a cardinality restriction, no key and no business rule is created in an LDM from an OWL axiom or a SHACL shape without the user choosing it. A property's functionality may shape a proposed relationship, stated as the reason. | A transformation of an ontology full of restrictions, keys and functional properties, accepted as offered, yields only optional attributes and ends, no key and no rule; with nothing accepted, the LDM's revision is unchanged. |
+| NFR-19 | **Scale, logical models.** An LDM of 2,000 entities and 30,000 attributes: an edit blocks the page under 100 ms; search within 200 ms; the ER diagram pans at 30 frames per second with 300 entities in view. Transformation and impact over a 10,000-class ontology run off the main thread and can be cancelled. | Benchmarks in CI on generated LDMs and ontologies ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §8). |
+| NFR-20 | **LDM fidelity.** An LDM saved and reopened, exported and imported in its JSON format, or restored from a version, is identical element for element, ids included. | Round-trip tests on fixture LDMs covering every kind of element. |
 
 ## 5. Functional modules
 
@@ -445,8 +495,8 @@ SH-5, delivers FR-M4-12 to FR-M4-16 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMA
 | FR-M4-7 | Custom quality rules written as SPARQL queries. | Recommended | P2 |
 | FR-M4-8 | The same checks run from a command line, for continuous integration of an ontology repository. | Recommended | P2 |
 | FR-M4-9 | SHACL-SPARQL and validation against the inferred graph, with a server engine. | Recommended (SH-5) | P2 |
-| FR-M4-10 | The workbench has a fourth kind of check, *Mapping*, beside OWL, SHACL and quality: same results table, same links to what a finding is about, stale when the mapping, the ontology or the schema changes. The checks themselves are FR-M15-9. | Recommended | P1 |
-| FR-M4-11 | Data from a relational source, previewed or materialised through a mapping, can be validated against the project's shapes. | Recommended: previewed rows at DI-2, materialised data at DI-4 | P1 (previewed), P2 (materialised) |
+| FR-M4-10 | The workbench has a fourth kind of check, *Mapping*, beside OWL, SHACL and quality: same results table, same links to what a finding is about, stale when the mapping, the ontology or the schema changes. The checks themselves are FR-M15-9. | **Deferred** (data integration); was: Recommended | P1 |
+| FR-M4-11 | Data from a relational source, previewed or materialised through a mapping, can be validated against the project's shapes. | **Deferred** (data integration); was: Recommended: previewed rows at DI-2, materialised data at DI-4 | P1 (previewed), P2 (materialised) |
 | FR-M4-12 | Shapes are edited in a view of their own, beside the ontology's editors, in named shape sets (constraint models), several per ontology, each with its purpose, validated and exported on its own. A class may have any number of shapes; a class's and a property's editor list the shapes about them. | Implemented 2026-10-16 (SH-1: the sets, the *Shapes* view, the entities' editors, export per set, `src/components/Shapes.tsx`; SH-2: a set validated on its own) | P0 |
 | FR-M4-13 | Every SHACL 1.0 Core construct is edited in the form: logical constraints, qualified value shapes, property pair constraints, property paths, nested shapes, closed shapes. A shape set reads from and writes to Turtle with nothing lost; what the form cannot hold (SHACL-SPARQL) is kept and written back. | Implemented 2026-10-16 (SH-1; `src/model/shacl.ts`, checked on the W3C suite by `shacl.test.ts`) | P0 |
 | FR-M4-14 | A chosen shape set is validated against a chosen data graph; data graphs are kept with the project. A finding opens the property shape at the constraint it failed, with the value and the path, and says where in its file the focus node is. | Implemented 2026-10-16 (SH-2; `src/model/dataGraphs.ts`, `validation.ts`; the W3C suite in `shaclConformance.test.ts`, the view in `e2e/data-graphs.mjs`) | P0 |
@@ -456,7 +506,8 @@ SH-5, delivers FR-M4-12 to FR-M4-16 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMA
 **Dependencies.** FR-M4-4 shares the job model with M3. FR-M4-12 to FR-M4-14 need stable
 identity (FR-M1-2) and change sets (FR-M10). FR-M4-15 needs structured class expressions
 (FR-M2-2). FR-M4-16 and FR-M4-9 need the Java backend (Phase 3). FR-M4-11 needs a mapping
-(M15).
+(M15), and is deferred with it. Shape sets may inform proposals of logical data models, never
+become their requirements (FR-M18-7, ADR-024).
 
 **Acceptance criteria.**
 
@@ -691,7 +742,10 @@ entity, no record of who changed what, and no release (TD-12).
 | FR-M10-6 | A release: a tagged revision with `owl:versionIRI` and `owl:versionInfo`, exportable and comparable. | Recommended | P1 |
 | FR-M10-7 | Branches and merging. | Future | P3 |
 
-Mapping sets are versioned on a line of their own, independent of the ontology's: FR-M15-12.
+Logical data models and their semantic mappings are in every version from roadmap LM-1, and the
+difference lists their changes element by element (FR-M17-14); on a server each LDM has a line of
+revisions of its own (FR-M17-17). (Mapping sets of the deferred data-integration track were to be
+versioned on a line of their own: FR-M15-12.)
 
 **Module non-functional points.** Differences are computed over axioms, not text, so that
 reordering a file is not a change (NFR-1). Picture-only changes are not ontology changes.
@@ -762,13 +816,18 @@ service (`/ai/forward`), which refuses private addresses and connects to the add
 | FR-M12-4 | Propose classes and relationships from a document or a list of terms. | Future | P3 |
 | FR-M12-5 | Translate a question into SPARQL, or a description into a class expression, for the user to check. | Partial: the assistant proposes class expressions in Manchester syntax, checked before acceptance; no SPARQL | P3 |
 | FR-M12-6 | A provider is configured explicitly; what would be sent is shown; nothing is sent otherwise. | **Existing** for the assistant: nothing is sent until a provider and key are set and a question is asked; the panel says what is sent and lists each lookup; with *Show me each lookup* on, each lookup's result is shown in full and sent only when the user says so | P2 |
-| FR-M12-7 | Suggest mappings between a schema and the ontology from names, comments, types and sample values. Schema names and sample values are sent to a provider only with explicit consent per data source. | Future | P3 |
+| FR-M12-7 | Suggest mappings between a schema and the ontology from names, comments, types and sample values. Schema names and sample values are sent to a provider only with explicit consent per data source. | **Deferred** (data integration); was: Future | P3 |
+| FR-M12-8 | For logical data models, the assistant's read tools: a project's LDMs, an LDM's summary, an element's details, its semantic mappings and an impact report; with the same answer budgets and the same rule that names and definitions are data, not instructions. | Future (roadmap 5.7) | P2 |
+| FR-M12-9 | Explanations in words of a semantic mapping (why this element came from those axioms) and of an impact report, grounded in the tools. | Future | P2 |
+| FR-M12-10 | Typed LDM changes proposed through the assistant, compiled to logical change sets and reviewed, edited and accepted as ontology proposals are; never applied without acceptance. | Future | P2 |
+| FR-M12-11 | Transformation suggestions (a strategy for a hierarchy or an object property, a candidate key) offered as transformation proposals with their rationale, under NFR-18. | Future | P2 |
 
 **Module non-functional points.** NFR-10 and AR-10. A proposed axiom is validated by the same
 rule service as a typed one (FR-M2-7) and can be checked by a reasoner before acceptance.
 
 **Dependencies.** M10 (provenance of accepted suggestions), M2 (structured expressions to
-propose into). Architecture: ADR-010.
+propose into). FR-M12-8 to FR-M12-11 need M17 and M18's services; they extend the existing
+assistant, never a second one. Architecture: ADR-010.
 
 **Acceptance criteria.** For any AI feature: with no provider configured there is no network
 request; an accepted suggestion appears in the history as a change with its origin; a rejected
@@ -796,8 +855,8 @@ construction.
 | FR-M13-6 | Audit trail: who changed what and when, for ontology and for settings. | Future | P2 |
 | FR-M13-7 | Watches and notifications. | Future | P3 |
 | FR-M13-8 | Several people editing at the same time see each other's changes. | Future | P3 |
-| FR-M13-9 | Lineage: from an entity, the tables and columns it is mapped from; from a column, the entities that depend on it. The existing free-text database, schema, table and column fields are filled from mappings where one exists. | Recommended | P2 |
-| FR-M13-10 | Permission on a data source is separate from permission on a project; mapping changes can be put through review like ontology changes. | Future | P2 |
+| FR-M13-9 | Lineage: from an entity, the tables and columns it is mapped from; from a column, the entities that depend on it. The existing free-text database, schema, table and column fields are filled from mappings where one exists. | **Deferred** (data integration); was: Recommended | P2 |
+| FR-M13-10 | Permission on a data source is separate from permission on a project; mapping changes can be put through review like ontology changes. | **Deferred** (data integration); was: Future | P2 |
 
 **Dependencies.** M10 (a proposal is a change set; the audit trail is the revision history),
 the Server profile, authentication.
@@ -806,6 +865,8 @@ the Server profile, authentication.
 adding collaboration must not remove the ability to work alone with no server (ADR-001).
 
 ### M14 Database connectivity and schema exploration
+
+**Deferred on 2026-10-17** with the data-integration track ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11). Kept as specified, under its identifiers; the statuses in its table are those it had. Not scheduled.
 
 **Description.** Connecting external relational databases, read-only, and making their
 structure visible: schemas, tables, views, columns, types, keys and the relationships between
@@ -867,6 +928,8 @@ of the first release, not a later one.
   new fingerprint and lists exactly those two changes.
 
 ### M15 Ontology-to-relational semantic mapping
+
+**Deferred on 2026-10-17** with the data-integration track ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11). Kept as specified, under its identifiers; the statuses in its table are those it had. Not scheduled.
 
 **Description.** The Semantic Mapping Workbench: stating how rows of a relational database
 correspond to instances of classes and values of properties, checking that statement, and
@@ -1032,6 +1095,8 @@ metadata store of Phase 4.
 
 ### M16 Relational data access: materialisation and virtual knowledge graph
 
+**Deferred on 2026-10-17** with the data-integration track ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11). Kept as specified, under its identifiers; the statuses in its table are those it had. Not scheduled.
+
 **Description.** Using a mapping to get at the data: by generating RDF from it and storing the
 result, or by answering SPARQL queries from the database directly with nothing stored.
 
@@ -1089,6 +1154,160 @@ materialisation. An OBDA engine, adopted after a spike (ADR-016).
 - FR-M16-5: a query that would run for minutes is stopped at the limit, the database session is
   released, and the user is told which limit was reached.
 - FR-M16-7: a query using an unsupported feature is refused with that feature named.
+
+### M17 Logical data model authoring
+
+**Description.** Logical data models (LDMs) as an artifact of their own beside the ontology and the
+shape sets: how an application organises its data, in entities, attributes with logical types,
+relationships with cardinality and optionality, identifiers, specializations and business rules,
+several per project; edited in a workspace and on an ER diagram; validated, versioned and, later,
+kept on a server. Logical only: no physical model, database type or DDL.
+
+**Status: Recommended; not implemented** (added 2026-10-17; roadmap LM-1, LM-2, LM-5). Parts to
+build from exist: the layouts, line geometry and culling of the Graph view (`src/layout/`,
+`src/model/geometry.ts`, `culling.ts`), the validation findings model (`src/model/validation.ts`),
+the version difference (`src/projects/difference.ts`) and the service pattern of `src/structure`.
+The design is [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.3 to §13.5 and
+[DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.
+
+**User stories.**
+
+- As a data architect I keep two logical models of one ontology, one for the catalogue
+  application and one for the rights-management system, and edit each without touching the other
+  or the ontology.
+- As a logical modeller I give `film` a primary key of its own, make `release_date` mandatory, and
+  say a film is directed by at most one person, on the diagram or in a form.
+- As a modeller I resolve the many-to-many between `film` and `person` into an associative entity
+  `film_credit` with a `role` attribute.
+- As a reviewer I compare two versions of the project and see that a key was added and a
+  relationship's cardinality changed, and nothing in the ontology.
+
+| Id | Requirement | Status | Priority |
+| --- | --- | --- | --- |
+| FR-M17-1 | Several LDMs per project, each with its own identity (an id never reused), name, description and purpose; created, renamed, duplicated (with new ids), imported, exported and deleted. | Recommended (LM-1) | P1 |
+| FR-M17-2 | Logical entities: a name unique in the LDM, a definition, and a mark for an abstract supertype. | Recommended (LM-1) | P1 |
+| FR-M17-3 | Logical attributes: a name unique in the entity, inherited ones included; a definition; a logical type or a domain; optional or mandatory (optional unless the user says otherwise); a mark for derived. | Recommended (LM-1) | P1 |
+| FR-M17-4 | Logical data types, technology-neutral: text (with an optional maximum length), integer, decimal (precision, scale), boolean, date, time, date-time, duration, binary, identifier; and named domains over them, restricted by length, range, pattern or enumerated values with codes and labels. No database-specific type. | Recommended (LM-1) | P1 |
+| FR-M17-5 | Relationships between two entities (the same one for a recursive relationship), each end with a role, a minimum and a maximum cardinality (minimum 0: optional); identifying or not; many-to-many allowed, with a command that resolves it into an associative entity. | Recommended (LM-1, LM-2) | P1 |
+| FR-M17-6 | Identifiers: per entity at most one primary key and any number of candidate keys, each of attributes and, for an identifying relationship, of the relationship's end. | Recommended (LM-1) | P1 |
+| FR-M17-7 | Generalization: a supertype and its subtypes, complete or incomplete, exclusive or overlapping, with an optional discriminator attribute; subtypes inherit attributes and keys; no cycles. | Recommended (LM-1) | P1 |
+| FR-M17-8 | Business rules in words, named, attached to entities, attributes or relationships, each a constraint or a derivation, proposed or accepted. | Recommended (LM-1) | P1 |
+| FR-M17-9 | A formal expression for a business rule, in a small language over attributes (comparisons, ranges, required-if, uniqueness within a scope), checked as it is typed. | Recommended | P2 |
+| FR-M17-10 | LDM validation in the Validation view: an entity with no primary key, a key naming a missing attribute, a relationship end on a missing entity, duplicate names, a generalization cycle, an attribute with no type, an unresolved many-to-many (information), an attribute repeating an inherited one; each finding opens its element. | Recommended (LM-2) | P1 |
+| FR-M17-11 | The LDM workspace: a view of its own with the project's LDMs, an entity list with search, and editors for entities, attributes, relationships, keys, generalizations, rules and domains; every action by keyboard. | Recommended (LM-2) | P1 |
+| FR-M17-12 | An ER diagram of an LDM in Information Engineering notation (crow's foot), laid out by the existing layouts and culled at scale; its positions kept apart from the LDM's meaning; edits on it are the same operations as in the forms. | Recommended (LM-2) | P1 |
+| FR-M17-13 | Several diagrams per LDM, each of a chosen subset of its entities. | Recommended | P2 |
+| FR-M17-14 | Every LDM edit is one undoable step, kept in the working copy, saved with the project and in its versions; the difference between two versions lists LDM changes element by element and field by field, apart from the ontology's. | Recommended (LM-1) | P1 |
+| FR-M17-15 | An LDM is exported to and imported from a documented, versioned JSON format, losslessly; the project's own file carries its LDMs. | Recommended (LM-1) | P1 |
+| FR-M17-16 | `LogicalModelQueryService` and `LogicalModelEditService`: questions by element id of a named LDM revision, paged, cancellable, refusals typed, plain data only, as the existing services. | Recommended (LM-1) | P1 |
+| FR-M17-17 | On a server, LDMs are kept with revisions of their own, queried a page at a time and edited through the same contracts; a change made against a moved revision is refused. | Recommended (LM-5) | P1 |
+
+**Module non-functional points.** NFR-17 (an LDM edit changes nothing of the ontology), NFR-19
+(scale), NFR-20 (fidelity), NFR-9 (a project saved before LDMs existed opens unchanged), NFR-7
+(the diagram passes the UI audit and every action has a keyboard path), NFR-11 (the services have
+no UI imports).
+
+**Dependencies.** The change-set contract (task 1.8) as the pattern for logical change sets; the
+working copy (1.10) and versions (2.3, M10); the layouts and culling of 2.2 for the diagram. For
+FR-M17-17: the server projects of Phase 4.
+
+**Acceptance criteria.**
+
+- FR-M17-1 to FR-M17-8, FR-M17-15: a fixture LDM with every kind of element is created through
+  the edit service and read back element for element through the query service; and again after a
+  JSON export and import, a reload, a save, and a restored version (NFR-20).
+- FR-M17-5 to FR-M17-7: a key naming a removed attribute, a relationship to a removed entity, a
+  second primary key and a generalization cycle are each refused with a reason, and nothing
+  changes.
+- FR-M17-10: validation of a fixture LDM reports exactly the problems seeded in it.
+- FR-M17-11, FR-M17-12: an entity, two attributes, a relationship with its cardinalities and a
+  key are made with the keyboard alone; in an LDM of 2,000 entities the diagram pans at 30 frames
+  per second with 300 in view (NFR-19).
+- FR-M17-14: between two versions that differ by an attribute's type, a relationship end's
+  maximum and a removed candidate key, the difference lists exactly those three LDM changes and
+  no ontology change; an LDM edit leaves the ontology's revision unchanged (NFR-17).
+- FR-M17-17: the contract fixtures pass against the local and the server implementation alike.
+
+### M18 Ontology-to-LDM transformation and semantic traceability
+
+**Description.** Proposing logical data models from the ontology, by rules the user configures
+and decisions the user reviews; and keeping each LDM traceable to the ontology through explicit
+semantic mappings, with stale detection, change impact reports and reviewed synchronization.
+
+**Status: Recommended; not implemented** (added 2026-10-17; roadmap LM-3, LM-4). Patterns to
+build on exist: shapes proposed from the ontology, each with what the axiom means and where it
+differs, none chosen by default, origin kept as the axiom in functional syntax and marked stale
+when it goes (`src/model/proposals.ts`, FR-M4-15); the axiom-level difference between two states
+of the ontology (`changesBetween`, M10); structured class expressions (M2). The design is
+[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.6 to §13.9.
+
+**Why the open world matters here.** An ontology says what is true of a domain; an LDM says what
+an application stores. `Film SubClassOf directedBy some Director` means every film has a
+director, known or not: a film with none recorded contradicts nothing. Made into *director is
+mandatory*, it would reject the record of a film whose director is unknown. A domain infers a
+type; it requires nothing. With no unique names, "at most one" counts individuals that may have
+several names. So the transformation proposes structure, and offers constraints only as
+candidates for the designer to choose.
+
+**User stories.**
+
+- As a data architect I choose the `Work` branch of the ontology and get a proposed logical model,
+  each entity and attribute with the axioms it came from, and decide which constraints to keep.
+- As a data architect I choose to roll the subclasses of `Award` up into one entity with a
+  discriminator, rather than an entity each.
+- As a logical modeller I see, for `film.release_date`, that it came from `:releaseDate` and from
+  which version of the ontology.
+- As a data architect, after the ontology team removed `:runningTime`, I see which attributes of
+  which models depend on it, and remove or keep each.
+- As a logical modeller I am sure that a synchronization never undoes my renaming of `film_code`.
+
+| Id | Requirement | Status | Priority |
+| --- | --- | --- | --- |
+| FR-M18-1 | Propose an LDM, new or into an existing one, from a chosen scope of the ontology (all, a branch, chosen classes, with or without loaded imports), as a set of proposals; nothing is created until accepted, and the ontology is never changed. | Recommended (LM-3) | P1 |
+| FR-M18-2 | Transformation rules: classes to entities; datatype properties to attributes, typed by a configurable XSD-to-logical table; object properties to relationships or associative entities; inverse pairs to one relationship with two roles; subclass hierarchies to specializations, or rolled up or down; enumerations to domains; `owl:hasKey` to candidate keys. | Recommended (LM-3) | P1 |
+| FR-M18-3 | Restrictions, domains, ranges, cardinalities and keys are offered as candidate constraints (mandatory, a maximum, a key, a rule), never chosen to begin with; each says what the axiom means in OWL, what the constraint would require, and where they differ. A property's functionality shapes the proposed relationship, shown as its reason. | Recommended (LM-3) | P1 |
+| FR-M18-4 | Each proposal shows its source axioms, the elements it would create or change, its strategy and its rationale; proposals are chosen, edited or dismissed one by one or by kind; the chosen ones are applied as one logical change set, with the semantic mappings they imply, undone in one step. | Recommended (LM-3) | P1 |
+| FR-M18-5 | A configuration saved with each LDM: naming (from labels or local names, case, separators, singular), the datatype table, the default hierarchy and object-property strategies, the scope, definitions from annotations or not. | Recommended (LM-3) | P1 |
+| FR-M18-6 | Many to many: a class may become several entities and several classes one; a property several attributes; elements may be mapped by hand where no rule applies, and may have no semantic source at all. | Recommended (LM-3, LM-4) | P1 |
+| FR-M18-7 | A shape set may be chosen as a further input: its constraints are offered as candidate constraints naming the shape, never imposed. | Recommended | P2 |
+| FR-M18-8 | Semantic mappings: each relates ontology sources (entity IRIs and the axioms used, in functional syntax) to LDM targets (element ids), with its strategy, rationale, origin (ontology, revision, named version), what it last made of its targets, and how and when it was made (transformation, by hand, synchronization, assistant). | Recommended (LM-4) | P1 |
+| FR-M18-9 | Traceability both ways: from an LDM element to its sources, from an ontology entity to every element made from it in every LDM; coverage of each LDM: ontology entities in scope not represented, elements with no semantic source. | Recommended (LM-4) | P1 |
+| FR-M18-10 | Stale detection: a mapping whose source axiom changed is stale, one whose source entity or target element is gone is broken, each with what changed; worked out against the ontology as it is. | Recommended (LM-4) | P1 |
+| FR-M18-11 | Change impact report, per LDM, for the ontology now against each mapping's origin or between two versions: the affected elements and mappings, each with the kind of change (not represented, source removed, type changed, cardinality axiom changed, hierarchy changed, renamed). | Recommended (LM-4) | P1 |
+| FR-M18-12 | Synchronization proposals from an impact report, reviewed as transformation proposals are; an element the user customised (it differs from what its mapping last made) is never changed without explicit acceptance; a dismissed proposal is not offered again until its source changes again. | Recommended (LM-4) | P1 |
+| FR-M18-13 | Several LDMs derived from one ontology, each with its own configuration, mappings and impact report. | Recommended (LM-4) | P1 |
+| FR-M18-14 | Mappings are kept with their LDM, in the project's versions and differences; deleting an LDM element breaks the mappings to it and changes nothing in the ontology. | Recommended (LM-4) | P1 |
+| FR-M18-15 | Mappings exported as RDF with PROV-O provenance, for other tools. | Future | P3 |
+
+**Module non-functional points.** NFR-18 above all: no constraint without the user's choice.
+NFR-17: transformation and synchronization never change the ontology. NFR-3 and NFR-19:
+transformation and impact reports run in a worker and can be cancelled. NFR-2: a proposal says
+where OWL and the LDM differ; a mapping's status says when it was last checked against what.
+
+**Dependencies.** M17 (an LDM to propose into); M2 (structured class expressions); M10 (the
+versions an impact is reported between); M4's shape sets for FR-M18-7. Decisions ADR-024 and
+ADR-025.
+
+**Acceptance criteria.**
+
+- FR-M18-1, FR-M18-3, NFR-18: for the example ontology with every proposal accepted as offered,
+  the LDM has an entity for each class in scope, an attribute for each datatype property, a
+  relationship for each object property, and no mandatory attribute or end, no key and no rule;
+  with nothing accepted, the LDM and the ontology are unchanged.
+- FR-M18-2: the subclasses of a chosen class become a specialization by default, and one entity
+  with a discriminator under the roll-up strategy; an inverse pair becomes one relationship with
+  two roles.
+- FR-M18-4: a proposal for `Film SubClassOf directedBy some Director` shows the axiom, the
+  candidate *mandatory* on the end, and the open-world difference in words.
+- FR-M18-5, FR-M18-12: run again after the user renamed an entity and made an attribute
+  mandatory, the transformation proposes no change to either.
+- FR-M18-10, FR-M18-11: after a datatype property is removed from the ontology, the impact report
+  of each of two LDMs derived from it lists exactly the attributes mapped from it, as *source
+  removed*, and their mappings are broken.
+- FR-M18-12: synchronization proposes removing them; a customised one is proposed, never changed
+  silently; accepting is one undoable change of the LDM, and the ontology's revision does not move.
+- Proposals for Pizza are worked out in a worker without blocking the page; for a 10,000-class
+  generated ontology within 30 seconds (NFR-19).
 
 ## 6. User journeys
 
@@ -1437,6 +1656,8 @@ flowchart LR
 
 ### J10 Connecting a relational database and exploring its schema
 
+**Deferred on 2026-10-17** with the data-integration track (M14 to M16). Kept as written.
+
 **Objective.** See the structure of a database beside the ontology, without risk to the
 database and without the credential leaving the backend.
 
@@ -1484,6 +1705,8 @@ flowchart LR
 - A table's neighbours as a small diagram, reusing the existing layouts.
 
 ### J11 Mapping ontology entities to tables and columns
+
+**Deferred on 2026-10-17** with the data-integration track (M14 to M16). Kept as written.
 
 **Objective.** State, check and keep how the database's rows correspond to the ontology's
 classes and properties.
@@ -1536,6 +1759,8 @@ flowchart TD
 
 ### J12 Querying relational data through the ontology
 
+**Deferred on 2026-10-17** with the data-integration track (M14 to M16). Kept as written.
+
 **Objective.** Ask for data in the ontology's vocabulary and get it from the database, live,
 without copying it.
 
@@ -1570,6 +1795,103 @@ throughout; stage DI-4).
   `Award`", instead of an empty table.
 - A one-click path from a slow query to its SQL.
 
+### J13 Designing a logical data model from the ontology
+
+**Objective.** Start an application's logical data model from the part of the ontology it needs,
+and decide its constraints oneself.
+
+**Entry point.** *Propose from the ontology* in the LDM workspace, or *Derive a logical model* on a
+class in the ontology's editors (Recommended throughout; roadmap LM-3).
+
+| Step | User action | System response | Status |
+| --- | --- | --- | --- |
+| 1 | Chooses *New logical model from the ontology* and names it *Film catalogue* | An empty LDM, and the transformation dialog: scope, configuration, target. | Recommended |
+| 2 | Chooses the scope: the branch under `Work`, with `Person` and `Award` added | Counts: 6 classes, 9 datatype properties, 5 object properties in scope. | Recommended |
+| 3 | Sets the configuration: names in snake case from English labels; hierarchies as specializations | Saved with the LDM. | Recommended |
+| 4 | Presses *Propose* | Proposals worked out in the background, grouped as structure and candidate constraints; the structure selected, the constraints not. | Recommended |
+| 5 | Opens the proposal for `film`'s director | The axiom `Film SubClassOf directedBy some Director`, the relationship `film` to `person` (many-to-one, because `directedBy` is functional), and the candidate *director is mandatory*, with: "The ontology says every film has a director, known or not; a mandatory end would refuse a film whose director is not recorded." | Recommended |
+| 6 | Chooses that candidate, leaves the others, dismisses the proposal for `Award`'s subclasses and picks roll-up for them instead | The proposals change accordingly; nothing is created yet. | Recommended |
+| 7 | Presses *Apply* | One change to the LDM: entities, attributes, relationships, the one constraint chosen, and their semantic mappings; undo takes it back whole. The ontology's revision is unchanged. | Recommended |
+| 8 | Opens the ER diagram | The entities laid out; each element's panel shows its sources in the ontology. | Recommended |
+
+```mermaid
+flowchart LR
+  A["New LDM from the ontology"] --> B["Scope and configuration"]
+  B --> C["Proposals: structure selected,<br/>constraints offered"]
+  C --> D{"Review each"}
+  D -->|choose, edit, dismiss| C
+  D -->|apply| E["One LDM change,<br/>with its mappings"]
+  E --> F["ER diagram, traceability"]
+```
+
+**Difficulties to design for.**
+
+- Accepting everything must give a usable but unconstrained model; a designer who accepts in
+  haste must not end up with mandatory fields the domain never required.
+- Hierarchies and object properties have several good logical forms; the choice must be visible
+  and cheap to change.
+- Hundreds of proposals for a large scope: grouping, filtering and deciding by kind are needed.
+
+**UX opportunities.**
+
+- Each candidate constraint read out in words beside its axiom, with the open-world difference.
+- A preview of the resulting diagram before applying.
+- Decide by kind: "all attributes from this class", "none of the cardinality candidates".
+
+### J14 Editing a logical data model
+
+**Objective.** Shape a logical model as the application needs it, independently of the ontology.
+
+**Entry point.** The *LDM* view (Recommended; roadmap LM-1, LM-2).
+
+| Step | User action | System response | Status |
+| --- | --- | --- | --- |
+| 1 | Opens the *LDM* view and chooses *Film catalogue* | The entity list and the ER diagram; validation findings counted in the header. | Recommended |
+| 2 | Adds an entity `film_credit` and resolves the many-to-many between `film` and `person` into it | Two one-to-many relationships and the associative entity, with a key of the two ends; one step in the history. | Recommended |
+| 3 | Gives `film` a primary key `film_code` (identifier) | The key on the diagram; the finding *no primary key* goes. | Recommended |
+| 4 | Adds a domain `rating` with five codes, and uses it for an attribute | The domain listed; the attribute typed by it. | Recommended |
+| 5 | Adds a rule: "A film's release date is not before 1888." | A rule in words, attached to `release_date`. | Recommended |
+| 6 | Saves a version, then compares it with the previous | The LDM's changes element by element, apart from the ontology's (none). | Recommended |
+
+**Difficulties to design for.**
+
+- Keyboard and form editing must be as complete as diagram editing (NFR-7).
+- Elements with no semantic source (an audit entity) are normal, not warnings.
+
+**UX opportunities.**
+
+- Elements made from the ontology show a small mark, and *customised* once edited.
+- The same element selected in the list, the form and the diagram.
+
+### J15 Assessing an ontology change against logical models
+
+**Objective.** Know what an ontology change means for every logical model derived from it, and
+bring each up to date without losing one's own decisions.
+
+**Entry point.** A banner in the *LDM* view, "The ontology has changed since this model's
+mappings were made" (Recommended; roadmap LM-4).
+
+| Step | User action | System response | Status |
+| --- | --- | --- | --- |
+| 1 | The ontology team removes `:runningTime` and makes `directedBy` no longer functional | In each LDM derived from the ontology, the affected mappings are marked stale or broken. | Recommended |
+| 2 | Opens *Impact* for *Film catalogue* | The report: `film.running_time` has lost its source; the relationship `film` to `person` no longer has its reason for *many-to-one*. | Recommended |
+| 3 | Opens *Impact* for *Rights management*, derived from the same ontology | Its own report: one attribute affected. | Recommended |
+| 4 | Opens the synchronization proposals | *Remove `running_time`* (proposed, not selected: the user had renamed it, so it is customised); *make the relationship many-to-many* (offered, with the reason). | Recommended |
+| 5 | Keeps `running_time` as application-specific and dismisses the cardinality change | The mapping of `running_time` is removed; the element stays, with no semantic source; the dismissal is remembered until the source changes again. | Recommended |
+| 6 | Compares two named versions of the ontology instead | The same report between those versions, for planning a change before it is made. | Recommended |
+
+**Difficulties to design for.**
+
+- Several LDMs with different decisions about the same axiom: one report each, never merged.
+- A report must say what changed in the ontology and why it matters for this model, not only
+  that something did.
+
+**UX opportunities.**
+
+- The impact report as a list grouped by kind of change, each with a one-click proposal.
+- From an ontology entity, *Where is this used?* across every LDM, before it is changed.
+
+
 ## 7. Assumptions and open questions
 
 **Assumptions made in this document.**
@@ -1579,9 +1901,16 @@ throughout; stage DI-4).
    multi-tenant service is not designed here.
 3. OWL 2 DL is the reference language; OWL 2 Full is not a goal.
 4. The SKOS vocabulary type remains a first-class kind of project, not a reduced ontology.
-5. Relational databases are read, never written, by this product.
+5. Relational databases are read, never written, by this product (and, while data integration is
+   deferred, not read either).
 6. The first users of data integration run the companion on a machine that can reach the
-   database; a hosted service connecting into customers' networks is not designed here.
+   database; a hosted service connecting into customers' networks is not designed here
+   (deferred).
+7. Logical data models are logical: technology-neutral types, no physical model, no DDL, no
+   deployment (ADR-026). A physical layer, if ever wanted, is a separate artifact.
+8. The first users of logical modelling design relational application data from an ontology they
+   or their team maintain in this product; LDMs edited by hand with no ontology behind them are
+   supported, not targeted.
 
 **Open questions for the product owner.**
 
@@ -1591,6 +1920,11 @@ throughout; stage DI-4).
 | Is the SKOS-centred user (taxonomist) or the OWL-centred user (ontology engineer) the first audience? | They pull the MVP in different directions: multilingual labels and import versus class expressions and reasoning. | Ontology engineer first, because lossless OWL is the harder credibility gap. |
 | How large are the ontologies the first users actually have? | Sets how early Phase 4 is needed. | 10,000 classes as the Local-profile target. |
 | Is hosting a service something the developer wants to operate? | The Server profile can be delivered as software to self-host only. | Self-hosted. |
-| Which database do the first data-integration users have? | The first dialect is the only one for a while. | PostgreSQL (ADR-015). |
-| Is live querying (a virtual graph) or a governed, exportable mapping the first goal? | The first needs an engine and operations; the second is useful with an export alone. | The mapping first; the virtual graph at stage DI-4. |
-| Does data integration come before or after collaboration? | Both follow Phase 4 and compete for the same time. | Stages DI-1 to DI-3 are scheduled within Phases 3 and 4; DI-4 and collaboration are ordered by demand. |
+| Should the first task of the logical modelling track (LM-1) come before task 2.6 (ELK)? | The new objective against the scheduled order. | 2.6 first: it is small and LM-1 needs nothing of it. |
+| Which ER notation, and is more than one needed? | Designers are trained on different notations. | Information Engineering (crow's foot) only. |
+| Must LDMs be exchanged with other data modelling tools, and in which format? | No common logical-model format is used by every tool. | The product's own documented JSON; others when users ask. |
+| Should individuals (reference data, code lists) become anything in an LDM? | Code lists often live as individuals in ontologies. | Not at first: enumerations become domains; reference data is Future. |
+| Is a formal language for business rules needed early? | Rules in words cannot be checked. | Words first (FR-M17-8); a small expression language later (FR-M17-9). |
+| (Deferred.) Which database do the first data-integration users have? | The first dialect is the only one for a while. | PostgreSQL (ADR-015). |
+| (Deferred.) Is live querying (a virtual graph) or a governed, exportable mapping the first goal? | The first needs an engine and operations; the second is useful with an export alone. | The mapping first; the virtual graph at stage DI-4. |
+| When, if ever, is data integration resumed? | It was deferred, not rejected; its design is kept. | Not scheduled; decided by the product owner (ADR-027). |

@@ -1,47 +1,78 @@
 # Development Roadmap
 
-Written against the repository as of 2026-10-13 (commit `ce6419e`). Companion documents:
+Written against the repository as of 2026-10-13 (commit `ce6419e`); realigned on 2026-10-17
+(commit `22f39d4`). Companion documents:
 [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) (what, and why),
 [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) and
 [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) (how), [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 (what stands in the way).
 
-Ontology-to-relational data integration (database schema exploration, semantic mapping,
-virtual knowledge graphs) was added to this roadmap on 2026-10-13 as a track of five stages,
-DI-1 to DI-5, placed inside the existing phases. §1.3 shows where; the tasks are in Phases 3, 4
-and 5.
+**The direction, as of 2026-10-17.** ConceptWeaver is an ontology-driven logical data modelling
+platform. An OWL ontology is the semantic foundation from which relational logical data models
+(LDMs) are designed:
+
+> OWL ontology → semantic-to-logical transformation → editable logical data model → semantic
+> traceability and change impact analysis
+
+The roadmap keeps its five phases, its rules, and everything done in them. The **logical data
+modelling track, LM-1 to LM-5** (§1.3), is the active product track: LM-1 to LM-4 run in the
+browser, in a workstream beside the remaining Phase 2 tasks; LM-5 moves their services to the
+server in Phase 4. Physical data models, database schema generation, SQL DDL and deployment are
+not part of it.
+
+The **ontology-to-relational data-integration track, DI-1 to DI-5** (database connections, schema
+exploration, R2RML mapping, virtual knowledge graphs), added on 2026-10-13, is **deferred**. Its
+stages, tasks, milestones and requirements keep their identifiers and their descriptions in §11;
+none is scheduled, and no identifier of it is reused.
 
 A SHACL editor as a first-class constraint model beside the ontology was added on 2026-10-15
-as a second track, SH-1 to SH-5. §1.4 sets out what of it the product already has, what is
-new, and where each stage goes: the three that need no server come next, before task 2.3.
+as a second track, SH-1 to SH-5. §1.4 sets out what of it the product already had, what was
+new, and where each stage goes: the three that need no server, SH-1 to SH-3, are done
+(2026-10-16).
 
 ## 1. Shape of the roadmap
 
-Five phases, in the order given in the brief. Three rules hold throughout:
+Five phases, in the order given in the brief. Six rules hold throughout:
 
 1. **Every task leaves the application working.** No phase needs a period in which the product
    is broken. A user who never starts a server loses nothing at any point (ADR-001).
 2. **A capability is built locally first, behind an interface, and moved to the server second.**
-   The interface is the migration; the server is an implementation of it.
+   The interface is the migration; the server is an implementation of it. A feature that can
+   run in the page is given no backend dependency.
 3. **Nothing in a later phase is started to unblock an earlier one.** If a Phase 2 feature seems
    to need the backend, it is redesigned or deferred.
+4. **Saved projects stay readable.** A model of any earlier format opens in every later version,
+   with a frozen fixture per format in CI (NFR-9).
+5. **Ontology, shape sets and logical data models are separate artifacts.** Each has its own
+   structure, identity, revisions and editor; they are related by mappings, never by one being
+   written into another (§1.3, ADR-022).
+6. **Proposals, not conversions.** Nothing crosses from one artifact to another by itself: a
+   shape from an axiom (ADR-020), an LDM element or constraint from an axiom or a shape
+   (ADR-024), an update of an LDM after an ontology change (ADR-025) are each proposed, with
+   their reason, and accepted by the user.
 
-Rule 2 has one exception, by necessity: connecting to a relational database cannot be built in
-the browser first, because a browser cannot open a database connection and must not hold a
-credential (ADR-014). The data-integration track therefore starts where the backend does.
+Rule 2 had one exception: connecting to a relational database cannot be built in the browser,
+because a browser cannot open a database connection and must not hold a credential (ADR-014).
+That capability belongs to the data-integration track, which is deferred (§11). No active task
+needs the backend before it is built.
 
 ```mermaid
 flowchart LR
-  P1["Phase 1<br/>Foundations and refactoring"] --> P2["Phase 2<br/>Advanced modelling"]
-  P2 --> MVP(["MVP: trust it with a real ontology"])
+  P1["Phase 1<br/>Foundations and refactoring<br/>done"] --> P2["Phase 2<br/>Advanced modelling"]
+  P2 --> MVP(["MVP: trust it with a real ontology<br/>reached 2026-10-16"])
+  MVP --> LM["LDM workstream, in the browser<br/>LM-1 to LM-4"]
+  LM --> LDM(["Ontology-driven logical modelling<br/>MS-13 to MS-15"])
   P1 --> P3["Phase 3<br/>Java semantic backend"]
   P2 --> P3
-  P3 --> P4["Phase 4<br/>Scalable RDF storage"]
+  P3 --> P4["Phase 4<br/>Scalable RDF storage<br/>and LM-5"]
+  LM --> P4
   P4 --> P5["Phase 5<br/>Professional platform"]
 ```
 
-Phase 3 depends on the interfaces of Phase 1, not on every feature of Phase 2: once the MVP
-tasks are done, backend work and the remaining Phase 2 tasks can be interleaved.
+Phase 3 depends on the interfaces of Phase 1, not on every feature of Phase 2: backend work and
+the remaining Phase 2 tasks can be interleaved. The LDM workstream depends on Phase 1's
+contracts and on task 2.3, all done; it needs nothing of Phase 3. LM-5 needs the contracts of
+LM-1 to LM-4 and the server projects of Phase 4.
 
 ### 1.1 Overview
 
@@ -51,93 +82,152 @@ magnitude for planning, not commitments.
 
 | Phase | Outcome in one sentence | Indicative effort | Priority served |
 | --- | --- | --- | --- |
-| 1 Foundations | The same application, with a safety net, stable identity, no data loss and no frozen page. | 2–3 months | P0 |
-| 2 Advanced modelling | An editor an ontology engineer can use for real work: expressions, a constraint model of SHACL shapes beside the ontology, versions, tabular import, 10,000 classes. | 6–8 months | P0, some P1 |
-| 3 Semantic backend | One Java application replaces the single-file service and answers the existing service interfaces, validation with Jena SHACL among them. Then: connect a database and explore its schema (DI-1). | 2.5–3.5 months, and 1–1.5 for DI-1 | P1 |
-| 4 Scalable storage | Ontologies live on a server in a triple store; the browser asks instead of loading. In parallel: the mapping workbench and standard mappings (DI-2, DI-3). | 3–5 months, and 3.5–5.5 for DI-2 and DI-3 | P1, P2 |
-| 5 Platform | Teams, review, publishing, assistance; virtual knowledge graphs and enterprise data integration (DI-4, DI-5). | Open-ended; DI-4 alone 2–3 months | P2, P3 |
+| 1 Foundations | The same application, with a safety net, stable identity, no data loss and no frozen page. **Done** (2026-10-15). | 2–3 months | P0 |
+| 2 Advanced modelling | An editor an ontology engineer can use for real work: expressions, a constraint model of SHACL shapes beside the ontology, versions, tabular import, 10,000 classes (**MVP reached** 2026-10-16; 2.6 to 2.12 remain). Beside it, the LDM workstream: logical models authored, derived from the ontology by reviewed transformation, and traced to it (LM-1 to LM-4). | 6–8 months, about 3 of them left (2.6 to 2.12); the LDM workstream 4–6 months | P0, P1 |
+| 3 Semantic backend | One Java application replaces the single-file service and answers the existing service interfaces, validation with Jena SHACL among them. Nothing of the LDM workstream waits for it. | 2.5–3.5 months | P1 |
+| 4 Scalable storage | Ontologies live on a server in a triple store; the browser asks instead of loading. Logical models and their semantic mappings live there too, with revisions of their own (LM-5). | 3–5 months, and 1–1.5 for LM-5 | P1 |
+| 5 Platform | Teams, review, publishing, assistance, the assistant extended to logical models. Data integration is not part of it: deferred (§11). | Open-ended | P2, P3 |
 
 ### 1.2 Milestones
 
-| Id | Milestone | Reached when | Phase |
-| --- | --- | --- | --- |
-| MS-1 | **Safety net** | One command and one pipeline run every check; baselines are recorded. | 1 |
-| MS-2 | **Nothing lost** | Every entity has a stable IRI; an ontology from the test corpus round-trips with no axiom lost. | 1 |
-| MS-3 | **Never frozen** | No edit, reasoning run or validation blocks the page for more than 100 ms. | 1 |
-| MS-4 | **MVP** | Class expressions are authored; versions and differences exist; a spreadsheet is imported with a mapping; the Graph view works with 10,000 classes loaded. | 2 |
-| MS-5 | **Companion** | The Spring Boot application replaces `pnpm reasoner`, offers ELK, exports every syntax, and answers the Structure and Entities interfaces. | 3 |
-| MS-6 | **Server-side ontology** | A 100,000-class ontology is opened, searched, explored and edited without being loaded into the browser; every change is a revision. | 4 |
-| MS-7 | **Team** | Two people with different roles work on one project with review. | 5 |
-| MS-8 | **Schema in view** | A PostgreSQL database is connected read-only through the companion and its schema is browsed and searched beside the ontology; no credential is anywhere but the backend. | 3 (DI-1) |
-| MS-9 | **Data-integration MVP** | Classes, properties and keys of one database are mapped in the three-area editor, previewed on real rows, checked in the Validation view and exported as R2RML. | 4 (DI-2) |
-| MS-10 | **Standard, durable mappings** | R2RML is imported without loss; mappings have their own revisions; a schema change lists the rules it breaks; a second dialect works. | 4 (DI-3) |
-| MS-11 | **Ask the data** | A SPARQL query in the ontology's terms is answered from the live database, with its SQL and timings shown. | 5 (DI-4) |
-| MS-12 | **Constraint model** | Shapes are edited in a view of their own, in shape sets beside the ontology; the W3C SHACL Core tests read and write back without loss and validate to their expected reports; a finding opens the property shape and constraint it failed; shapes are proposed from the ontology and accepted one by one. | 2 (SH-1 to SH-3) |
-
-Milestones MS-8 to MS-12 are numbered in the order they were added, not the order they are
-reached: MS-12 comes before MS-4, MS-8 follows MS-5, and MS-9 and MS-10 fall within Phase 4
-beside MS-6.
-
-### 1.3 The data-integration track
-
-The brief for this capability sets out five stages. They are kept as stages and placed where
-their prerequisites are met.
-
-| Stage | Contents | Needs | Placed in | Tasks |
+| Id | Milestone | Reached when | Phase | Status |
 | --- | --- | --- | --- | --- |
-| **DI-1** Database Schema Explorer | Secure connections; schema metadata; browsing tables and relationships. | The Java backend (3.2); a small metadata store. | End of Phase 3 | 3.8, 3.9 |
-| **DI-2** Manual semantic mapping | Class to table, property to column, key to object property, IRI templates, preview, validation. | DI-1; stable entity identity (1.4); the mapping core built for tabular import (2.4). | Phase 4, beside the storage work | 4.10, 4.11 |
-| **DI-3** Standards-based mapping | R2RML import and export; reusable patterns; schema change detection; mapping revisions; further dialects. | DI-2; the relational schema of 4.2. | Phase 4, after DI-2 | 4.12, 4.13 |
-| **DI-4** Virtual knowledge graph | Ontop; SPARQL to SQL; diagnostics; materialisation. | DI-3; the triple store (4.1) for materialisation. | Phase 5, before or after collaboration by demand | 5.10, 5.11 |
-| **DI-5** Enterprise data integration | Several sources; mapping governance; lineage; transformations; assisted mapping. | DI-4; accounts and review (5.1, 5.3). | Phase 5 | 5.12 |
+| MS-1 | **Safety net** | One command and one pipeline run every check; baselines are recorded. | 1 | Reached |
+| MS-2 | **Nothing lost** | Every entity has a stable IRI; an ontology from the test corpus round-trips with no axiom lost. | 1 | Reached |
+| MS-3 | **Never frozen** | No edit, reasoning run or validation blocks the page for more than 100 ms. | 1 | Reached |
+| MS-4 | **MVP** | Class expressions are authored; versions and differences exist; a spreadsheet is imported with a mapping; the Graph view works with 10,000 classes loaded. | 2 | Reached 2026-10-16 |
+| MS-5 | **Companion** | The Spring Boot application replaces `pnpm reasoner`, offers ELK, exports every syntax, and answers the Structure and Entities interfaces. | 3 | |
+| MS-6 | **Server-side ontology** | A 100,000-class ontology is opened, searched, explored and edited without being loaded into the browser; every change is a revision. | 4 | |
+| MS-7 | **Team** | Two people with different roles work on one project with review. | 5 | |
+| MS-8 | **Schema in view** | (Data integration, DI-1.) As specified in §11. | Was 3 | **Deferred** |
+| MS-9 | **Data-integration MVP** | (DI-2.) As specified in §11. | Was 4 | **Deferred** |
+| MS-10 | **Standard, durable mappings** | (DI-3.) As specified in §11. | Was 4 | **Deferred** |
+| MS-11 | **Ask the data** | (DI-4.) As specified in §11. | Was 5 | **Deferred** |
+| MS-12 | **Constraint model** | Shapes are edited in a view of their own, in shape sets beside the ontology; the W3C SHACL Core tests read and write back without loss and validate to their expected reports; a finding opens the property shape and constraint it failed; shapes are proposed from the ontology and accepted one by one. | 2 (SH-1 to SH-3) | Reached 2026-10-16 |
+| MS-13 | **Independent logical models** | Two LDMs in one project are authored by hand: entities, attributes with logical types and domains, relationships with cardinality and optionality, keys, a specialization and business rules; edited in the LDM workspace and on its ER diagram; validated; undone and redone; saved, versioned and compared element by element. No LDM edit changes the ontology's revision, and no ontology edit an LDM's. | 2 (LM-1, LM-2) | |
+| MS-14 | **Reviewed transformation** | An LDM is proposed from a chosen part of the ontology under a chosen configuration; every proposal names its source axioms, strategy and rationale; nothing is created until accepted; no mandatory attribute or end, no key and no rule comes from an axiom or a shape unless the user chose it; running it again proposes nothing over what the user edited. | 2 (LM-3) | |
+| MS-15 | **Traceable and impact-aware** | Every element made from the ontology names its sources and the ontology version it came from; after an ontology change, an impact report lists the affected elements of every LDM derived from it; synchronization proposals are reviewed, applied as LDM changes, and never overwrite an element the user edited. | 2 (LM-4) | |
+| MS-16 | **Server-side logical models** | LDMs and their semantic mappings live on the server with revisions of their own; a 2,000-entity LDM is opened, searched and edited without being loaded whole; the local services and the server pass the same contract fixtures. | 4 (LM-5) | |
+
+Milestones are numbered in the order they were added, not the order they are reached. MS-8 to
+MS-11 keep their numbers while deferred; none is reused. MS-13 to MS-15 fall within Phase 2's
+LDM workstream, after MS-4 and MS-12; MS-16 within Phase 4, beside MS-6.
+
+### 1.3 The logical data modelling track
+
+Added on 2026-10-17, as the active product track in place of data integration (§11). Its purpose
+is the product's objective: relational logical data models designed from the ontology, by
+decisions the user reviews, and kept traceable to it as both change.
+
+**Three artifacts, related by mappings.**
+
+| Artifact | Says | Written in | Owned by |
+| --- | --- | --- | --- |
+| **Ontology** | What the domain is: classes, properties, individuals, and what follows from them, under the open world and with no unique names. | OWL 2 | The modeller |
+| **Shape sets** | What RDF data an application accepts. Several per ontology. | SHACL 1.0 Core | The data steward, the application's owner |
+| **Logical data models** | How an application organises its data: entities, attributes with logical types, relationships with cardinality and optionality, identifiers, specializations, business rules, under the closed world of a data store. Several per ontology. | The LDM metamodel ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.3) | The data architect |
+
+None is generated from another by itself, and none is stored in another. **Semantic mappings**
+(LM-4) relate the ontology to each LDM, many to many: one class may become several entities, or
+several classes one entity; a property may become an attribute, a relationship or an associative
+entity; an entity may have no semantic source at all. A physical data model (tables, columns,
+SQL types, indexes, DDL) is none of the three, and is not on this roadmap.
+
+**Stages.**
+
+| Stage | Contents | Needs | Placed in | Size |
+| --- | --- | --- | --- | --- |
+| **LM-1** Logical data model metamodel | A typed metamodel of its own (entities, attributes, logical types and domains, relationships and their ends, cardinality and optionality, identifiers and candidate keys, generalization, business rules); LDM documents with their own identity, several per project; `LogicalModelQueryService` and `LogicalModelEditService`; logical change sets; persistence, undo and redo, versions and differences. | 1.6, 1.8, 1.10, 2.3 (all done) | Phase 2 workstream, first | L |
+| **LM-2** Logical data model editor | An LDM workspace of its own: entity, attribute, relationship, key, specialization and rule editing; an ER diagram; validation of the LDM; several LDMs in a project. | LM-1; the layouts, geometry and culling of 2.2 | After LM-1 | XL |
+| **LM-3** Ontology-to-LDM transformation | Proposals of LDM elements from a chosen scope of the ontology, under a configuration, each with its source axioms, strategy and rationale; reviewable and non-destructive; open-world axioms and shapes offered as candidate constraints only. | LM-1; 2.1 (structured class expressions); LM-2's workspace to review in | After LM-2's workspace; its diagram can follow | L |
+| **LM-4** Semantic traceability and change impact | The semantic mapping model (sources, targets, strategy, rationale, origin version, status, customisation); traceability both ways; stale detection; impact reports; reviewed synchronization proposals; several LDMs from one ontology. | LM-3; 2.3 | After LM-3 | L |
+| **LM-5** Server-side LDM services | The LM-1 to LM-4 interfaces answered by the Java application for server projects: LDM revisions, paged queries, transformation and impact as jobs. | LM-1 to LM-4's contracts; 4.2, 4.3 | Phase 4 | L |
 
 ```mermaid
 flowchart LR
-  T14["1.4 Stable identity"] --> DI2
-  T24["2.4 Mapping core<br/>(tabular import)"] --> DI2
-  T32["3.2 Spring Boot parity"] --> DI1["DI-1<br/>Schema Explorer"]
-  DI1 --> DI2["DI-2<br/>Manual mapping"]
-  T42["4.2 Relational schema"] --> DI3
-  DI2 --> DI3["DI-3<br/>R2RML, revisions, drift"]
-  T41["4.1 Triple store"] --> DI4
-  DI3 --> DI4["DI-4<br/>Virtual graph, materialisation"]
-  T51["5.1, 5.3 Accounts, review"] --> DI5
-  DI4 --> DI5["DI-5<br/>Enterprise integration"]
+  T16["1.6 Store slices"] --> LM1
+  T18["1.8 Change-set contract"] --> LM1
+  T110["1.10 Working copy"] --> LM1
+  T23["2.3 Versions"] --> LM1["LM-1<br/>Metamodel, services"]
+  T22["2.2 Layouts, culling"] --> LM2
+  LM1 --> LM2["LM-2<br/>LDM editor, ER diagram"]
+  T21["2.1 Structured expressions"] --> LM3
+  LM1 --> LM3["LM-3<br/>Transformation"]
+  LM2 --> LM3
+  SH1["SH-1 Shape sets"] -. "may inform" .-> LM3
+  LM3 --> LM4["LM-4<br/>Traceability, impact"]
+  T23 --> LM4
+  LM4 --> LM5["LM-5<br/>Server-side LDM"]
+  T43["4.2, 4.3 Server projects"] --> LM5
+  LM3 --> A57["5.7 Assistance<br/>LDM tools"]
 ```
 
-Three consequences of this placement:
+**Rules the track keeps.**
 
-- **The editor MVP (MS-4) is unchanged.** Data integration cannot be part of it, and should
-  not delay it: everything it needs first (identity, the mapping core, the backend) is on the
-  existing path anyway.
-- **One thing changes in Phase 2.** Task 2.4 builds the mapping core (IRI templates,
-  column-to-property rules, value conversion, preview with reasons) as modules that do not
-  assume a file, so that DI-2 uses them unchanged (ADR-019). This costs little then and saves a
-  second implementation later.
-- **DI-2 and DI-3 do not wait for the hard parts of Phase 4.** They need the backend and a
-  place to keep snapshots and mappings, not server-side ontologies. They can be developed
-  beside tasks 4.3 to 4.8, or ahead of them if data integration is the more urgent goal.
+- **Separate artifacts** (ADR-022). An LDM is never kept in OWL entity structures, written into
+  the ontology's RDF or exported with it; a class is never an entity because it is a class. The
+  metamodel has no OWL construct in it, and the ontology no LDM construct.
+- **Its own changes and revisions** (ADR-023). An LDM edit is a *logical change set* of typed
+  operations on LDM elements, never an axiom change set: the change-set contract of task 1.8
+  stays the ontology's. Each LDM has a revision of its own. An LDM edit does not move the
+  ontology's revision, so reasoning and validation results, shape proposals and assistant
+  proposals stay current across it (NFR-17).
+- **Proposals, never conversions** (ADR-024). The open world and the closed world differ. `Film
+  SubClassOf directedBy some Director` says every film has a director, known or not; it does not
+  say a film record must name one. A transformation proposes the structure (an entity for a
+  class, an attribute for a datatype property, a relationship for an object property) and offers
+  restrictions, domains, ranges, keys and shapes only as *candidate* constraints, never chosen
+  to begin with, each saying what the axiom means and what the constraint would require.
+- **Traced, not synchronized** (ADR-025). A mapping records where an element came from and from
+  which version of the ontology. An ontology change makes mappings stale and produces an impact
+  report and proposals; it never changes an LDM by itself, and never an element the user edited
+  without the user accepting it.
+- **Logical, not physical** (ADR-026). Logical data types are technology-neutral (text, integer,
+  decimal, date, …, and named domains). No database dialect, physical type, index, storage
+  parameter or DDL appears in the metamodel.
+- **Local first.** LM-1 to LM-4 run in the page, behind service interfaces whose questions and
+  answers are plain data, so that LM-5 is an implementation of them and not a redesign.
 
-Writing back to a database is not a stage of this track. It is a separate future capability
-that needs its own design for transactions, authorisation and integrity (ADR-018).
+**Reconciling what is done.** Nothing completed changes; each is used as it is.
+
+| Done | What the LDM track does with it |
+| --- | --- |
+| **1.8** The change-set contract | Stays the contract for ontology axioms. LDM edits get their own contract of the same shape (`LogicalChangeSet`: a base revision, typed changes, a summary; atomic; refusals typed), applied by `LogicalModelEditService`. The document's history already undoes any change to the model as a step; a step is made to say which artifacts it changed (TD-19), so that history and versions can tell an LDM change from an ontology change. |
+| **2.3** Versions and differences | A version already keeps the whole project document, so LDMs and their mappings are in every version from LM-1 on, with no change to what versions are. The difference gains LDM changes, element by element, beside the ontology's axioms and the shape sets' statements. Independent LDM revisions are the server's (LM-5); locally an LDM's revision is an id that moves when it changes. |
+| **2.4** Tabular import and the mapping core | Not used for transformation. The mapping core turns *rows* into entities and values (ADR-019); LM-3 turns *axioms* into logical *structure*. They share only small utilities: making a name from a label (`localName` in `src/model/iri.ts`) and checking a literal against a datatype (`src/model/literals.ts`). |
+| **SH-1 to SH-3** Shape sets | Stay a constraint model of their own. A shape set may be chosen as a further input to a transformation, where its constraints are offered as candidate constraints naming the shape (FR-M18-7), never imposed. SH-3's design is the pattern for LM-3 and LM-4: proposals with their meaning stated, none chosen by default, accepted one by one, origin kept as the axiom in functional syntax, stale when the axiom goes. |
+| **5.7** The assistant | Extended, not duplicated: LDM read tools, explanations of mappings and impact, transformation suggestions, and typed LDM changes proposed through the same tool-driven assistant, with its providers, key handling and review, and compiled to logical change sets (FR-M12-8 to FR-M12-11). |
+
+**Consequences of this placement.**
+
+- **The next scheduled task is unchanged: 2.6**, ELK in the companion. LM-1 follows it, and the
+  rest of the workstream proceeds beside 2.7 to 2.12, ordered by demand (§3).
+- **Phase 3 has no prerequisite of the LDM work**: database connection and schema discovery
+  (3.8, 3.9) are deferred with data integration.
+- **Phase 4 gains LM-5** and no longer carries the mapping workbench (4.10 to 4.13, deferred).
+- **Phase 5 no longer carries** virtual knowledge graphs, materialisation or enterprise data
+  integration (5.10 to 5.12, deferred); its assistance package gains LDM tools.
 
 ### 1.4 The SHACL track: a constraint model beside the ontology
 
 Added 2026-10-15, from a proposal to make SHACL an editor of its own, parallel to the OWL editor,
 rather than a few settings on each class. Its central idea is three models, related by mappings
-and not one-to-one:
+and not one-to-one. (Since 2026-10-17 the physical model belongs to the deferred data-integration
+track, §11; the logical data model of §1.3 is the third artifact the active roadmap builds.)
 
 | Model | Says | Written in | Owned by |
 | --- | --- | --- | --- |
 | **Conceptual** | What the domain is: classes, properties, what follows from what. | OWL (the ontology) | The modeller |
 | **Constraint** | What data an application accepts: which values must be there, of what kind, how many. Several per ontology, one for each application or source. | SHACL shape sets | The data steward, the application's owner |
-| **Physical** | How data is stored: tables, columns, types, keys. | A relational schema | The database's owner |
+| **Physical** (deferred, §11) | How data is stored: tables, columns, types, keys. | A relational schema | The database's owner |
 
 The planes of [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §12.1 kept the conceptual and
 the physical apart and joined them by a mapping; the constraint plane is added there. SHACL
-validates an RDF data graph, never a database directly: relational data is validated through a
-mapping that presents it as RDF (stage DI-2 on), so the workflow is ontology → shapes →
-mapping → validation of the mapped data.
+validates an RDF data graph, never a database directly: relational data would be validated
+through a mapping that presents it as RDF (stage DI-2 on, deferred), so the workflow was
+ontology → shapes → mapping → validation of the mapped data. Shape sets also relate to logical
+data models: they may inform a transformation's proposals, never become LDM requirements by
+themselves ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.1).
 
 **What the product already has, and what is new.** Most of the proposal overlaps what exists or
 is planned. The overlaps stay where they are; what is new is the track below.
@@ -147,7 +237,7 @@ is planned. The overlaps stay where they are; what is new is the track below.
 | Node and property shapes edited visually; Turtle import and export (P0) | **Existing** (FR-M4-2): a form for targets and 19 SHACL Core constraints (`Shapes.tsx`, `shapes.ts`); the shapes graph imported and exported as Turtle; any other Core construct kept as written and validated. Shapes are their own graph, never in the ontology's export. | Shapes as a view of their own, not a tab of *Validation*; **shape sets**, several constraint models per ontology; the constructs now kept as text made editable; a class's or property's editor listing the shapes about it. (SH-1) |
 | Validation with Jena SHACL, and where each error is (P0) | **Existing** in the browser (FR-M4-1, FR-M4-4): SHACL Core by `rdf-validate-shacl`, a cancellable job in a worker; a finding names its focus node, path, value and shape, and opens the shape. **Planned:** Jena SHACL as the server's validation module (SYSTEM_ARCHITECTURE §3.3, ADR-006), with no task yet. | A finding located to the property shape and the constraint it failed, and to where the data came from; data graphs kept with the project, not for one session; a validation run of a chosen shape set on a chosen data graph. (SH-2) Jena SHACL behind the same interface, given a task. (SH-4) |
 | Shapes generated from the OWL model, reviewed (P1) | **Principle only:** `shapes.ts` turns no restriction into a shape; for database constraints, ADR-017 makes proposals default to SHACL, reviewed (FR-M15-16, DI-3). | Shapes proposed from the ontology, each with what the axiom means and what the shape would check, accepted one by one, with its origin kept. (SH-3, ADR-020) |
-| Database mapping, then SHACL data checks (P1) | **Planned** as the data-integration track: mapping and preview at DI-2 (4.10, 4.11), validation of mapped data against shapes at DI-4 (5.11, FR-M4-11, P2). Needs the backend (ADR-014), so it cannot come before 2.3. | Priority raised: rows previewed through a mapping are validated against a chosen shape set at DI-2 (4.11); materialised data stays at DI-4. |
+| Database mapping, then SHACL data checks (P1) | **Deferred** with the data-integration track since 2026-10-17 (§11). Was **planned** as that track: mapping and preview at DI-2 (4.10, 4.11), validation of mapped data against shapes at DI-4 (5.11, FR-M4-11, P2). Needs the backend (ADR-014), so it cannot come before 2.3. | Priority raised: rows previewed through a mapping are validated against a chosen shape set at DI-2 (4.11); materialised data stays at DI-4. |
 | SHACL-SPARQL, further constraints, custom rules (P2) | **Planned:** SHACL-SPARQL with a server engine (FR-M4-9, P3); custom quality rules as SPARQL (FR-M4-7, task 2.12). | FR-M4-9 raised to P2 and given a task with the Jena validator. (SH-5) The further Core constraints are SH-1's. |
 | An OWL restriction is not a SHACL constraint; a domain or range is no data rule | **Existing** as a principle: `shapes.ts`; SYSTEM_ARCHITECTURE §12.7 for database constraints (ADR-017). | Stated for shapes drawn from the ontology (ADR-020). |
 | SHACL 1.0 Core first, 1.2 later | **Existing** in effect: the engine in use, and the one planned for the server, implement SHACL 1.0. | Made a decision (ADR-021). |
@@ -172,7 +262,7 @@ flowchart LR
   T32["3.2 Spring Boot parity"] --> SH4["SH-4<br/>Jena SHACL"]
   SH2 --> SH4
   SH4 --> SH5["SH-5<br/>SHACL-SPARQL"]
-  SH2 --> DI2["DI-2 (4.11)<br/>Previewed rows validated"]
+  SH1 -.->|may inform| LM3["LM-3 (§1.3)<br/>Transformation"]
 ```
 
 **Rules the track keeps.**
@@ -193,7 +283,14 @@ flowchart LR
 
 Consequences: task 2.3 and the MVP milestone (MS-4) move back by the size of SH-1 to SH-3,
 about two months; 2.3's versions and differences include the shape sets; DI-2 gains the
-validation of previewed rows; nothing else moves.
+validation of previewed rows (deferred with it since 2026-10-17); nothing else moves.
+
+### 1.5 Deferred: the data-integration track
+
+DI-1 to DI-5, with their tasks (3.8, 3.9, 4.10 to 4.13, 5.10 to 5.12), milestones (MS-8 to MS-11),
+requirements (M14 to M16 and the few elsewhere that serve them) and performance targets, are kept
+as they were specified, under the same identifiers, in §11. They are deferred by a product
+decision (ADR-027), not rejected; nothing active depends on them.
 
 ## 2. Phase 1 — Architecture assessment and refactoring
 
@@ -267,6 +364,9 @@ service interfaces.
   ontology (§1.4).
 - Add versions, tabular import and the missing export syntaxes.
 - Bring every remaining ontology operation behind a service interface.
+- From the MVP on, build the logical data modelling track in the page: LDMs as an artifact of
+  their own, derived from the ontology by reviewed transformation and traced to it (LM-1 to
+  LM-4, §1.3), beside the remaining tasks.
 
 ### Tasks, in sequence
 
@@ -281,7 +381,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | SH-2 | **Validation one can act on.** Data graphs kept with the project in IndexedDB, not for one session: several, each named and replaced on demand. A run validates a chosen shape set against a chosen data graph (or the model's own individuals). A finding opens the property shape at the constraint it failed (`sh:sourceConstraintComponent`), shows the value and the path, and for data read from a file the line its focus node is on. The W3C SHACL 1.0 Core test suite as a conformance suite, run in CI: each test's expected report. | FR-M4-1, FR-M4-14 | M |
 | SH-3 | **Shapes proposed from the ontology.** *Propose shapes* for a class, a set of classes or the ontology: from restrictions, domains and ranges, functional properties, datatypes, enumerations and keys. Each proposal says what the axiom means in OWL, what the shape would check, and where the two differ (ADR-020); none is selected to begin with. Accepted, edited or dismissed one by one or by kind, into a chosen shape set, as one change set; an accepted shape keeps its origin and is marked stale when that axiom changes or goes. | FR-M4-15, ADR-020 | M |
 | 2.3 | **Versions and differences, locally.** Named versions in IndexedDB; an axiom-level difference shown by entity, the shape sets' changes with it; restore as a new version. `ProjectService`. Done 2026-10-16. | TD-12, FR-M10-1 to FR-M10-3 | L |
-| 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2. Done 2026-10-16. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
+| 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2 (deferred, §11). Done 2026-10-16. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
 | 2.5 | **Export in every OWL syntax** through the conversion the service already performs in the other direction. `ImportExportService`. Done 2026-10-16. | TD-13, FR-M11-2 | S |
 | 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. | FR-M3-5 | M |
 | 2.7 | Annotation properties as entities; labels in several languages with a display language. | FR-M1-4, FR-M1-5 | M |
@@ -291,6 +391,18 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | 2.11 | Remaining interfaces: `GraphService` over `extractSubgraph`, `SparqlService` with a choice of asserted or inferred graph. Views moved off direct model reads as each is touched. | TD-05, FR-M9-4 | M |
 | 2.12 | Update mode for tabular import; several diagrams per ontology; custom quality rules as SPARQL. | FR-M7-6, FR-M5-7, FR-M4-7 | M each |
 
+### The logical data modelling workstream (LM-1 to LM-4)
+
+After the 2.5 baseline, in the page, beside 2.6 to 2.12 where dependencies permit (§1.3). The
+order within it is fixed; its place among 2.6 to 2.12 is by demand, with 2.6 first.
+
+| # | Task | Resolves | Size |
+| --- | --- | --- | --- |
+| LM-1 | **Logical data model metamodel.** A typed metamodel in a service area of its own (`src/logical/`): LDM documents with their own identity, several per project, each with entities, attributes, logical data types and named domains, relationships with two ends (role, minimum and maximum cardinality, optionality), identifying relationships, primary identifiers and candidate keys, generalizations (complete or not, exclusive or overlapping, with a discriminator), and business rules stated in words. `LogicalModelQueryService` (models, summary, entities, describe, relationships, search, paged) and `LogicalModelEditService` (`validate`, `apply` of a `LogicalChangeSet`), with local implementations, typed refusals, a boundary test and a JSON round-trip test of every question. Kept in the project document beside the ontology and the shape sets (model format 6; a format-5 model opens with none, from a frozen fixture), so in the working copy, My Models and versions; each LDM edit one undoable step that says it changed that LDM (TD-19); each LDM a revision of its own, which the ontology's revision does not follow, nor it the ontology's (TD-20, NFR-17). Differences between versions list LDM changes element by element. An LDM exported and imported as a documented JSON format. A small dialog to create, rename, duplicate, delete, import and export LDMs; the editor is LM-2. | FR-M17-1 to FR-M17-8, FR-M17-14 to FR-M17-16, NFR-17, NFR-20, TD-19, TD-20, ADR-022, ADR-023, ADR-026 | L |
+| LM-2 | **Logical data model editor.** An *LDM* view beside Graph, Entities, Structure and Shapes: the project's LDMs; an entity list with search; an entity editor (attributes, types and domains, optionality, keys, specialization, rules); a relationship editor (the two ends, cardinality, optionality, identifying; resolving a many-to-many into an associative entity); an ER diagram in one notation (Information Engineering), drawn with the existing layouts, line geometry and culling as a view of its own, not the ontology's canvas, its positions kept apart from the LDM's meaning; edits on the diagram the same operations as in the forms. LDM validation as a category of the Validation view, each finding opening its element. Every action by keyboard. | FR-M17-10 to FR-M17-12 | XL |
+| LM-3 | **Ontology-to-LDM transformation.** `TransformationService`: for a chosen scope of the ontology (all, a branch, chosen classes) and a configuration saved with the LDM (naming, the datatype table, the hierarchy and object-property strategies, definitions from annotations), proposals of LDM elements, new or into an existing LDM: entities from classes; attributes from datatype properties; relationships, or associative entities, from object properties; specializations from subclass hierarchies, or roll-up and roll-down; domains from enumerations; candidate keys from `owl:hasKey`. Restrictions, domains, ranges and cardinalities (and, once FR-M18-7 is built, a chosen shape set's constraints) are offered only as candidate constraints, never chosen to begin with. Each proposal shows its source axioms, the elements it would make or change, its strategy and rationale, and where OWL and the LDM differ; accepted, edited or dismissed one by one or by kind; applied as one logical change set with the semantic mappings it implies. Runs in a worker. Never changes the ontology; run again, it proposes nothing over what the user edited. | FR-M18-1 to FR-M18-6 (FR-M18-7 as capacity allows), NFR-18, ADR-024 | L |
+| LM-4 | **Semantic traceability and change impact.** `TraceabilityService` and the semantic mapping model in full: ontology sources (entity IRIs, and the axioms used in functional syntax, as SH-3 keeps a shape's origin), LDM targets (element ids), strategy, rationale, the ontology revision and version it was made from, status (current, stale, broken), whether its targets were customised since, and how it was made (transformation, by hand, synchronization, assistant). Traceability from an LDM element to its sources and from an ontology entity to every element made from it, in every LDM; coverage on both sides; mappings made and edited by hand; stale detection against the ontology as it is; an impact report for the ontology now against each mapping's origin, or between two versions; synchronization proposals from it, reviewed as transformation proposals are, never changing a customised element without acceptance, a dismissed one not offered again until its source changes again. | FR-M18-8 to FR-M18-14, ADR-025 | L |
+
 ### Dependencies
 
 2.1 needs 1.4 and 1.8. SH-1 needs 1.4 (shapes name entities by IRI), 1.8 (shape edits as
@@ -299,6 +411,15 @@ structured expressions). 2.3 comes after SH-3, so that versions cover shape sets
 2.3 needs 1.8 (a version is a sequence of change sets). 2.4 needs 1.4
 (IRIs from rows) and 1.8 (commit as a change set). 2.5 and 2.6 need only the present service.
 2.8 needs 1.5 and 2.1. 2.10 needs 2.3.
+
+The LDM workstream: LM-1 needs 1.6, 1.8, 1.10 and 2.3, all done. LM-2 needs LM-1, and reuses
+2.2's layouts and culling. LM-3 needs LM-1 and 2.1 (it reads structured class expressions), and
+LM-2's workspace to review its proposals in context (its diagram can come after). LM-4 needs
+LM-3, whose accepted proposals make the first mappings, and 2.3, for the versions an impact is
+reported between. The workstream needs nothing of 2.6 to 2.12, nor they of it; 2.8 (keys,
+disjoint unions and chains as typed axioms) widens what LM-3 can read, but LM-3 reads
+`owl:hasKey` and `owl:disjointUnionOf` from the ontology's statements whether or not 2.8 has
+typed them. 2.7 (labels in several languages) gives LM-3 the language to name elements in.
 
 ### Technical complexity
 
@@ -315,13 +436,20 @@ Moderate elsewhere. 2.2 is contained in the canvas component.
 | The shapes editor grows into a second product. | Scope by SHACL 1.0 Core and its W3C test suite: every test's shapes open in the form and write back unchanged. SHACL-SPARQL is the server's (SH-5); SHACL 1.2 waits for its Recommendation (ADR-021). |
 | Proposed shapes are taken for what the ontology means, and the difference is lost. | Nothing proposed is selected by default; each proposal states where OWL and SHACL differ; accepted shapes keep their origin and go stale with it (ADR-020). |
 | Local versions fill browser storage. | Compress; keep change sets between snapshots; show usage and offer export. |
+| The LDM becomes a copy of the ontology, or a second ontology editor (AR-17). | The metamodel has no OWL construct (ADR-022, ADR-026); transformation is many to many, every element editable, and elements with no semantic source are normal. |
+| Open-world axioms become closed-world constraints by default (AR-18). | Candidate constraints are never chosen to begin with; each says what the axiom means and what the constraint would require; NFR-18 is a test. |
+| LDM edits invalidate what was worked out for the ontology, or read a stale model (AR-20, TD-20). | Revisions per artifact from LM-1; a test that an LDM edit leaves reasoning results, shape proposals and assistant proposals current. |
+| The ER diagram grows into a diagramming product (AR-21). | One notation; the existing layouts; no free drawing; the forms are the model, the diagram a view of it. |
+| Synchronization overwrites what the user decided (AR-19). | Customisation is detected against what the mapping last produced; such elements are only ever proposed for, never changed. |
 
 ### Deliverables
 
 The MVP: lossless files, expression editing, versions, tabular import, all syntaxes, a graph
 view at scale, two server-grade reasoners in the companion. Before it, the constraint model:
 shape sets edited in a view of their own, validated with findings one can act on, and shapes
-proposed from the ontology.
+proposed from the ontology. After it, the LDM workstream: logical models authored in a
+workspace and on an ER diagram (MS-13), derived from the ontology by reviewed transformation
+(MS-14), and traced to it with impact reports and reviewed synchronization (MS-15).
 
 ### Acceptance criteria
 
@@ -342,6 +470,27 @@ proposed from the ontology.
   (FR-M7-3, FR-M7-4).
 - An ontology exported as RDF/XML opens in Protégé with the same axiom count (FR-M11-2).
 - Automatic reasoner choice uses ELK for an OWL 2 EL ontology and says so (FR-M3-5).
+
+For the LDM workstream:
+
+- LM-1: an LDM with every kind of element is created through the edit service and read back
+  through the query service element for element, and again after a JSON export and import, a
+  reload, a save and a restored version (NFR-20); every invalid change of a listed set is refused
+  with its code and changes nothing; an LDM edit leaves the ontology's revision and its reasoning
+  results as they were (NFR-17); a format-5 model opens unchanged with no LDM (NFR-9).
+- LM-2: in an LDM of 2,000 entities, search answers within 200 ms and the diagram pans at 30
+  frames per second with 300 entities in view (NFR-19); every editing action can be done with the
+  keyboard alone; validation of a fixture LDM finds exactly the problems seeded in it.
+- LM-3: for the example ontology, with every proposal accepted as it is offered, the LDM has an
+  entity per class in scope, an attribute per datatype property, a relationship per object
+  property, and no mandatory attribute or end, no key and no rule (NFR-18); with nothing
+  accepted, neither the LDM nor the ontology changes; for Pizza the proposals are worked out in
+  a worker without blocking the page; run again after the user renamed an entity and made an
+  attribute mandatory, it proposes no change to either.
+- LM-4: after a datatype property is removed from the ontology, the impact report of each of two
+  LDMs derived from it lists exactly the attributes mapped from it; their mappings are broken;
+  synchronization proposes removing them; a customised one is proposed, never changed, and
+  accepting a proposal is one undoable LDM change.
 
 ## 4. Phase 3 — Java semantic backend
 
@@ -366,15 +515,13 @@ proposed from the ontology.
 | 3.5 | **Change sets on the server.** Apply a change set to a held ontology atomically; return the new content hash. A conformance suite runs every fixture change set through the local and the server implementation and compares the results as axioms. | AR-01, ADR-004 | L |
 | 3.6 | **Difference and export.** A difference between two ontologies by OWL API structural comparison; export in every syntax. | FR-M6-6, FR-M11-2 | S |
 | 3.7 | **Packaging.** One runnable artefact; one command to start it; the frontend detects it. Release note: the companion now needs JDK 21. | ADR-011 | S |
-| 3.8 | **Data sources (DI-1).** Connection definitions from structured fields; secret handling (session and environment reference); connection test with a write-privilege warning; a pool per source; the read-only guard with time and row limits; the PostgreSQL adapter. The data-source tables of [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §10.2 in the companion's embedded database, brought forward from task 4.2. Security tests: the test password in no storage, response, export or log. | FR-M14-1 to FR-M14-3, FR-M14-9, ADR-014, ADR-015, AR-11, AR-16 | M |
-| 3.9 | **Schema discovery and the Schema Explorer (DI-1).** Discovery as a job into a snapshot with fingerprints; `SchemaService` with paged search; the explorer view (tree, search, table detail with keys and related tables); bounded row samples; refresh. | FR-M14-4 to FR-M14-8 | L |
 
 ### Dependencies
 
 Phase 1 (1.8, 1.9) for the contracts. 3.1 before all. SH-4 needs 3.2 and SH-2, SH-5 needs
 SH-4; neither depends on 3.3 to 3.6. 3.4 and 3.5 are independent of each
-other. 3.8 and 3.9 need only 3.2 and can follow it directly if data integration is the
-priority; they do not depend on 3.4 to 3.6.
+other. Nothing in this phase is a prerequisite of the LDM workstream (§1.3): database
+connection and schema discovery (3.8, 3.9, stage DI-1) are deferred with data integration (§11).
 
 ### Technical complexity
 
@@ -389,14 +536,11 @@ implementations of the editing rules agree (AR-01).
 | The two rule implementations diverge. | The conformance suite is a deliverable, not a later hardening task; a rule added on one side without the other fails the build. |
 | Start-up time and memory of the companion annoy single users. | Keep the Local profile fully functional without it; start the companion lazily. |
 | Holding uploaded ontologies in memory does not scale. | It is not meant to; it is the bridge to Phase 4, bounded by a small cache. |
-| The first feature with secrets is built without the discipline secrets need (AR-11). | The security tests are part of task 3.8's definition of done, and the connection form accepts no free-form connection string from its first version. |
-| Dialect differences are underestimated. | One dialect only (ADR-015); the adapter interface is extracted from the PostgreSQL case, not designed ahead of it. |
 
 ### Deliverables
 
 The companion application, replacing `reasoner/ReasonerService.java`; server implementations of
-four interfaces (reasoning, structure, entities, edit); the conformance suite. With DI-1: data
-sources and the Schema Explorer for PostgreSQL (MS-8).
+four interfaces (reasoning, structure, entities, edit); the conformance suite.
 
 ### Acceptance criteria
 
@@ -406,10 +550,6 @@ sources and the Schema Explorer for PostgreSQL (MS-8).
 - An OWL 2 EL ontology of 100,000 classes is classified by ELK; the time is recorded as the
   baseline for Phase 4.
 - The conformance suite passes for every change-set fixture.
-- DI-1: a PostgreSQL database is connected with a read-only account; its schemas are discovered
-  as a job and browsed; a search over a 200,000-column snapshot answers within 200 ms; an
-  attempted write through any path fails; the test password is found nowhere outside the
-  backend's memory (NFR-12, NFR-13).
 
 ## 5. Phase 4 — Scalable RDF storage
 
@@ -419,29 +559,28 @@ sources and the Schema Explorer for PostgreSQL (MS-8).
 - Queries, search and exploration are answered by the server, a page at a time.
 - Every change is a revision; history, releases and differences are server-backed.
 - Large imports run as jobs.
+- Logical data models and their semantic mappings persist on the server too, each LDM with a line
+  of revisions of its own (LM-5).
 
 ### Tasks, in sequence
 
 | # | Task | Resolves | Size |
 | --- | --- | --- | --- |
 | 4.1 | **Triple store.** TDB2 embedded; the named-graph layout and the `meta` graph of [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §4. | ADR-006 | M |
-| 4.2 | **Relational schema.** Projects, revisions, change entries, jobs, mappings, diagrams, with migrations; an embedded database for the companion. | ADR-007 | M |
-| 4.3 | **Server projects.** Create from an upload; apply change sets with the two-store sequence of §7.2; recovery tested by killing the process between steps. | ADR-009, FR-M10-5 | L |
+| 4.2 | **Relational schema.** Projects, revisions, change entries, jobs, mappings, diagrams, with migrations; an embedded database for the companion. The tables of logical models, their revisions and change entries, and their semantic mappings ([DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.7) are created here and filled by LM-5. | ADR-007 | M |
+| 4.3 | **Server projects.** Create from an upload; apply change sets with the two-store sequence of [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §7.2; recovery tested by killing the process between steps. | ADR-009, FR-M10-5 | L |
 | 4.4 | **Server-side questions.** `EntityQueryService`, `StructureService`, `GraphService` and `SparqlService` over TDB2 and a text index, replacing the in-memory sessions of 3.4. | FR-M5-10, FR-M9-4 | L |
 | 4.5 | **The frontend's server mode.** A project that is opened without being loaded: views ask; the graph shows a neighbourhood; answers are cached in IndexedDB by revision. | TD-05 (completion), NFR-5 | L |
 | 4.6 | **History and releases.** Revision list, entity history, tagged releases with version IRI and snapshot; the Phase 2 difference view on server data. | FR-M10-4 to FR-M10-6 | M |
 | 4.7 | **Import jobs.** Tabular and RDF imports beyond browser size, with progress and a report. | FR-M7-7 | M |
 | 4.8 | **Offline drafts.** *Work offline*, *push* and *pull* with refusal on a stale base and a visible replay. | AR-04 | L |
 | 4.9 | **Operations.** Backup and restore of both stores together; health endpoints; a container image; an operations page in the documentation. | — | S |
-| 4.10 | **Mapping model and workbench (DI-2).** The mapping model over the shared core; `MappingService`; the three-area editor with coverage on both sides and a non-drag way for every action; class, data-property and object-property rules; IRI templates; conditions. Mappings saved with the project. | FR-M15-1 to FR-M15-5, FR-M15-8, FR-M15-11 | XL |
-| 4.11 | **Preview and mapping checks (DI-2).** The preview evaluator on bounded rows, with reasons; the previewed rows validated against a chosen shape set, with no new engine (§1.4); the static mapping checks as a category of the Validation view, stale on a change of mapping, ontology or schema; R2RML export. | FR-M15-7, FR-M15-9, FR-M4-10, the preview half of FR-M4-11, the export half of FR-M15-10, AR-12 | L |
-| 4.12 | **Standard and durable mappings (DI-3).** R2RML import with lossless round trip; mapping revisions and their difference; schema change detection against fingerprints; reusable patterns; a SQL query as a logical table, guarded; lexical suggestions; constraint-derived proposals; an offered draft mapping. | FR-M15-6, FR-M15-10, FR-M15-12 to FR-M15-17, ADR-013, ADR-017, AR-14 | L |
-| 4.13 | **Further dialects and the table diagram (DI-3).** SQL Server and MySQL adapters, each with its own integration tests; relationships between tables as a diagram on the existing layouts. | FR-M14-10, FR-M14-11 | M each |
+| LM-5 | **Server-side LDM services.** `LogicalModelQueryService`, `LogicalModelEditService`, `TransformationService` and `TraceabilityService` answered by the Java application for server projects, with the requests, answers and refusals of the local implementations and the contract fixtures of LM-1 to LM-4: LDM documents, logical change entries and semantic mappings in the relational store; each LDM a line of revisions beside the ontology's, refused as stale on a moved base; paged queries over large LDMs; transformation and impact reports as jobs over the server's ontology; an index from ontology IRIs to the mappings that use them, for impact across every LDM of a project. The local implementations stay for the Local profile; a local project published to a server keeps its LDMs. | FR-M17-17, NFR-19 (server), ADR-022, ADR-023 | L |
 
 ### Dependencies
 
-Phase 3 (3.3, 3.5). 4.1 and 4.2 before 4.3; 4.3 before the rest. The data-integration tasks
-4.10 to 4.13 need 3.8, 3.9 and, for mapping revisions, 4.2; they do not need 4.3 to 4.8. 4.5 needs every view to be
+Phase 3 (3.3, 3.5). 4.1 and 4.2 before 4.3; 4.3 before the rest. LM-5 needs 4.2 and 4.3 and the
+contracts of LM-1 to LM-4; it does not need 4.4 to 4.8. 4.5 needs every view to be
 behind an interface: any view still reading the model directly (TD-05) is finished here.
 
 ### Technical complexity
@@ -457,14 +596,13 @@ the two hardest tasks of the whole roadmap.
 | Reading and writing OWL through the OWL API over a triple store is slow for large ontologies. | Apply changes as triple deltas computed from the change set; load the whole ontology into the OWL API only for reasoning and export. Measure at 100,000 classes before building further. |
 | Version snapshots multiply storage. | Snapshots for releases only (AR-06). |
 | An embedded store makes the server a single point of failure. | Accepted for this scale; backup and restore are part of the phase. |
-| The mapping editor becomes a diagramming exercise that hides what a rule means. | Every rule is read back in words and previewed on rows; the list of rules, not the lines, is the model (PRD, M15, *Interaction design*). |
-| Phase 4 now carries two large efforts. | They are independent tracks with their own milestones (MS-6; MS-9, MS-10). Do one at a time, in the order the first users need. |
+| LM-5 and the storage work compete for the same months. | LM-5 is small once LM-1 to LM-4 have contract fixtures; it can follow 4.3 directly, or wait for 4.8 if storage is the priority. |
 
 ### Deliverables
 
 Server projects with persistent storage and history; the Server profile as a container image;
-the frontend's server mode. With DI-2 and DI-3: the Semantic Mapping Workbench, mapping checks,
-R2RML import and export, mapping revisions, schema change detection, three dialects.
+the frontend's server mode. With LM-5: logical models and their semantic mappings on the server,
+with revisions of their own (MS-16).
 
 ### Acceptance criteria
 
@@ -477,13 +615,10 @@ R2RML import and export, mapping revisions, schema change detection, three diale
   succeeds after a pull.
 - A release can be exported and compared with another release.
 - Backup and restore reproduce a project with its history.
-- DI-2: for a reference database, `Film` and `Documentary` are mapped to one table by a
-  condition, a data property to a column and an object property to a foreign key, entirely by
-  keyboard; the preview equals the output of an independent R2RML processor on the exported
-  mapping for the same rows; the ontology revision is unchanged throughout (NFR-14).
-- DI-3: the W3C R2RML test-case mappings import and export as equivalent graphs (NFR-16);
-  dropping a mapped column and refreshing lists exactly the rule that used it; the reference
-  mapping works unchanged in meaning on SQL Server and MySQL.
+- LM-5: the contract fixtures of LM-1 to LM-4 pass against the local and the server
+  implementation alike; an LDM of 2,000 entities in a server project is opened, searched and
+  edited without being loaded whole; two clients editing one LDM from the same revision: one
+  succeeds, the other is refused as stale; an ontology commit does not move an LDM's revision.
 
 ## 6. Phase 5 — Professional semantic modelling platform
 
@@ -504,19 +639,15 @@ Not sequenced strictly; ordered by what users of a team product ask for first.
 | 5.4 | **Audit and notifications.** | FR-M13-6, FR-M13-7 | M |
 | 5.5 | **Publishing.** Generated documentation; release pages; stable IRIs with content negotiation. | FR-M11-5, FR-M11-6 | L |
 | 5.6 | **Alignment at depth.** SSSOM; catalogue search; module extraction. | FR-M8-6 to FR-M8-8 | M |
-| 5.7 | **Assistance.** An embedding matcher behind `MATCHERS`; drafting of definitions; question to query. Each a proposal, each behind an explicit provider setting. Begun 2026-10-16, ahead of its phase: the assistant (bring your own key; read-only tools; typed proposals compiled to change sets, reviewed and accepted; README, *The assistant*). Left: the matcher, drafting and SPARQL, and the server side (the key kept per user, encrypted). | M12, ADR-010, AR-10 | L |
+| 5.7 | **Assistance.** An embedding matcher behind `MATCHERS`; drafting of definitions; question to query. Each a proposal, each behind an explicit provider setting. Begun 2026-10-16, ahead of its phase: the assistant (bring your own key; read-only tools; typed proposals compiled to change sets, reviewed and accepted; README, *The assistant*). **For logical models**, once LM-1 and LM-3 exist: LDM read tools (a project's LDMs, an LDM's summary, an element's details, its mappings, an impact report), explanations of a mapping or an impact in words, transformation suggestions as transformation proposals, and typed LDM changes proposed through the same tool, compiled to logical change sets and reviewed and accepted as ontology proposals are. The same assistant, providers, key handling and review: no second architecture. Left: the matcher, drafting and SPARQL, the LDM tools, and the server side (the key kept per user, encrypted). | M12 (FR-M12-8 to FR-M12-11 for LDMs), ADR-010, AR-10, AR-18 | L, and M for the LDM tools |
 | 5.8 | **Integration.** A documented public API; webhooks on revisions and releases; export of releases to a Git repository; a read-only SPARQL endpoint. | FR-M9-7 | M |
 | 5.9 | **Editing together in real time.** | FR-M13-8 | XL |
-| 5.10 | **Virtual knowledge graph (DI-4).** A spike on Ontop against the three dialects and the SPARQL features that matter; the virtual graph module managing one engine process per deployed mapping revision; SPARQL through the API with limits; the source and reasoning shown with every answer; the SQL trace; refusal of unsupported features by name. | FR-M16-2 to FR-M16-7, ADR-016, AR-13 | L |
-| 5.11 | **Materialisation and data validation (DI-4).** Materialise a mapping set into a data graph as a sized, confirmed job with provenance; validate materialised data against a shape set (previewed rows are validated from DI-2, task 4.11); a cross-check suite comparing preview and engine. | FR-M16-1, the materialisation half of FR-M4-11, AR-12 | M |
-| 5.12 | **Enterprise data integration (DI-5).** Several data sources per project; permissions on a data source; mapping changes through review; lineage in both directions and in governance metadata; stored encrypted secrets and key rotation; value transformations; assisted mapping suggestions. | FR-M14-12, FR-M13-9, FR-M13-10, FR-M15-18, FR-M12-7 | L, then open-ended |
 
 ### Dependencies
 
 Phase 4 throughout. 5.3 needs 5.1. 5.5 needs releases (4.6). 5.9 last, and only if asked for:
-review-based collaboration (5.3) covers most governance needs without it. 5.10 and 5.11 need
-4.12 and the triple store, not accounts: they can come first in this phase. 5.12 needs 5.1 and
-5.3.
+review-based collaboration (5.3) covers most governance needs without it. The LDM part of 5.7 needs LM-1
+and LM-3; like the assistant itself, it can be built in the page ahead of this phase.
 
 ### Technical complexity
 
@@ -530,8 +661,7 @@ axiom-level data and should not be started without a specific demand.
 | Security work is underestimated (AR-07). | Do [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §9 before the first shared deployment, not after. |
 | Assistance produces plausible, wrong axioms (AR-10). | Proposals only; validated by the rule service; reasoner check before acceptance. |
 | Scope becomes "everything PoolParty does". | Text mining and enterprise search are out of scope by decision (PRD §2.7). |
-| The OBDA engine does not support a needed database or query feature (AR-13). | Task 5.10 begins with a spike whose result decides; nothing before DI-4 depends on the engine. |
-| Users take live answers for entailments (AR-15). | Every answer names its source and the reasoning applied; unsupported features are refused, not approximated. |
+| The assistant proposes LDM constraints from open-world axioms (AR-18). | Its LDM proposals follow LM-3's rules: candidate constraints never chosen to begin with, the difference stated, applied only on acceptance. |
 
 ### Deliverables and acceptance
 
@@ -551,12 +681,14 @@ Local profile still works with no server and no account.
 | **P2** | FR-M4-6 to FR-M4-8, FR-M5-9, FR-M9-5, FR-M9-6, FR-M1-6, FR-M2-6, FR-M3-7 | 2–4, as capacity allows |
 | **P2** | FR-M7-7, FR-M8-6, FR-M11-5, FR-M11-6, FR-M12-1, FR-M12-2, FR-M12-6, FR-M13-3 to FR-M13-6 | 4–5 |
 | **P3** | FR-M2-8, FR-M7-8, FR-M8-7 to FR-M8-9, FR-M9-7, FR-M10-7, FR-M11-7, FR-M12-3 to FR-M12-5, FR-M13-7, FR-M13-8 | 5 and later |
-| **P1** | FR-M14-1 to FR-M14-9 | 3, stage DI-1 |
-| **P1** | FR-M15-1 to FR-M15-5, FR-M15-7 to FR-M15-9, FR-M15-11, FR-M4-10, FR-M4-11 (previewed rows) | 4, stage DI-2 |
-| **P2** | FR-M15-6, FR-M15-10, FR-M15-12 to FR-M15-17, FR-M14-10, FR-M14-11 | 4, stage DI-3 |
-| **P2** | FR-M16-1 to FR-M16-7, FR-M4-11 (materialised data) | 5, stage DI-4 |
-| **P2** | FR-M14-12, FR-M13-9, FR-M13-10 | 5, stage DI-5 |
-| **P3** | FR-M14-13, FR-M15-18, FR-M16-8, FR-M16-9, FR-M12-7 | later |
+| **P1** | FR-M17-1 to FR-M17-8, FR-M17-10 to FR-M17-12, FR-M17-14 to FR-M17-16 | 2, stages LM-1 and LM-2 |
+| **P1** | FR-M18-1 to FR-M18-6 | 2, stage LM-3 |
+| **P1** | FR-M18-8 to FR-M18-14 | 2, stage LM-4 |
+| **P2** | FR-M17-9, FR-M17-13, FR-M18-7 | 2, with LM-2 and LM-3, as capacity allows |
+| **P1** | FR-M17-17 | 4, stage LM-5 |
+| **P2** | FR-M12-8 to FR-M12-11 | 5.7, after LM-3; can come earlier, in the page |
+| **P3** | FR-M18-15 | later |
+| **Deferred** | FR-M14-1 to FR-M14-13, FR-M15-1 to FR-M15-18, FR-M16-1 to FR-M16-9, FR-M4-10, FR-M4-11, FR-M12-7, FR-M13-9, FR-M13-10; NFR-12 to NFR-16 | not scheduled (§11) |
 
 ## 8. Performance targets by phase
 
@@ -572,18 +704,17 @@ Measured by the benchmarks of task 1.2; the first column is today's measurement 
 | Complete DL reasoning | 60 s limit, blocking request | job in the page's terms | ELK or HermiT, chosen | job on the server, result stored per revision |
 | Lossless round trip of the corpus | no: losses counted and reported | yes: kept as unmapped | yes: increasingly typed | yes |
 
-For the data-integration track, measured against a reference PostgreSQL database seeded for the
-purpose:
+For the logical data modelling track, on the reference machine of [BASELINES.md](BASELINES.md),
+with generated LDMs and the generated ontologies of task 1.2:
 
 | Measure | Target | Stage |
 | --- | --- | --- |
-| Discovery of a schema of 1,000 tables | A job that completes in under a minute and can be cancelled; the page is never blocked | DI-1 |
-| Browsing and search over a snapshot of 200,000 columns | Under 200 ms a page | DI-1 |
-| Preview of one rule on fifty rows | Under one second on an indexed source | DI-2 |
-| Static mapping checks on 500 rules | Under 200 ms, in the page | DI-2 |
-| Longest statement the product may run against a source | The source's time limit, never exceeded | DI-1 onwards |
-| Rows held in the browser | At most one page; none in storage | DI-1 onwards |
-| A virtual query touching indexed keys | Dominated by the database; the overhead of rewriting is reported with each answer | DI-4 |
+| Longest main-thread task on an LDM edit, LDM of 2,000 entities and 30,000 attributes | Under 100 ms | LM-1 |
+| Search over the elements of that LDM | Under 200 ms | LM-2 |
+| ER diagram of that LDM, 300 entities in view | Pans and zooms at 30 frames per second | LM-2 |
+| Transformation proposals for a 10,000-class ontology | In a worker, cancellable; under 30 seconds; the page never blocked | LM-3 |
+| Impact report, 10,000-class ontology, three LDMs of 2,000 entities | In a worker; under 5 seconds | LM-4 |
+| A page of an LDM's elements from the server, LDM of 2,000 entities | Under 200 ms | LM-5 |
 
 ## 9. What this roadmap deliberately does not do
 
@@ -596,16 +727,19 @@ purpose:
 - **Add AI features before versions exist.** An accepted suggestion with no history cannot be
   audited or undone later.
 - **Build real-time co-editing before review-based collaboration has been tried.**
-- **Turn database constraints into OWL axioms automatically, or a table into a class by
-  default.** See ADR-017.
 - **Turn an OWL restriction, domain or range into a SHACL constraint, or a shape into an
   axiom, without the user's review.** See ADR-020.
 - **Build on SHACL 1.2 before it is a W3C Recommendation.** See ADR-021.
-- **Write a SPARQL-to-SQL engine.** An existing one is adopted at stage DI-4 (ADR-016).
-- **Write to an external database.** See ADR-018.
-- **Support three database dialects in the first release.** See ADR-015.
-- **Let data integration displace the editor MVP.** It starts where the backend does, and
-  everything it needs before that is already on the path.
+- **Model physical data.** No physical data model, database-specific type, index, storage
+  parameter, SQL DDL, schema generation or deployment. The LDM is logical (ADR-026).
+- **Turn an OWL axiom, domain, range, restriction or SHACL shape into a mandatory LDM
+  constraint without the user's choice.** See ADR-024.
+- **Overwrite an LDM element the user edited because the ontology changed.** See ADR-025.
+- **Keep LDM concepts in OWL entity structures, or write an LDM into the ontology's RDF.** See
+  ADR-022.
+- **Build a second AI assistant for logical models.** The assistant of 5.7 gains LDM tools.
+- **Resume data integration without a decision to.** It is deferred (§11, ADR-027); what it
+  would keep when resumed is listed there.
 
 ## 10. The next concrete development task
 
@@ -613,9 +747,102 @@ Phase 1 is done, and 2.1 and 2.2 with it (see [BASELINES.md](BASELINES.md) and
 [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for what each measured and left).
 
 **2026-10-16: SH-1, SH-2 and SH-3 are done, and milestone MS-12 with them; then 2.3 and 2.4,
-and with them milestone MS-4, the MVP; then 2.5** (each with its status below). The next task is
-2.6, ELK in the companion; this section gives its scope when it starts. What follows is SH-1 as
-it was set out, and the status of each stage and task.
+and with them milestone MS-4, the MVP; then 2.5** (each with its status below). The assistant
+(5.7) was begun ahead of its phase the same day.
+
+**2026-10-17: the roadmap realigned** with ontology-driven logical data modelling (§1.3); data
+integration deferred (§11). Nothing completed changed.
+
+**The next scheduled task is still 2.6, ELK in the companion.** The first task of the logical
+data modelling track, **LM-1**, follows it; both are set out below. Whether LM-1 should go first
+is a question for the product owner ([PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) §7): 2.6
+is an M, LM-1 needs nothing of it, and the order costs little either way. After them come SH-1 as
+it was set out, and the status of each stage and task done.
+
+**Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
+
+*Scope.* The OWL service offers ELK beside HermiT (both are in `robot.jar` already); `/reason`
+takes an engine, or `auto`; `auto` checks the ontology's OWL 2 profile with the OWL API and uses
+ELK for OWL 2 EL, HermiT otherwise; the report names the engine, why it was chosen and, for ELK,
+that it covers OWL 2 EL only (status *partial* where the ontology goes beyond it, never
+*complete*). The Validation view's engine choice gains *automatic*. *Out of scope:* the reasoning
+jobs and caching of 3.3, the Spring Boot service of 3.2.
+
+*Acceptance.* An OWL 2 EL ontology, generated for the test as the benchmarks' ontologies are, is
+classified by ELK under *automatic*, and the report says ELK and why; Pizza goes to HermiT; an
+ontology outside EL asked of ELK directly is reported *partial*, with what it left out; the
+existing DL tests (`dlReasoning.test.ts`, `e2e/dl-reasoning.mjs`) pass unchanged.
+
+**Task LM-1: the logical data model metamodel** (FR-M17-1 to FR-M17-8, FR-M17-14 to FR-M17-16,
+NFR-17, NFR-20, TD-19, TD-20; ADR-022, ADR-023, ADR-026). The metamodel and its contracts are in
+[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.3 and §13.4, its storage in
+[DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.
+
+*Scope.*
+
+1. **The metamodel**, in `src/logical/contracts.ts`: logical models, entities, attributes,
+   logical data types and named domains, relationships and their two ends (role, minimum,
+   maximum), identifying relationships, keys (one primary, any number of candidate, of attributes
+   and of identifying relationship ends), generalizations (complete or not, exclusive or
+   overlapping, an optional discriminator), business rules in words. Every element has an id
+   unique and stable within its LDM; an LDM's id is unique in its project and never reused.
+   Names are not identity.
+2. **Kept in the project**, beside the ontology and the shape sets: `Model.logicalModels`, model
+   format 6. A model of format 5 opens with none and is otherwise unchanged; a fixture written by
+   the format-5 code (`src/model/fixtures/v5`) is frozen before the change, as for every format.
+3. **Revisions per artifact.** Each LDM has a revision id that moves when it changes, and only
+   then. The ontology's revision is made to follow only the ontology's parts (TD-20: today
+   `sameMeaning` in `src/model/stable.ts` lists the fields by hand), so that an LDM edit leaves
+   reasoning and validation results, shape proposals and assistant proposals current; nothing of
+   an LDM is read through `stable()`.
+4. **`LogicalModelEditService`**: `validate` and `apply` of a `LogicalChangeSet` (the LDM, its
+   base revision, typed add, remove and update operations, a summary); atomic; refused with
+   typed codes (`invalid`, `refused`, `stale-revision`, `not-found`) for a name not unique in its
+   scope, a reference that does not resolve, a key member that is not there, a generalization
+   cycle, a second primary identifier, a moved base revision.
+5. **`LogicalModelQueryService`**: models, summary, entities (searched, paged), describe an
+   element, the relationships of an entity, keys and generalizations; questions by element id of
+   a named LDM revision; the conventions of SYSTEM_ARCHITECTURE.md §4.2.
+6. **History.** Each LDM edit is one step of the document's history, undone and redone, kept in
+   the working copy; a step records which artifacts it changed (TD-19).
+7. **Versions.** Versions hold the LDMs as they hold the shape sets; the difference gains a list
+   of LDM changes, element by element, field by field, beside the ontology's.
+8. **Exchange.** One LDM exported to and imported from a documented JSON format
+   (`conceptweaver-ldm`, versioned); a project's own file carries its LDMs.
+9. **A minimal surface**: *File → Logical models…* to create, rename, duplicate, delete, import and
+   export LDMs and to see each one's counts. The workspace and the diagram are LM-2.
+
+*Out of scope.* The editor and the diagram (LM-2), transformation (LM-3), semantic mappings
+beyond the empty list each LDM has (LM-4), the server (LM-5), formal rule expressions
+(FR-M17-9), and anything physical.
+
+*Acceptance.*
+
+- A fixture LDM with every kind of element (entities; an attribute of each logical type; a
+  domain with enumerated values; a one-to-many, a many-to-many and an identifying relationship;
+  a primary and a candidate key, one with a relationship end; a complete, exclusive
+  specialization with a discriminator; two business rules) is created through
+  `LogicalModelEditService` and read back through `LogicalModelQueryService` element for element;
+  and again after a JSON export and import, a reload, a save to My Models and a restored version
+  (NFR-20).
+- Each invalid change of the set listed in scope item 4 is refused with its code, and nothing
+  changes.
+- Each operation is one step: undo gives back the LDM exactly, redo the change.
+- An LDM edit leaves the ontology's revision unchanged, with its reasoning and validation results
+  current and a pending assistant proposal still acceptable; an ontology edit leaves every LDM's
+  revision unchanged; an edit of one LDM leaves the other's unchanged (NFR-17).
+- The format-5 fixture opens with the same ontology, shape sets, data graphs and drawing and no
+  LDM; saved, it is format 6 and opens the same again (NFR-9).
+- Between two versions that differ by an attribute's type, a relationship end's maximum and a
+  removed candidate key, the difference lists exactly those three LDM changes and no ontology
+  change.
+- Both services pass a boundary test (no imports of views or the store) and a JSON round trip of
+  every question, answer and refusal, as `src/structure/http.test.ts` does, so that LM-5 can
+  answer them over HTTP.
+- An LDM of 2,000 entities and 30,000 attributes is edited with no main-thread task over 100 ms
+  (NFR-19).
+
+*Then.* LM-2, the editor and its ER diagram, and with it milestone MS-13.
 
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.
@@ -749,5 +976,161 @@ as written (PROV-O and FOAF keep one more statement each). `e2e/open-owl.mjs` ex
 from the menu and opens two of them again. What it left: a Protégé check by hand, and imports
 still not followed.
 
-**The data-integration track does not change this.** Its first task is 3.8, after the backend
-exists; from SH-2 it can validate what a mapping previews against a chosen shape set (4.11).
+**The deferred data-integration track does not change this.** Were it resumed, its first task
+would be 3.8, after the backend exists (§11).
+
+## 11. Deferred capabilities
+
+### 11.1 The data-integration track (DI-1 to DI-5)
+
+**Deferred on 2026-10-17** by a product decision (ADR-027): the product's objective is designing
+logical data models from the ontology (§1.3), not reading, mapping or querying existing
+databases. What follows is the track as it was specified on 2026-10-13, under the same
+identifiers, so that it can be resumed without being designed again. None of it is scheduled;
+no active task depends on it; none of its identifiers is reused.
+
+Two things it asked of earlier phases were built and stay: the mapping core of task 2.4, which
+serves tabular import and could serve a database mapping unchanged (ADR-019), and the constraint
+model of SH-1 to SH-3. Its decisions (ADR-013 to ADR-018), requirements (M14 to M16, FR-M4-10,
+FR-M4-11, FR-M12-7, FR-M13-9, FR-M13-10, NFR-12 to NFR-16), journeys (J10 to J12) and risks (AR-11 to
+AR-16) are kept in their documents, marked deferred. How a resumed track would relate to logical
+data models (a database schema is physical, an LDM logical) is not designed here.
+
+**The track as it was placed** (formerly §1.3):
+
+The brief for this capability sets out five stages. They are kept as stages and placed where
+their prerequisites are met.
+
+| Stage | Contents | Needs | Placed in | Tasks |
+| --- | --- | --- | --- | --- |
+| **DI-1** Database Schema Explorer | Secure connections; schema metadata; browsing tables and relationships. | The Java backend (3.2); a small metadata store. | End of Phase 3 | 3.8, 3.9 |
+| **DI-2** Manual semantic mapping | Class to table, property to column, key to object property, IRI templates, preview, validation. | DI-1; stable entity identity (1.4); the mapping core built for tabular import (2.4). | Phase 4, beside the storage work | 4.10, 4.11 |
+| **DI-3** Standards-based mapping | R2RML import and export; reusable patterns; schema change detection; mapping revisions; further dialects. | DI-2; the relational schema of 4.2. | Phase 4, after DI-2 | 4.12, 4.13 |
+| **DI-4** Virtual knowledge graph | Ontop; SPARQL to SQL; diagnostics; materialisation. | DI-3; the triple store (4.1) for materialisation. | Phase 5, before or after collaboration by demand | 5.10, 5.11 |
+| **DI-5** Enterprise data integration | Several sources; mapping governance; lineage; transformations; assisted mapping. | DI-4; accounts and review (5.1, 5.3). | Phase 5 | 5.12 |
+
+```mermaid
+flowchart LR
+  T14["1.4 Stable identity"] --> DI2
+  T24["2.4 Mapping core<br/>(tabular import)"] --> DI2
+  T32["3.2 Spring Boot parity"] --> DI1["DI-1<br/>Schema Explorer"]
+  DI1 --> DI2["DI-2<br/>Manual mapping"]
+  T42["4.2 Relational schema"] --> DI3
+  DI2 --> DI3["DI-3<br/>R2RML, revisions, drift"]
+  T41["4.1 Triple store"] --> DI4
+  DI3 --> DI4["DI-4<br/>Virtual graph, materialisation"]
+  T51["5.1, 5.3 Accounts, review"] --> DI5
+  DI4 --> DI5["DI-5<br/>Enterprise integration"]
+```
+
+Three consequences of this placement:
+
+- **The editor MVP (MS-4) is unchanged.** Data integration cannot be part of it, and should
+  not delay it: everything it needs first (identity, the mapping core, the backend) is on the
+  existing path anyway.
+- **One thing changes in Phase 2.** Task 2.4 builds the mapping core (IRI templates,
+  column-to-property rules, value conversion, preview with reasons) as modules that do not
+  assume a file, so that DI-2 uses them unchanged (ADR-019). This costs little then and saves a
+  second implementation later.
+- **DI-2 and DI-3 do not wait for the hard parts of Phase 4.** They need the backend and a
+  place to keep snapshots and mappings, not server-side ontologies. They can be developed
+  beside tasks 4.3 to 4.8, or ahead of them if data integration is the more urgent goal.
+
+Writing back to a database is not a stage of this track. It is a separate future capability
+that needs its own design for transactions, authorisation and integrity (ADR-018).
+
+**Its tasks, as specified.**
+
+| # | Task | Resolves | Size |
+| --- | --- | --- | --- |
+| 3.8 | **Data sources (DI-1).** Connection definitions from structured fields; secret handling (session and environment reference); connection test with a write-privilege warning; a pool per source; the read-only guard with time and row limits; the PostgreSQL adapter. The data-source tables of [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §10.2 in the companion's embedded database, brought forward from task 4.2. Security tests: the test password in no storage, response, export or log. | FR-M14-1 to FR-M14-3, FR-M14-9, ADR-014, ADR-015, AR-11, AR-16 | M |
+| 3.9 | **Schema discovery and the Schema Explorer (DI-1).** Discovery as a job into a snapshot with fingerprints; `SchemaService` with paged search; the explorer view (tree, search, table detail with keys and related tables); bounded row samples; refresh. | FR-M14-4 to FR-M14-8 | L |
+| 4.10 | **Mapping model and workbench (DI-2).** The mapping model over the shared core; `MappingService`; the three-area editor with coverage on both sides and a non-drag way for every action; class, data-property and object-property rules; IRI templates; conditions. Mappings saved with the project. | FR-M15-1 to FR-M15-5, FR-M15-8, FR-M15-11 | XL |
+| 4.11 | **Preview and mapping checks (DI-2).** The preview evaluator on bounded rows, with reasons; the previewed rows validated against a chosen shape set, with no new engine (§1.4); the static mapping checks as a category of the Validation view, stale on a change of mapping, ontology or schema; R2RML export. | FR-M15-7, FR-M15-9, FR-M4-10, the preview half of FR-M4-11, the export half of FR-M15-10, AR-12 | L |
+| 4.12 | **Standard and durable mappings (DI-3).** R2RML import with lossless round trip; mapping revisions and their difference; schema change detection against fingerprints; reusable patterns; a SQL query as a logical table, guarded; lexical suggestions; constraint-derived proposals; an offered draft mapping. | FR-M15-6, FR-M15-10, FR-M15-12 to FR-M15-17, ADR-013, ADR-017, AR-14 | L |
+| 4.13 | **Further dialects and the table diagram (DI-3).** SQL Server and MySQL adapters, each with its own integration tests; relationships between tables as a diagram on the existing layouts. | FR-M14-10, FR-M14-11 | M each |
+| 5.10 | **Virtual knowledge graph (DI-4).** A spike on Ontop against the three dialects and the SPARQL features that matter; the virtual graph module managing one engine process per deployed mapping revision; SPARQL through the API with limits; the source and reasoning shown with every answer; the SQL trace; refusal of unsupported features by name. | FR-M16-2 to FR-M16-7, ADR-016, AR-13 | L |
+| 5.11 | **Materialisation and data validation (DI-4).** Materialise a mapping set into a data graph as a sized, confirmed job with provenance; validate materialised data against a shape set (previewed rows are validated from DI-2, task 4.11); a cross-check suite comparing preview and engine. | FR-M16-1, the materialisation half of FR-M4-11, AR-12 | M |
+| 5.12 | **Enterprise data integration (DI-5).** Several data sources per project; permissions on a data source; mapping changes through review; lineage in both directions and in governance metadata; stored encrypted secrets and key rotation; value transformations; assisted mapping suggestions. | FR-M14-12, FR-M13-9, FR-M13-10, FR-M15-18, FR-M12-7 | L, then open-ended |
+
+**Its dependencies.** 3.8 and 3.9 need only 3.2 and could follow it directly if data integration
+were the priority; they do not depend on 3.4 to 3.6. The data-integration tasks 4.10 to 4.13 need
+3.8, 3.9 and, for mapping revisions, 4.2; they do not need 4.3 to 4.8. 5.10 and 5.11 need 4.12 and
+the triple store, not accounts. 5.12 needs 5.1 and 5.3.
+
+**Its risks.**
+
+| Risk | Mitigation |
+| --- | --- |
+| The first feature with secrets is built without the discipline secrets need (AR-11). | The security tests are part of task 3.8's definition of done, and the connection form accepts no free-form connection string from its first version. |
+| Dialect differences are underestimated. | One dialect only (ADR-015); the adapter interface is extracted from the PostgreSQL case, not designed ahead of it. |
+| The mapping editor becomes a diagramming exercise that hides what a rule means. | Every rule is read back in words and previewed on rows; the list of rules, not the lines, is the model (PRD, M15, *Interaction design*). |
+| The OBDA engine does not support a needed database or query feature (AR-13). | Task 5.10 begins with a spike whose result decides; nothing before DI-4 depends on the engine. |
+| Users take live answers for entailments (AR-15). | Every answer names its source and the reasoning applied; unsupported features are refused, not approximated. |
+| Phase 4 now carries two large efforts. | They are independent tracks with their own milestones (MS-6; MS-9, MS-10). Do one at a time, in the order the first users need. |
+
+**Its deliverables.** With DI-1: data sources and the Schema Explorer for PostgreSQL (MS-8). With
+DI-2 and DI-3: the Semantic Mapping Workbench, mapping checks, R2RML import and export, mapping
+revisions, schema change detection, three dialects. With DI-4 and DI-5: virtual knowledge graphs,
+materialisation, and enterprise integration.
+
+**Its acceptance criteria.**
+
+- DI-1: a PostgreSQL database is connected with a read-only account; its schemas are discovered
+  as a job and browsed; a search over a 200,000-column snapshot answers within 200 ms; an
+  attempted write through any path fails; the test password is found nowhere outside the
+  backend's memory (NFR-12, NFR-13).
+- DI-2: for a reference database, `Film` and `Documentary` are mapped to one table by a
+  condition, a data property to a column and an object property to a foreign key, entirely by
+  keyboard; the preview equals the output of an independent R2RML processor on the exported
+  mapping for the same rows; the ontology revision is unchanged throughout (NFR-14).
+- DI-3: the W3C R2RML test-case mappings import and export as equivalent graphs (NFR-16);
+  dropping a mapped column and refreshing lists exactly the rule that used it; the reference
+  mapping works unchanged in meaning on SQL Server and MySQL.
+
+**Its milestones.**
+
+| Id | Milestone | Reached when | Was placed in |
+| --- | --- | --- | --- |
+| MS-8 | **Schema in view** | A PostgreSQL database is connected read-only through the companion and its schema is browsed and searched beside the ontology; no credential is anywhere but the backend. | 3 (DI-1) |
+| MS-9 | **Data-integration MVP** | Classes, properties and keys of one database are mapped in the three-area editor, previewed on real rows, checked in the Validation view and exported as R2RML. | 4 (DI-2) |
+| MS-10 | **Standard, durable mappings** | R2RML is imported without loss; mappings have their own revisions; a schema change lists the rules it breaks; a second dialect works. | 4 (DI-3) |
+| MS-11 | **Ask the data** | A SPARQL query in the ontology's terms is answered from the live database, with its SQL and timings shown. | 5 (DI-4) |
+
+**Its priorities, as they were.**
+
+| Priority | Requirements | Phase |
+| --- | --- | --- |
+| **P1** | FR-M14-1 to FR-M14-9 | 3, stage DI-1 |
+| **P1** | FR-M15-1 to FR-M15-5, FR-M15-7 to FR-M15-9, FR-M15-11, FR-M4-10, FR-M4-11 (previewed rows) | 4, stage DI-2 |
+| **P2** | FR-M15-6, FR-M15-10, FR-M15-12 to FR-M15-17, FR-M14-10, FR-M14-11 | 4, stage DI-3 |
+| **P2** | FR-M16-1 to FR-M16-7, FR-M4-11 (materialised data) | 5, stage DI-4 |
+| **P2** | FR-M14-12, FR-M13-9, FR-M13-10 | 5, stage DI-5 |
+| **P3** | FR-M14-13, FR-M15-18, FR-M16-8, FR-M16-9, FR-M12-7 | later |
+
+**Its performance targets.** For the data-integration track, measured against a reference PostgreSQL database seeded for the
+purpose:
+
+| Measure | Target | Stage |
+| --- | --- | --- |
+| Discovery of a schema of 1,000 tables | A job that completes in under a minute and can be cancelled; the page is never blocked | DI-1 |
+| Browsing and search over a snapshot of 200,000 columns | Under 200 ms a page | DI-1 |
+| Preview of one rule on fifty rows | Under one second on an indexed source | DI-2 |
+| Static mapping checks on 500 rules | Under 200 ms, in the page | DI-2 |
+| Longest statement the product may run against a source | The source's time limit, never exceeded | DI-1 onwards |
+| Rows held in the browser | At most one page; none in storage | DI-1 onwards |
+| A virtual query touching indexed keys | Dominated by the database; the overhead of rewriting is reported with each answer | DI-4 |
+
+**What it would not do, when resumed.**
+
+- **Turn database constraints into OWL axioms automatically, or a table into a class by
+  default.** See ADR-017.
+- **Write a SPARQL-to-SQL engine.** An existing one is adopted at stage DI-4 (ADR-016).
+- **Write to an external database.** See ADR-018.
+- **Support three database dialects in the first release.** See ADR-015.
+- **Let data integration displace the editor MVP.** It starts where the backend does, and
+  everything it needs before that is already on the path.
+
+**What resuming would take.** A decision of the product owner, recorded by revising ADR-027;
+then DI-1 after 3.2, as before. Its security measures ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)
+§12.9) remain requirements of its first stage, not later hardening.

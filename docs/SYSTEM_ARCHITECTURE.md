@@ -5,10 +5,14 @@ documents: [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md), [DATA_ARCHITECTURE.md](DATA_A
 [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md),
 [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md).
 
-Sections 1 to 11 are the architecture of the ontology platform. **Section 12 extends it with
-ontology-to-relational data integration** (database schema exploration, semantic mapping,
-materialisation and virtual knowledge graphs), added on 2026-10-13 after the first version of
-this document; the diagrams and tables of sections 3 and 4 include its components.
+Sections 1 to 11 are the architecture of the ontology platform. **Section 13 adds ontology-driven
+logical data modelling** (2026-10-17): logical data models as an artifact of their own beside the
+ontology and the shape sets, derived from the ontology by reviewed transformation and kept
+traceable to it. It is the active direction of the roadmap; the diagrams and tables of sections 3
+and 4 include its components. **Section 12, ontology-to-relational data integration** (database
+schema exploration, R2RML mapping, materialisation and virtual knowledge graphs), added on
+2026-10-13, is **deferred**: kept as the design of record, marked so wherever sections 3 and 4
+mention it, and not scheduled.
 
 Every statement about the application carries one of four labels:
 
@@ -143,7 +147,7 @@ flowchart TB
   subgraph Browser["Browser"]
     Views["Views (React)"]
     Session["Session state<br/>selection, viewport, panels"]
-    Ports["Service interfaces<br/>edit, query, structure, graph, reasoning, validation,<br/>import/export, SPARQL, data sources, schema, mapping"]
+    Ports["Service interfaces<br/>edit, query, structure, graph, reasoning, validation,<br/>import/export, SPARQL, projects,<br/>logical models, transformation, traceability"]
     LocalImpl["Local implementations<br/>today's model layer, workers"]
     HttpImpl["HTTP implementations"]
     IDB[("IndexedDB<br/>local projects, cache, drafts")]
@@ -155,15 +159,11 @@ flowchart TB
     Valid["Validation module<br/>SHACL, quality rules, mapping checks"]
     Query["Query module<br/>entities, structure, graph, SPARQL"]
     Meta["Metadata module<br/>projects, versions, jobs, users"]
-    Source["Data source module<br/>connections, secrets, JDBC adapters"]
-    Schema["Schema module<br/>discovery, snapshots, fingerprints"]
-    Mapping["Mapping module<br/>R2RML, preview, materialisation jobs"]
-    Vkg["Virtual graph module<br/>manages the OBDA engine, proxies queries"]
+    Logical["Logical model module<br/>LDMs, logical change sets, revisions"]
+    Trace["Traceability module<br/>transformation, mappings, impact"]
   end
-  TDB[("Jena TDB2, embedded<br/>named graphs: asserted, inferred, shapes, imports, materialised data")]
-  PG[("PostgreSQL<br/>application metadata")]
-  Ontop["Ontop endpoint<br/>separate process, optional"]
-  Ext[("External relational databases<br/>read-only")]
+  TDB[("Jena TDB2, embedded<br/>named graphs: asserted, inferred, shapes, imports, data")]
+  PG[("PostgreSQL<br/>application metadata, logical models")]
   Views --> Session
   Views --> Ports
   Ports --> LocalImpl
@@ -175,22 +175,21 @@ flowchart TB
   Api --> Valid
   Api --> Query
   Api --> Meta
-  Api --> Source
-  Api --> Schema
-  Api --> Mapping
-  Api --> Vkg
+  Api --> Logical
+  Api --> Trace
   Onto --> TDB
   Reason --> TDB
   Valid --> TDB
   Query --> TDB
   Meta --> PG
-  Schema --> Source
-  Mapping --> Source
-  Mapping --> TDB
-  Source --> Ext
-  Vkg --> Ontop
-  Ontop --> Ext
+  Logical --> PG
+  Trace --> Logical
+  Trace --> Query
 ```
+
+The data-integration modules of §12 (data sources, schema, mapping, virtual graph, and the Ontop
+endpoint and external databases they reach) are deferred and left out of this picture; §12.3
+draws them.
 
 ### 3.2 Three deployment profiles from one codebase
 
@@ -203,10 +202,11 @@ flowchart TB
 The companion and the server are the same artefact with different configuration. That is the
 reason for choosing one application over several.
 
-Connecting to a relational database is the one capability with no browser-only form: a browser
-cannot open a database connection, and credentials must not be in it (ADR-014). It needs the
-companion or a server. Without either, the Local profile can still open and edit a mapping
-against a schema snapshot it has cached; it cannot discover, preview or query.
+Every capability on the active roadmap has a browser-only form: logical data models, their
+transformation from the ontology and their traceability run in the Local profile, and move to
+the server for server projects (roadmap LM-5). Connecting to a relational database would be the
+one capability with none, since a browser cannot open a database connection and credentials
+must not be in it (ADR-014); it belongs to the deferred data-integration track (§12).
 
 ### 3.3 Component responsibilities
 
@@ -220,6 +220,8 @@ against a schema snapshot it has cached; it cannot discover, preview or query.
 | Local implementations | Today's pure functions, called through the interfaces; reasoner and validation in workers. | Recommended (functions exist) |
 | HTTP implementations | One POST or GET per question; refusals as typed errors. | Existing for two services |
 | Geometry, layouts, styling | Stay in the browser in every profile: they are about the picture. | Existing |
+| LDM workspace and ER diagram | Edit logical models through their services; the diagram is a view of its own over the layouts and geometry, its positions kept apart from the LDM's meaning. | Recommended, roadmap LM-2 |
+| Transformation and impact review | Show proposals with their sources and rationale, collect the user's choices, apply them as logical change sets. | Recommended, LM-3, LM-4 |
 
 **Server (one deployable, internal modules with enforced dependencies)**
 
@@ -231,10 +233,12 @@ against a schema snapshot it has cached; it cannot discover, preview or query.
 | Validation | SHACL validation, quality rules. | Jena SHACL |
 | Query | Entities, structure, graph neighbourhoods, text search, SPARQL. | Jena ARQ, TDB2, Jena text index |
 | Metadata | Projects, revisions, jobs, users, templates, diagrams. | Spring Data, PostgreSQL |
-| Data source | Connection definitions, secrets, connection pools, dialect adapters, the read-only guard. The only module that opens a connection to an external database. | JDBC, a connection pool |
-| Schema | Discovery jobs, schema snapshots, fingerprints, differences, search over schema objects. | `DatabaseMetaData` with dialect adapters |
-| Mapping | The mapping model, R2RML reading and writing, coverage, mapping validation, preview, materialisation jobs. | An R2RML layer; see §12 |
-| Virtual graph | Starts and stops the OBDA engine for a mapping revision, proxies SPARQL to it with limits, collects traces. | Ontop, as a separate process (ADR-016) |
+| Logical model | LDM documents, logical change sets applied atomically, an LDM's line of revisions, paged queries, LDM validation. Knows nothing of OWL. | Spring Data, PostgreSQL (roadmap LM-5) |
+| Traceability | Transformation proposals, semantic mappings, stale detection, impact reports and synchronization proposals, as jobs; reads the ontology through the query module, writes only through the logical model module. | The ontology and logical model modules (LM-5) |
+| Data source (deferred, §12) | Connection definitions, secrets, connection pools, dialect adapters, the read-only guard. The only module that would open a connection to an external database. | JDBC, a connection pool |
+| Schema (deferred, §12) | Discovery jobs, schema snapshots, fingerprints, differences, search over schema objects. | `DatabaseMetaData` with dialect adapters |
+| Mapping (deferred, §12) | The R2RML mapping model, coverage, mapping validation, preview, materialisation jobs. | An R2RML layer; see §12 |
+| Virtual graph (deferred, §12) | Starts and stops the OBDA engine for a mapping revision, proxies SPARQL to it with limits, collects traces. | Ontop, as a separate process (ADR-016) |
 
 Module boundaries inside the monolith are enforced by a test, as `boundaries.test.ts` does in the
 frontend today (ArchUnit or Spring Modulith's verification serves the same purpose in Java).
@@ -257,11 +261,15 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `SparqlService` | `query(revision, text, graph)` | `sparql.ts` | Recommended, Phase 2 |
 | `AlignmentService` | external ontologies, mappings, suggestions | `external.ts`, `alignment.ts`, `matcher.ts` | Recommended, Phase 2 |
 | `ProjectService` | versions, save a version, a version's model, diff, restore; list, open and save | `src/projects/local.ts` over `library.ts` | **Existing** for versions (2026-10-16); list, open and save are still `library.ts` called directly |
-| `DataSourceService` | list, create, update, remove, test; never answers with a secret | None: backend only | Recommended, Phase 3 |
-| `SchemaService` | refresh (job), snapshot, objects (paged search), table detail, relationships, sample rows, difference of two snapshots | A cached snapshot, read-only | Recommended, Phase 3 |
-| `MappingService` | get, apply a mapping change, coverage, validate (job), import and export R2RML, revisions | Editing and static checks over a cached snapshot | Recommended, Phase 4 |
-| `RdfGenerationService` | preview a mapping rule on a bounded number of rows; materialise (job) | None: backend only | Recommended, Phase 4 |
-| `VirtualGraphService` | deploy a mapping revision, status, query, explain | None: backend only | Recommended, Phase 5 |
+| `LogicalModelQueryService` | models, summary, entities (searched, paged), describe an element, relationships of an entity, keys, generalizations | `src/logical/local.ts` over the project document (§13.4) | Recommended, roadmap LM-1 |
+| `LogicalModelEditService` | create, duplicate, delete an LDM; `validate(changeSet)`, `apply(changeSet)` of a logical change set | `src/logical/local.ts` | Recommended, LM-1 |
+| `TransformationService` | propose (job): proposals for a scope of the ontology under a configuration; apply a selection as a logical change set with its mappings | In a worker, over the ontology's statements and the LDM | Recommended, LM-3 |
+| `TraceabilityService` | mappings of an element or an IRI, coverage, staleness, impact (job), synchronization proposals; mappings made and edited by hand | Over the LDMs' mappings and `changesBetween` | Recommended, LM-4 |
+| `DataSourceService` | list, create, update, remove, test; never answers with a secret | None: backend only | **Deferred** (§12) |
+| `SchemaService` | refresh (job), snapshot, objects (paged search), table detail, relationships, sample rows, difference of two snapshots | A cached snapshot, read-only | **Deferred** (§12) |
+| `MappingService` | get, apply a mapping change, coverage, validate (job), import and export R2RML, revisions | Editing and static checks over a cached snapshot | **Deferred** (§12) |
+| `RdfGenerationService` | preview a mapping rule on a bounded number of rows; materialise (job) | None: backend only | **Deferred** (§12) |
+| `VirtualGraphService` | deploy a mapping revision, status, query, explain | None: backend only | **Deferred** (§12) |
 
 ### 4.2 Conventions, taken from the existing contracts
 
@@ -327,6 +335,13 @@ change set made elsewhere is applied to the ontology's statements, read back, an
 the result states exactly what was asked. Undo applies a step backwards. See the README, *Edits
 as change sets*.
 
+**Changes to other artifacts.** The contract above is the ontology's. A shape set's edit is a
+step of the document's history with no axioms (roadmap SH-1); an LDM's edit is a *logical change
+set* of its own contract, with the same guarantees (a base revision, atomic, typed refusals) and
+typed operations on LDM elements instead of axioms (§13.5, ADR-023). Neither is ever expressed as
+axioms, and no ontology change set touches an LDM. One step of the history may record changes to
+several artifacts, and says which (TD-19); each artifact keeps a revision of its own (TD-20).
+
 ### 4.4 REST sketch for the remote side
 
 Paths follow the pattern the existing HTTP clients use (`POST {base}/structure/{question}`),
@@ -346,13 +361,19 @@ placed under a versioned, project-scoped prefix.
 | `POST /api/v1/projects/{id}/sparql` | Read-only query against a chosen graph. |
 | `GET /api/v1/projects/{id}/export?revision=&syntax=` | Serialize. |
 | `POST /api/v1/convert`, `POST /api/v1/reason` | Stateless, as today's `/convert` and `/reason`; kept for the Local profile. |
-| `GET`, `POST /api/v1/data-sources`; `POST …/{source}/test` | Define and test a connection. A secret is write-only. |
-| `POST /api/v1/data-sources/{source}/schema/refresh`; `GET …/schema/snapshots/{snapshot}/objects` | Discover (a job); browse and search a snapshot, a page at a time. |
-| `GET /api/v1/data-sources/{source}/tables/{table}/sample?limit=` | A bounded sample of rows. |
-| `GET`, `POST /api/v1/projects/{id}/mappings/{set}`; `…/revisions`; `…/export?syntax=r2rml` | Read, change, version and exchange a mapping set. |
-| `POST /api/v1/projects/{id}/mappings/{set}/preview` | Triples generated from the first rows of one rule, with diagnostics. |
-| `POST /api/v1/projects/{id}/mappings/{set}/materialisations` | Materialise as a job. |
-| `POST /api/v1/projects/{id}/virtual-graphs/{graph}/sparql`; `…/explain` | Query through the ontology; see the SQL it became. |
+| `GET /api/v1/projects/{id}/logical-models`, `POST …` | List, create (by hand, by import, by duplicating). |
+| `GET /api/v1/projects/{id}/logical-models/{ldm}/revisions` | An LDM's own history, newest first, paged. |
+| `POST /api/v1/projects/{id}/logical-models/{ldm}/changes` | Apply a logical change set; answers the LDM's new revision, or 409 on a moved base. |
+| `POST /api/v1/projects/{id}/logical-models/{ldm}/query/{question}` | `LogicalModelQueryService`. |
+| `POST /api/v1/projects/{id}/logical-models/{ldm}/transformations` | Propose from the ontology, as a job; `…/{job}/apply` with the selection. |
+| `GET /api/v1/projects/{id}/logical-models/{ldm}/mappings`; `POST …/impact` (job); `POST …/synchronization` | Traceability, impact report, synchronization proposals. |
+| `GET`, `POST /api/v1/data-sources`; `POST …/{source}/test` | (Deferred, §12.) Define and test a connection. A secret is write-only. |
+| `POST /api/v1/data-sources/{source}/schema/refresh`; `GET …/schema/snapshots/{snapshot}/objects` | (Deferred.) Discover (a job); browse and search a snapshot, a page at a time. |
+| `GET /api/v1/data-sources/{source}/tables/{table}/sample?limit=` | (Deferred.) A bounded sample of rows. |
+| `GET`, `POST /api/v1/projects/{id}/mappings/{set}`; `…/revisions`; `…/export?syntax=r2rml` | (Deferred.) Read, change, version and exchange an R2RML mapping set. |
+| `POST /api/v1/projects/{id}/mappings/{set}/preview` | (Deferred.) Triples generated from the first rows of one rule, with diagnostics. |
+| `POST /api/v1/projects/{id}/mappings/{set}/materialisations` | (Deferred.) Materialise as a job. |
+| `POST /api/v1/projects/{id}/virtual-graphs/{graph}/sparql`; `…/explain` | (Deferred.) Query through the ontology; see the SQL it became. |
 
 ## 5. Data flow
 
@@ -414,6 +435,7 @@ what one person can maintain.
 | Own SVG canvas | **Keep** (ADR-008) | Routing, label placement, styles, line ends and exports are built on it. A graph library would replace roughly 4,000 lines that work and would not remove the need for subgraph loading. |
 | n3, oxigraph, rdf-validate-shacl | **Keep for the Local profile** | They are what makes the app work with no server. |
 | A component library | **Do not add** | The UI is consistent and passes its own audit of contrast, text size and pointer-target size (`e2e/ui-audit.mjs`); a library would be a restyle of every view. |
+| A diagramming library for the ER diagram | **Do not add** (ADR-008) | The ER diagram of a logical model (roadmap LM-2) is an SVG view of its own over the existing layouts, line geometry and culling; one notation needs no library, and a library would not share the canvas's tested routing and export. |
 
 ### 6.2 Backend
 
@@ -455,7 +477,7 @@ for users of the companion and must be said in the release notes.
 | --- | --- | --- |
 | Python services | **Defer to Phase 5** (ADR-010) | Nothing in Phases 1–4 needs them. A third runtime is the most expensive item on the list for one maintainer. |
 | Embedding-based matching | Future | `src/model/matcher.ts` is already a list of `Matcher` functions; an embedding matcher is another entry, and can call a hosted embedding API from the Java application without any Python. |
-| LLM-assisted modelling | **Existing in the browser** (2026-10-16); server later | The assistant (README, *The assistant*): provider adapters behind one `ProviderAdapter` interface (`src/ai/providers/`), read-only tools and typed proposals compiled to change sets (`src/ai/tools.ts`, `proposals.ts`), one tool loop (`conversation.ts`). Requests go from the browser, or through the local service's `/ai/forward`, which sets the key and refuses private addresses. On the server the adapters and loop move behind the API, with the key in encrypted per-user storage; tools and proposals keep their contracts. No model is run locally by default. |
+| LLM-assisted modelling | **Existing in the browser** (2026-10-16); server later | The assistant (README, *The assistant*): provider adapters behind one `ProviderAdapter` interface (`src/ai/providers/`), read-only tools and typed proposals compiled to change sets (`src/ai/tools.ts`, `proposals.ts`), one tool loop (`conversation.ts`). Requests go from the browser, or through the local service's `/ai/forward`, which sets the key and refuses private addresses. On the server the adapters and loop move behind the API, with the key in encrypted per-user storage; tools and proposals keep their contracts. No model is run locally by default. For logical models (roadmap 5.7), the same assistant gains LDM read tools and typed LDM proposals compiled to logical change sets (§13.4): no second architecture. |
 
 ## 7. Reasoner orchestration (Recommended)
 
@@ -595,7 +617,8 @@ the Server profile is exposed.
 | Secrets | Database and provider credentials from the environment, never in the repository. |
 | Auditing | Every change set records who and when (it is the history). |
 | AI providers | Off unless configured (AR-10). The key is held in the page's memory, or in the local service's memory behind a 256-bit handle (`/ai/key`), sent only to the endpoint it was given for, never stored on disk or logged; the local service's `/ai/forward` forwards only to the providers' addresses and to public `https` endpoints, connects to the address it checked (no DNS rebinding) with TLS verified for the host's name, follows no redirect, and answers only allowed origins. A key kept between sessions of the service needs the server's encrypted per-user store. |
-| External databases | Credentials, read-only access, user-written SQL and row data: §12.9. |
+| Logical models | No secret and no data rows: an LDM holds structure only. On a server, permission on an LDM is permission on its project. |
+| External databases | (Deferred.) Credentials, read-only access, user-written SQL and row data: §12.9. |
 
 ## 10. Deployment
 
@@ -631,9 +654,22 @@ Short form. Each is revisited when its "revisit if" becomes true.
 | **ADR-020** | No OWL axiom becomes a SHACL constraint, and no shape an axiom, without the user's review. Shapes drawn from the ontology are proposals, each stating what the axiom means, what the shape would check and where they differ, accepted one by one with their origin kept. | An axiom licenses inferences under the open world and no unique names; a shape checks the data a graph holds. `p exactly 1 C` is not `sh:minCount 1 ; sh:maxCount 1`, and a domain or range infers a type rather than requiring a value. The same rule as ADR-017, from the ontology's side. | — |
 | **ADR-021** | Shapes are SHACL 1.0 Core (the W3C Recommendation of 2017) first, validated by `rdf-validate-shacl` in the page and Jena SHACL on the server; SHACL-SPARQL on the server only; SHACL 1.2 is built on once it is a Recommendation. | A stable standard with a test suite both engines can be held to. | SHACL 1.2 becomes a Recommendation. |
 
-ADR-013 to ADR-019, on data integration, are in §12.11.
+| **ADR-022** | A logical data model is an artifact of its own: its own metamodel, element identities, revisions, editor and storage, several per project. It is never kept in OWL entity structures, written into the ontology's RDF or exported with it, and the ontology is never kept in it. Only semantic mappings refer to both. | The ontology says what is true of a domain; an LDM says how an application organises its data. Merging them makes one the projection of the other, which is the one-to-one assumption the product must not make. Same principle as the shape sets (ADR-020). | — |
+| **ADR-023** | LDM edits are logical change sets: typed operations on LDM elements against an LDM's revision, atomic, with typed refusals. Axiom change sets (§4.3) stay the ontology's. Each artifact has its own revision; an LDM edit never moves the ontology's, nor an ontology edit an LDM's. A history step and, on the server, a change entry say which artifact they change. | Reuses the shape of task 1.8's contract without misusing it: an LDM element is not an axiom. Separate revisions keep reasoning, validation and proposals current across LDM work. | — |
+| **ADR-024** | No LDM element or constraint is made from the ontology or a shape set by itself. Transformation produces proposals: structure (entities, attributes, relationships, specializations) offered for the scope chosen; constraints (mandatory, a maximum, a key, a rule) from restrictions, domains, ranges, keys or shapes offered as candidates only, never chosen to begin with, each stating what the axiom means and what the constraint would require. | Open world and no unique names against the closed world of a data store: `some` is not *mandatory*, a domain infers a type and requires nothing, two names may be one individual. The same rule as ADR-017 and ADR-020, for logical models. | — |
+| **ADR-025** | Ontology and LDMs are related by explicit semantic mappings, many to many, each with its sources (IRIs and axioms), targets, strategy, rationale, origin version and status. An ontology change marks mappings stale and produces an impact report and proposals; it never changes an LDM by itself, and never an element the user customised without the user accepting it. | Traceability without coupling: each LDM lives on its own schedule, and what the user decided is not undone by a change elsewhere. | — |
+| **ADR-026** | The LDM is logical: technology-neutral data types and named domains; no physical data model, database-specific type, index, storage parameter, DDL or deployment in the metamodel or on the roadmap. | The product's scope (PRODUCT_REQUIREMENTS.md §2.8). A physical layer can be added later as an artifact of its own without changing the logical one. | A physical model is put in scope. |
+| **ADR-027** | The data-integration track (DI-1 to DI-5, §12) is deferred. Its decisions ADR-013 to ADR-018 stand as the design of record for when it is resumed; ADR-019 holds now for tabular import. | The product's objective is designing logical models from the ontology, not reading or querying existing databases. | The product owner resumes the track. |
 
-## 12. Ontology-to-relational data integration (Recommended)
+ADR-022 to ADR-027 were made on 2026-10-17 with the realignment of the roadmap; §13.13 lists the
+questions they leave open. ADR-013 to ADR-019, on data integration, are in §12.11.
+
+## 12. Ontology-to-relational data integration (Deferred)
+
+**Deferred on 2026-10-17** (ADR-027; [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11): kept
+as the design of record, under its identifiers, and not scheduled. The product's active
+direction is §13. Nothing below is changed by the deferral except this paragraph; where it says
+"recommended" or names a stage, it means "if the track is resumed".
 
 Nothing in this section exists in the code today. It extends the target architecture with a
 third concern beside modelling and managing ontologies: **connecting the conceptual model to
@@ -954,7 +990,480 @@ is cheap and is what makes the first release interoperable.
 | **ADR-018** | Access to external databases is read-only. Writing back is a separate future capability with its own design for transactions, authorisation and integrity. | Risk out of proportion to the first four stages. | A concrete write-back use case is specified. |
 | **ADR-019** | One mapping core (IRI templates, column-to-property rules, value conversion, preview with reasons) serves both tabular file import and database mapping. | They are the same problem with different lifecycles; building it once in Phase 2 saves building it twice. | — |
 
-## 13. Sources for external facts
+## 13. Ontology-driven logical data modelling (Recommended)
+
+Added on 2026-10-17. Nothing in this section exists in the code yet: it is the design behind the
+roadmap's logical data modelling track, LM-1 to LM-5
+([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.3), and the product's active direction:
+
+> OWL ontology → semantic-to-logical transformation → editable logical data model → semantic
+> traceability and change impact analysis
+
+### 13.1 Three artifacts, related by mappings
+
+| | Ontology | Shape sets | Logical data model (LDM) |
+| --- | --- | --- | --- |
+| **Says** | What is true of the domain, and what follows from it | What RDF data an application accepts | How an application organises its data |
+| **Kind of statement** | Axioms that license inferences | Constraints a data graph is checked against | Design decisions: entities, attributes, relationships, keys, rules |
+| **World** | Open: what is not stated is unknown; no unique names | Closed, over one data graph | Closed: a record has what it holds, and a key identifies |
+| **Identity** | IRIs | IRIs of shapes; one shapes graph per set | Element ids within an LDM; an LDM id within the project |
+| **How many** | One per project | Several per ontology | Several per ontology |
+| **Edited in** | Graph, Entities, Structure, the entity editor | The Shapes view (SH-1) | The LDM workspace and its ER diagram (LM-2) |
+| **Changed by** | Axiom change sets (§4.3) | Steps of the history (SH-1) | Logical change sets (§13.5) |
+| **Status** | **Existing** | **Existing** | Recommended (LM-1) |
+
+They are related by mappings, never by one being stored in or generated from another:
+
+```mermaid
+flowchart LR
+  O["Ontology<br/>OWL 2, open world"]
+  S["Shape sets<br/>SHACL 1.0 Core"]
+  M[("Semantic mappings<br/>sources, targets, strategy,<br/>rationale, origin, status")]
+  L1["LDM A<br/>an application"]
+  L2["LDM B<br/>another application"]
+  O -->|shapes proposed and reviewed, SH-3| S
+  O -->|proposals, reviewed, LM-3| M
+  S -.->|may inform proposals, FR-M18-7| M
+  M --> L1
+  M --> L2
+```
+
+- **Not one-to-one.** One class may become several entities (in one LDM or in several), or
+  several classes one entity; one datatype property one attribute in each of several entities;
+  an object property a relationship, or an associative entity with attributes of its own; a
+  subclass hierarchy one entity per class, or a single entity with a discriminator. And an LDM may
+  have entities with no semantic source at all: an audit trail, a staging record, an application
+  setting. Such an element is application-specific, not an error.
+- **Only mappings refer to both.** An LDM element carries no IRI as its identity, and the
+  ontology carries nothing of an LDM. A mapping names ontology entities by IRI and axioms in
+  functional syntax, and LDM elements by id. This is the same separation the shape sets keep
+  (ADR-020) and the deferred data-integration design keeps (§12.1).
+- **Each changes on its own schedule.** An ontology edit does not change an LDM, and an LDM edit
+  does not change the ontology or its revision (NFR-17). What an ontology change means for an LDM
+  is reported (§13.8) and proposed, never applied by itself (ADR-025).
+
+### 13.2 The workflow
+
+```mermaid
+flowchart TD
+  A["Ontology authored and checked<br/>(existing editor, reasoners, SHACL)"] --> B["Choose a scope and a configuration<br/>naming, datatypes, strategies"]
+  B --> C["Transformation proposals<br/>each with sources, strategy, rationale"]
+  C --> D{"Review"}
+  D -->|accept, edit, dismiss| E["LDM elements and semantic mappings<br/>one logical change set"]
+  E --> F["LDM edited independently<br/>workspace, ER diagram, validation"]
+  F --> G["Ontology changes"]
+  G --> H["Mappings stale; impact report per LDM"]
+  H --> I["Synchronization proposals<br/>customised elements never changed silently"]
+  I --> D
+```
+
+Every arrow into the LDM passes through review. Every step can be undone, and is kept in the
+project's versions.
+
+### 13.3 The LDM metamodel
+
+A metamodel of its own, in `src/logical/contracts.ts` (roadmap LM-1): plain, JSON-serialisable
+data, as every contract here (§4.2). It has no OWL construct in it and no physical one.
+
+```ts
+/** One logical data model: an application's view of its data. Several per project. */
+interface LogicalModel {
+  id: string;                    // unique in the project, never reused
+  name: string;
+  description: string;
+  purpose: string;               // which application or use it serves
+  revision: string;              // moves when this LDM changes, and only then
+  domains: LogicalDomain[];      // named, reusable types
+  entities: LogicalEntity[];
+  relationships: Relationship[];
+  generalizations: Generalization[];
+  rules: BusinessRule[];
+  mappings: SemanticMapping[];   // to the ontology (§13.7); empty for an LDM made by hand
+  derivation?: TransformationConfig; // how it was proposed from the ontology, if it was
+  diagrams: LogicalDiagram[];    // positions and style: the picture, never the meaning
+}
+
+interface LogicalEntity {
+  id: string;
+  name: string;                  // unique in the LDM
+  definition: string;
+  abstract?: boolean;            // a supertype with no instances of its own
+  attributes: LogicalAttribute[];
+  keys: Key[];                   // at most one primary
+}
+
+interface LogicalAttribute {
+  id: string;
+  name: string;                  // unique in its entity, inherited ones included
+  definition: string;
+  type: LogicalType;
+  optional: boolean;             // false: mandatory. True unless the user chose otherwise.
+  derived?: boolean;
+}
+
+/** Technology-neutral: no database's type names (ADR-026). */
+type LogicalType =
+  | { base: 'text'; maxLength?: number }
+  | { base: 'integer' }
+  | { base: 'decimal'; precision?: number; scale?: number }
+  | { base: 'boolean' | 'date' | 'time' | 'dateTime' | 'duration' | 'binary' | 'identifier' }
+  | { domain: string };          // a LogicalDomain's id
+
+interface LogicalDomain {
+  id: string;
+  name: string;
+  definition: string;
+  base: Exclude<LogicalType, { domain: string }>;
+  constraints: { minLength?: number; maxLength?: number; pattern?: string; min?: string; max?: string; values?: { code: string; label: string }[] };
+}
+
+/** Binary, between two entities (the same one for a recursive relationship). */
+interface Relationship {
+  id: string;
+  name: string;
+  definition: string;
+  ends: [RelationshipEnd, RelationshipEnd];
+  identifying: boolean;          // the child's identity includes the parent's
+}
+
+interface RelationshipEnd {
+  entity: string;                // the entity at this end
+  role: string;                  // how the other end calls it
+  min: number;                   // 0: optional; 1 or more: mandatory
+  max: number | 'many';
+}
+
+interface Key {
+  id: string;
+  kind: 'primary' | 'candidate';
+  name: string;
+  members: ({ attribute: string } | { end: { relationship: string; end: 0 | 1 } })[];
+}
+
+interface Generalization {
+  id: string;
+  supertype: string;
+  subtypes: string[];
+  complete: boolean;             // every instance of the supertype is of a subtype
+  exclusive: boolean;            // no instance is of two subtypes
+  discriminator?: string;        // an attribute of the supertype
+}
+
+interface BusinessRule {
+  id: string;
+  name: string;
+  statement: string;             // in words: always
+  kind: 'constraint' | 'derivation';
+  appliesTo: ElementRef[];
+  expression?: string;           // formal, later (FR-M17-9)
+  status: 'proposed' | 'accepted';
+}
+
+type ElementRef = { entity: string } | { attribute: string } | { relationship: string } | { key: string } | { generalization: string } | { rule: string } | { domain: string };
+```
+
+**Rules the edit service holds** (refused with a reason, as the ontology's rules are): names unique
+in their scope; every reference resolves within the LDM; at most one primary key; a key's members
+are attributes of the entity, inherited ones included, or ends of identifying relationships of
+which the entity is the child; no generalization cycle; a discriminator is an attribute of the
+supertype; a relationship end's minimum is not above its maximum. **What validation reports**
+without refusing (FR-M17-10): an entity with no primary key, a many-to-many not resolved
+(information), an attribute that repeats an inherited one, an entity in two exclusive
+generalizations, a domain no attribute uses, a mandatory end on both sides of a recursive
+relationship.
+
+**What it deliberately lacks.** Tables, columns, physical types, nullability as storage,
+indexes, storage parameters, schemas of a database, DDL (ADR-026); and class expressions, IRIs as
+identity, inference (ADR-022). Several diagrams per LDM (FR-M17-13) and formal rule expressions
+(FR-M17-9) come after the first release of LM-2.
+
+### 13.4 Service boundaries
+
+Four interfaces in `src/logical/` and `src/traceability/`, each with a `contracts.ts`, a local
+implementation, a boundary test and a JSON round-trip test, following `src/structure` (ADR-002).
+
+| Service | Questions and commands | Reads | Writes | Stage |
+| --- | --- | --- | --- | --- |
+| `LogicalModelQueryService` | models; summary; entities (searched, paged); describe an element; relationships of an entity; keys; generalizations | LDMs | Nothing | LM-1 |
+| `LogicalModelEditService` | create, duplicate, delete an LDM; `validate`, `apply` a `LogicalChangeSet` | LDMs | LDMs only | LM-1 |
+| `TransformationService` | `propose(scope, config, target?)` (a job); `apply(proposals, choices)` as one logical change set with its mappings | The ontology, through the existing services and its statements, read-only; the target LDM | Through `LogicalModelEditService` only | LM-3 |
+| `TraceabilityService` | mappings of an element or an IRI; coverage; staleness; `impact(ldm, from?, to?)` (a job); synchronization proposals; mappings made and edited by hand | The ontology now and in versions (`changesBetween`, `ProjectService`); LDMs | Through `LogicalModelEditService` only | LM-4 |
+
+LDM validation is a scope of the existing `ValidationService` (`{ kind: 'ldm', model }`), so its
+findings appear in the Validation view with the others, stale when the LDM's revision moves.
+
+```mermaid
+flowchart LR
+  subgraph Views
+    W["LDM workspace<br/>ER diagram"]
+    T["Transformation review"]
+    I["Traceability, impact,<br/>synchronization"]
+  end
+  Q["LogicalModelQueryService"]
+  E["LogicalModelEditService"]
+  TR["TransformationService"]
+  TS["TraceabilityService"]
+  OS["EntityQueryService, StructureService,<br/>the ontology's statements (read-only)"]
+  PS["ProjectService<br/>versions, differences"]
+  VS["ValidationService"]
+  W --> Q
+  W --> E
+  T --> TR
+  I --> TS
+  TR --> OS
+  TR --> E
+  TS --> OS
+  TS --> PS
+  TS --> Q
+  TS --> E
+  VS --> Q
+```
+
+Boundaries enforced by test: the `src/logical` services import nothing of the ontology's model;
+transformation and traceability never write the ontology (no import of `OntologyEditService`'s
+`apply`); no service imports views or the store (NFR-11). The assistant (`src/ai/`) reaches LDMs
+only through these services, as it reaches the ontology through its own (roadmap 5.7).
+
+### 13.5 Changes, revisions, history and versions
+
+**A logical change set** (ADR-023), the counterpart of the ontology's (§4.3):
+
+```ts
+interface LogicalChangeSet {
+  model: string;                 // the LDM
+  baseRevision: string;          // the LDM's revision it was made against
+  changes: LogicalChange[];
+  summary: string;               // for the history: what the user did, in words
+}
+
+type LogicalChange =
+  | { op: 'add'; element: LogicalElement }               // the whole element
+  | { op: 'remove'; element: LogicalElement }            // the whole element: its inverse is known
+  | { op: 'update'; ref: ElementRef; before: Record<string, unknown>; after: Record<string, unknown> };
+
+type LogicalElement =
+  | { kind: 'entity'; entity: Omit<LogicalEntity, 'attributes' | 'keys'> }
+  | { kind: 'attribute'; entity: string; attribute: LogicalAttribute }
+  | { kind: 'key'; entity: string; key: Key }
+  | { kind: 'relationship'; relationship: Relationship }
+  | { kind: 'generalization'; generalization: Generalization }
+  | { kind: 'rule'; rule: BusinessRule }
+  | { kind: 'domain'; domain: LogicalDomain }
+  | { kind: 'mapping'; mapping: SemanticMapping };
+```
+
+The same guarantees as the ontology's: applied atomically or not at all; refused as
+`stale-revision` on a moved base; refusals typed (`invalid`, `refused`, `not-found`); its inverse
+known, so undo is the inverse applied.
+
+**Revisions per artifact.** The ontology's revision is worked out from the ontology's parts of the
+model only; each LDM's from that LDM only. Today the ontology's revision is `revisionOf(stable(model))`,
+and `stable()` compares a hand-kept list of the model's fields (`sameMeaning` in
+`src/model/stable.ts`): a field left off the list is invisible to it, a field put on it moves the
+ontology's revision. LM-1 makes the split explicit (TD-20), so that an LDM edit leaves reasoning
+results, validation results, shape proposals and assistant proposals current.
+
+**History.** The document's history undoes a step by putting back the parts of the model it
+replaced, whatever they are, so LDM edits are undone and redone with no new mechanism. A step
+records which artifacts it changed (`ontology`, `shapes`, `dataGraphs`, `ldm:{id}`), so that the
+history can name an LDM change as such (TD-19). Synchronization and transformation never change
+the ontology, so a step that changes both does not arise from them.
+
+**Versions** (roadmap 2.3). A version keeps the whole project document, LDMs and their mappings
+included, with no change to what a version is. The difference gains a list per LDM: elements
+added, removed and changed, and for a change the fields before and after. Restoring a version
+restores every artifact, as one step; restoring one LDM alone from a version is an open question
+(§13.13). On the server (roadmap LM-5) each LDM has a line of revisions of its own, made of logical
+change entries ([DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.7).
+
+### 13.6 Transformation: rules and decisions
+
+`TransformationService.propose` reads the ontology as it is written (its statements, structured
+class expressions where 2.1 has them) for a **scope** (the whole ontology, a branch under a class,
+chosen classes, with or without the entities of loaded imports) under a **configuration** saved
+with the LDM:
+
+- **naming**: names from labels in the display language, or from local names; letter case and
+  separators; singular names; collisions resolved by a suffix and reported;
+- **the datatype table**: XSD datatype to logical type, with defaults (`xsd:string` text,
+  `xsd:integer` and its subtypes integer, `xsd:decimal` decimal, `xsd:double` and `xsd:float`
+  decimal, `xsd:boolean` boolean, `xsd:date` date, `xsd:time` time, `xsd:dateTime` dateTime,
+  `xsd:duration` duration, `xsd:anyURI` text, `rdf:langString` text), each changeable;
+- **the hierarchy strategy**: a specialization per subclass axiom (default), roll-up into the
+  supertype with a discriminator, or roll-down into the subtypes;
+- **the object-property strategy**: a relationship (default), or an associative entity for a
+  many-to-many;
+- **definitions** from `rdfs:comment`, `skos:definition` or neither.
+
+Each proposal is one change it would make, with the axioms it rests on (in Manchester syntax, and
+kept in functional syntax as its mapping's source), the LDM elements it would create or change,
+the strategy, the rationale in words, and, where OWL and the LDM differ, what differs. **Structure
+for the scope chosen is offered selected; constraints are never selected to begin with**
+(ADR-024, NFR-18).
+
+| In the ontology | What it says (open world, no unique names) | What may be proposed | Selected to begin with |
+| --- | --- | --- | --- |
+| A class in scope | A set of individuals; membership may be inferred | An entity | Yes (structure) |
+| `A SubClassOf B`, named classes | Every A is a B | A specialization; or, by the strategy, a roll-up or roll-down | Yes (structure) |
+| Disjoint classes; `owl:disjointUnionOf` | No individual in both; B is exactly the disjoint union | *Exclusive* and, for a union, *complete* on the specialization | No |
+| A datatype property with domain C and range `xsd:T` | Every value is a T; having a value makes the subject a C (a domain infers a type) | An optional attribute of C's entity, typed by the datatype table | Yes (structure), optional |
+| A property with no domain, or a union as domain | Usable by anything | An attribute or relationship on the entity the user chooses; nothing until chosen | — |
+| An object property from C to D | Relates individuals; domain and range infer types | A relationship between C's and D's entities, both ends optional | Yes (structure) |
+| Functional / inverse functional | At most one value per subject / subject per value, counting individuals that may have several names | The relationship's form: many-to-one / one-to-many, one-to-one with both; stated as the reason | Part of the relationship's proposal, shown as its reason, changeable |
+| Neither functional | Any number | Many-to-many: kept, or an associative entity (strategy) | Yes (structure) |
+| An inverse pair `P owl:inverseOf Q` | The same relation read both ways | One relationship with both role names | Yes (structure) |
+| `C SubClassOf P some D`; `min n`, `exactly n` with n ≥ 1 | Every C has such a value, *known or not*: a C with none recorded is not an inconsistency | *Mandatory* on the attribute or the end at C; for `exactly`, also a maximum | **No**: a candidate constraint, with the difference stated |
+| `C SubClassOf P max n` | No C has more than n distinct values | A maximum of n on the end | **No** |
+| `C SubClassOf P only D` | Every value of P for a C is a D | The relationship's other end narrowed to D's entity, for C | **No** |
+| `C SubClassOf P value v` | Every C has the value v | A business rule in words, or a fixed discriminator value | **No** |
+| `owl:hasKey` | Named individuals with equal key values are the same | A candidate key | **No**; the primary key is the user's choice |
+| `owl:oneOf`; an enumerated datatype | Exactly these individuals or literals | A domain with enumerated values | **No** |
+| Equivalent classes; a defined class | Necessary and sufficient conditions, used to classify | Nothing structural; a rule in words, or a derived or discriminator attribute | **No** |
+| Sub-properties, chains, transitivity, reflexivity | Inferences | Nothing; noted in the rationale where they bear on a relationship | — |
+| Individuals | Facts about particular things | Not transformed (reference data is Future) | — |
+| A shape set chosen as input (FR-M18-7): `sh:minCount 1`, `sh:maxCount`, `sh:in`, `sh:datatype` | What an application's RDF data must have | The same candidate constraints, naming the shape | **No** |
+
+**Non-destructive.** The ontology is never changed. A transformation into an existing LDM
+compares each proposal with what the LDM's mappings say was made before: what is already there
+as it was made is not proposed again; what the user has changed since (§13.7, *customised*) is
+never proposed over; only what is missing, or what the ontology changed and the user did not, is
+offered. Applying is one logical change set, with the mappings it implies, undone in one step.
+
+**Proposals, not generation.** The result is a set of decisions to review, with defaults chosen
+so that accepting everything as offered gives a faithful but unconstrained structure: every
+attribute optional, every end optional, no key, no rule. Constraints are added one by one, by
+someone who knows what the application must require.
+
+### 13.7 Semantic mappings and provenance
+
+```ts
+interface SemanticMapping {
+  id: string;
+  sources: { iri: string; axioms: string[] }[];   // ontology entities, and the axioms used, in functional syntax
+  targets: ElementRef[];                           // LDM elements
+  strategy: string;                                // 'class-to-entity', 'roll-up', 'property-to-associative-entity', 'by-hand', …
+  rationale: string;                               // in words
+  origin: { ontology: string; revision: string; version?: string }; // the ontology's IRI, its content hash, a named version
+  baseline: Record<string, unknown>;               // what this mapping last made of its targets
+  status: 'current' | 'stale' | 'broken';          // worked out against the ontology as it is
+  made: { by: 'transformation' | 'hand' | 'synchronization' | 'assistant'; at: number; author?: string };
+}
+```
+
+- **Sources by axiom**, in OWL functional syntax with full IRIs, as SH-3 keeps a shape's origin
+  (`cw:fromAxiom`): exact, independent of how the editor draws it, and followed through a change
+  of IRI made in the editor.
+- **Status.** *Current* while the ontology still states every source axiom; *stale* when one has
+  changed (the entity is there, what is said of it is not); *broken* when a source entity or a
+  target element is gone. Worked out against the ontology's revision, cached by it, never stored
+  as truth.
+- **Customised.** A target is customised when it differs from the mapping's `baseline`, the
+  content the mapping last produced. This is detected, not declared: the user edits as they
+  please, and the product knows which edits were theirs.
+- **Many to many.** A mapping has any number of sources and targets; an element any number of
+  mappings; an ontology entity mappings in several LDMs. Coverage reports, per LDM, the ontology
+  entities in scope with no mapping and the LDM elements with none (application-specific).
+- **Provenance.** `origin` says from which ontology revision, and named version where there is
+  one, a mapping was last made or synchronized; `made` says how. On the server, `author` is the
+  user.
+
+### 13.8 Change impact and synchronization
+
+An **impact report** compares the ontology at each mapping's origin, or at a chosen version, with
+the ontology now or another version, using the axiom difference of roadmap task 2.3
+(`changesBetween`), restricted to the IRIs and axioms the LDM's mappings reference and to the
+transformation's scope. It is worked out per LDM, in a worker.
+
+| Ontology change | Mappings | Impact on the LDM | Synchronization proposal |
+| --- | --- | --- | --- |
+| A class added in scope | — | Not represented | An entity, as a transformation would propose it |
+| A class removed | Broken | Its entity has no semantic source | Remove the entity, or keep it as application-specific |
+| A label changed | Current (the IRI is the same) | The name no longer follows the label | Rename, unless the user renamed it |
+| A superclass changed | Stale | The specialization no longer matches | Move the subtype |
+| A datatype property's range changed | Stale | The attribute's type differs | Change the type, unless customised |
+| A property made functional, or no longer | Stale | The relationship's form differs | Change the maximum |
+| A restriction added or removed | Stale, or a candidate gone | A candidate constraint appears, or a constraint loses its source | Offer the candidate; flag the constraint, never remove it by itself |
+| A property removed | Broken | Its attributes or relationship have no semantic source | Remove them, or keep them |
+
+**Synchronization proposals** are reviewed as transformation proposals are: none selected for a
+customised element; a dismissed proposal not offered again until its source changes again;
+accepted ones applied as one logical change set, which moves the affected mappings' origin to
+the revision they were synchronized with. An ontology change never changes an LDM by itself
+(ADR-025).
+
+### 13.9 An LDM's lifecycle
+
+- **Made** by hand, by transformation, by import of the LDM JSON format, or by duplicating
+  another (new ids; the copy is independent).
+- **Edited** independently, in the workspace and on the diagram; validated as it is edited.
+- **Kept** with the project: in the working copy, in My Models, in every version (Local profile);
+  as a line of revisions of its own (Server profile, LM-5).
+- **Kept in step** with the ontology only by reviewed synchronization; or **detached**, by
+  removing its mappings, to live on as a model of its own.
+- **Removed**: its mappings go with it; the ontology is untouched.
+
+Several LDMs derived from one ontology each have their own configuration, mappings and impact
+reports: two applications may read one domain differently, and both readings are traced to it.
+
+### 13.10 What is reused, and what is new
+
+| Existing component | Reused for |
+| --- | --- |
+| Layouts over a neutral graph (`src/layout/`, `LayoutGraph`), line geometry (`src/model/geometry.ts`), culling (`src/model/culling.ts`) | The ER diagram, as a view of its own |
+| Entity lists, search and pickers (`src/components/Entities.tsx`, `EntityPicker.tsx`) | Entity and attribute lists, and choosing an entity in the workspace |
+| Validation runs and findings (`src/model/validation.ts`, `src/validation/`, the Validation view) | LDM validation as one more scope and category |
+| The version difference and its view (`src/projects/difference.ts`, `Versions.tsx`) | LDM differences between versions |
+| The axiom difference (`changesBetween` in `src/editing/local.ts`) | Impact reports |
+| Proposals reviewed one by one, with origin kept as functional syntax and staleness (`src/model/proposals.ts`, SH-3) | Transformation and synchronization proposals; mapping sources |
+| Structured class expressions (`src/editing/axioms.ts`, `src/model/manchester.ts`, 2.1) | Reading restrictions, and showing source axioms in Manchester syntax |
+| The assistant (`src/ai/`: tools, proposals, review) | LDM tools and typed LDM proposals (roadmap 5.7) |
+| Name making and literal checks (`localName` in `src/model/iri.ts`, `src/model/literals.ts`) | Names from labels; checking a domain's enumerated values and bounds |
+| The service pattern (`contracts.ts`, `local.ts`, `boundaries.test.ts`, the JSON round-trip test) | All four new services |
+
+**Not reused.** The ontology's canvas (`src/components/Canvas.tsx`) draws and edits the ontology's
+`Model` (TD-05): an LDM is not an ontology and is not forced into that type. The mapping core of
+tabular import (`src/mapping/`) turns rows into entities and values, not axioms into structure
+(ADR-019). Alignment mappings (`Model.mappings`, `src/model/alignment.ts`) relate ontology
+entities to other ontologies' and stay what they are.
+
+**New.** The metamodel and its four services; the LDM workspace and the ER diagram view; the
+transformation engine and its configuration; semantic mappings, staleness, impact reports and
+synchronization; the LDM JSON format; LDM validation rules.
+
+### 13.11 Scalability
+
+| Concern | Design |
+| --- | --- |
+| Large LDMs (2,000 entities, 30,000 attributes) | Edits apply to the LDM's parts and work out nothing for the ontology; lists and search over an index built per LDM revision; the diagram culled as the Graph view is (NFR-19). |
+| Large ontologies (10,000 classes) | Transformation and impact reports are jobs in a worker, cancellable, keyed by the ontology's and the LDM's revisions. |
+| Many LDMs per ontology | Impact restricted, per LDM, to the IRIs and axioms its mappings reference; an index from IRI to mappings, built per revision. |
+| Server projects (LM-5) | LDMs queried a page at a time; logical change entries as rows; impact as a job over the server's ontology. |
+
+### 13.12 Out of scope
+
+No physical data model, database-specific data type, table, column, index, storage parameter,
+schema generation, SQL DDL or deployment (ADR-026); no data rows, no connection to a database
+(the deferred track, §12); no OWL axiom made from an LDM (an LDM informs no ontology by itself);
+no second assistant.
+
+### 13.13 Open questions and proposed decisions
+
+Each has a default the roadmap assumes; each could become an ADR of its own when decided.
+
+| Question | Why it matters | Default assumed |
+| --- | --- | --- |
+| Should LM-1 come before 2.6 (ELK)? | The new objective against the scheduled order. | 2.6 first: it is small and LM-1 needs nothing of it. |
+| Which ER notation, and more than one? | Users are trained on different ones (IE, Barker, IDEF1X, UML class diagrams). | Information Engineering (crow's foot) only. |
+| What language for formal business rules? | A rule in words cannot be checked; a full language is a product of its own. | Words first; a small expression language over attributes later (FR-M17-9). |
+| Default strategy for subclass hierarchies? | Specialization keeps the ontology's shape; roll-up is what many applications store. | Specialization, with roll-up and roll-down per hierarchy. |
+| Default for an object property that is neither functional nor inverse functional? | Many-to-many is faithful; an associative entity is what a relational design needs. | Many-to-many, with *resolve into an associative entity* offered. |
+| Is a standard exchange format for LDMs needed (XMI/UML, a vendor format)? | Interoperability with existing data modelling tools. | The product's own JSON format only, documented; others when asked for. |
+| How are LDMs stored on the server: element rows, or documents with change entries? | Query speed against simplicity. | Documents per revision with logical change entries, and an index of mapping sources ([DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.7). |
+| Are individuals (reference data, code lists) transformed? | Enumerations often live as individuals. | Not in LM-3; enumerations become domains; reference data is Future. |
+| Can one LDM be restored from a version on its own? | Undoing a bad LDM session without losing ontology work since. | Not in LM-1: a version restores the whole project. |
+| Do entities of imported ontologies enter a transformation's scope? | Modular ontologies spread a domain over files. | Yes, when loaded; mapped by IRI; the importing ontology's revision is the origin. |
+
+## 14. Sources for external facts
 
 Statements about this application are from its source and its own benchmarks, as cited. Version
 and requirement facts about third-party software were checked on 2026-10-13 against:

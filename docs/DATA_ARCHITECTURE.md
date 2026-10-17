@@ -7,8 +7,12 @@ documents: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md),
 Labels as in the architecture document: **Existing**, **Partially Implemented**,
 **Recommended**, **Future**.
 
-Sections 1 to 9 cover the ontology platform. **Section 10 adds the data of ontology-to-relational
-integration**: connections, credentials, schema snapshots, mappings and their versions.
+Sections 1 to 9 cover the ontology platform. **Section 11 adds logical data models** (2026-10-17):
+LDM documents, their identities, logical change sets and revisions, semantic mappings to the
+ontology, and where each is kept in every profile. **Section 10, the data of ontology-to-relational
+integration** (connections, credentials, schema snapshots, R2RML mappings), is **deferred** with
+that track ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11): kept as the design of record,
+not scheduled.
 
 ## 1. Principles
 
@@ -26,9 +30,10 @@ integration**: connections, credentials, schema snapshots, mappings and their ve
    server use the same graph layout and the same relational migrations.
 6. **The browser is a full citizen.** A project can live entirely in IndexedDB; a server project
    can be worked on from a cached copy.
-7. **Ontology, schema and mapping are three things.** What an ontology states, what a database's
-   schema is, and how one is mapped to the other are stored apart, versioned apart, and never
-   written into one another (§10).
+7. **Each artifact is stored as itself.** The ontology, its shape sets and its logical data
+   models are stored apart, have revisions apart, and are never written into one another; only
+   mappings refer to two of them (§11). The same held for a database's schema and its mapping in
+   the deferred data-integration design (§10).
 8. **A secret is not data.** A database credential is never stored with, exported with, or
    returned alongside anything else (§10.6).
 
@@ -38,9 +43,9 @@ integration**: connections, credentials, schema snapshots, mappings and their ve
 | --- | --- | --- | --- |
 | In-memory model | `Model` in `src/model/types.ts` | Everything: terms, relationships, object properties, shapes, mappings, external references, governance set-up, style, layout, enumerated datatypes. | Capped at 250,000 terms and 1,000,000 relationships (`MAX_TERMS`, `MAX_RELATIONS`; 50,000 and 100,000 until 2026-10-15). |
 | `localStorage` | `src/model/state/storage.ts` | Theme, panel state, saved graph styles, the reasoner's address. Until 2026-10-15 also the working copy, as one JSON string (TD-11); one left there is moved to IndexedDB when the app starts. | About 5 MB per origin. |
-| IndexedDB, database `conceptweaver` | `src/model/library.ts` | Object stores `models` (name, dates), `data` (the model JSON), `externals` (the Turtle of each added external ontology), and since 2026-10-15 (database version 3) `working`: the working copy, as the model itself with which saved model it is, written 300 ms after each change. | Per browser, as much as the browser gives the site; can be evicted (AR-09) unless the browser agrees to persistent storage, which is asked for once something has been edited. |
-| Undo history | `past`, `future` in `src/model/store.ts` | Up to 100 earlier models, in memory. | Lost on reload (TD-12). |
-| Files | `src/model/files.ts`, `rdfFormats.ts` | Read: own JSON, Turtle, N-Triples, N-Quads, TriG, RDF/XML, JSON-LD, and through the Java service OWL/XML, functional, Manchester, OBO. Write: own JSON, Turtle (OWL, SKOS, with inferred assertions), JSON-LD, CSV, SVG, PNG, HTML. | No RDF/XML or OWL/XML export (TD-13). |
+| IndexedDB, database `conceptweaver` | `src/model/library.ts` | Object stores `models` (name, dates), `data` (the model JSON), `externals` (the Turtle of each added external ontology); `working` (database version 3, 2026-10-15): the working copy, as the model itself with which saved model it is, written 300 ms after each change; `datagraphs` (version 4): the content of data graphs; `versions` (version 5, 2026-10-16): named versions; `assistant` (version 6, 2026-10-16): the assistant's conversations and proposals, by ontology, never a key. | Per browser, as much as the browser gives the site; can be evicted (AR-09) unless the browser agrees to persistent storage, which is asked for once something has been edited. |
+| Undo history | `past`, `future` of the document slice (`src/model/state/document.ts`, steps of `src/editing/local.ts`) | Steps, each the parts of the model an edit replaced, before and after; its axioms worked out when asked for. | In memory: lost on reload; named versions are what is kept (§6.4). A step does not say which artifact it changed (TD-19). |
+| Files | `src/model/files.ts`, `rdfFormats.ts`, `src/io/` | Read: own JSON, Turtle, N-Triples, N-Quads, TriG, RDF/XML, JSON-LD, and through the Java service OWL/XML, functional, Manchester, OBO. Write: own JSON, Turtle (OWL, SKOS, with inferred assertions), JSON-LD, RDF/XML, CSV, SVG, PNG, HTML, and through the Java service OWL/XML, functional and Manchester (2026-10-16). | — |
 | Java service | `reasoner/ReasonerService.java` | Nothing. It keeps no state between requests. | — |
 
 There is no relational database and no triple store. oxigraph is used as an in-memory SPARQL
@@ -61,13 +66,15 @@ engine built afresh from the exported Turtle (`src/model/sparql.ts`).
 | Jobs (reasoning, validation, import) | In memory | Relational |
 | Mapping metadata, import templates | In the model | Relational |
 | Diagrams: positions, style, layout, line ends | In the model | Relational, as JSON documents |
+| Logical data models, with their diagrams (from LM-1) | In the model (`Model.logicalModels`, model format 6) | Relational: LDM documents and logical change entries, each LDM a line of revisions (§11.7) |
+| Semantic mappings between the ontology and an LDM (from LM-3) | In their LDM | Relational, with the LDM; an index of their source IRIs (§11.7) |
 | Session: selection, viewport, open panels | `localStorage` | `localStorage` (never sent) |
 | Search index | Built in memory per revision (`src/entities/service.ts`) | Lucene index beside TDB2 |
-| Database connection definitions | — | Relational (§10.2) |
-| Database credentials | Never | The backend's secret handling only (§10.6) |
-| Relational schema snapshots | A cached copy in IndexedDB, for offline mapping | Relational |
-| Mapping sets (R2RML) | A draft in IndexedDB | Relational, as immutable revisions |
-| Rows of an external database | Never stored | Not stored, unless materialised on request into a data graph |
+| Database connection definitions (deferred, §10) | — | Relational (§10.2) |
+| Database credentials (deferred) | Never | The backend's secret handling only (§10.6) |
+| Relational schema snapshots (deferred) | A cached copy in IndexedDB, for offline mapping | Relational |
+| R2RML mapping sets (deferred) | A draft in IndexedDB | Relational, as immutable revisions |
+| Rows of an external database (deferred) | Never stored | Not stored, unless materialised on request into a data graph |
 
 ### 3.2 The current model, field by field
 
@@ -94,6 +101,7 @@ the migration map.
 | `governance` | How metadata fields are configured | `project.settings`. The metadata *values* are annotations in the graph |
 | `style`, `layout` | Graph style, layout choice, line ends | `diagram.style`, `diagram.layout` |
 | `datatypes` | Enumerated datatypes | Datatype definitions in the asserted graph |
+| `logicalModels` (proposed, model format 6, roadmap LM-1) | The project's logical data models, each with its entities, relationships, keys, generalizations, rules, domains, semantic mappings, transformation configuration and diagrams | `logical_model` and its revisions (§11.7). Never in a graph: an LDM is not ontology content (ADR-022) |
 
 Two consequences worth stating:
 
@@ -388,7 +396,9 @@ reasoner gave no answer" today, and never reports that as consistent).
 
 - A **revision** is the state of a project's asserted axioms (and shapes) after one change set.
   Revisions of a project form a line: each has one parent. Branches are not part of this design
-  (Future).
+  (Future). Each logical data model has a line of revisions of its own beside the ontology's
+  (§11.4): an LDM change does not make an ontology revision, nor an ontology change an LDM
+  revision.
 - A **change set** is an ordered list of axiom additions and removals with a one-line summary
   ("Made Documentary a subclass of Film"). It is the unit of saving, of undo, of history and of
   review.
@@ -431,7 +441,9 @@ The same model, kept in IndexedDB (**Existing** since 2026-10-16, roadmap task 2
   deletes its versions;
 - the diff between two versions is computed in the page by comparing what each states, statement
   by statement (`changesBetween` in `src/editing/local.ts`, over `toTurtle`), presented by entity
-  (`src/projects/difference.ts`), with the shape sets' statements and the data graphs beside it.
+  (`src/projects/difference.ts`), with the shape sets' statements and the data graphs beside it;
+- from LM-1, a version holds the project's logical data models and their mappings too (they are
+  in the model it keeps), and the difference lists their changes element by element (§11.6).
 
 This gives named versions and a readable diff to every user of the app long before Phase 4, and
 its user interface is the one the server-backed history reuses.
@@ -497,7 +509,9 @@ derived is ever the only copy of anything.
 | `models`, `data` | Local projects: listing and content | **Existing** |
 | `externals` | Fetched external ontologies, as Turtle | **Existing** |
 | `working` | The working copy of the open project (replacing the `localStorage` string) | **Existing** (2026-10-15, TD-11) |
-| `versions` | Saved versions of local projects | Recommended, Phase 2 |
+| `datagraphs` | The content of data graphs, by the id their reference has in a model | **Existing** (2026-10-16, SH-2) |
+| `versions` | Saved versions of local projects | **Existing** (2026-10-16, task 2.3) |
+| `assistant` | The assistant's conversation and proposals about each ontology, never a key | **Existing** (2026-10-16) |
 | `drafts` | For a server project: change sets made but not yet pushed, with the revision they are based on | Recommended, Phase 4 |
 | `cache` | Answers from the server keyed by revision (a page of entities, a branch of the hierarchy) | Recommended, Phase 4 |
 
@@ -539,7 +553,11 @@ never needs them and they make no sense on another machine.
 - **Retention**: inferred graphs and validation runs for revisions older than the last few can
   be dropped at any time. Change entries are kept: they are the audit trail.
 
-## 10. Relational sources, schema metadata and mappings (Recommended)
+## 10. Relational sources, schema metadata and mappings (Deferred)
+
+**Deferred on 2026-10-17** with the data-integration track (ADR-027,
+[DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §11): kept as the design of record, not
+scheduled. Section 11 is the active design.
 
 Nothing in this section exists today. It is the data side of
 [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §12.
@@ -816,3 +834,204 @@ editable where there is none.
 A cached snapshot may be missing on another machine. The existing treatment of external
 ontologies applies ("the content is not on this machine; add it again"; `externals` in
 `src/model/library.ts`): the mapping opens, and what needs the snapshot says so.
+
+## 11. Logical data models, semantic mappings and their revisions (Recommended)
+
+Added on 2026-10-17. Nothing in this section exists today. It is the data side of
+[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13 and of the roadmap's logical data modelling
+track, LM-1 to LM-5 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.3).
+
+### 11.1 What is kept, and where
+
+| Content | Example | Owner | Local profile | Server profile |
+| --- | --- | --- | --- | --- |
+| **A logical data model** | The *Film catalogue* LDM: entities `Film`, `Person`, `Award`; `Film.release_date` a mandatory date | The data architect | `Model.logicalModels` in the project document: working copy, My Models, versions | `logical_model`, its revisions and logical change entries (§11.7) |
+| **Its diagrams** | Where `Film` sits on the ER diagram | The same | In the LDM, apart from its meaning | In the LDM document, apart from its meaning |
+| **Its semantic mappings** | `Film` comes from the class `:Film`; `release_date` from `:releaseDate` and `:Film SubClassOf :releaseDate some xsd:date` | The data architect | In the LDM | In the LDM document; an index of source IRIs (§11.7) |
+| **Its transformation configuration** | Names in snake case from English labels; hierarchies as specializations | The data architect | In the LDM | In the LDM document |
+| **Proposals under review** | The 140 proposals of a transformation not yet decided | The user reviewing | In memory, for the session | A job's result, kept until applied or discarded |
+
+An LDM is not ontology content (ADR-022): it is in no graph, in no ontology export, and the
+ontology's revision does not follow it. It is project content all the same: saved, versioned and
+backed up with the project.
+
+### 11.2 Identity
+
+- **An LDM** has an id unique in its project and never reused (`ldm-` and a random suffix).
+  Duplicating an LDM gives a new id; deleting one never frees its id for another.
+- **An element** (entity, attribute, relationship, key, generalization, rule, domain, mapping)
+  has an id unique and stable within its LDM. Renaming changes a name, never an id; a
+  relationship end is named by its relationship and its position (0 or 1).
+- **Names are not identity** in an LDM, as labels are not in the ontology (ADR-012). A mapping
+  names an LDM element by id and an ontology entity by IRI.
+- On the server, an element is named by (LDM id, element id); an LDM revision by (LDM id,
+  sequence number), and by its content hash for machines.
+
+### 11.3 The document
+
+An LDM is a JSON document, in the project file as in the exchange format of one LDM
+(`conceptweaver-ldm`, versioned like the model format):
+
+```json
+{
+  "format": "conceptweaver-ldm",
+  "version": 1,
+  "model": {
+    "id": "ldm-7f3c",
+    "name": "Film catalogue",
+    "purpose": "The catalogue application",
+    "revision": "r-12",
+    "domains": [{ "id": "d1", "name": "rating", "base": { "base": "text", "maxLength": 5 }, "constraints": { "values": [{ "code": "PG", "label": "Parental guidance" }] } }],
+    "entities": [{
+      "id": "e1", "name": "film", "definition": "A story recorded as moving images.",
+      "attributes": [
+        { "id": "a1", "name": "film_code", "type": { "base": "identifier" }, "optional": false },
+        { "id": "a2", "name": "release_date", "type": { "base": "date" }, "optional": false },
+        { "id": "a3", "name": "rating", "type": { "domain": "d1" }, "optional": true }
+      ],
+      "keys": [{ "id": "k1", "kind": "primary", "name": "film_pk", "members": [{ "attribute": "a1" }] }]
+    }],
+    "relationships": [{ "id": "r1", "name": "directed_by", "identifying": false,
+      "ends": [{ "entity": "e1", "role": "film", "min": 0, "max": "many" }, { "entity": "e2", "role": "director", "min": 0, "max": 1 }] }],
+    "generalizations": [],
+    "rules": [{ "id": "b1", "name": "release after founding", "statement": "A film's release date is not before 1888.", "kind": "constraint", "appliesTo": [{ "attribute": "a2" }], "status": "accepted" }],
+    "mappings": [{
+      "id": "m1",
+      "sources": [{ "iri": "http://example.org/film-knowledge-graph#Film", "axioms": ["Declaration(Class(<http://example.org/film-knowledge-graph#Film>))"] }],
+      "targets": [{ "entity": "e1" }],
+      "strategy": "class-to-entity",
+      "rationale": "Film is a class in the chosen scope.",
+      "origin": { "ontology": "http://example.org/film-knowledge-graph", "revision": "sha256:…", "version": "Version 3" },
+      "baseline": { "name": "film" },
+      "made": { "by": "transformation", "at": 1792000000000 }
+    }],
+    "derivation": { "ontology": "http://example.org/film-knowledge-graph", "config": { "naming": "snake_case", "hierarchy": "specialization" } },
+    "diagrams": [{ "id": "g1", "name": "All", "positions": { "e1": { "x": 120, "y": 80 } } }]
+  }
+}
+```
+
+`status` of a mapping is not stored: it is worked out against the ontology as it is (§11.5).
+`revision` is stored, so that a reopened project knows the revision its proposals and caches
+were for.
+
+### 11.4 Logical change sets and revisions
+
+- **A logical change set** is the unit of an LDM edit (ADR-023): the LDM, the revision it was
+  made against, typed changes (add or remove a whole element, update fields before and after),
+  and a summary ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.5). It is never expressed as
+  axioms, and an axiom change set never touches an LDM.
+- **An LDM's revision** moves with every change to that LDM and only then. The ontology's
+  revision is worked out from the ontology's parts only (TD-20), so an LDM edit leaves reasoning,
+  validation and every proposal about the ontology current.
+- **In the Local profile** the document's history keeps each LDM edit as a step (the parts of the
+  model it replaced), undone and redone with the rest, and records which artifact the step changed
+  (TD-19). The working copy keeps the LDMs as part of the model.
+- **On the server** (LM-5) an LDM revision is a row with its parent, made of logical change
+  entries, beside, not inside, the ontology's revisions (§11.7). A change set against a moved base
+  is refused as `stale-revision`, as for the ontology.
+
+### 11.5 Semantic mappings: storage and provenance
+
+A mapping is kept in its LDM, with its sources (ontology IRIs and the axioms used, in OWL
+functional syntax with full IRIs, as SH-3 keeps `cw:fromAxiom`), its targets (element ids), its
+strategy and rationale, its origin (the ontology's IRI, the content hash of the revision it was
+made or last synchronized from, and the name of a version where there is one), its baseline (what
+it last made of its targets) and how and when it was made.
+
+- **Status is derived, never stored**: *current* while the ontology states every source axiom;
+  *stale* when one changed; *broken* when a source entity or a target element is gone. It is
+  worked out per pair of revisions (ontology, LDM) and cached by them, like every derived result
+  here (§7.4).
+- **Customisation is derived**: a target differs from the mapping's baseline.
+- **Integrity across artifacts is checked, not enforced** (§7.3): deleting an LDM element breaks
+  the mappings to it; removing an ontology entity breaks the mappings from it; neither deletes
+  anything in the other artifact.
+
+### 11.6 Versions and differences
+
+A version of a project (roadmap 2.3) holds its LDMs, so restoring a version restores them with the
+ontology, as one step. The difference between two versions gains, beside the ontology's
+entities, the shape sets and the data graphs:
+
+```ts
+interface LogicalModelDifference {
+  id: string;                    // the LDM
+  name: string;
+  status: 'added' | 'removed' | 'changed';
+  changes: { op: 'add' | 'remove' | 'update'; element: ElementRef; name: string; fields?: { field: string; before: unknown; after: unknown }[] }[];
+}
+```
+
+A change to an LDM's diagram alone is reported as *drawing*, as for the ontology's.
+
+### 11.7 Tables (Server profile, roadmap LM-5)
+
+In the metadata store (PostgreSQL in the Server profile, the embedded database in the companion;
+ADR-007), created by task 4.2 and filled by LM-5. The tables of §5 are referred to by name.
+
+| Table | Columns | Keys and indexes |
+| --- | --- | --- |
+| `logical_model` | `id`, `project_id`, `ldm_id` (the document's id), `name`, `purpose`, `head_revision_id`, `created_by`, `created_at`, `deleted_at` | PK `id`; unique (`project_id`, `ldm_id`); unique (`project_id`, `name`) where `deleted_at` is null |
+| `logical_model_revision` | `id`, `logical_model_id`, `seq`, `parent_id`, `content_hash`, `summary`, `author_id`, `state` (`pending`, `committed`), `ontology_revision_id` (the ontology's head when it was made, for reference only), `tag`, `snapshot` (the whole document, JSON, for tagged revisions and every Nth), `created_at` | PK `id`; unique (`logical_model_id`, `seq`); index (`logical_model_id`, `created_at` descending) |
+| `logical_change_entry` | `revision_id`, `ordinal`, `op` (`add`, `remove`, `update`), `element_kind`, `element_id`, `before` (JSON), `after` (JSON) | PK (`revision_id`, `ordinal`); index (`element_id`, `revision_id`) for "history of this element" |
+| `semantic_mapping_source` | `logical_model_id`, `revision_id`, `mapping_id`, `source_iri`, `axiom_hash` | PK (`revision_id`, `mapping_id`, `source_iri`, `axiom_hash`); index (`source_iri`, `logical_model_id`) for "which LDMs depend on this entity" |
+
+`semantic_mapping_source` is derived from the mappings when a revision is written, so that the
+impact of an ontology change across every LDM of a project is an index lookup.
+
+```mermaid
+erDiagram
+  PROJECT ||--o{ LOGICAL_MODEL : keeps
+  LOGICAL_MODEL ||--o{ LOGICAL_MODEL_REVISION : "has history"
+  LOGICAL_MODEL_REVISION ||--o{ LOGICAL_CHANGE_ENTRY : "consists of"
+  LOGICAL_MODEL_REVISION ||--o{ SEMANTIC_MAPPING_SOURCE : indexes
+  ONTOLOGY_REVISION ||--o{ LOGICAL_MODEL_REVISION : "was current when made"
+
+  LOGICAL_MODEL {
+    uuid id PK
+    uuid project_id FK
+    string ldm_id
+    string name
+    uuid head_revision_id
+  }
+  LOGICAL_MODEL_REVISION {
+    uuid id PK
+    uuid logical_model_id FK
+    int seq
+    uuid parent_id
+    string content_hash
+    uuid ontology_revision_id
+    json snapshot
+  }
+  LOGICAL_CHANGE_ENTRY {
+    uuid revision_id PK
+    int ordinal PK
+    string op
+    string element_kind
+    string element_id
+    json before
+    json after
+  }
+  SEMANTIC_MAPPING_SOURCE {
+    uuid revision_id PK
+    string mapping_id PK
+    string source_iri PK
+    string axiom_hash PK
+    uuid logical_model_id
+  }
+```
+
+**Writing an LDM revision** touches the relational store only, in one transaction: no sequence
+across two stores is needed (§7.2 is for the ontology). **Backup** of a project includes its LDM
+tables with the rest (§9).
+
+### 11.8 Compatibility
+
+- Model format 6 adds `logicalModels`, an empty list by default. A model of format 5 or earlier
+  opens with none and is otherwise unchanged; a fixture written by the format-5 code is frozen in
+  CI before the change, as for every earlier format (NFR-9).
+- The LDM exchange format is versioned on its own (`conceptweaver-ldm`, version 1); a later
+  version reads every earlier one.
+- A project published to a server keeps its LDMs: each becomes a `logical_model` whose first
+  revision is the document as it was.
