@@ -1,6 +1,7 @@
 import type { Model } from '../model/types';
 import { LogicalError, type CallOptions, type ElementDescription, type EntityRow, type LogicalModel, type LogicalModelEditService, type LogicalModelInfo, type LogicalModelQueryService, type LogicalModelRef } from './contracts';
 import { importLogicalModel } from './exchange';
+import { hasPrimaryKey } from './edits';
 import { applied, copied, countsOf, elementOf, emptyLogicalModel, newId, newRevision, problemsOf, supertypesOf } from './rules';
 
 /**
@@ -61,7 +62,7 @@ export function createLocalLogicalServices(host: LogicalHost): { query: LogicalM
       const found = m.entities.filter((e) => !words || norm(e.name).includes(words) || norm(e.definition).includes(words)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       const offset = Math.max(0, Math.floor(q.offset ?? 0));
       const limit = Math.min(MAX_PAGE, Math.max(1, Math.floor(q.limit ?? PAGE)));
-      const items = found.slice(offset, offset + limit).map((e): EntityRow => ({ id: e.id, name: e.name, definition: e.definition, attributes: e.attributes.length, hasPrimaryKey: e.keys.some((k) => k.kind === 'primary'), supertypes: supers.get(e.id) ?? [] }));
+      const items = found.slice(offset, offset + limit).map((e): EntityRow => ({ id: e.id, name: e.name, definition: e.definition, attributes: e.attributes.length, hasPrimaryKey: hasPrimaryKey(m, e.id), supertypes: supers.get(e.id) ?? [] }));
       return { revision: m.revision, total: found.length, offset, items };
     },
     async describe(q, options) {
@@ -79,6 +80,7 @@ export function createLocalLogicalServices(host: LogicalHost): { query: LogicalM
             kind: 'entity',
             entity: found.entity,
             inherited: supers.flatMap((s) => (byId.get(s)?.attributes ?? []).map((attribute) => ({ from: s, attribute }))),
+            inheritedKeys: supers.flatMap((s) => (byId.get(s)?.keys ?? []).map((key) => ({ from: s, key }))),
             supertypes: supers,
             subtypes: m.entities.filter((e) => (supertypesOf(m).get(e.id) ?? []).includes(found.entity.id)).map((e) => e.id),
             relationships: m.relationships.filter((r) => r.ends.some((x) => x.entity === found.entity.id)),

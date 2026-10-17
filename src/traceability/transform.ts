@@ -390,6 +390,28 @@ function hierarchyOf(ctx: ModelContext, scope: Set<string>): Hierarchy {
   return { supers, subs };
 }
 
+/**
+ * The pairs of classes the ontology states to have no member in common: `owl:disjointWith`,
+ * whether written pair by pair or through `owl:AllDisjointClasses`, and the members of one
+ * `owl:disjointUnionOf`, whose classes are disjoint by definition.
+ */
+const disjointKey = (a: string, b: string) => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+
+function statedDisjointPairs(classByIri: Map<string, Term>): Set<string> {
+  const out = new Set<string>();
+  for (const [iri, t] of classByIri) {
+    for (const a of t.classAxioms ?? []) {
+      const other = a.kind === 'DisjointClasses' ? classOf(a.expression) : undefined;
+      if (other && other !== iri) out.add(disjointKey(iri, other));
+    }
+    for (const u of t.disjointUnions ?? []) {
+      const members = u.classes.map(classOf).filter((x): x is string => !!x);
+      for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) if (members[i] !== members[j]) out.add(disjointKey(members[i], members[j]));
+    }
+  }
+  return out;
+}
+
 /** The topmost class an entity is rolled up into: itself when it specialises nothing in scope. */
 function topOf(iri: string, supers: Map<string, string[]>): string {
   const seen = new Set<string>();
@@ -401,6 +423,32 @@ function topOf(iri: string, supers: Map<string, string[]>): string {
     current = next;
   }
   return iri;
+}
+
+/** Every class above this one, nearest first, through the subclass edges in scope. */
+function superIrisOf(iri: string, hierarchy: Hierarchy): string[] {
+  const seen: string[] = [];
+  const todo = [...(hierarchy.supers.get(iri) ?? [])];
+  while (todo.length) {
+    const s = todo.shift()!;
+    if (s === iri || seen.includes(s)) continue;
+    seen.push(s);
+    todo.push(...(hierarchy.supers.get(s) ?? []));
+  }
+  return seen;
+}
+
+/** Every entity above this one in the LDM being built, nearest first. */
+function superEntitiesOf(ctx: Context, entityId: string): string[] {
+  const seen: string[] = [];
+  const todo = ctx.working.generalizations.filter((g) => g.subtypes.includes(entityId)).map((g) => g.supertype);
+  while (todo.length) {
+    const id = todo.shift()!;
+    if (id === entityId || seen.includes(id)) continue;
+    seen.push(id);
+    todo.push(...ctx.working.generalizations.filter((g) => g.subtypes.includes(id)).map((g) => g.supertype));
+  }
+  return seen;
 }
 
 // ---------------------------------------------------------------- types
@@ -750,8 +798,23 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     const { type, note } = logicalTypeOf(ctx, t.ranges?.[0]?.range);
     const axioms = [`Declaration(DataProperty(<${iri}>))`, ...dataRangeAxioms(ctx, t).domains, ...dataRangeAxioms(ctx, t).ranges];
     const sources = [{ iri, label: t.name, axioms }];
+    // One attribute per entity: several domain axioms may, through a hierarchy, name the same
+    // entity more than once, or a class and one of its supertypes. The subtype has the attribute
+    // by inheritance, so it is put only on the topmost class (the reference's move-up rule).
+    const targets: [string, string][] = [];
+    const seenEntities = new Set<string>();
     for (const domainIri of inScope) {
       const entityId = ctx.entityByClass.get(domainIri)!;
+      if (seenEntities.has(entityId)) continue;
+      seenEntities.add(entityId);
+      targets.push([domainIri, entityId]);
+    }
+    const covered = new Set(targets.map(([, id]) => id));
+    const topTargets = targets.filter(([domainIri, entityId]) => !superIrisOf(domainIri, hierarchy).some((s) => {
+      const above = ctx.entityByClass.get(s);
+      return above !== undefined && above !== entityId && covered.has(above);
+    }));
+    for (const [domainIri, entityId] of topTargets) {
       if (mapped) {
         ctx.skipped.push({ iri, name: t.name, reason: 'already represented by an attribute' });
         break;
@@ -804,7 +867,18 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       ctx.skipped.push({ iri, name: p.name, reason: 'no class is stated at one of its ends' });
       continue;
     }
-    const pairs = ends.domains.flatMap((d) => ends.ranges.map((r) => [d, r] as const)).filter(([d, r]) => ctx.entityByClass.has(d) && ctx.entityByClass.has(r));
+    const stated = ends.domains.flatMap((d) => ends.ranges.map((r) => [d, r] as const)).filter(([d, r]) => ctx.entityByClass.has(d) && ctx.entityByClass.has(r));
+    // A relationship read at a supertype and again at a subtype is one relationship: the subtype
+    // has it by inheritance. Rolled-up classes share an entity, and give it one relationship too.
+    const pairs: [string, string][] = [];
+    const seenPairs = new Set<string>();
+    for (const [domainIri, rangeIri] of stated) {
+      const inherited = stated.some(([aboveIri, otherRange]) => aboveIri !== domainIri && otherRange === rangeIri && superIrisOf(domainIri, hierarchy).includes(aboveIri));
+      const key = `${ctx.entityByClass.get(domainIri)}|${ctx.entityByClass.get(rangeIri)}`;
+      if (inherited || seenPairs.has(key)) continue;
+      seenPairs.add(key);
+      pairs.push([domainIri, rangeIri]);
+    }
     if (!pairs.length) {
       ctx.skipped.push({ iri, name: p.name, reason: 'the classes at its ends are not in scope' });
       continue;
@@ -884,6 +958,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
   }
 
   // ------------------------------------------------------------ specializations, or rolled down attributes
+  const disjointPairs = statedDisjointPairs(classByIri);
   if (config.hierarchy === 'specialization') {
     for (const [superIri, subs] of [...hierarchy.subs.entries()].sort(([a], [b]) => a.localeCompare(b))) {
       const superId = ctx.entityByClass.get(superIri);
@@ -893,13 +968,30 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
         ctx.skipped.push({ iri: superIri, name: classByIri.get(superIri)?.name ?? '', reason: 'a specialization of it is already in the LDM' });
         continue;
       }
-      const generalization = { id: newId('g'), supertype: superId, subtypes: [...new Set(subIds)], complete: false, exclusive: false };
+      // A disjoint union of exactly these classes says the specialization is complete (every
+      // supertype instance is one of them), and that its members are exclusive (no instance is
+      // two of them). Pairwise disjointness says exclusivity alone. The subtype rules of the LDM
+      // are the OWL disjointness, read as an LDM states it.
+      const complete = (classByIri.get(superIri)?.disjointUnions ?? []).some((u) => {
+        const members = new Set(u.classes.map(classOf).filter((x): x is string => !!x));
+        return members.size === subs.length && subs.every((s) => members.has(s));
+      });
+      const exclusive = subs.length > 1 && subs.every((a, i) => subs.slice(i + 1).every((b) => disjointPairs.has(disjointKey(a, b))));
+      const generalization = { id: newId('g'), supertype: superId, subtypes: [...new Set(subIds)], complete, exclusive };
       const superName = ctx.working.entities.find((e) => e.id === superId)!.name;
       const subNames = generalization.subtypes.map((id) => ctx.working.entities.find((e) => e.id === id)!.name);
-      const sources = [{ iri: superIri, label: classByIri.get(superIri)?.name ?? '', axioms: [`Declaration(Class(<${superIri}>))`, ...subs.map((s) => `SubClassOf(<${s}> <${superIri}>)`)] }];
+      const stated = [
+        ...(complete ? [`DisjointUnion(<${superIri}> ${subs.map((s) => `<${s}>`).join(' ')})`] : []),
+        ...(exclusive && !complete ? subs.flatMap((a, i) => subs.slice(i + 1).filter((b) => disjointPairs.has(disjointKey(a, b))).map((b) => `DisjointClasses(<${a}> <${b}>)`)) : []),
+      ];
+      const sources = [{ iri: superIri, label: classByIri.get(superIri)?.name ?? '', axioms: [`Declaration(Class(<${superIri}>))`, ...subs.map((s) => `SubClassOf(<${s}> <${superIri}>)`), ...stated] }];
       const strategy = 'subclass hierarchy → specialization';
-      const rationale = `${subNames.join(', ')} ${subNames.length === 1 ? 'is' : 'are'} stated to be a kind of ${superName}; a generalization keeps that, neither complete nor exclusive, until the user says so.`;
-      const difference = 'OWL subsumption is open and may have several superclasses; an LDM specialization is a structural choice, and the flags for complete and exclusive are left off because the ontology does not say either.';
+      const flags = [complete ? 'complete' : '', exclusive ? 'exclusive' : ''].filter(Boolean);
+      const kind = `${subNames.join(', ')} ${subNames.length === 1 ? 'is' : 'are'} stated to be a kind of ${superName}`;
+      const rationale = flags.length ? `${kind}; the ontology states that ${subNames.length === 1 ? 'it is' : 'they are'} ${flags.join(' and ')}.` : `${kind}; a generalization keeps that, neither complete nor exclusive, until the user says so.`;
+      const difference = flags.length
+        ? 'OWL subsumption is open and may have several superclasses; the completeness and exclusivity come from the disjointness the ontology states, and the specialization is an LDM decision.'
+        : 'OWL subsumption is open and may have several superclasses; an LDM specialization is a structural choice, and the flags for complete and exclusive are left off because the ontology does not say either.';
       const m = mapping(ctx, sources, [{ generalization: generalization.id }], strategy, rationale, { generalization });
       const requires = [superIri, ...subs].filter((x) => ctx.entityProposal.has(x)).map((x) => ctx.entityProposal.get(x)!);
       propose(ctx, { kind: 'specialization', title: `Specialization of ${superName}: ${subNames.join(', ')}`, sources, elements: [`Generalization of ${superName}`], changes: [{ op: 'add', element: { kind: 'generalization', generalization } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires, candidate: false });
@@ -1063,24 +1155,31 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       ctx.skipped.push({ iri: key.classIri, name: localPart(key.classIri), reason: 'it has a key, but no entity was made from it' });
       continue;
     }
-    const members = key.properties.map((p) => ctx.attributeByProp.get(`${p}|${entityId}`)).filter((x): x is string => !!x);
+    // The property of a subclass's key may be declared on a supertype: the subclass has that
+    // attribute by inheritance, and a key can name the attributes an entity inherits.
+    const owners = [entityId, ...superEntitiesOf(ctx, entityId)];
+    const attributes = new Map(owners.flatMap((id) => (ctx.working.entities.find((e) => e.id === id)?.attributes ?? []).map((a) => [a.id, a] as const)));
+    const members = key.properties.map((p) => owners.map((id) => ctx.attributeByProp.get(`${p}|${id}`)).find((x): x is string => !!x)).filter((x): x is string => !!x);
     if (members.length !== key.properties.length) {
       ctx.skipped.push({ iri: key.classIri, name: localPart(key.classIri), reason: 'its key names properties that are not attributes of the entity' });
       continue;
     }
     const entity = ctx.working.entities.find((e) => e.id === entityId)!;
-    if (entity.keys.some((k) => k.members.length === members.length && members.every((id) => k.members.some((m) => 'attribute' in m && m.attribute === id)))) {
+    // A key of the same attributes on a supertype is the subtype's by inheritance: it would say
+    // the same thing twice.
+    const inherited = owners.slice(1).flatMap((id) => ctx.working.entities.find((e) => e.id === id)?.keys ?? []);
+    if ([...entity.keys, ...inherited].some((k) => k.members.length === members.length && members.every((id) => k.members.some((m) => 'attribute' in m && m.attribute === id)))) {
       ctx.skipped.push({ iri: key.classIri, name: localPart(key.classIri), reason: 'a key of those attributes is already in the LDM' });
       continue;
     }
-    const used = new Set(entity.keys.map((k) => k.name.toLowerCase()));
+    const used = new Set([...entity.keys, ...inherited].map((k) => k.name.toLowerCase()));
     const made: Key = { id: newId('k'), kind: 'candidate', name: freeName('Candidate key', used), members: members.map((attribute) => ({ attribute })) };
     const sources = [{ iri: key.classIri, label: classByIri.get(key.classIri)?.name ?? '', axioms: [key.axiom] }];
     const strategy = 'owl:hasKey → candidate key';
     const rationale = `The ontology states ${key.axiom}. The LDM offers it as a candidate key, never chosen to begin with.`;
     const difference = 'owl:hasKey says those properties identify an individual, but OWL has no unique names, so two different IRIs may still be one thing; an LDM key forbids two rows with the same values. Choosing it is a closed-world decision.';
     constraint(`key:${entityId}:${members.join(',')}`, {
-      title: `Candidate key on ${entity.name}: ${members.map((id) => entity.attributes.find((a) => a.id === id)?.name).join(', ')}`,
+      title: `Candidate key on ${entity.name}: ${members.map((id) => attributes.get(id)?.name ?? id).join(', ')}`,
       sources,
       elements: [`Key ${made.name} of ${entity.name}`],
       changes: [{ op: 'add', element: { kind: 'key', entity: entityId, key: made } }],
@@ -1117,15 +1216,9 @@ function attributeNames(ctx: Context, entityId: string): Set<string> {
   const names = new Set<string>();
   const entity = ctx.working.entities.find((e) => e.id === entityId);
   for (const a of entity?.attributes ?? []) names.add(a.name.toLowerCase());
-  const seen = new Set<string>([entityId]);
-  const todo = ctx.working.generalizations.filter((g) => g.subtypes.includes(entityId)).map((g) => g.supertype);
-  while (todo.length) {
-    const id = todo.shift()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const parent = ctx.working.entities.find((e) => e.id === id);
-    for (const a of parent?.attributes ?? []) names.add(a.name.toLowerCase());
-    todo.push(...ctx.working.generalizations.filter((g) => g.subtypes.includes(id)).map((g) => g.supertype));
+  for (const id of superEntitiesOf(ctx, entityId)) {
+    const above = ctx.working.entities.find((e) => e.id === id);
+    for (const a of above?.attributes ?? []) names.add(a.name.toLowerCase());
   }
   return names;
 }

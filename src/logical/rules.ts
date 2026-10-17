@@ -378,10 +378,11 @@ export function problemsOf(m: LogicalModel): LogicalRefusal[] {
       if (p) invalid(`The attribute “${a.name}” of ${name(e.id)}: ${p}.`, { attribute: a.id });
     }
     const usable = new Set([...e.attributes, ...inheritedOf(e.id)].map((a) => a.id));
-    const keyNames = new Set<string>();
-    if (e.keys.filter((k) => k.kind === 'primary').length > 1) refuse(`${name(e.id)} has more than one primary key.`, { entity: e.id });
+    const inheritedKeys = (supers.get(e.id) ?? []).flatMap((s) => entities.get(s)?.keys ?? []);
+    const keyNames = new Set(inheritedKeys.map((k) => norm(k.name)));
+    if ([...e.keys, ...inheritedKeys].filter((k) => k.kind === 'primary').length > 1) refuse(`${name(e.id)} has more than one primary key, counting what it inherits.`, { entity: e.id });
     for (const k of e.keys) {
-      if (k.name.trim() && keyNames.has(norm(k.name))) refuse(`${name(e.id)} has two keys called “${k.name.trim()}”.`, { key: k.id });
+      if (k.name.trim() && keyNames.has(norm(k.name))) refuse(`${name(e.id)} has two keys called “${k.name.trim()}”, counting what it inherits.`, { key: k.id });
       keyNames.add(norm(k.name));
       if (!k.members.length) invalid(`A key of ${name(e.id)} has no members.`, { key: k.id });
       for (const member of k.members) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LogicalChange, LogicalModel } from './contracts';
 import { applied, emptyLogicalModel, removalOf } from './rules';
-import { attributeAdded, attributesOfEntity, diagramChange, domainAdded, endChanged, entityAdded, freeName, generalizationAdded, keyAdded, relationshipAdded, resolveManyToMany, ruleAdded, typeFromSetting, typeSetting, updatedChange, wouldCycle } from './edits';
+import { attributeAdded, attributesOfEntity, diagramChange, domainAdded, endChanged, entityAdded, freeName, generalizationAdded, hasPrimaryKey, inheritedKeysOf, keyAdded, keysOfEntity, relationshipAdded, resolveManyToMany, ruleAdded, typeFromSetting, typeSetting, updatedChange, wouldCycle } from './edits';
 
 /**
  * The changes the LDM workspace makes (roadmap LM-2): each is a change set the edit service can
@@ -144,6 +144,22 @@ describe('specialization', () => {
     expect(wouldCycle(after, ids[2], ids[0])).toBe(true);
     expect(generalizationAdded(after, ids[2], ids[0])).toBeUndefined();
     expect(wouldCycle(after, ids[0], ids[2])).toBe(false);
+  });
+
+  it('identifies a subtype as its supertype is: its key is inherited, and it may not have a second primary', () => {
+    const { m, ids } = withEntities(['Work', 'Film']);
+    const attribute = attributeAdded(m, ids[0])!;
+    let after = next(m, attribute.change);
+    const key = keyAdded(after, ids[0], 'primary')!;
+    after = next(after, key.change);
+    after = next(after, generalizationAdded(after, ids[0], ids[1])!.change);
+    const inherited = after.entities[0].keys[0];
+    expect(hasPrimaryKey(after, ids[1])).toBe(true);
+    expect(inheritedKeysOf(after, ids[1])).toEqual([{ key: inherited, from: ids[0] }]);
+    expect(keysOfEntity(after, ids[1])).toEqual([inherited]);
+    expect(keyAdded(after, ids[1], 'primary')).toBeUndefined();
+    // A candidate key of the subtype gets a name of its own, inherited names included.
+    expect(keyAdded(after, ids[1], 'candidate')!.change).toMatchObject({ element: { key: { name: 'Candidate key' } } });
   });
 });
 

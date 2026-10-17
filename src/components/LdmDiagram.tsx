@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { builtIn } from '../layout/compute';
 import type { LayoutGraph } from '../layout/types';
-import type { LogicalEntity, LogicalModel, RelationshipEnd } from '../logical/contracts';
+import type { Generalization, LogicalEntity, LogicalModel, RelationshipEnd } from '../logical/contracts';
 import { typeText } from '../logical/text';
 
 /**
@@ -70,8 +70,12 @@ function edgePoint(b: Box, toward: P): P {
 function layoutOf(m: LogicalModel): Record<string, P> {
   const graph: LayoutGraph = {
     nodes: m.entities.map((e) => ({ id: e.id, w: widthOf(e), h: heightOf(e) })),
-    // The child (ends[0]) of an identifying relationship is below its parent, as a key is below what it identifies.
-    edges: m.relationships.map((r) => ({ from: r.ends[0].entity, to: r.ends[1].entity, up: r.identifying })),
+    edges: [
+      // The child (ends[0]) of an identifying relationship is below its parent, as a key is below what it identifies.
+      ...m.relationships.map((r) => ({ from: r.ends[0].entity, to: r.ends[1].entity, up: r.identifying })),
+      // A subtype is below the supertype it specialises, as a kind of it is.
+      ...m.generalizations.flatMap((g) => g.subtypes.map((s) => ({ from: g.supertype, to: s }))),
+    ],
   };
   const places = builtIn({ kind: 'hierarchy', graph, options: { direction: 'TB', nodeSpacing: 60, layerSpacing: 90, repulsion: 1, root: '' } });
   const out: Record<string, P> = {};
@@ -118,6 +122,41 @@ function SelfLoop({ box }: { box: Box }) {
   return <path className="ldm-rel" d={`M ${x + box.w * 0.66} ${y} C ${x + box.w + 90} ${y - 80}, ${x + box.w + 90} ${y + box.h + 70}, ${x + box.w * 0.5} ${y + box.h}`} fill="none" />;
 }
 
+/**
+ * A subtype relationship, as Information Engineering draws it: a line from the supertype to a
+ * subtype symbol, and from there one line to each subtype. The discriminator, completeness and
+ * exclusivity are written beside the symbol (the subtype relationship of the reference rules).
+ */
+function SubtypeLink({ g, superBox, kids, superName, names, discriminator }: { g: Generalization; superBox: Box; kids: { id: string; box: Box }[]; superName: string; names: Map<string, string>; discriminator?: string }) {
+  const c = centerOf(superBox);
+  const hits = kids.map((k) => centerOf(k.box));
+  const middle = { x: hits.reduce((n, p) => n + p.x, 0) / hits.length, y: hits.reduce((n, p) => n + p.y, 0) / hits.length };
+  const dx = middle.x - c.x;
+  const dy = middle.y - c.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const from = edgePoint(superBox, middle);
+  // A little way out of the supertype, so that the symbol is not on its edge.
+  const junction = { x: from.x + (dx / len) * 34, y: from.y + (dy / len) * 34 };
+  const subNames = kids.map((k) => names.get(k.id) ?? k.id).join(', ');
+  const flags = [g.complete ? 'complete' : '', g.exclusive ? 'exclusive' : ''].filter(Boolean).join(', ');
+  const label = [discriminator ?? 'subtype', flags].filter(Boolean).join(' · ');
+  const title = `Subtypes of ${superName}: ${subNames}. ${g.complete ? 'Every instance is one of them. ' : 'Not stated complete. '}${g.exclusive ? 'No instance is of two. ' : 'Not stated exclusive. '}${discriminator ? `Discriminator: ${discriminator}.` : ''}`;
+  return (
+    <g className="ldm-gen-group" aria-label={title}>
+      <title>{title}</title>
+      <line className="ldm-gen" x1={from.x} y1={from.y} x2={junction.x} y2={junction.y} />
+      {kids.map((k) => {
+        const at = edgePoint(k.box, junction);
+        return <line key={k.id} className="ldm-gen" x1={junction.x} y1={junction.y} x2={at.x} y2={at.y} />;
+      })}
+      <circle className="ldm-gen-symbol" cx={junction.x} cy={junction.y} r={7} />
+      <text className="ldm-gen-label" x={junction.x} y={junction.y - 13}>
+        {label}
+      </text>
+    </g>
+  );
+}
+
 /** The four marks of the notation, drawn small beside the toolbar’s words. */
 function Legend() {
   return (
@@ -150,13 +189,22 @@ function Legend() {
         </svg>
         optional
       </span>
+      <span>
+        <svg width="20" height="14" aria-hidden="true">
+          <line className="ldm-gen" x1="10" y1="0" x2="10" y2="5" />
+          <circle className="ldm-gen-symbol" cx="10" cy="8" r="3" />
+          <line className="ldm-gen" x1="10" y1="11" x2="6" y2="14" />
+          <line className="ldm-gen" x1="10" y1="11" x2="14" y2="14" />
+        </svg>
+        subtype
+      </span>
     </span>
   );
 }
 
 export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, onNewRelationship }: { m: LogicalModel; selected: string | null; onSelect: (id: string) => void; onPositions: (positions: Record<string, P>) => void; onNewEntity: () => void; onNewRelationship: () => void }) {
   // The layout is recomputed when entities or lines change, not when a name or an attribute does.
-  const shape = `${m.entities.map((e) => e.id).join(',')}|${m.relationships.map((r) => `${r.id}:${r.ends[0].entity}>${r.ends[1].entity}`).join(',')}`;
+  const shape = `${m.entities.map((e) => e.id).join(',')}|${m.relationships.map((r) => `${r.id}:${r.ends[0].entity}>${r.ends[1].entity}`).join(',')}|${m.generalizations.map((g) => `${g.id}:${g.supertype}>${g.subtypes.join('+')}`).join(',')}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const arranged = useMemo(() => layoutOf(m), [shape]);
   const [moved, setMoved] = useState<Record<string, P>>({});
@@ -182,6 +230,7 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
 
   const positions = { ...arranged, ...(stored ?? {}), ...moved };
   const boxes = new Map<string, Box>(m.entities.map((e) => [e.id, boxOf(e, positions[e.id] ?? { x: 0, y: 0 })]));
+  const entityNames = new Map(m.entities.map((e) => [e.id, e.name]));
   const all = [...boxes.values()];
   const contentMinX = all.length ? Math.min(...all.map((b) => b.x)) : 0;
   const contentMinY = all.length ? Math.min(...all.map((b) => b.y)) : 0;
@@ -405,6 +454,17 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
                   </text>
                 </g>
               );
+            })}
+            {m.generalizations.map((g) => {
+              const superBox = boxes.get(g.supertype);
+              if (!superBox) return null;
+              const kids = g.subtypes.flatMap((id) => {
+                const box = boxes.get(id);
+                return box ? [{ id, box }] : [];
+              });
+              if (!kids.length) return null;
+              const discriminator = g.discriminator ? m.entities.flatMap((e) => e.attributes).find((a) => a.id === g.discriminator)?.name : undefined;
+              return <SubtypeLink key={g.id} g={g} superBox={superBox} kids={kids} superName={entityNames.get(g.supertype) ?? g.supertype} names={entityNames} discriminator={discriminator} />;
             })}
             {m.entities.map((e) => {
               const box = boxes.get(e.id);

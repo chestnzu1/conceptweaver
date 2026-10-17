@@ -25,6 +25,18 @@ describe('what the validation view says of the logical models', () => {
     expect(found[2].message).toMatch(/many-to-many/);
   });
 
+  it('does not say an entity nothing identifies when the entity it inherits from identifies it', () => {
+    const m: LogicalModel = {
+      ...shop(),
+      entities: [
+        { id: 'e-customer', name: 'Customer', definition: '', attributes: [{ id: 'a-id', name: 'id', definition: '', type: { base: 'identifier' }, optional: false }], keys: [{ id: 'k-customer', kind: 'primary', name: 'Primary key', members: [{ attribute: 'a-id' }] }] },
+        { id: 'e-order', name: 'Order', definition: '', attributes: [], keys: [] },
+      ],
+      generalizations: [{ id: 'g-order', supertype: 'e-customer', subtypes: ['e-order'], complete: false, exclusive: false }],
+    };
+    expect(ldmProblems([m]).filter((p) => p.ruleId === 'ldm-no-primary-key')).toEqual([]);
+  });
+
   it('names the model itself, where the problem is the model’s', () => {
     const m = { ...shop(), name: '' };
     const found = ldmProblems([m]);

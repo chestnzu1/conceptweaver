@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type InputHTMLAttributes } from 'react';
 import { BASE_TYPES, LogicalError, type BaseType, type BusinessRule, type ElementRef, type Generalization, type Key, type KeyMember, type LogicalAttribute, type LogicalChange, type LogicalDomain, type LogicalEntity, type LogicalModel, type LogicalType, type Relationship, type RelationshipEnd } from '../logical/contracts';
-import { attributeAdded, attributesOfEntity, diagramChange, domainAdded, endChanged, entityAdded, freeName, generalizationAdded, keyAdded, refOfTarget, relationshipAdded, resolveManyToMany, ruleAdded, ruleTargets, typeFromSetting, typeSetting, updatedChange, wouldCycle } from '../logical/edits';
+import { attributeAdded, attributesOfEntity, diagramChange, domainAdded, endChanged, entityAdded, freeName, generalizationAdded, hasPrimaryKey, inheritedKeysOf, keyAdded, refOfTarget, relationshipAdded, resolveManyToMany, ruleAdded, ruleTargets, typeFromSetting, typeSetting, updatedChange, wouldCycle } from '../logical/edits';
 import { removalOf } from '../logical/rules';
 import { baseText, cardinalityText, memberText, typeText } from '../logical/text';
 import { useStore } from '../model/store';
@@ -232,7 +232,7 @@ function EntityList({ m, search, selected, set, apply }: { m: LogicalModel; sear
             <button className={selected === e.id ? 'on' : ''} onClick={() => set({ entity: e.id, element: null })}>
               <span>{e.name || 'Unnamed entity'}</span>
               <small className="muted">
-                {plural(e.attributes.length, 'attribute')} · {e.keys.some((k) => k.kind === 'primary') ? 'primary key' : 'no primary key'}
+                {plural(e.attributes.length, 'attribute')} · {hasPrimaryKey(m, e.id) ? 'primary key' : 'no primary key'}
               </small>
             </button>
           </li>
@@ -395,17 +395,25 @@ function TypeEditor({ m, type, onChange }: { m: LogicalModel; type: LogicalType;
 }
 
 function KeysBlock({ m, entity, apply }: { m: LogicalModel; entity: LogicalEntity; apply: Apply }) {
+  const inherited = inheritedKeysOf(m, entity.id);
+  const identified = hasPrimaryKey(m, entity.id);
+  const ownPrimary = entity.keys.some((k) => k.kind === 'primary');
   const add = (kind: Key['kind']) => {
     const made = keyAdded(m, entity.id, kind);
     if (made) apply([made.change], kind === 'primary' ? 'Added a primary key' : 'Added a candidate key');
-    else useStore.getState().notify(entity.attributes.length || attributesOfEntity(m, entity.id).length ? 'A key needs an attribute or an identity borrowed from an identifying relationship.' : 'Add an attribute first: a key needs a member.');
+    else useStore.getState().notify(attributesOfEntity(m, entity.id).length ? 'A key needs an attribute or an identity borrowed from an identifying relationship.' : 'Add an attribute first: a key needs a member.');
   };
   return (
     <div className="ldm-block">
       <div className="ldm-block-head">
         <h3>Keys</h3>
         <span className="row">
-          <button className="btn small" disabled={entity.keys.some((k) => k.kind === 'primary')} title={entity.keys.some((k) => k.kind === 'primary') ? 'The entity has a primary key already' : 'A key nothing may repeat or leave out'} onClick={() => add('primary')}>
+          <button
+            className="btn small"
+            disabled={identified}
+            title={ownPrimary ? 'The entity has a primary key already' : identified ? 'The entity is identified by the primary key it inherits' : 'A key nothing may repeat or leave out'}
+            onClick={() => add('primary')}
+          >
             Add primary key
           </button>
           <button className="btn small" onClick={() => add('candidate')}>
@@ -413,10 +421,24 @@ function KeysBlock({ m, entity, apply }: { m: LogicalModel; entity: LogicalEntit
           </button>
         </span>
       </div>
-      {!entity.keys.length && <p className="muted">No key. Nothing identifies an instance.</p>}
+      {!entity.keys.length && !inherited.length && <p className="muted">No key. Nothing identifies an instance.</p>}
       {entity.keys.map((k) => (
         <KeyEditor key={k.id} m={m} entity={entity} k={k} apply={apply} />
       ))}
+      {inherited.map(({ key, from }) => {
+        const owner = m.entities.find((x) => x.id === from)?.name ?? from;
+        return (
+          <div key={key.id} className="ldm-key ldm-key-inherited" title={`Inherited from ${owner}: a subtype is identified as its supertype is`}>
+            <div className="ldm-key-head">
+              <span className="tag">{key.kind === 'primary' ? 'Primary' : 'Candidate'}</span>
+              <strong>{key.name || (key.kind === 'primary' ? 'Primary key' : 'Candidate key')}</strong>
+              <span className="muted grow">
+                {key.members.length ? key.members.map((x) => memberText(x, m)).join(', ') : 'No member'} — inherited from {owner}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -431,7 +453,7 @@ function KeyEditor({ m, entity, k, apply }: { m: LogicalModel; entity: LogicalEn
     <div className="ldm-key">
       <div className="ldm-key-head">
         <select aria-label={`Kind of the key ${k.name}`} value={k.kind} onChange={(e) => update({ kind: e.target.value as Key['kind'] })}>
-          <option value="primary" disabled={k.kind !== 'primary' && entity.keys.some((x) => x.kind === 'primary')}>
+          <option value="primary" disabled={k.kind !== 'primary' && hasPrimaryKey(m, entity.id)}>
             Primary
           </option>
           <option value="candidate">Candidate</option>

@@ -38,6 +38,28 @@ export function attributesOfEntity(m: LogicalModel, id: string): LogicalAttribut
   return [...(entityOf(m, id)?.attributes ?? []), ...(supertypesOf(m).get(id) ?? []).flatMap((s) => byId.get(s)?.attributes ?? [])];
 }
 
+export interface InheritedKey {
+  key: Key;
+  /** The supertype the key is from. */
+  from: string;
+}
+
+/** The keys an entity has of its own, and the ones it inherits: a subtype is identified as its supertype is (FR-M17-7). */
+export function keysOfEntity(m: LogicalModel, id: string): Key[] {
+  return [...(entityOf(m, id)?.keys ?? []), ...inheritedKeysOf(m, id).map((x) => x.key)];
+}
+
+/** The keys an entity inherits from its supertypes, nearest first, with the supertype each is from. */
+export function inheritedKeysOf(m: LogicalModel, id: string): InheritedKey[] {
+  const byId = new Map(m.entities.map((e) => [e.id, e]));
+  return (supertypesOf(m).get(id) ?? []).flatMap((s) => (byId.get(s)?.keys ?? []).map((key) => ({ key, from: s })));
+}
+
+/** Whether an entity is identified, by a primary key of its own or by one it inherits. */
+export function hasPrimaryKey(m: LogicalModel, id: string): boolean {
+  return keysOfEntity(m, id).some((k) => k.kind === 'primary');
+}
+
 /** The attributes a key of this entity may name: its own, and the ones it inherits. */
 const usableByKey = (m: LogicalModel, entity: LogicalEntity) => attributesOfEntity(m, entity.id);
 
@@ -66,13 +88,13 @@ export function attributeAdded(m: LogicalModel, entityId: string, name = 'Attrib
 export function keyAdded(m: LogicalModel, entityId: string, kind: Key['kind'] = 'candidate'): Added | undefined {
   const entity = entityOf(m, entityId);
   if (!entity) return undefined;
-  if (kind === 'primary' && entity.keys.some((k) => k.kind === 'primary')) return undefined;
+  if (kind === 'primary' && keysOfEntity(m, entityId).some((k) => k.kind === 'primary')) return undefined;
   const attribute = usableByKey(m, entity)[0];
   const borrow = attribute ? undefined : identifyingEnds(m, entityId)[0];
   const member: KeyMember | undefined = attribute ? { attribute: attribute.id } : borrow;
   if (!member) return undefined;
   const id = newId('k');
-  const key: Key = { id, kind, name: freeName(entity.keys.map((k) => k.name), kind === 'primary' ? 'Primary key' : 'Candidate key'), members: [member] };
+  const key: Key = { id, kind, name: freeName(keysOfEntity(m, entityId).map((k) => k.name), kind === 'primary' ? 'Primary key' : 'Candidate key'), members: [member] };
   return { id, change: { op: 'add', element: { kind: 'key', entity: entityId, key } } };
 }
 

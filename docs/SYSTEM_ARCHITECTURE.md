@@ -1173,11 +1173,13 @@ type ElementRef = { entity: string } | { attribute: string } | { relationship: s
 ```
 
 **Rules the edit service holds** (refused with a reason, as the ontology's rules are): names unique
-in their scope; every reference resolves within the LDM; at most one primary key; a key's members
+in their scope; every reference resolves within the LDM; at most one primary key, counting the one
+an entity inherits; a key's members
 are attributes of the entity, inherited ones included, or ends of identifying relationships of
 which the entity is the child; no generalization cycle; a discriminator is an attribute of the
 supertype; a relationship end's minimum is not above its maximum. **What validation reports**
-without refusing (FR-M17-10): an entity with no primary key (a warning), a many-to-many not yet
+without refusing (FR-M17-10): an entity with no primary key of its own or inherited (a warning), a
+many-to-many not yet
 resolved (information), and, for an imported or older document that slipped past the rules, each
 break of them, every finding naming the element it is about. An attribute that repeats an
 inherited one is refused rather than reported: the editor does not let it be made.

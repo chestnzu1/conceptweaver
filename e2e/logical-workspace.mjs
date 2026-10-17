@@ -96,6 +96,10 @@ await page.getByLabel('Name of the attribute Attribute').fill('placed');
 await page.getByLabel('Name of the attribute Attribute').press('Enter');
 await page.getByRole('button', { name: 'Add primary key' }).click();
 await page.locator('.ldm-key').waitFor();
+ok(flat(await page.locator('.ldm-key').innerText()).includes('placed'), 'a primary key is made of the attribute');
+await page.getByRole('button', { name: 'Delete the key Primary key' }).click();
+await page.waitForFunction(() => document.querySelectorAll('.ldm-key').length === 0);
+ok((await page.getByText('No key. Nothing identifies an instance.').count()) === 1, 'and taken out again, leaving the entity unidentified');
 await makeEntity('Note');
 
 // The list, by keyboard and search.
@@ -152,6 +156,9 @@ await page.getByLabel('Add a supertype').selectOption({ label: 'Customer' });
 await page.waitForFunction(() => [...document.querySelectorAll('.ldm-editor .tag')].some((x) => x.textContent?.includes('Customer')));
 ok(flat(await page.locator('.ldm-editor').innerText()).includes('Customer'), 'an entity is made a kind of another');
 ok(await page.locator('.ldm-inherited').filter({ hasText: 'email' }).isVisible(), 'and inherits its attributes');
+const inheritedKey = page.locator('.ldm-key-inherited');
+ok((await inheritedKey.count()) === 1 && flat(await inheritedKey.innerText()).includes('email') && flat(await inheritedKey.innerText()).includes('Customer'), 'and its identity: the primary key of Customer is inherited');
+ok(await page.getByRole('button', { name: 'Add primary key' }).isDisabled(), 'so it is not offered a primary key of its own');
 await page.locator('.ldm-list li button', { hasText: 'Customer' }).click();
 const subtypeOptions = await page.getByLabel('Add a subtype').locator('option').allInnerTexts();
 ok(!subtypeOptions.includes('Order'), 'the edge that would close a circle is not offered: ' + subtypeOptions.join(' | '));
@@ -198,6 +205,9 @@ await page.waitForFunction(() => document.querySelectorAll('.ldm-node').length =
 ok((await nodes.count()) === 4, 'the diagram draws every entity');
 ok((await page.locator('.ldm-rel').count()) === 2, 'and both relationships');
 ok((await page.locator('.ldm-rel').first().getAttribute('stroke-dasharray')) === null, 'an identifying relationship is drawn solid');
+ok((await page.locator('.ldm-canvas .ldm-gen-group').count()) === 1, 'the subtype is drawn as a subtype');
+ok((await page.locator('.ldm-canvas .ldm-gen').count()) === 2 && (await page.locator('.ldm-canvas .ldm-gen-symbol').count()) === 1, 'with the notation’s symbol where the line branches to Order');
+ok((await page.locator('.ldm-canvas .ldm-gen-label').textContent()) === 'subtype', 'and is labelled “subtype”');
 const customerNode = nodes.filter({ hasText: 'Customer' });
 const handle = await customerNode.elementHandle();
 const transform = () => page.evaluate((el) => el.getAttribute('transform'), handle);

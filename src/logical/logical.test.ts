@@ -128,6 +128,25 @@ describe('an LDM with every kind of element', () => {
     expect((await p.query.relationships({ model: id, entity: 'e-person' })).items.map((r) => r.id).sort()).toEqual(['r-acts', 'r-credit-person', 'r-directed']);
   });
 
+  it('gives a subtype the keys of the entity it inherits from', async () => {
+    const { p, id, revision } = await filled();
+    const m = await p.query.model({ model: id });
+    const filmPrimary = m.entities.find((e) => e.id === 'e-film')!.keys.find((k) => k.kind === 'primary')!;
+    const after = await p.edit.apply({
+      model: id,
+      baseRevision: revision,
+      changes: [
+        { op: 'remove', element: { kind: 'key', entity: 'e-film', key: filmPrimary } },
+        { op: 'add', element: { kind: 'key', entity: 'e-work', key: { id: 'k-work', kind: 'primary', name: 'work key', members: [{ attribute: 'a-title' }] } } },
+      ],
+      summary: 'Identify works',
+    });
+    const series = await p.query.describe({ model: id, revision: after.revision, element: { entity: 'e-series' } });
+    expect(series.description).toMatchObject({ kind: 'entity', inheritedKeys: [{ from: 'e-work', key: { id: 'k-work' } }] });
+    const page = await p.query.entities({ model: id, search: 'series', limit: 10 });
+    expect(page.items[0]).toMatchObject({ name: 'series', hasPrimaryKey: true });
+  });
+
   it('is written to its own file and read back the same', async () => {
     const { p, id } = await filled();
     const m = await p.query.model({ model: id });
@@ -186,6 +205,15 @@ describe('a change that breaks the rules', () => {
     await refused((m) => [{ op: 'remove', element: { kind: 'entity', entity: m.entities.find((e) => e.id === 'e-person')! } }], /end at an entity that is not in the model/);
     await refused(() => [{ op: 'add', element: { kind: 'generalization', generalization: { id: 'g-loop', supertype: 'e-film', subtypes: ['e-work'], complete: false, exclusive: false } } }], /go round in a circle/);
     await refused(() => [{ op: 'add', element: { kind: 'key', entity: 'e-film', key: { id: 'k-second', kind: 'primary', name: 'second', members: [{ attribute: 'a-start' }] } } }], /more than one primary key/);
+    await refused(() => [{ op: 'add', element: { kind: 'key', entity: 'e-work', key: { id: 'k-work', kind: 'primary', name: 'work key', members: [{ attribute: 'a-title' }] } } }], /more than one primary key, counting what it inherits/);
+    await refused(
+      (m) => [
+        { op: 'remove', element: { kind: 'key', entity: 'e-film', key: m.entities.find((e) => e.id === 'e-film')!.keys.find((k) => k.kind === 'primary')! } },
+        { op: 'add', element: { kind: 'key', entity: 'e-work', key: { id: 'k-work', kind: 'primary', name: 'work key', members: [{ attribute: 'a-title' }] } } },
+        { op: 'add', element: { kind: 'key', entity: 'e-series', key: { id: 'k-series', kind: 'candidate', name: 'work key', members: [{ attribute: 'a-seasons' }] } } },
+      ],
+      /two keys called “work key”, counting what it inherits/,
+    );
     await refused(() => [{ op: 'add', element: { kind: 'attribute', entity: 'e-film', attribute: { id: 'a-title2', name: 'Title', definition: '', type: { base: 'text' }, optional: true } } }], /inherits an attribute called “Title”/);
     await refused(() => [{ op: 'update', target: { relationship: 'r-directed' }, before: { name: 'directed by' }, after: { ends: [{ entity: 'e-film', role: 'film', min: 2, max: 1 }, { entity: 'e-person', role: 'director', min: 0, max: 1 }] } }], /a maximum has to be/);
     await refused(() => [{ op: 'update', target: { entity: 'e-film' }, before: { name: 'movie' }, after: { name: 'picture' } }], /“name” is not as the change says/);

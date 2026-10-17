@@ -1,4 +1,5 @@
 import type { ElementRef, LogicalModel } from './contracts';
+import { hasPrimaryKey } from './edits';
 import { problemsOf } from './rules';
 
 /**
@@ -85,8 +86,8 @@ export function ldmProblems(models: LogicalModel[]): LdmProblem[] {
     }
 
     for (const entity of model.entities) {
-      if (!entity.keys.some((k) => k.kind === 'primary')) {
-        add('warning', 'ldm-no-primary-key', 'Entity without a primary key', `The entity “${entity.name}” has no primary key: nothing tells one of its instances from another.`, { entity: entity.id });
+      if (!hasPrimaryKey(model, entity.id)) {
+        add('warning', 'ldm-no-primary-key', 'Entity without a primary key', `The entity “${entity.name}” has no primary key, its own or inherited: nothing tells one of its instances from another.`, { entity: entity.id });
       }
     }
 

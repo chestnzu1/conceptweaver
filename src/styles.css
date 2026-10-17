@@ -8428,6 +8428,11 @@ tbody tr.pinned td:first-child {
   font-size: 12.5px;
 }
 
+.ldm-key-inherited {
+  border-style: dashed;
+  background: transparent;
+}
+
 .ldm-plain-list {
   margin: 0;
   padding-left: 18px;
@@ -8685,6 +8690,27 @@ tbody tr.pinned td:first-child {
 
 .ldm-rel-label {
   fill: var(--ink-3);
+  font-size: 11px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+}
+
+.ldm-gen {
+  stroke: var(--ink-3);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.ldm-gen-symbol {
+  fill: var(--canvas);
+  stroke: var(--ink-3);
+  stroke-width: 1.5;
+}
+
+.ldm-gen-label {
+  fill: var(--ink-2);
   font-size: 11px;
   text-anchor: middle;
   paint-order: stroke;

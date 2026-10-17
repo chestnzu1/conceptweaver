@@ -6,6 +6,7 @@ import type { LogicalModel, TransformationConfig } from '../logical/contracts';
 import { createLocalLogicalServices } from '../logical/local';
 import { applied, emptyLogicalModel, logicalModelFrom, transformationConfigFrom } from '../logical/rules';
 import { createLocalTransformationService, onThePage } from './local';
+import type { TransformationProposal } from './contracts';
 import { chosenByDefault, defaultTransformationConfig, hasKeyStatements, proposalsFor } from './transform';
 
 const origin = { ontology: 'film', revision: 'rev-1' };
@@ -16,6 +17,13 @@ const propose = (model: Model, target: LogicalModel, config: TransformationConfi
 
 const iriOf = (m: Model, name: string) => m.terms.find((t) => t.name === name)!.iri!;
 const propIriOf = (m: Model, name: string) => m.props.find((p) => p.name === name)!.iri!;
+
+/** The generalization a specialization proposal adds. */
+function generalizationOf(p: TransformationProposal) {
+  const add = p.changes.find((c) => c.op === 'add' && c.element.kind === 'generalization');
+  if (!add || add.op !== 'add' || add.element.kind !== 'generalization') throw new Error('no generalization in the proposal');
+  return add.element.generalization;
+}
 
 /** What applying every structural proposal (the acceptance's "accept all") gives. */
 function acceptStructure(model: Model, target: LogicalModel, config: TransformationConfig = defaultTransformationConfig()): { result: LogicalModel; proposals: number } {
@@ -171,6 +179,69 @@ describe('the transformation proposals for the example ontology', () => {
     expect(filmEntity.keys[0].members).toHaveLength(2);
     const directsRelationship = result.relationships.find((r) => r.name === 'directs')!;
     expect(directsRelationship.ends.find((e) => e.entity === result.entities.find((x) => x.name === 'Film')!.id)!.min).toBe(1);
+  });
+
+  it('states a specialization complete and exclusive when the ontology says the subtypes are a disjoint union', () => {
+    const model = ontology();
+    const person = iriOf(model, 'Person');
+    const actor = iriOf(model, 'Actor');
+    const director = iriOf(model, 'Director');
+    // Actor and Director have no member in common: the subtypes are exclusive, not exhaustive.
+    model.terms.find((t) => t.name === 'Actor')!.classAxioms = [{ id: 'ax-disjoint', kind: 'DisjointClasses', expression: { type: 'Class', iri: director } }];
+    const pairwise = propose(model, ldm()).proposals.find((p) => p.kind === 'specialization' && p.title.includes('Person'))!;
+    expect(generalizationOf(pairwise)).toMatchObject({ complete: false, exclusive: true });
+    expect(pairwise.rationale).toBe('Actor, Director are stated to be a kind of Person; the ontology states that they are exclusive.');
+    expect(pairwise.sources[0].axioms).toContain(`DisjointClasses(<${actor}> <${director}>)`);
+
+    // A disjoint union of exactly the subtypes adds completeness.
+    model.terms.find((t) => t.name === 'Person')!.disjointUnions = [{ id: 'u-1', classes: [{ type: 'Class', iri: actor }, { type: 'Class', iri: director }] }];
+    const union = propose(model, ldm()).proposals.find((p) => p.kind === 'specialization' && p.title.includes('Person'))!;
+    expect(generalizationOf(union)).toMatchObject({ complete: true, exclusive: true });
+    expect(union.rationale).toBe('Actor, Director are stated to be a kind of Person; the ontology states that they are complete and exclusive.');
+    expect(union.sources[0].axioms).toContain(`DisjointUnion(<${person}> <${actor}> <${director}>)`);
+  });
+
+  it('puts a data property stated at a class and its subtype once, on the supertype the subtype inherits it from', () => {
+    const model = ontology();
+    const release = model.terms.find((t) => t.name === 'Release date')!;
+    release.domains = [
+      { id: 'd-person', expression: { type: 'Class', iri: iriOf(model, 'Person') } },
+      { id: 'd-actor', expression: { type: 'Class', iri: iriOf(model, 'Actor') } },
+    ];
+    const { result } = acceptStructure(model, ldm());
+    expect(result.entities.find((e) => e.name === 'Person')!.attributes.map((a) => a.name)).toEqual(['Release date']);
+    expect(result.entities.find((e) => e.name === 'Actor')!.attributes).toEqual([]);
+  });
+
+  it('puts an object property stated at a class and its subtype once, on the supertype the subtype inherits it from', () => {
+    const model = ontology();
+    const directs = model.props.find((p) => p.name === 'directs')!;
+    directs.domains = [
+      { id: 'd-person', expression: { type: 'Class', iri: iriOf(model, 'Person') } },
+      { id: 'd-actor', expression: { type: 'Class', iri: iriOf(model, 'Actor') } },
+    ];
+    directs.ranges = [{ id: 'r-film', expression: { type: 'Class', iri: iriOf(model, 'Film') } }];
+    const { result } = acceptStructure(model, ldm());
+    const named = result.relationships.filter((r) => r.name === 'directs');
+    expect(named).toHaveLength(1);
+    expect(result.entities.find((e) => e.id === named[0].ends[0].entity)!.name).toBe('Person');
+  });
+
+  it('offers a subclass’s owl:hasKey over properties it inherits', () => {
+    const model = ontology();
+    const release = model.terms.find((t) => t.name === 'Release date')!;
+    release.domains = [{ id: 'd-person', expression: { type: 'Class', iri: iriOf(model, 'Person') } }];
+    model.terms.find((t) => t.name === 'Actor')!.keys = [{ id: 'key-1', properties: [{ data: release.id }] }];
+    const proposed = propose(model, ldm());
+    const keyProposal = proposed.proposals.find((p) => p.strategy === 'owl:hasKey → candidate key')!;
+    expect(keyProposal.title).toBe('Candidate key on Actor: Release date');
+    expect(proposed.skipped.some((s) => s.reason.includes('not attributes'))).toBe(false);
+    const changed = applied(ldm(), [...proposed.proposals.filter(chosenByDefault), ...proposed.proposals.filter((p) => p.kind === 'constraint')].flatMap((p) => p.changes));
+    expect(changed.refusals).toEqual([]);
+    const actor = changed.next!.entities.find((e) => e.name === 'Actor')!;
+    expect(actor.keys).toHaveLength(1);
+    expect(actor.keys[0].members).toHaveLength(1);
+    expect('attribute' in actor.keys[0].members[0]).toBe(true);
   });
 
   it('turns an enumerated datatype into a domain and types the attribute with it', () => {

@@ -317,8 +317,10 @@ export type ElementDescription =
   | {
       kind: 'entity';
       entity: LogicalEntity;
-      /** Attributes and keys inherited from supertypes, nearest first, with the supertype each is from. */
+      /** Attributes inherited from supertypes, nearest first, with the supertype each is from. */
       inherited: { from: string; attribute: LogicalAttribute }[];
+      /** Keys inherited from supertypes, nearest first, with the supertype each is from. */
+      inheritedKeys: { from: string; key: Key }[];
       supertypes: string[];
       subtypes: string[];
       relationships: Relationship[];
