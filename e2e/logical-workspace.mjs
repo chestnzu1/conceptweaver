@@ -226,6 +226,49 @@ await page.getByRole('button', { name: 'Undo' }).click();
 await page.waitForFunction(([el, prev]) => el.getAttribute('transform') === prev, [handle, nudged]);
 ok(true, 'a drag is one undoable step');
 
+// Moving the picture: the background drags, the wheel zooms, and the toolbar says the scale.
+const viewport = page.locator('.ldm-viewport');
+const viewTransform = () => viewport.getAttribute('transform');
+const scaleOf = (t) => Number(/scale\(([\d.]+)\)/.exec(t ?? '')?.[1]);
+const canvasBox = await page.locator('.ldm-canvas').boundingBox();
+const framed = await viewTransform();
+ok(scaleOf(framed) > 0 && scaleOf(framed) <= 1.2, 'the diagram opens framed around its entities: ' + framed);
+const framesAll = async () => {
+  const c = await page.locator('.ldm-canvas').boundingBox();
+  const rects = await nodes.evaluateAll((els) => els.map((el) => {
+    const b = el.getBoundingClientRect();
+    return [b.left, b.top, b.right, b.bottom];
+  }));
+  return rects.every(([l, t, r, b]) => l >= c.x - 1 && t >= c.y - 1 && r <= c.x + c.width + 1 && b <= c.y + c.height + 1);
+};
+await page.mouse.move(canvasBox.x + 8, canvasBox.y + canvasBox.height - 8);
+await page.mouse.down();
+await page.mouse.move(canvasBox.x + 128, canvasBox.y + canvasBox.height - 88, { steps: 8 });
+await page.mouse.up();
+await page.waitForFunction((prev) => document.querySelector('.ldm-viewport')?.getAttribute('transform') !== prev, framed);
+const panned = await viewTransform();
+ok(panned !== framed, 'dragging the background moves the picture: ' + framed + ' → ' + panned);
+ok((await transform()) === nudged, 'and leaves the entity where it was, so the picture moves under it');
+await page.getByRole('button', { name: 'Fit' }).click();
+await page.waitForFunction((prev) => document.querySelector('.ldm-viewport')?.getAttribute('transform') !== prev, panned);
+ok(await framesAll(), 'Fit brings every entity back into view');
+const beforeZoom = await viewTransform();
+await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+await page.mouse.wheel(0, -400);
+await page.waitForFunction((prev) => document.querySelector('.ldm-viewport')?.getAttribute('transform') !== prev, beforeZoom);
+const zoomed = await viewTransform();
+const zoomedPct = flat(await page.locator('.ldm-zoom-value').innerText());
+ok(scaleOf(zoomed) > scaleOf(beforeZoom), 'the wheel zooms in: ' + beforeZoom + ' → ' + zoomed);
+ok(zoomedPct === Math.round(scaleOf(zoomed) * 100) + '%', 'and the toolbar states the scale: ' + zoomedPct);
+await page.getByRole('button', { name: 'Zoom out' }).click();
+await page.waitForFunction((prev) => document.querySelector('.ldm-viewport')?.getAttribute('transform') !== prev, zoomed);
+const zoomedOut = await viewTransform();
+ok(scaleOf(zoomedOut) < scaleOf(zoomed), 'the zoom-out button zooms out: ' + zoomedOut);
+await page.locator('.ldm-canvas').focus();
+await page.keyboard.press('0');
+await page.waitForFunction((prev) => document.querySelector('.ldm-viewport')?.getAttribute('transform') !== prev, zoomedOut);
+ok(await framesAll(), 'and 0 fits the diagram to its view again');
+
 await customerNode.focus();
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => document.querySelector('input[aria-label="Entity name"]')?.value === 'Customer');

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { builtIn } from '../layout/compute';
 import type { LayoutGraph } from '../layout/types';
 import type { LogicalEntity, LogicalModel, RelationshipEnd } from '../logical/contracts';
@@ -10,14 +10,20 @@ import { typeText } from '../logical/text';
  * dragging changes only where the picture puts it, never what the model says. Where entities sit
  * is kept in the model’s diagrams, beside its meaning and as one undoable step; an LDM that has
  * not been arranged yet is laid out for the picture without that being stored.
+ *
+ * The view behaves as the ontology’s canvas does: dragging the background moves it, the wheel
+ * zooms around the pointer, and the diagram is fitted when it is opened or arranged. Zooming and
+ * panning change only this view, never the model or where its entities sit.
  */
 
 const HEAD = 30;
 const ROW = 17;
 const MAX_ROWS = 9;
-const PAD = 220;
+const PAD = 160;
 const MIN_W = 176;
 const MAX_W = 300;
+const MIN_ZOOM = 0.15;
+const MAX_ZOOM = 2.5;
 
 const widthOf = (e: LogicalEntity): number => {
   const longest = Math.max(e.name.length + 2, ...e.attributes.map((a) => a.name.length + 4));
@@ -36,9 +42,17 @@ interface Box {
   w: number;
   h: number;
 }
+/** Where the viewport is: screen = world × k + (x, y). */
+interface Viewport {
+  x: number;
+  y: number;
+  k: number;
+}
 
 const boxOf = (e: LogicalEntity, p: P): Box => ({ x: p.x, y: p.y, w: widthOf(e), h: heightOf(e) });
 const centerOf = (b: Box): P => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+const clampZoom = (k: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k));
+const roundZoom = (k: number) => Math.round(k * 100) / 100;
 
 /** Where the line from this box to `toward` leaves the box. */
 function edgePoint(b: Box, toward: P): P {
@@ -104,50 +118,170 @@ function SelfLoop({ box }: { box: Box }) {
   return <path className="ldm-rel" d={`M ${x + box.w * 0.66} ${y} C ${x + box.w + 90} ${y - 80}, ${x + box.w + 90} ${y + box.h + 70}, ${x + box.w * 0.5} ${y + box.h}`} fill="none" />;
 }
 
+/** The four marks of the notation, drawn small beside the toolbar’s words. */
+function Legend() {
+  return (
+    <span className="ldm-legend" aria-hidden="true">
+      <span>
+        <svg width="24" height="10" aria-hidden="true">
+          <line className="ldm-legend-line" x1="1" y1="5" x2="23" y2="5" />
+        </svg>
+        identifying
+      </span>
+      <span>
+        <svg width="24" height="10" aria-hidden="true">
+          <line className="ldm-legend-line" x1="1" y1="5" x2="23" y2="5" strokeDasharray="5 3" />
+        </svg>
+        other
+      </span>
+      <span>
+        <svg width="16" height="12" aria-hidden="true">
+          <g className="ldm-mark">
+            <line x1="14" y1="1" x2="2" y2="6" />
+            <line x1="14" y1="11" x2="2" y2="6" />
+            <line x1="14" y1="1" x2="14" y2="11" />
+          </g>
+        </svg>
+        many
+      </span>
+      <span>
+        <svg width="14" height="12" aria-hidden="true">
+          <circle className="ldm-mark-ring" cx="7" cy="6" r="3.5" />
+        </svg>
+        optional
+      </span>
+    </span>
+  );
+}
+
 export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, onNewRelationship }: { m: LogicalModel; selected: string | null; onSelect: (id: string) => void; onPositions: (positions: Record<string, P>) => void; onNewEntity: () => void; onNewRelationship: () => void }) {
   // The layout is recomputed when entities or lines change, not when a name or an attribute does.
   const shape = `${m.entities.map((e) => e.id).join(',')}|${m.relationships.map((r) => `${r.id}:${r.ends[0].entity}>${r.ends[1].entity}`).join(',')}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const arranged = useMemo(() => layoutOf(m), [shape]);
   const [moved, setMoved] = useState<Record<string, P>>({});
-  const [zoom, setZoom] = useState(1);
+  const [view, setView] = useState<Viewport>({ x: 0, y: 0, k: 1 });
+  const [size, setSize] = useState({ w: 0, h: 0 });
   const scroller = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; startX: number; startY: number; origin: P; at: P; moved: boolean } | null>(null);
+  const pan = useRef<{ pointer: number; startX: number; startY: number; from: Viewport } | null>(null);
   const justDragged = useRef(0);
   const stored = m.diagrams[0]?.positions;
 
   // The places kept with the model are the truth: a drag that was committed, an undo of it, or
   // an Arrange all take over from what the pointer last showed.
+  const fitAfter = useRef(false);
+  const fitNow = useRef<() => void>(() => {});
   useEffect(() => {
     setMoved({});
+    if (fitAfter.current) {
+      fitAfter.current = false;
+      fitNow.current();
+    }
   }, [stored]);
 
   const positions = { ...arranged, ...(stored ?? {}), ...moved };
   const boxes = new Map<string, Box>(m.entities.map((e) => [e.id, boxOf(e, positions[e.id] ?? { x: 0, y: 0 })]));
   const all = [...boxes.values()];
-  const minX = all.length ? Math.min(...all.map((b) => b.x)) - PAD : 0;
-  const minY = all.length ? Math.min(...all.map((b) => b.y)) - PAD : 0;
-  const maxX = all.length ? Math.max(...all.map((b) => b.x + b.w)) + PAD : 800;
-  const maxY = all.length ? Math.max(...all.map((b) => b.y + b.h)) + PAD : 600;
-  const worldW = maxX - minX;
-  const worldH = maxY - minY;
+  const contentMinX = all.length ? Math.min(...all.map((b) => b.x)) : 0;
+  const contentMinY = all.length ? Math.min(...all.map((b) => b.y)) : 0;
+  const contentMaxX = all.length ? Math.max(...all.map((b) => b.x + b.w)) : 0;
+  const contentMaxY = all.length ? Math.max(...all.map((b) => b.y + b.h)) : 0;
+  const contentW = contentMaxX - contentMinX;
+  const contentH = contentMaxY - contentMinY;
+  const minX = contentMinX - PAD;
+  const minY = contentMinY - PAD;
+  const worldW = contentW + PAD * 2;
+  const worldH = contentH + PAD * 2;
+
+  // The viewport is the room the canvas gives; fitting works from what it really is.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const fit = () => {
+    const el = scroller.current;
+    if (!el || !contentW || !contentH) return;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (!w || !h) return;
+    const k = roundZoom(clampZoom(Math.min((w - 72) / contentW, (h - 72) / contentH, 1.2)));
+    setView({ k, x: Math.round((w - contentW * k) / 2 - contentMinX * k), y: Math.round((h - contentH * k) / 2 - contentMinY * k) });
+  };
+  fitNow.current = fit;
+
+  // Fit once when the diagram is opened for a model, and once when entities first appear.
+  const fittedFor = useRef<string>('');
+  useLayoutEffect(() => {
+    if (!size.w || !size.h || !contentW || fittedFor.current === m.id) return;
+    fittedFor.current = m.id;
+    fit();
+    // fit is rebuilt with the positions of this render; only these say when to fit again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m.id, size.w, size.h, contentW]);
+
+  /** Zoom around a point of the canvas, in its own pixels. */
+  const zoomAt = (px: number, py: number, factor: number) => {
+    setView((v) => {
+      const k = roundZoom(clampZoom(v.k * factor));
+      const wx = (px - v.x) / v.k;
+      const wy = (py - v.y) / v.k;
+      return { k, x: Math.round(px - wx * k), y: Math.round(py - wy * k) };
+    });
+  };
+
+  // The wheel zooms around the pointer. Registered natively because React’s listener is passive.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016)));
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+    // zoomAt works from the view as it is when the wheel turns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const commit = (next: Record<string, P>) => {
     onPositions(next);
   };
 
-  const arrange = () => commit(layoutOf(m));
+  const arrange = () => {
+    fitAfter.current = true;
+    commit(layoutOf(m));
+  };
 
-  const fit = () => {
-    const el = scroller.current;
-    if (!el || !worldW || !worldH) return;
-    const next = Math.min(1.5, Math.max(0.2, Math.min((el.clientWidth - 24) / worldW, (el.clientHeight - 24) / worldH)));
-    setZoom(Number(next.toFixed(2)));
-    el.scrollTo(0, 0);
+  // Dragging the background moves the view, as the ontology’s canvas does. A node stops the
+  // pointer on its way down, so dragging one moves the entity and not the picture.
+  const startPan = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pan.current = { pointer: e.pointerId, startX: e.clientX, startY: e.clientY, from: view };
+  };
+  const movePan = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const p = pan.current;
+    if (!p || p.pointer !== e.pointerId) return;
+    setView((v) => ({ ...v, x: Math.round(p.from.x + e.clientX - p.startX), y: Math.round(p.from.y + e.clientY - p.startY) }));
+  };
+  const endPan = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const p = pan.current;
+    if (!p || p.pointer !== e.pointerId) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    pan.current = null;
   };
 
   const pointerDown = (e: ReactPointerEvent<SVGGElement>, id: string) => {
     if (e.button !== 0) return;
+    e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = positions[id];
     drag.current = { id, startX: e.clientX, startY: e.clientY, origin: p, at: p, moved: false };
@@ -155,8 +289,8 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
   const pointerMove = (e: ReactPointerEvent<SVGGElement>, id: string) => {
     const d = drag.current;
     if (!d || d.id !== id) return;
-    const dx = (e.clientX - d.startX) / zoom;
-    const dy = (e.clientY - d.startY) / zoom;
+    const dx = (e.clientX - d.startX) / view.k;
+    const dy = (e.clientY - d.startY) / view.k;
     if (!d.moved && Math.hypot(dx, dy) < 3) return;
     d.moved = true;
     d.at = { x: Math.round(d.origin.x + dx), y: Math.round(d.origin.y + dy) };
@@ -189,8 +323,8 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
 
   const keyCanvas = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
-    if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(2, Number((z + 0.15).toFixed(2))));
-    else if (e.key === '-') setZoom((z) => Math.max(0.2, Number((z - 0.15).toFixed(2))));
+    if (e.key === '+' || e.key === '=') zoomAt(size.w / 2, size.h / 2, 1.15);
+    else if (e.key === '-' || e.key === '_') zoomAt(size.w / 2, size.h / 2, 1 / 1.15);
     else if (e.key === '0') fit();
   };
 
@@ -202,13 +336,12 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
     );
   }
 
+  const pct = Math.round(view.k * 100);
   return (
     <div className="ldm-diagram">
       <div className="ldm-diagram-tools">
-        <span className="muted">
-          Solid: identifying · dashed: other · a foot: many · a ring: optional
-        </span>
-        <span className="row">
+        <Legend />
+        <span className="row wrap">
           <button className="btn small" title="Make an entity here, as the Entities section does" onClick={onNewEntity}>
             New entity
           </button>
@@ -218,20 +351,31 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
           <button className="btn small" title="Lay every entity out afresh; positions are kept with the model" onClick={arrange}>
             Arrange
           </button>
-          <button className="btn small" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(2, Number((z + 0.15).toFixed(2))))}>
-            +
-          </button>
-          <button className="btn small" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(0.2, Number((z - 0.15).toFixed(2))))}>
-            −
-          </button>
+          <span className="ldm-zoom" role="group" aria-label="Zoom">
+            <button className="btn small ghost" aria-label="Zoom out" title="Zoom out (−)" onClick={() => zoomAt(size.w / 2, size.h / 2, 1 / 1.15)}>
+              −
+            </button>
+            <span className="ldm-zoom-value" title="The diagram’s scale">
+              {pct}%
+            </span>
+            <button className="btn small ghost" aria-label="Zoom in" title="Zoom in (+)" onClick={() => zoomAt(size.w / 2, size.h / 2, 1.15)}>
+              +
+            </button>
+          </span>
           <button className="btn small" title="Fit the whole diagram in the view (0)" onClick={fit}>
             Fit
           </button>
         </span>
       </div>
-      <div ref={scroller} className="ldm-canvas" tabIndex={0} role="group" aria-label="Entity relationship diagram. Tab to an entity, Enter opens it, arrow keys move it." onKeyDown={keyCanvas}>
-        <svg width={Math.round(worldW * zoom)} height={Math.round(worldH * zoom)} viewBox={`${minX} ${minY} ${worldW} ${worldH}`} role="img" aria-label={`${m.name} entity relationship diagram`}>
-          <g>
+      <div ref={scroller} className="ldm-canvas" tabIndex={0} role="group" aria-label="Entity relationship diagram. Drag the background to move it, scroll to zoom. Tab to an entity, Enter opens it, arrow keys move it." onKeyDown={keyCanvas}>
+        <svg width="100%" height="100%" role="img" aria-label={`${m.name} entity relationship diagram`} onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
+          <defs>
+            <pattern id="ldm-grid" width={22} height={22} patternUnits="userSpaceOnUse">
+              <circle className="ldm-grid-dot" cx={1} cy={1} r={1} />
+            </pattern>
+          </defs>
+          <g className="ldm-viewport" transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
+            <rect className="ldm-paper" x={minX} y={minY} width={worldW} height={worldH} fill="url(#ldm-grid)" />
             {m.relationships.map((r) => {
               const a = boxes.get(r.ends[0].entity);
               const b = boxes.get(r.ends[1].entity);
@@ -267,10 +411,12 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
               if (!box) return null;
               const pks = new Set(e.keys.filter((k) => k.kind === 'primary').flatMap((k) => k.members.flatMap((x) => ('attribute' in x ? [x.attribute] : []))));
               const rows = e.attributes.slice(0, MAX_ROWS);
+              const r = 6;
+              const headPath = `M 0 ${HEAD} L 0 ${r} Q 0 0 ${r} 0 L ${box.w - r} 0 Q ${box.w} 0 ${box.w} ${r} L ${box.w} ${HEAD} Z`;
               return (
                 <g
                   key={e.id}
-                  className={`ldm-node${selected === e.id ? ' on' : ''}`}
+                  className={`ldm-node${selected === e.id ? ' on' : ''}${e.abstract ? ' abstract' : ''}`}
                   transform={`translate(${box.x},${box.y})`}
                   role="button"
                   tabIndex={0}
@@ -284,11 +430,12 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
                   }}
                   onKeyDown={(ev) => keyNode(ev, e.id)}
                 >
-                  <rect className="ldm-node-box" width={box.w} height={box.h} rx={5} />
+                  <rect className="ldm-node-box" width={box.w} height={box.h} rx={r} />
+                  <path className="ldm-node-head" d={headPath} />
+                  <line className="ldm-node-rule" x1={0} y1={HEAD} x2={box.w} y2={HEAD} />
                   <text className="ldm-node-name" x={12} y={20}>
                     {e.name}
                   </text>
-                  <line className="ldm-node-rule" x1={0} y1={HEAD - 4} x2={box.w} y2={HEAD - 4} />
                   {rows.map((a, i) => (
                     <text key={a.id} className="ldm-node-attr" x={12} y={HEAD + 13 + i * ROW}>
                       <tspan className={pks.has(a.id) ? 'ldm-pk' : 'ldm-attr-mark'}>{pks.has(a.id) ? 'PK ' : a.optional ? '○ ' : '• '}</tspan>
@@ -306,6 +453,9 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
             })}
           </g>
         </svg>
+        <div className="ldm-canvas-hint" aria-hidden="true">
+          Drag to move · Scroll to zoom · 0 fits
+        </div>
       </div>
     </div>
   );
