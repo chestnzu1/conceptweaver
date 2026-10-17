@@ -33,6 +33,12 @@ const openVersions = async () => {
 };
 const listed = async () => (await dialog.locator('.version').allInnerTexts()).map(flat);
 const saveVersion = async (name, summary) => {
+  // Counting the list before the read that opening the dialog began has answered would wait for
+  // the wrong number of versions.
+  await page.waitForFunction(() => {
+    const list = document.querySelector('.dialog.versions .version-list');
+    return list !== null && !list.textContent.trim().startsWith('Reading the versions');
+  });
   await dialog.getByLabel('Name of the version').fill(name);
   await dialog.getByLabel('What the version is').fill(summary);
   const before = await dialog.locator('.version').count();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../model/store';
 import type { Difference, StateRef, VersionInfo } from '../projects/contracts';
 import { nothingChanged } from '../projects/difference';
@@ -30,13 +30,19 @@ export function VersionsDialog() {
   const [to, setTo] = useState('current');
   const [result, setResult] = useState<{ d: Difference; from: string; to: string } | 'working' | null>(null);
   const close = () => st().setDialog(null);
+  // Only the most recently begun read may set the list: a read begun when the dialog opened can
+  // answer after the one that follows a save, and would put back the versions as they were then.
+  const loads = useRef(0);
   const load = useCallback(async () => {
     if (!project) return;
+    const begun = ++loads.current;
     try {
       const list = await projects.versions(project);
+      if (begun !== loads.current) return;
       setVersions(list);
       setFrom((f) => f || list[0]?.id || '');
     } catch (e) {
+      if (begun !== loads.current) return;
       st().notify(`The versions could not be read: ${e instanceof Error ? e.message : ''}`);
       setVersions([]);
     }
