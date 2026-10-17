@@ -55,7 +55,12 @@ export interface InferredInput {
 
 /** The ontology as it is now: which revision, and its classes when they are wanted. */
 export interface GraphSource extends OntologyRef {
-  /** Asked for once for each revision; what it gives must not be changed afterwards. */
+  /**
+   * The language the classes are named in (FR-M1-5), where the source can name them in more than
+   * one. Not part of the revision: the same classes, in other words.
+   */
+  lang?: string;
+  /** Asked for once for each revision and language; what it gives must not be changed afterwards. */
   graph(): ClassGraphInput;
   /**
    * What the reasoner in use entails, when the inferred hierarchy is asked for. The same object
@@ -124,7 +129,8 @@ export function createGraphService(source: () => GraphSource): StructureService 
     if (options?.signal?.aborted) throw new StructureError('aborted', 'The question was given up.');
     const now = source();
     if (query.ontologyId !== now.ontologyId || query.revisionId !== now.revisionId) throw new StructureError('stale-revision', 'The ontology has changed since this was asked about.');
-    const key = `${now.ontologyId}\n${now.revisionId}`;
+    // The same revision in another language is another set of labels, and another hierarchy to read them from.
+    const key = `${now.ontologyId}\n${now.revisionId}\n${now.lang ?? ''}`;
     let revision = built.get(key);
     if (!revision) {
       const input = now.graph();

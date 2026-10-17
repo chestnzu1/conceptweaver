@@ -7,7 +7,7 @@ import type { ReasoningResult } from '../model/reasoning';
 import { skosSample } from '../model/sample';
 import { stressModel } from '../model/stress';
 import { useStore } from '../model/store';
-import { newProp, emptyModel, newTerm, type Model } from '../model/types';
+import { newAnnotationProp, newProp, emptyModel, newTerm, type Model } from '../model/types';
 import { ontologyRef } from '../structure/local';
 import { EntityQueryError, ON, type ListKind, type EntityQuery, type EntityQueryService } from './contracts';
 import { createLocalEntityService } from './local';
@@ -32,6 +32,8 @@ function office(): Model {
         { key: 'rdfs:label', value: 'Persona', lang: 'es' },
         { key: 'skos:hiddenLabel', value: 'Persn' },
         { key: 'dcterms:creator', value: 'Zebedee' },
+        { key: 'note', value: 'A person, in a note.' },
+        { key: 'review note', value: 'Checked.' },
       ],
     }),
     newTerm({ id: 'org', name: 'Organisation' }),
@@ -49,11 +51,21 @@ function office(): Model {
   ];
   m.props = [
     // Each property's id is its name, for reading.
-    newProp({ id: 'works for', name: 'works for', description: 'Whom someone is employed by.', chars: ['functional'] }),
+    newProp({ id: 'works for', name: 'works for', description: 'Whom someone is employed by.', chars: ['functional'], fields: [{ key: 'note', value: 'Employment, in a note.' }] }),
     newProp({ id: 'employs', name: 'employs', description: '', chars: ['inverseFunctional', 'asymmetric'], inverses: ['works for'] }),
     newProp({ id: 'knows', name: 'knows', description: '', chars: ['symmetric', 'transitive'] }),
   ];
-  return withIris(m);
+  // Annotation properties are entities of their own: one of this model, one under it, and one of another vocabulary.
+  m.annProps = [
+    newAnnotationProp({ id: 'note', name: 'note', description: 'A note on an entity.', fields: [{ key: 'review note', value: 'Checked, in a note.' }] }),
+    newAnnotationProp({ id: 'review', name: 'review note', fields: [{ key: 'rdfs:label', value: 'Prüfvermerk', lang: 'de' }] }),
+    newAnnotationProp({ id: 'source', name: 'source', iri: 'http://purl.org/dc/terms/source', external: 'dc' }),
+  ];
+  const withIris_ = withIris(m);
+  const review = withIris_.annProps.find((p) => p.id === 'review')!;
+  review.parents = ['note'];
+  review.domains = [{ id: 'domain', expression: { type: 'Class', iri: withIris_.terms.find((t) => t.id === 'person')!.iri! } }];
+  return withIris_;
 }
 
 let service: EntityQueryService;
@@ -205,6 +217,37 @@ describe('data properties', () => {
       { value: 'xsd:date', label: 'date', count: 1 },
       { value: 'xsd:integer', label: 'integer', count: 1 },
     ]);
+  });
+});
+
+describe('annotation properties', () => {
+  it('are listed, searched by their name and description, sorted and filtered by what they declare', async () => {
+    expect(await found('annotationProperty')).toEqual(['note', 'review note', 'source']);
+    expect(await found('annotationProperty', { search: 'note on an entity' })).toEqual(['note']);
+    expect(await found('annotationProperty', { search: 'dcterms:source' })).toEqual(['source']);
+    expect(await found('annotationProperty', { sort: { by: 'name', dir: 'desc' } })).toEqual(['source', 'review note', 'note']);
+    expect(await found('annotationProperty', { filters: { domain: ['with'] } })).toEqual(['review note']);
+    expect(await found('annotationProperty', { filters: { domain: ['without'] } })).toEqual(['note', 'source']);
+    expect(await found('annotationProperty', { filters: { range: ['without'] } })).toEqual(['note', 'review note', 'source']);
+    expect(await found('annotationProperty', { filters: { superproperty: [ON] } })).toEqual(['review note']);
+    expect(await found('annotationProperty', { filters: { subproperty: [ON] } })).toEqual(['note']);
+    // How many annotations each is used for: person and "works for" carry a note, person and the note a review note.
+    expect(await found('annotationProperty', { sort: { by: 'annotations', dir: 'desc' } })).toEqual(['note', 'review note', 'source']);
+    const d = await describeKind('annotationProperty');
+    expect(d.sorts.map((s) => `${s.id}:${s.label}${s.numeric ? '#' : ''}`)).toEqual(['name:Name', 'iri:IRI', 'superproperties:Superproperties#', 'annotations:Annotations#']);
+    expect(d.filters.map((f) => `${f.id}:${f.type}`)).toEqual(['domain:one', 'range:one', 'superproperty:flag', 'subproperty:flag']);
+    expect(d.filters[0].options).toEqual([
+      { value: 'with', label: 'Set', count: 1 },
+      { value: 'without', label: 'Not set', count: 2 },
+    ]);
+  });
+
+  it('are named in the display language, and found by the name they have in it', async () => {
+    service = createLocalEntityService(() => ({ model: st().model, docId: null, lang: 'de' }));
+    expect((await ask('annotationProperty', { search: 'prüfvermerk' })).rows).toEqual([expect.objectContaining({ key: 'review', label: 'Prüfvermerk' })]);
+    // The name it has in the model is still there to search by.
+    expect(await found('annotationProperty', { search: 'review note' })).toEqual(['Prüfvermerk']);
+    expect(await found('annotationProperty', { sort: { by: 'name', dir: 'asc' } })).toContain('note');
   });
 });
 

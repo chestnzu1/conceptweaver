@@ -12,7 +12,7 @@ export type View = 'graph' | 'table' | 'structure' | 'ldm' | 'shapes' | 'checks'
 export const VIEW_LABEL: Record<View, string> = { graph: 'Graph', table: 'Entities', structure: 'Structure', ldm: 'LDM', shapes: 'Shapes', checks: 'Validation', align: 'Align', rdf: 'RDF', sparql: 'SPARQL', vocab: 'Vocabulary' };
 
 /** The sections of the Entities view. */
-export type EntityTab = 'concept' | 'object' | 'property' | 'instance' | 'relations' | 'governance';
+export type EntityTab = 'concept' | 'object' | 'property' | 'annotation' | 'instance' | 'relations' | 'governance';
 
 /** The columns the table of classes or concepts can have. */
 export type EntityColumn = 'name' | 'iri' | 'suffix' | 'type' | 'hierarchy' | 'restrictions' | 'inferred' | 'description' | 'synonyms' | 'relations';
@@ -31,6 +31,8 @@ export type Feature =
   | 'restrictions'
   /** Declared object properties, with domain, range and characteristics. */
   | 'objectProperties'
+  /** Declared annotation properties as entities of their own, with superproperties, domain and range. */
+  | 'annotationProperties'
   /** The checks of the Validation view: consistency, SHACL shapes, quality rules. */
   | 'validation'
   /** Relationships that stand for a property of a standard vocabulary (owl:equivalentClass and the like). */
@@ -74,7 +76,7 @@ const OWL: ModelTypeConfig = {
   label: 'OWL ontology',
   about: 'Advanced ontology modelling with classes, properties, restrictions and reasoning.',
   views: ['graph', 'table', 'structure', 'ldm', 'shapes', 'checks', 'align', 'rdf', 'sparql', 'vocab'],
-  entityTabs: ['concept', 'object', 'property', 'instance', 'relations', 'governance'],
+  entityTabs: ['concept', 'object', 'property', 'annotation', 'instance', 'relations', 'governance'],
   entityColumns: ['name', 'iri', 'hierarchy', 'restrictions', 'inferred', 'description', 'synonyms', 'relations'],
   termTypes: ['concept', 'property', 'instance'],
   termType: {
@@ -92,7 +94,7 @@ const OWL: ModelTypeConfig = {
   ],
   hierarchy: { predicate: 'rdfs:subClassOf', relation: 'is a', parent: 'superclass', child: 'subclass', root: 'owl:Thing', top: 'top-level term' },
   rdf: { label: 'rdfs:label', definition: 'skos:definition' },
-  features: ['reasoning', 'restrictions', 'objectProperties', 'validation', 'standardProperties', 'alignment', 'typedRelationships'],
+  features: ['reasoning', 'restrictions', 'objectProperties', 'annotationProperties', 'validation', 'standardProperties', 'alignment', 'typedRelationships'],
 };
 
 const concept = { label: 'Concept', plural: 'Concepts', rdf: 'skos:Concept' };

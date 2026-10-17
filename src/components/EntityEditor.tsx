@@ -19,6 +19,7 @@ import {
   type LinkKind,
 } from '../model/axioms';
 import { baseIriOf, iriCut, setIriSuffix, type IriOwner } from '../model/iri';
+import { nameIn } from '../model/labels';
 import { compactIri } from '../model/prefixes';
 import { findProp, objectProperties, propLinks, type PropView } from '../model/props';
 import { stable } from '../model/stable';
@@ -41,8 +42,8 @@ import { propDatatype } from '../model/domains';
  * so it is undoable, is drawn on the canvas and in the hierarchy at once, and is saved with the model.
  */
 
-const choice = (t: Term): Choice => ({ id: t.id, name: t.name || 'Unnamed', iri: t.iri, ...(t.external !== undefined ? { tag: 'external' } : {}) });
-const propChoice = (p: PropView): Choice => ({ id: p.id, name: p.name, iri: p.iri, ...(p.external !== undefined ? { tag: 'external' } : {}) });
+const choice = (t: Term, modelLang: string, lang: string): Choice => ({ id: t.id, name: nameIn(t, modelLang, lang) || 'Unnamed', iri: t.iri, ...(t.external !== undefined ? { tag: 'external' } : {}) });
+const propChoice = (p: PropView, modelLang: string, lang: string): Choice => ({ id: p.id, name: nameIn(p, modelLang, lang), iri: p.iri, ...(p.external !== undefined ? { tag: 'external' } : {}) });
 
 /** The heading of the editor: what kind of entity it is, whether the model has unsaved changes, and a wider layout. */
 export function EditorHead({ kind }: { kind: string }) {
@@ -141,11 +142,13 @@ export function IriDetails({ iri, name, owner, external = false }: { iri?: strin
 /** One kind of statement that holds both ways between this term and others of its kind: equivalent, disjoint, same, different. */
 export function LinkEditor({ term, kind, noun, label, hint }: { term: Term; kind: LinkKind; noun: string; label: string; hint?: string }) {
   const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
   const st = useStore.getState;
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
+  const pick = (t: Term) => choice(t, model.lang, displayLang);
   const values = linkedTerms(model, term.id, kind)
     .filter((x) => byId.has(x.id))
-    .map((x) => choice(byId.get(x.id)!));
+    .map((x) => pick(byId.get(x.id)!));
   return (
     <div className="field">
       <span title={`${LINKS[kind].predicate}${hint ? ': ' + hint : ''}`}>
@@ -153,12 +156,12 @@ export function LinkEditor({ term, kind, noun, label, hint }: { term: Term; kind
       </span>
       <EntityPicker
         values={values}
-        options={() => model.terms.filter((t) => t.type === LINKS[kind].type && t.id !== term.id).map(choice)}
+        options={() => model.terms.filter((t) => t.type === LINKS[kind].type && t.id !== term.id).map(pick)}
         onAdd={(id) => st().edit((m) => addLink(m, term.id, id, kind))}
         onRemove={(id) => st().apply((m) => removeLink(m, term.id, id, kind))}
         onOpen={(id) => st().select([id])}
         noun={noun}
-        of={term.name}
+        of={nameIn(term, model.lang, displayLang)}
         empty={model.vocab.enabled ? 'none stated' : 'none in force: RDFS & OWL properties are off'}
       />
     </div>
@@ -169,28 +172,35 @@ export function LinkEditor({ term, kind, noun, label, hint }: { term: Term; kind
 export function ClassProperties({ term }: { term: Term }) {
   // Moving terms about on the canvas does not change any of this, so it is not worked out again for it.
   const model = stable(useStore((s) => s.model));
+  const displayLang = useStore((s) => s.displayLang);
   const st = useStore.getState;
   const all = propertiesOfClass(model, term.id);
+  const pick = (t: Term) => choice(t, model.lang, displayLang);
+  const pickProp = (p: PropView) => propChoice(p, model.lang, displayLang);
+  const shownTerm = nameIn(term, model.lang, displayLang) || 'this class';
   const side = (data: boolean) => {
     const mine = all.filter((p) => p.data === data);
-    const asChoice = (p: ClassProperty): Choice => ({
-      id: p.ref,
-      name: p.name,
-      iri: p.iri,
-      ...(p.auto ? { tag: 'from use', locked: 'This domain follows where the property is used. To change it, change the restriction that uses it, or set the domain on the property.' } : {}),
-    });
+    const asChoice = (p: ClassProperty): Choice => {
+      const named = data ? model.terms.find((t) => t.id === p.ref) : model.props.find((x) => x.id === p.ref);
+      return {
+        id: p.ref,
+        name: (named && nameIn(named, model.lang, displayLang)) || p.name,
+        iri: p.iri,
+        ...(p.auto ? { tag: 'from use', locked: 'This domain follows where the property is used. To change it, change the restriction that uses it, or set the domain on the property.' } : {}),
+      };
+    };
     return (
       <div className="field">
         <span>{data ? 'Data properties' : 'Object properties'}</span>
         <EntityPicker
           values={mine.map(asChoice)}
-          options={() => (data ? model.terms.filter((t) => t.type === 'property').map(choice) : objectProperties(model).map(propChoice))}
+          options={() => (data ? model.terms.filter((t) => t.type === 'property').map(pick) : objectProperties(model).map(pickProp))}
           onAdd={(ref) => st().edit((m) => addToDomain(m, term.id, { ref, data }))}
           onRemove={(ref) => st().edit((m) => removeFromDomain(m, term.id, { ref, data }))}
           onOpen={(ref) => (data ? st().select([ref]) : st().selectProp(ref))}
           noun={data ? 'data property' : 'object property'}
-          of={`the domain of ${term.name}`}
-          addLabel={`Add ${term.name || 'this class'} to the domain of ${data ? 'a data property' : 'an object property'}`}
+          of={`the domain of ${shownTerm}`}
+          addLabel={`Add ${shownTerm} to the domain of ${data ? 'a data property' : 'an object property'}`}
           searchLabel={`Search for ${data ? 'a data property' : 'an object property'}`}
           empty="none"
         />
@@ -200,7 +210,7 @@ export function ClassProperties({ term }: { term: Term }) {
   return (
     <Section id="domain" title="Properties with this domain" count={all.length}>
       <p className="muted">
-        Declared with <code className="pred">rdfs:domain</code>: whatever has the property is a {term.name || 'member of this class'}. It does not make the property required. For “every member has one”, add a restriction.
+        Declared with <code className="pred">rdfs:domain</code>: whatever has the property is a {shownTerm}. It does not make the property required. For “every member has one”, add a restriction.
       </p>
       {side(false)}
       {side(true)}
@@ -214,6 +224,7 @@ export function InferredSupers({ term }: { term: Term }) {
   // What the OWL 2 DL reasoner entails, when it was asked about the model as it is now. It is shown
   // beside what the app's own reasoner works out, each credited to the reasoner it is from.
   const dl = useStore(currentDl);
+  const displayLang = useStore((s) => s.displayLang);
   const st = useStore.getState;
   const isClass = term.type === 'concept';
   // The app's own reasoner answers from a worker: until it has, the section says that it is working.
@@ -221,7 +232,10 @@ export function InferredSupers({ term }: { term: Term }) {
   const result = useMemo(() => {
     if (!reasoning) return undefined;
     const byId = new Map(model.terms.map((t) => [t.id, t]));
-    const named = (id: string) => ({ id, name: byId.get(id)?.name || 'Unnamed', iri: byId.get(id)?.iri });
+    const named = (id: string) => {
+      const t = byId.get(id);
+      return { id, name: (t && nameIn(t, model.lang, displayLang)) || 'Unnamed', iri: t?.iri };
+    };
     if (!reasoning.consistent || dl?.consistency === 'inconsistent') return { consistent: false as const, by: reasoning.consistent ? 'The OWL 2 DL reasoner' : 'The reasoner', links: [], inherited: [], unsatisfiable: false, below: [], instances: [], same: [] };
     const stated = new Set(isClass ? linkedTerms(model, term.id, 'equivalentClass').map((x) => x.id) : []);
     const own = (isClass ? reasoning.superclasses(term.id) : reasoning.types(term.id)).filter((l) => !l.asserted && !stated.has(l.id));
@@ -244,10 +258,13 @@ export function InferredSupers({ term }: { term: Term }) {
       instances: sort(of && isClass ? of.instances.filter((x) => !x.asserted).map((x) => x.individual) : []),
       same: sort(of && !isClass ? of.same : []),
     };
-  }, [model, reasoning, term.id, isClass, dl]);
+  }, [model, reasoning, term.id, isClass, dl, displayLang]);
   // What the individual is related to without that being stated, whichever reasoner says so.
   const related = useMemo(() => (isClass ? [] : entailedBy(model, reasoning, dl).facts.filter((f) => f.from === term.id)), [model, reasoning, term.id, isClass, dl]);
-  const nameOf = (id: string) => model.terms.find((t) => t.id === id)?.name || 'Unnamed';
+  const nameOf = (id: string) => {
+    const t = model.terms.find((x) => x.id === id);
+    return (t && nameIn(t, model.lang, displayLang)) || 'Unnamed';
+  };
   const what = isClass ? 'superclasses' : 'types';
   const credit = dl ? creditOf(dl) : '';
   const others = (id: string, title: string, list: { id: string; name: string; iri?: string }[]) =>
@@ -355,8 +372,15 @@ function PickOne({ value, options, onChange, noun, of }: { value?: Choice; optio
 /** What is stated about an individual: the things it is related to, and the values it has. */
 export function IndividualAssertions({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
   const st = useStore.getState;
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
+  const pick = (t: Term) => choice(t, model.lang, displayLang);
+  const pickProp = (p: PropView) => propChoice(p, model.lang, displayLang);
+  const shown = (id: string | undefined) => {
+    const t = id ? byId.get(id) : undefined;
+    return (t && nameIn(t, model.lang, displayLang)) || 'Unnamed';
+  };
   const props = objectProperties(model);
   const facts = props.flatMap((p) => p.rels.filter((r) => r.from === term.id && byId.get(r.to)?.type === 'instance').map((r) => ({ p, r })));
   const values = term.values ?? [];
@@ -367,7 +391,7 @@ export function IndividualAssertions({ term }: { term: Term }) {
   const range = dataProp && propDatatype(dataProp);
   const listed = enumOf(model, range);
   const textual = !range || range === 'xsd:string' || range === 'rdf:langString' || !!listed?.values.some((v) => v.lang);
-  const ofType = (type: TermType) => () => model.terms.filter((t) => t.type === type).map(choice);
+  const ofType = (type: TermType) => () => model.terms.filter((t) => t.type === type).map(pick);
   const stateFact = () => {
     const error = st().edit((m) => addFact(m, term.id, fact.prop ?? '', fact.to ?? ''));
     setFact(error ? { ...fact, error } : {});
@@ -384,20 +408,20 @@ export function IndividualAssertions({ term }: { term: Term }) {
           {facts.map(({ p, r }) => (
             <li key={r.id}>
               <button className="link prop" title={`${p.iri ?? ''}\nOpen the property`} onClick={() => st().selectProp(p.id)}>
-                {p.name}
+                {nameIn(p, model.lang, displayLang)}
               </button>
               <button className="link" title={`${byId.get(r.to)?.iri ?? ''}\nOpen it`} onClick={() => st().select([r.to])}>
-                {byId.get(r.to)?.name || 'Unnamed'}
+                {shown(r.to)}
               </button>
-              <button className="btn icon ghost" title="Remove this assertion" aria-label={`Remove ${p.name} ${byId.get(r.to)?.name}`} onClick={() => st().remove([], [r.id])}>
+              <button className="btn icon ghost" title="Remove this assertion" aria-label={`Remove ${nameIn(p, model.lang, displayLang)} ${shown(r.to)}`} onClick={() => st().remove([], [r.id])}>
                 ×
               </button>
             </li>
           ))}
         </ul>
         <div className="assertion-add">
-          <PickOne value={fact.prop ? propChoice(findProp(model, fact.prop)!) : undefined} options={() => props.map(propChoice)} onChange={(prop) => setFact({ ...fact, prop, error: undefined })} noun="object property" of="state a fact" />
-          <PickOne value={fact.to && byId.get(fact.to) ? choice(byId.get(fact.to)!) : undefined} options={ofType('instance')} onChange={(to) => setFact({ ...fact, to, error: undefined })} noun="individual" of="relate to" />
+          <PickOne value={fact.prop ? pickProp(findProp(model, fact.prop)!) : undefined} options={() => props.map(pickProp)} onChange={(prop) => setFact({ ...fact, prop, error: undefined })} noun="object property" of="state a fact" />
+          <PickOne value={fact.to && byId.get(fact.to) ? pick(byId.get(fact.to)!) : undefined} options={ofType('instance')} onChange={(to) => setFact({ ...fact, to, error: undefined })} noun="individual" of="relate to" />
           <button className="btn small primary" disabled={!fact.prop || !fact.to} onClick={stateFact}>
             Add assertion
           </button>
@@ -416,13 +440,13 @@ export function IndividualAssertions({ term }: { term: Term }) {
             return (
               <li key={i}>
                 <button className="link prop" title={`${byId.get(v.prop)?.iri ?? ''}\nOpen the property`} onClick={() => st().select([v.prop])}>
-                  {byId.get(v.prop)?.name || 'Unnamed'}
+                  {shown(v.prop)}
                 </button>
                 <span className="literal">
                   {v.value}
                   {v.lang ? <span className="lang">@{v.lang}</span> : dt && dt !== 'xsd:string' ? <span className="lang">{rangeLabel(model, dt, true)}</span> : null}
                 </span>
-                <button className="btn icon ghost" title="Remove this value" aria-label={`Remove ${byId.get(v.prop)?.name} ${v.value}`} onClick={() => st().apply((m) => removeValue(m, term.id, i))}>
+                <button className="btn icon ghost" title="Remove this value" aria-label={`Remove ${shown(v.prop)} ${v.value}`} onClick={() => st().apply((m) => removeValue(m, term.id, i))}>
                   ×
                 </button>
               </li>
@@ -430,7 +454,7 @@ export function IndividualAssertions({ term }: { term: Term }) {
           })}
         </ul>
         <div className="assertion-add">
-          <PickOne value={dataProp ? choice(dataProp) : undefined} options={ofType('property')} onChange={(prop) => setDraft({ ...draft, prop, error: undefined })} noun="data property" of="give a value" />
+          <PickOne value={dataProp ? pick(dataProp) : undefined} options={ofType('property')} onChange={(prop) => setDraft({ ...draft, prop, error: undefined })} noun="data property" of="give a value" />
           <input
             aria-label="Value"
             aria-invalid={!!draft.error}
@@ -475,8 +499,10 @@ const PROP_LINK_FIELDS: { link: PropLink; label: string; predicate: string; noun
 /** How an object property stands to other object properties. */
 export function PropLinks({ prop }: { prop: PropView }) {
   const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
   const st = useStore.getState;
   const all = objectProperties(model);
+  const pickProp = (p: PropView) => propChoice(p, model.lang, displayLang);
   return (
     <>
       {PROP_LINK_FIELDS.map(({ link, label, predicate, noun }) => (
@@ -487,14 +513,14 @@ export function PropLinks({ prop }: { prop: PropView }) {
           <EntityPicker
             values={propLinks(model, prop.id, link).map((k) => {
               const p = all.find((x) => x.id === k);
-              return p ? propChoice(p) : { id: k, name: 'A property that is no longer there' };
+              return p ? pickProp(p) : { id: k, name: 'A property that is no longer there' };
             })}
-            options={() => all.filter((p) => p.id !== prop.id).map(propChoice)}
+            options={() => all.filter((p) => p.id !== prop.id).map(pickProp)}
             onAdd={(k) => st().edit((m) => addPropLink(m, prop.id, k, link))}
             onRemove={(k) => st().apply((m) => removePropLink(m, prop.id, k, link))}
             onOpen={(k) => findProp(model, k) && st().selectProp(k)}
             noun={noun}
-            of={prop.name}
+            of={nameIn(prop, model.lang, displayLang)}
             empty="none stated"
           />
         </div>

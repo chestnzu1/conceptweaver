@@ -15,7 +15,7 @@ import { fromTurtle, toJsonLd, toTurtle } from './rdf';
 import { sampleModel, skosSample } from './sample';
 import { universitySample } from './sampleUniversity';
 import { stressModel } from './stress';
-import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model, type Term } from './types';
+import { newAnnotationProp, newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model, type Term } from './types';
 import { propDatatype, withDatatype, withUnionClasses } from './domains';
 import type { ClassAxiom } from './expressions';
 import { localName } from './iri';
@@ -398,6 +398,59 @@ describe('term metadata', () => {
       { key: 'Data owner', value: 'Alice' },
     ]);
     expect(toTurtle(sampleModel())).not.toContain('dcterms');
+  });
+});
+
+describe('annotation properties as entities', () => {
+  it('are written with their name, description, superproperties, domain and range, and read back as they were', () => {
+    const m = emptyModel('Annotations');
+    m.baseIri = 'http://example.org/notes#';
+    m.terms = [newTerm({ id: 'invoice', name: 'Invoice', fields: [{ key: 'note', value: 'First' }] })];
+    m.annProps = [
+      newAnnotationProp({ id: 'note', name: 'note', description: 'A note on an entity.', fields: [{ key: 'rdfs:label', value: 'Notiz', lang: 'de' }] }),
+      newAnnotationProp({ id: 'review', name: 'review note', parents: ['note'] }),
+    ];
+    const withIds = withIris(m);
+    const invoiceIri = withIds.terms[0].iri!;
+    const review = withIds.annProps.find((p) => p.id === 'review')!;
+    review.domains = [{ id: 'd', expression: { type: 'Class', iri: invoiceIri } }];
+    review.ranges = [{ id: 'r', expression: { type: 'Class', iri: invoiceIri } }];
+
+    const ttl = toTurtle(withIds);
+    const blockOf = (subject: string) => ttl.split('\n\n').find((b) => b.startsWith(subject + ' '))!;
+    expect(blockOf(':note')).toContain('a owl:AnnotationProperty');
+    expect(blockOf(':note')).toContain('rdfs:label "note"');
+    expect(blockOf(':note')).toContain('"Notiz"@de');
+    expect(blockOf(':note')).toContain('skos:definition "A note on an entity."');
+    expect(blockOf(':reviewNote')).toContain('rdfs:subPropertyOf :note');
+    expect(blockOf(':reviewNote')).toContain('rdfs:domain :Invoice');
+    expect(blockOf(':reviewNote')).toContain('rdfs:range :Invoice');
+    expect(blockOf(':Invoice')).toContain(':note "First"');
+
+    const back = fromTurtle(ttl);
+    expect(back.annProps.map((p) => p.name)).toEqual(['note', 'review note']);
+    const note = back.annProps.find((p) => p.name === 'note')!;
+    expect(note.description).toBe('A note on an entity.');
+    expect(note.fields).toEqual([{ key: 'rdfs:label', value: 'Notiz', lang: 'de' }]);
+    expect(note.iri).toBe('http://example.org/notes#note');
+    const again = back.annProps.find((p) => p.name === 'review note')!;
+    expect(again.parents).toEqual([note.id]);
+    expect(again.domains).toEqual([{ id: expect.any(String), expression: { type: 'Class', iri: invoiceIri } }]);
+    expect(again.ranges).toEqual([{ id: expect.any(String), expression: { type: 'Class', iri: invoiceIri } }]);
+    expect(again.external).toBeUndefined();
+    // The field on the class is an annotation with the property it names.
+    expect(back.terms[0].fields).toEqual([{ key: 'note', value: 'First' }]);
+    expect(toTurtle(back)).toBe(ttl);
+  });
+
+  it('takes one declared in another vocabulary for an entity it refers to, found by its IRI', () => {
+    const back = fromTurtle(`
+      @prefix : <http://example.org/x#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      @prefix gov: <http://governance.example/ns#> .
+      gov:retention a owl:AnnotationProperty .
+      :Customer a owl:Class ; gov:retention "7" .`);
+    expect(back.annProps).toMatchObject([{ name: 'retention', iri: 'http://governance.example/ns#retention', external: '' }]);
   });
 });
 

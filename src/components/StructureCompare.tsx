@@ -28,7 +28,7 @@ export function StructureCompare({ host }: { host: StructureHost }) {
 
   const [result, setResult] = useState<{ of: string; comparison: ClassComparison } | null>(null);
   const [error, setError] = useState<string>();
-  const of = a && b ? `${ontology.revisionId}\n${a}\n${b}\n${reasoningKey}` : '';
+  const of = a && b ? `${ontology.revisionId}\n${a}\n${b}\n${reasoningKey}\n${host.displayLang}` : '';
   useEffect(() => {
     if (!a || !b) return setResult(null);
     const abort = new AbortController();

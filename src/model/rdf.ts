@@ -1,8 +1,9 @@
 import { Parser } from 'n3';
 import { ANNOTATION_PROPS, standardAnnotation } from './annotations';
+import { fieldAnnProp } from './annotationProps';
 import { baseIriOf, localName } from './iri';
 import { arrangeAsHierarchy } from '../layout/graph';
-import { DATATYPES, ENUM_RANGE, emptyModel, type DescriptionProperty, type NameProperty, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
+import { DATATYPES, ENUM_RANGE, emptyModel, type AnnotationProp, type DescriptionProperty, type NameProperty, newRelation, newTerm, PROP_LINKS, uid, type DataValue, type EnumDatatype, type EnumLiteral, type ExtraField, type Model, type ObjProp, type PropLink, type Relation, type RestrictionSpec, type Term } from './types';
 import { allPrefixes, compactIri, expandIri, isAbsoluteIri, ontologyIriOf, STANDARD } from './prefixes';
 import { enumOf, isEnumRange } from './datatypes';
 import { propDatatype } from './domains';
@@ -72,7 +73,19 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   const text = (value: string, lang = m.lang): Val => (lang ? { lit: value, lang } : { lit: value });
   const modelIri = `<${ontologyIriOf(m)}>`;
   const custom = new Map<string, string>();
-  const annProps: RdfNode[] = [];
+  // The annotation properties the model declares. A metadata field keyed by one of their names or
+  // IRIs is written with its IRI; each is described by its own node below.
+  const annPropRef = new Map<string, string>();
+  for (const p of m.annProps) if (p.iri) annPropRef.set(p.id, short(p.iri));
+  for (const p of m.annProps) if (!annPropRef.has(p.id)) annPropRef.set(p.id, ':' + unique(localName(p.name || 'annotation', true)));
+  /** Declarations generated for properties used as annotations, minted where they are met. */
+  const declarations: RdfNode[] = [];
+  /**
+   * Annotation properties minted for the model's own metadata keys (not declared as entities).
+   * They are written beside the declared ones, in one place, so that a file read back is written
+   * the same way again: on reading, each of them becomes a declared annotation property.
+   */
+  const customNodes: RdfNode[] = [];
   // Metadata fields are annotations: standard properties as they are, the rest as properties of the model's own.
   // Properties of other vocabularies used as annotations are declared as annotation properties,
   // so that an OWL reader takes them for what they are and reads no logic into them.
@@ -80,13 +93,13 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   const declare = (pred: string) => {
     if (declaredAnn.has(pred) || /^(rdfs|owl|skos|dcterms):/.test(pred)) return;
     declaredAnn.add(pred);
-    annProps.push({ id: pred, props: [['rdf:type', { id: 'owl:AnnotationProperty' }]] });
+    declarations.push({ id: pred, props: [['rdf:type', { id: 'owl:AnnotationProperty' }]] });
   };
   const metrics = new Map<string, string>();
   const literalOf = (f: ExtraField, value: string): Val =>
     f.dt === 'xsd:boolean' && /^(true|false)$/.test(value) ? { lit: value, bool: true } : f.dt ? { lit: value, dt: f.dt } : f.lang ? { lit: value, lang: f.lang } : { lit: value };
-  const annotate = (n: RdfNode, t: { fields: ExtraField[] }) => {
-    for (const f of t.fields) {
+  const annotate = (n: RdfNode, t: { fields?: ExtraField[] }) => {
+    for (const f of t.fields ?? []) {
       const key = f.key.trim();
       const value = f.value.trim();
       if (!key || !value) continue;
@@ -96,14 +109,16 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
         if (!metric) {
           metric = ':' + unique(localName(key, true));
           metrics.set(key.toLowerCase(), metric);
-          annProps.push({ id: metric, props: [['rdf:type', { id: 'dqv:Metric' }], ['rdfs:label', { lit: key }]] });
+          declarations.push({ id: metric, props: [['rdf:type', { id: 'dqv:Metric' }], ['rdfs:label', { lit: key }]] });
         }
         declare('dqv:hasQualityMeasurement');
         n.props.push(['dqv:hasQualityMeasurement', { bnode: { id: '', props: [['rdf:type', { id: 'dqv:QualityMeasurement' }], ['dqv:isMeasurementOf', { id: metric }], ['dqv:value', literalOf(f, value)]] } }]);
         continue;
       }
       let pred = standardAnnotation(key);
-      if (pred) declare(pred);
+      const declared = pred ? undefined : fieldAnnProp(m, key);
+      if (declared) pred = annPropRef.get(declared.id)!;
+      else if (pred) declare(pred);
       else if (keyIri(m, key)) {
         pred = short(keyIri(m, key)!);
         declare(pred);
@@ -112,7 +127,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
         if (!pred) {
           pred = ':' + unique(localName(key, true));
           custom.set(key.toLowerCase(), pred);
-          annProps.push({ id: pred, props: [['rdf:type', { id: 'owl:AnnotationProperty' }], ['rdfs:label', { lit: key }]] });
+          customNodes.push({ id: pred, props: [['rdf:type', { id: 'owl:AnnotationProperty' }], ['rdfs:label', { lit: key }]] });
         }
       }
       if (f.iri && isAbsoluteIri(value)) n.props.push([pred, { id: short(value) }]);
@@ -122,6 +137,20 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       else n.props.push([pred, literalOf(f, f.value)]);
     }
   };
+  // Each declared annotation property is an entity of its own: typed, named, arranged under its
+  // superproperties, and (below, once class expressions have their writer) with its domain and range.
+  const annPropNodes: RdfNode[] = m.annProps.map((p) => {
+    const n: RdfNode = { id: annPropRef.get(p.id)!, props: [['rdf:type', { id: 'owl:AnnotationProperty' }]] };
+    if (p.external === undefined) {
+      n.props.push(['rdfs:label', text(p.name, p.nameLang)]);
+      if (p.description) n.props.push([p.describedBy ?? 'skos:definition', text(p.description, p.descriptionLang)]);
+      annotate(n, p);
+    }
+    for (const id of p.parents ?? []) if (annPropRef.has(id)) n.props.push(['rdfs:subPropertyOf', { id: annPropRef.get(id)! }]);
+    return n;
+  });
+  // A field naming one is not declared again where it is met.
+  for (const ref of annPropRef.values()) declaredAnn.add(ref);
   const nodes = new Map<string, RdfNode>();
 
   if (m.mode === 'skos') {
@@ -166,7 +195,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
       nodes.get(t.id)!.props.push(['skos:topConceptOf', { id: scheme.id }]);
       scheme.props.push(['skos:hasTopConcept', { id: ref.get(t.id)! }]);
     }
-    return { base, nodes: [scheme, ...annProps, ...own.values(), ...m.terms.map((t) => nodes.get(t.id)!)], ref, propRef: new Map() };
+    return { base, nodes: [scheme, ...declarations, ...customNodes, ...annPropNodes, ...own.values(), ...m.terms.map((t) => nodes.get(t.id)!)], ref, propRef: new Map() };
   }
 
   const ontology: RdfNode = { id: modelIri, props: [['rdf:type', { id: 'owl:Ontology' }], [m.namedBy ?? 'rdfs:label', text(m.name, m.nameLang)]] };
@@ -266,6 +295,11 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
         return kept(e.turtle);
     }
   };
+  // An annotation property applies to what its domains say, and its values are what its ranges say.
+  for (const [i, p] of m.annProps.entries()) {
+    for (const a of p.domains ?? []) annPropNodes[i].props.push(['rdfs:domain', classVal(a.expression)]);
+    for (const a of p.ranges ?? []) annPropNodes[i].props.push(['rdfs:range', classVal(a.expression)]);
+  }
   function dataVal(r: DataRange): Val | undefined {
     switch (r.type) {
       case 'Datatype':
@@ -417,7 +451,7 @@ function toRdf(model: Model): { base: string; nodes: RdfNode[]; ref: Map<string,
   }
   for (const g of whole.values()) allDifferent.push({ id: '', props: [['rdf:type', { id: g.predicate === 'owl:disjointWith' ? 'owl:AllDisjointClasses' : 'owl:AllDifferent' }], ['owl:members', { list: g.members.map((id): Val => ({ id: ref.get(id)! })) }]] });
   const of = (type: Term['type']) => m.terms.filter((t) => t.type === type).map((t) => nodes.get(t.id)!);
-  return { base, nodes: [ontology, ...annProps, ...of('concept'), ...objProps, ...datatypeNodes, ...of('property'), ...of('instance'), ...allDifferent], ref, propRef };
+  return { base, nodes: [ontology, ...declarations, ...customNodes, ...annPropNodes, ...of('concept'), ...objProps, ...datatypeNodes, ...of('property'), ...of('instance'), ...allDifferent], ref, propRef };
 }
 
 /**
@@ -709,6 +743,10 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   const objProps = new Set(typed(NS.owl + 'ObjectProperty'));
   const annotationProps = new Set(typed(NS.owl + 'AnnotationProperty'));
   const dataProps = new Set(typed(NS.owl + 'DatatypeProperty').filter((p) => !objProps.has(p) && !annotationProps.has(p)));
+  // Annotation properties that are entities of this model: not OWL's or another standard
+  // vocabulary's, and not one the file also declares an object or data property.
+  const ownAnnProps = new Set([...annotationProps].filter((p) => !builtin(p) && !STANDARD.some((s) => p.startsWith(s.iri)) && !objProps.has(p) && !dataProps.has(p)));
+  const annPropIdOf = new Map([...ownAnnProps].map((p) => [p, uid()]));
   const propLabel = (p: string) => literal(p, NS.rdfs + 'label', NS.skos + 'prefLabel') || humanize(p, true);
   // Each object property's id in the model, made now: its uses are read before its declaration.
   const propIdOf = new Map([...objProps].map((p) => [p, uid()]));
@@ -730,8 +768,8 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
       os.filter((o) => !datatypeIris.has(o)).forEach((o) => ensure(o, 'concept'));
     }
   }
-  for (const p of [...objProps, ...dataProps]) {
-    for (const pred of objProps.has(p) ? ['domain', 'range'] : ['domain']) {
+  for (const p of [...objProps, ...dataProps, ...ownAnnProps]) {
+    for (const pred of objProps.has(p) || ownAnnProps.has(p) ? ['domain', 'range'] : ['domain']) {
       objs(p, NS.rdfs + pred).flatMap(expand).forEach((c) => ensure(c, 'concept'));
     }
   }
@@ -865,6 +903,30 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     const used = new Set(usedIds.map((id) => m.terms.find((t) => t.id === id)?.iri));
     return !!named && named.length === used.size && named.every((iri) => used.has(iri));
   };
+  // Annotation properties: each an entity of its own, with its name, description, domain and
+  // range. Their superproperties are linked once all of them are known.
+  const annPropEntries = new Map<string, AnnotationProp>();
+  for (const p of ownAnnProps) {
+    const domains = axiomsOf(p, NS.rdfs + 'domain');
+    const ranges = axiomsOf(p, NS.rdfs + 'range');
+    const entry: AnnotationProp = {
+      id: annPropIdOf.get(p)!,
+      ...nameOf(p, [NS.rdfs + 'label', NS.skos + 'prefLabel'], humanize(p, true)),
+      iri: p,
+      ...describe(p, [NS.skos + 'definition', NS.rdfs + 'comment'], 'skos:definition'),
+      ...(domains.length ? { domains } : {}),
+      ...(ranges.length ? { ranges } : {}),
+    };
+    mark(p, NS.rdf + 'type', NS.owl + 'AnnotationProperty');
+    m.annProps.push(entry);
+    annPropEntries.set(p, entry);
+  }
+  for (const [p, entry] of annPropEntries) {
+    const parents = named(objs(p, NS.rdfs + 'subPropertyOf')).filter((x) => ownAnnProps.has(x) && x !== p);
+    for (const x of parents) mark(p, NS.rdfs + 'subPropertyOf', x);
+    const ids = [...new Set(parents.map((x) => annPropIdOf.get(x)!))];
+    if (ids.length) entry.parents = ids;
+  }
   for (const p of objProps) {
     const domains = axiomsOf(p, NS.rdfs + 'domain');
     const ranges = axiomsOf(p, NS.rdfs + 'range');
@@ -1170,7 +1232,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
     if (![NS.rdfs, NS.owl, NS.skos, NS.dct].some((ns) => pred.startsWith(ns))) mark(pred, NS.rdf + 'type', type);
     if (key_ === literal(pred, NS.rdfs + 'label', NS.skos + 'prefLabel')) take(pred, NS.rdfs + 'label', NS.skos + 'prefLabel');
   };
-  const annotated: [string, { name: string; description: string; fields?: ExtraField[] }][] = [...terms, ...propEntries];
+  const annotated: [string, { name: string; description: string; fields?: ExtraField[] }][] = [...terms, ...propEntries, ...annPropEntries];
   for (const [iri, t] of annotated) {
     for (const [pred, os] of spo.get(iri) ?? []) {
       if (pred === QM + 'hasQualityMeasurement') {
@@ -1262,6 +1324,7 @@ export function fromTurtle(text: string, fallbackName = 'Imported model'): Model
   if (m.baseIri) {
     for (const [iri, t] of terms) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri)) t.external = ownedBy(iri);
     for (const [iri, p] of propEntries) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri) && !p.domains && !p.ranges) p.external = ownedBy(iri);
+    for (const [iri, p] of annPropEntries) if (!iri.startsWith(m.baseIri) && onlyDeclared(iri) && !p.domains?.length && !p.ranges?.length) p.external = ownedBy(iri);
   }
 
   // What it took nothing from is kept, a whole statement at a time: one taken in part already has

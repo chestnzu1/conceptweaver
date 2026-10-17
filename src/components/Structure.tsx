@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { findPath } from '../model/checks';
+import { nameIn } from '../model/labels';
 import { configOf, supports } from '../model/modelTypes';
 import { objectProperties } from '../model/props';
 import { ENGINES } from '../model/reasoning';
@@ -20,7 +21,7 @@ import { StructureExplore } from './StructureExplore';
  */
 const service: StructureService = createLocalStructureService(() => {
   const s = useStore.getState();
-  return { model: s.model, docId: s.doc.id, reasoning: { engine: s.validation.engine, fast: currentReasoning(s), dl: s.reasoning.dl } };
+  return { model: s.model, docId: s.doc.id, reasoning: { engine: s.validation.engine, fast: currentReasoning(s), dl: s.reasoning.dl }, lang: s.displayLang };
 });
 
 /**
@@ -31,6 +32,8 @@ export interface StructureHost {
   service: StructureService;
   /** The ontology in the editor, as it is now. */
   ontology: OntologyRef;
+  /** The language its classes are named in (FR-M1-5). A view asks again when it changes: the same classes, in other words. */
+  displayLang: string;
   /** A class as the app shows it elsewhere, or null when there is no such class any more. */
   look: (iri: Iri) => { label: string; iri?: string; color: string } | null;
   /** Opens the class in the Entities view, where it is edited. */
@@ -81,6 +84,7 @@ const HIERARCHIES: { id: HierarchyMode; label: string; about: string }[] = [
 export function StructureView() {
   // What the ontology says does not change while terms are dragged about, so neither does this.
   const model = stable(useStore((s) => s.model));
+  const displayLang = useStore((s) => s.displayLang);
   const docId = useStore((s) => s.doc.id);
   const docSeq = useStore((s) => s.docSeq);
   const mode = useStore((s) => s.structure.mode);
@@ -105,9 +109,10 @@ export function StructureView() {
     return {
       service,
       ontology,
+      displayLang,
       look: (iri) => {
         const t = term(iri);
-        return t ? { label: t.name || 'Unnamed', iri: t.iri, color: t.color || 'default' } : null;
+        return t ? { label: nameIn(t, model.lang, displayLang) || 'Unnamed', iri: t.iri, color: t.color || 'default' } : null;
       },
       openInEntities: (iri) => {
         const t = term(iri);
@@ -162,7 +167,7 @@ export function StructureView() {
         st().visualizeSubgraph();
       },
     };
-  }, [model, ontology, st, reasons, engine, running, phase, ranAt, fast, dlAt]);
+  }, [model, ontology, displayLang, st, reasons, engine, running, phase, ranAt, fast, dlAt]);
   return (
     <div className="view structure">
       <div className="view-head">

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { nameIn } from '../model/labels';
 import { useStore } from '../model/store';
 import type { Relation } from '../model/types';
 import { activeProps, labelKey, resolveModel, suggestFor } from '../model/vocab';
@@ -10,9 +11,10 @@ export function VocabView() {
   const model = useStore((s) => s.model);
   const st = useStore.getState;
   const skos = model.mode === 'skos';
+  const displayLang = useStore((s) => s.displayLang);
   const props = useMemo(() => activeProps(model), [model]);
   const on = props.length > 0;
-  const name = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
+  const name = useMemo(() => new Map(model.terms.map((t) => [t.id, nameIn(t, model.lang, displayLang) || 'Unnamed'])), [model.terms, model.lang, displayLang]);
 
   // Your own relationships, one row per distinct label.
   const groups = useMemo(() => {

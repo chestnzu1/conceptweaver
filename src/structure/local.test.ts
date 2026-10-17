@@ -90,6 +90,27 @@ describe('the hierarchy of the model in the editor', () => {
     expect(termOfClass(m, NS + 'Nobody')).toBeUndefined();
   });
 
+  it('names the classes in the display language, each language a hierarchy of its own', async () => {
+    const { m, id } = cast();
+    const person = m.terms.find((t) => t.id === id.Person)!;
+    const bilingual = {
+      ...m,
+      lang: 'en',
+      terms: m.terms.map((t) => (t.id === person.id ? { ...t, fields: [...t.fields, { key: 'skos:prefLabel', value: 'Persona', lang: 'es' }] } : t)),
+    };
+    const en = createLocalStructureService(() => ({ model: bilingual, docId: null }));
+    const es = createLocalStructureService(() => ({ model: bilingual, docId: null, lang: 'es' }));
+    // The classes with no name in Spanish keep the one they have.
+    expect(labels(await en.children(ask(bilingual)))).toEqual(['Agent', 'Film', 'Performer']);
+    expect(labels(await es.children(ask(bilingual)))).toEqual(['Agent', 'Film', 'Performer']);
+    expect(labels(await es.children(ask(bilingual, { parentIri: 'http://vocab.org/v#Agent' })))).toEqual(['Persona']);
+    // The other language still reads as it did: the two hierarchies are kept apart.
+    expect(labels(await en.children(ask(bilingual, { parentIri: 'http://vocab.org/v#Agent' })))).toEqual(['Person']);
+    // A name in another language does not take the class's own name away from a search.
+    expect((await es.children(ask(bilingual, { filter: 'person' }))).matched).toBe(1);
+    expect((await es.children(ask(bilingual, { filter: 'persona' }))).matched).toBe(1);
+  });
+
   it('does not take an individual, a data property or an anonymous superclass for a class', async () => {
     const { m, id } = cast();
     const service = serve(() => m);

@@ -122,7 +122,7 @@ ok((await nodes()).join('|') === 'Margherita|My lunch|Pizza|Tomato|Topping|price
 let ttl = await turtle();
 ok(ttl.includes(':Margherita a owl:Class') && /rdfs:subClassOf :Pizza/.test(ttl) && /owl:onProperty :hasTopping ;\s*owl:someValuesFrom :Tomato/.test(ttl) && ttl.includes(':MyLunch a owl:NamedIndividual , :Margherita') && ttl.includes('owl:imports <http://example.org/food>'), 'the hierarchy, a restriction, a membership and the import are what the file states, with its namespace as the default one');
 await tab('Entities');
-ok(flat(await page.locator('.view .view-head').innerText()).startsWith('Classes (4) Object properties (1) Data properties (1) Individuals (1) Relationships (4)'), 'and it is listed by kind in Entities: ' + flat(await page.locator('.view .view-head').innerText()).slice(0, 96));
+ok(flat(await page.locator('.view .view-head').innerText()).startsWith('Classes (4) Object properties (1) Data properties (1) Annotation properties (0) Individuals (1) Relationships (4)'), 'and it is listed by kind in Entities: ' + flat(await page.locator('.view .view-head').innerText()).slice(0, 120));
 await tab('Graph');
 
 // ---------------------------------------------------------------- JSON-LD, dropped on the window

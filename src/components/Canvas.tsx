@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { anchorAt, displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nearNode, nodeLabel, nodeSize, outlineToward, placeLabels, pointInNode, routeHints, setNodeLook, textWidth, type EdgeAnchors, type EdgeGeom, type LabelSpec, type Pt, type RouteHint } from '../model/geometry';
+import { anchorAt, displayName, edgeGeom, edgeOffsets, hexInset, LABEL_FONT, LABEL_H, nearNode, nodeLabel, nodeName, nodeSize, outlineToward, placeLabels, pointInNode, routeHints, setNodeLook, setNodeNames, textWidth, type EdgeAnchors, type EdgeGeom, type LabelSpec, type Pt, type RouteHint } from '../model/geometry';
 import { beyondEnumerations, edgeLabelsOf, edgeTypesOf, enumerationEdges, ONE_OF_LABEL, type DerivedEdge } from '../model/edgeKinds';
 import { dashOf, isHex, nodeLookFor, nodeTypeOf, paint, readableOn, resolveEdge, resolveNode, type EdgeStyle, type NodeStyle } from '../model/graphStyle';
 import { CULL_FROM, cutPath, detailAt, drawnArea, drawnWhole, GRAPH_LIMIT, LINE_WORDS_FROM, lineIn, termIn, type Area, type Detail } from '../model/culling';
 import { stable } from '../model/stable';
+import { nameIn } from '../model/labels';
 import { currentDl, layoutOf, useStore, viewOf, type SubgraphState } from '../model/store';
 import { LAYOUT_KINDS, LAYOUTS, routeOf, type Route } from '../layout/types';
 import { typed } from '../model/relating';
@@ -700,6 +701,9 @@ const Scene = memo(function Scene({ model, route, sel, highlight, filter, editin
   // is told before anything is measured. Layout, fitting and the picture export read the same.
   const style = model.style;
   useMemo(() => setNodeLook(nodeLookFor(model)), [style, model.mode, model.prefixes, model.baseIri, model.datatypes]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The words on the nodes are the names in the display language, and the geometry measures them as drawn.
+  const displayLang = useStore((s) => s.displayLang);
+  useMemo(() => setNodeNames((t) => nameIn(t, model.lang, displayLang)), [model.lang, displayLang]);
   // Relations as they should be read: with the RDFS/OWL layer on, a mapped relation takes the
   // kind and label of its standard property.
   const meaning = stable(model);
@@ -1163,7 +1167,7 @@ const NodeView = memo(function NodeView({ t, ns, label, cls, hideText, handles, 
       <NodeShape t={t} ns={ns} w={w} h={h} paintStyle={{ fill, stroke }} />
       {!hideText && (
         <text className="node-text" x={w / 2} y={h / 2}>
-          {t.name ? displayName(label, t) : 'Unnamed'}
+          {nodeName(t) ? displayName(label, t) : 'Unnamed'}
         </text>
       )}
       {badge && (

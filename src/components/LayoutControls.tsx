@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { DIRECTION_LABEL, DIRECTIONS, LAYOUT_KINDS, LAYOUTS, ROUTING_LABEL, ROUTINGS, routingOf, SPACING, type EdgeRouting, type LayoutDirection, type LayoutKind } from '../layout/types';
+import { nameIn } from '../model/labels';
 import { layoutOf, useStore, viewOf } from '../model/store';
+import type { Term } from '../model/types';
 
 /**
  * The layout of the graph on the canvas, in the bar above it: which one, a button to run it
@@ -63,10 +65,13 @@ function Slider({ label, value, min, max, step, unit, onCommit }: { label: strin
 /** The settings of the chosen layout: only what that layout has. */
 export function LayoutOptions() {
   const layout = useStore(layoutOf);
+  const modelLang = useStore((s) => s.model.lang);
+  const displayLang = useStore((s) => s.displayLang);
   const selected = useStore((s) => s.sel.terms);
   const terms = useStore(viewOf).terms;
   const st = useStore.getState;
   const info = LAYOUTS[layout.kind];
+  const nameOf = (t: Term | undefined) => (t && nameIn(t, modelLang, displayLang)) || 'Unnamed';
   const root = terms.find((t) => t.id === layout.root);
   const picked = selected.length === 1 ? terms.find((t) => t.id === selected[0]) : undefined;
   const manual = layout.kind === 'manual';
@@ -92,10 +97,10 @@ export function LayoutOptions() {
       {info.root && (
         <div className="field">
           <span>Root</span>
-          <p className="layout-root">{root ? <strong>{root.name || 'Unnamed'}</strong> : 'The selected term, or else the term in the middle of the graph.'}</p>
+          <p className="layout-root">{root ? <strong>{nameOf(root)}</strong> : 'The selected term, or else the term in the middle of the graph.'}</p>
           <div className="row">
             <button className="btn small" disabled={!picked || picked.id === layout.root} title={picked ? '' : 'Select one term on the canvas first'} onClick={() => picked && st().setLayout({ root: picked.id })}>
-              {picked && picked.id !== layout.root ? `Use “${picked.name || 'Unnamed'}”` : 'Use the selected term'}
+              {picked && picked.id !== layout.root ? `Use “${nameOf(picked)}”` : 'Use the selected term'}
             </button>
             <button className="btn small" disabled={!layout.root} onClick={() => st().setLayout({ root: '' })}>
               Automatic

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ElementRef, LogicalModel } from '../logical/contracts';
+import { nameIn } from '../model/labels';
 import { useStore } from '../model/store';
 import type { LdmViewState } from '../model/state/session';
 import type { MappingDescription, TraceabilityReport, TraceResult } from '../traceability/contracts';
@@ -67,10 +68,10 @@ function targetable(m: LogicalModel): { ref: ElementRef; label: string }[] {
 }
 
 /** The ontology's entities by name, for picking a mapping's sources. */
-function ontologyChoices(ontology: ReturnType<typeof useStore.getState>['model']): { iri: string; name: string; kind: string }[] {
+function ontologyChoices(ontology: ReturnType<typeof useStore.getState>['model'], lang = ''): { iri: string; name: string; kind: string }[] {
   return [
-    ...ontology.terms.map((t) => ({ iri: t.iri ?? '', name: t.name, kind: t.type === 'property' ? 'data property' : t.type })),
-    ...ontology.props.map((p) => ({ iri: p.iri ?? '', name: p.name, kind: 'object property' })),
+    ...ontology.terms.map((t) => ({ iri: t.iri ?? '', name: nameIn(t, ontology.lang, lang), kind: t.type === 'property' ? 'data property' : t.type })),
+    ...ontology.props.map((p) => ({ iri: p.iri ?? '', name: nameIn(p, ontology.lang, lang), kind: 'object property' })),
     ...ontology.datatypes.map((d) => ({ iri: d.iri ?? '', name: d.name, kind: 'datatype' })),
   ].filter((x) => x.iri) as { iri: string; name: string; kind: string }[];
 }
@@ -78,7 +79,8 @@ function ontologyChoices(ontology: ReturnType<typeof useStore.getState>['model']
 export function TraceabilityPanel({ m, focus, selected, set }: { m: LogicalModel; focus: ElementRef | null; selected: string | null; set: (patch: Partial<LdmViewState>) => void }) {
   const service = useStore((s) => s.traceabilityService);
   const ontology = useStore((s) => s.model);
-  const ontologyChoicesHere = useMemo(() => ontologyChoices(ontology), [ontology]);
+  const displayLang = useStore((s) => s.displayLang);
+  const ontologyChoicesHere = useMemo(() => ontologyChoices(ontology, displayLang), [ontology, displayLang]);
   const [report, setReport] = useState<TraceabilityReport | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<'new' | string | null>(null);

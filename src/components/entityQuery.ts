@@ -14,7 +14,7 @@ import { ontologyRef } from '../structure/local';
  */
 export const entityService: EntityQueryService = createLocalEntityService(() => {
   const s = useStore.getState();
-  return { model: s.model, docId: s.doc.id, dl: currentDl(s), fast: currentReasoning(s) };
+  return { model: s.model, docId: s.doc.id, dl: currentDl(s), fast: currentReasoning(s), lang: s.displayLang };
 });
 
 /** How long the search waits for the typing to pause before it asks. */
@@ -56,6 +56,8 @@ export function useEntityList(kind: ListKind | null, view: EntityViewState, limi
   // What a reasoner found is part of what some filters answer with: the classes and individuals ask the app's own reasoner for it.
   const dl = useStore(currentDl);
   const fast = useReasoning(kind === 'class' || kind === 'individual');
+  // Names are shown in the display language: a list is asked for again when that changes.
+  const lang = useStore((s) => s.displayLang);
   const ontology = ontologyRef(model, docId);
   const { ontologyId, revisionId } = ontology;
   const search = useSettled(view.search, TYPING_PAUSE);
@@ -66,7 +68,7 @@ export function useEntityList(kind: ListKind | null, view: EntityViewState, limi
   const [answer, setAnswer] = useState<{ asked: string; page: EntityPage; rows: EntityRow[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Everything the question is made of: an answer is the answer to this, or it is an earlier one.
-  const asked = [kind, ontologyId, revisionId, search, sort, filters, limit].join('\n');
+  const asked = [kind, ontologyId, revisionId, search, sort, filters, limit, lang].join('\n');
   const latest = useRef(view);
   latest.current = view;
 
@@ -78,7 +80,7 @@ export function useEntityList(kind: ListKind | null, view: EntityViewState, limi
       () => undefined,
     );
     return () => gone.abort();
-  }, [kind, ontologyId, revisionId, dl, fast]);
+  }, [kind, ontologyId, revisionId, dl, fast, lang]);
 
   useEffect(() => {
     if (!kind) return;

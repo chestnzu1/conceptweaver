@@ -35,12 +35,12 @@ Physical data models, DDL and database deployment are out of scope.
 logical data models that are authored, derived from the ontology and traced back to it; not yet a
 platform.**
 
-About 71,000 lines of TypeScript, 973 unit tests, and 39 browser scripts, one of them a UI audit,
+About 73,000 lines of TypeScript, 990 unit tests, and 40 browser scripts, one of them a UI audit,
 all run by one command (`pnpm verify`) and in CI.
 
 | Area | State, 2026-10-17 |
 | --- | --- |
-| Visual modelling, entity editing, IRIs and namespaces | **Strong.** The diagram is the editor, and every line is checked against OWL rules as it is drawn. Every entity has a stable IRI. |
+| Visual modelling, entity editing, IRIs and namespaces | **Strong.** The diagram is the editor, and every line is checked against OWL rules as it is drawn. Every entity has a stable IRI. Annotation properties are entities of their own, and names, definitions and notes may be in several languages, with a display language for the names shown across the interface. |
 | OWL authoring and fidelity | **Good.** Class expressions are authored in Manchester syntax with completion; what the editor has no form for is kept and written back; a corpus of nine public ontologies round-trips with nothing lost. |
 | Structure exploration, entity search | **Strong, and already built for a backend.** Handles 200,000 classes through a service interface. |
 | Reasoning | **Good.** A rule reasoner in a worker; HermiT and ELK through a local service, chosen by the ontology's profile; honest reporting of what a result covers. |
@@ -102,8 +102,9 @@ The first five, the MVP path, are done (2026-10-16). In order from here:
 | 3 | ~~The LDM editor and its ER diagram (LM-2)~~ | Done 2026-10-17. |
 | 4 | ~~Ontology-to-LDM transformation (LM-3)~~ | Done 2026-10-17: logical models proposed from the ontology, constraints decided by the designer. |
 | 5 | ~~Semantic traceability and change impact (LM-4)~~ | Done 2026-10-17: every element traced, every ontology change reported per model. |
-| 6 | The remaining Phase 2 tasks, then the Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
-| 7 | Collaboration, publishing, assistance with LDM tools | The platform. |
+| 6 | ~~Annotation properties as entities, with labels in several languages and a display language (task 2.7)~~ | Done 2026-10-17. |
+| 7 | The remaining Phase 2 tasks, then the Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
+| 8 | Collaboration, publishing, assistance with LDM tools | The platform. |
 
 ## 5. MVPs
 
@@ -122,8 +123,9 @@ assistance, server-side LDMs.
 ## 6. Suggested next development milestone
 
 **MS-15, traceable and impact-aware**, is reached (2026-10-17) with LM-4. The next milestone is
-MS-16, server-side logical models, through LM-5 in Phase 4, after the remaining Phase 2 tasks; the
-next task is 2.7 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §10).
+MS-16, server-side logical models, through LM-5 in Phase 4, after the remaining Phase 2 tasks;
+2.7 is done (2026-10-17), and the next task is 2.8
+([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §10).
 
 ## 7. Logical data modelling in brief
 

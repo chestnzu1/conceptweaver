@@ -1,4 +1,5 @@
 import { enumerationEdges } from './edgeKinds';
+import { nameIn } from './labels';
 import { compactIri } from './prefixes';
 import { linkProps } from './identity';
 import { objectProperties } from './props';
@@ -207,16 +208,17 @@ export function extractSubgraph(model: Model, o: SubgraphOptions): Subgraph {
 }
 
 /** Terms whose name or IRI contains the text, best matches first, for choosing roots. */
-export function searchTerms(model: Model, text: string, limit = 8): { id: string; name: string; type: string }[] {
+export function searchTerms(model: Model, text: string, limit = 8, lang = ''): { id: string; name: string; type: string }[] {
   const q = text.trim().toLowerCase();
   if (!q) return [];
   const scored: { id: string; name: string; type: string; score: number }[] = [];
   for (const t of model.terms) {
-    const name = t.name.toLowerCase();
-    // By name first, then by synonym or by IRI, in full or written with a prefix ("ex:Actor").
+    const shown = nameIn(t, model.lang, lang) || 'Unnamed';
+    const name = shown.toLowerCase();
+    // By the name shown first, then by its other name, a synonym, or its IRI, in full or written with a prefix ("ex:Actor").
     const iri = t.iri ? `${t.iri}\n${compactIri(model, t.iri) ?? ''}`.toLowerCase() : '';
-    const score = name === q ? 0 : name.startsWith(q) ? 1 : name.includes(q) ? 2 : iri.includes(q) || t.synonyms.toLowerCase().includes(q) ? 3 : -1;
-    if (score >= 0) scored.push({ id: t.id, name: t.name || 'Unnamed', type: t.type, score });
+    const score = name === q ? 0 : name.startsWith(q) ? 1 : name.includes(q) ? 2 : iri.includes(q) || t.synonyms.toLowerCase().includes(q) || t.name.toLowerCase().includes(q) ? 3 : -1;
+    if (score >= 0) scored.push({ id: t.id, name: shown, type: t.type, score });
   }
   return scored.sort((a, b) => a.score - b.score || a.name.length - b.name.length || a.name.localeCompare(b.name)).slice(0, limit);
 }

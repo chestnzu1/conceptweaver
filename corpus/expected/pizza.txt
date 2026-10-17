@@ -5,7 +5,7 @@ ontology's IRI, annotations and imports.
 Original: 801 axioms. Saved: 814 axioms.
 Lost: 0.
 Added: 13 (AnnotationAssertion 13).
-Kept as it was, not editable here: 24 statements.
+Kept as it was, not editable here: 22 statements.
 
 Lost: in the original, not in what was saved
 

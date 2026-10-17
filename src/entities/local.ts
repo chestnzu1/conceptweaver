@@ -1,5 +1,7 @@
 import { standardAnnotation } from '../model/annotations';
+import { childAnnotationProps, fieldAnnProp } from '../model/annotationProps';
 import { rangeLabel } from '../model/datatypes';
+import { nameIn } from '../model/labels';
 import { propDatatype, propDatatypes } from '../model/domains';
 import { expressionOf, FAST_CREDIT, restrictionKey } from '../model/inferred';
 import { configOf, supports } from '../model/modelTypes';
@@ -53,13 +55,16 @@ function textsOf(model: Model, e: { name: string; description: string; iri?: str
   return texts;
 }
 
-const candidate = (model: Model, t: Pick<Term, 'id' | 'name' | 'iri'>, n?: number): Candidate => ({
-  value: t.id,
-  label: t.name || 'Unnamed',
-  ...(n !== undefined ? { count: n } : {}),
-  text: `${t.name}\n${t.iri ? (compactIri(model, t.iri) ?? '') : ''}`.toLowerCase(),
-  ...(t.iri ? { iri: t.iri.toLowerCase() } : {}),
-});
+const candidate = (model: Model, t: Pick<Term, 'id' | 'name' | 'iri' | 'nameLang' | 'fields'>, n?: number, lang = ''): Candidate => {
+  const label = nameIn(t, model.lang, lang) || 'Unnamed';
+  return {
+    value: t.id,
+    label,
+    ...(n !== undefined ? { count: n } : {}),
+    text: `${label}\n${t.name}\n${t.iri ? (compactIri(model, t.iri) ?? '') : ''}`.toLowerCase(),
+    ...(t.iri ? { iri: t.iri.toLowerCase() } : {}),
+  };
+};
 
 interface Index {
   records(kind: ListKind): EntityRecord[];
@@ -72,13 +77,14 @@ interface Index {
 const NAME: EntitySortSpec = { id: 'name', label: 'Name' };
 const IRI: EntitySortSpec = { id: 'iri', label: 'IRI' };
 
-function build(model: Model): Index {
+function build(model: Model, lang = ''): Index {
   const config = configOf(model);
   const oneKind = config.termTypes.length < 2;
   const words = config.hierarchy;
   const reasoned = supports(model, 'reasoning');
   const restricted = supports(model, 'restrictions');
-  const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
+  const nameOf = (x: { name: string; nameLang?: string; fields?: ExtraField[] }) => nameIn(x, model.lang, lang) || 'Unnamed';
+  const name = new Map(model.terms.map((t) => [t.id, nameOf(t)]));
   const byId = new Map(model.terms.map((t) => [t.id, t]));
   // Where there is one kind of term, every term is of it.
   const of = (type: Term['type']) => model.terms.filter((t) => oneKind || t.type === type);
@@ -92,6 +98,20 @@ function build(model: Model): Index {
       }
     }
     return degree.get(id) ?? 0;
+  };
+  // How many annotations an annotation property is used for, counted once for the whole table.
+  let annUseCount: Map<string, number> | undefined;
+  const annotationsOf = (id: string) => {
+    if (!annUseCount) {
+      annUseCount = new Map();
+      for (const e of [...model.terms, ...model.props, ...model.annProps]) {
+        for (const f of e.fields ?? []) {
+          const p = fieldAnnProp(model, f.key);
+          if (p) annUseCount.set(p.id, (annUseCount.get(p.id) ?? 0) + 1);
+        }
+      }
+    }
+    return annUseCount.get(id) ?? 0;
   };
 
   const made: Partial<Record<ListKind, EntityRecord[]>> = {};
@@ -110,9 +130,9 @@ function build(model: Model): Index {
         return {
           key: t.id,
           ...(t.iri ? { iri: t.iri } : {}),
-          label: t.name || 'Unnamed',
+          label: nameOf(t),
           texts: textsOf(model, t),
-          sort: { name: t.name, iri: t.iri, superclasses: supers, subclasses: subs, restrictions, relations: degreeOf(t.id) },
+          sort: { name: nameOf(t), iri: t.iri, superclasses: supers, subclasses: subs, restrictions, relations: degreeOf(t.id) },
           facts: { position: [...(supers ? [] : ['root']), ...(subs ? [] : ['leaf'])], multipleInheritance: flag(supers > 1), assertedRestrictions: flag(restrictions > 0) },
         };
       });
@@ -121,19 +141,33 @@ function build(model: Model): Index {
       objectProperties(model).map((p) => ({
         key: p.id,
         ...(p.iri ? { iri: p.iri } : {}),
-        label: p.name,
+        label: nameOf(p),
         texts: textsOf(model, p),
-        sort: { name: p.name, iri: p.iri, relations: p.rels.length },
+        sort: { name: nameOf(p), iri: p.iri, relations: p.rels.length },
         facts: { domain: withOrWithout((p.domainAuto ? p.usedFrom : p.domains).length > 0), range: withOrWithout((p.rangeAuto ? p.usedTo : p.ranges).length > 0), characteristics: p.chars, inverse: flag(propLinks(model, p.id, 'inverses').length > 0) },
       })),
     dataProperty: () =>
       (oneKind ? [] : of('property')).map((t) => ({
         key: t.id,
         ...(t.iri ? { iri: t.iri } : {}),
-        label: t.name || 'Unnamed',
+        label: nameOf(t),
         texts: textsOf(model, t),
-        sort: { name: t.name, iri: t.iri, range: rangeLabel(model, propDatatype(t)), relations: degreeOf(t.id) },
+        sort: { name: nameOf(t), iri: t.iri, range: rangeLabel(model, propDatatype(t)), relations: degreeOf(t.id) },
         facts: { domain: withOrWithout(dataDomain(model, t).auto ? dataDomain(model, t).attached.length > 0 : dataDomain(model, t).axioms.length > 0), range: withOrWithout(!!t.ranges?.length), functional: flag(!!t.functional), datatype: propDatatypes(t) },
+      })),
+    annotationProperty: () =>
+      model.annProps.map((p) => ({
+        key: p.id,
+        ...(p.iri ? { iri: p.iri } : {}),
+        label: nameOf(p),
+        texts: textsOf(model, p),
+        sort: { name: nameOf(p), iri: p.iri, superproperties: p.parents?.length ?? 0, annotations: annotationsOf(p.id) },
+        facts: {
+          domain: withOrWithout(!!p.domains?.length),
+          range: withOrWithout(!!p.ranges?.length),
+          superproperty: flag(!!p.parents?.length),
+          subproperty: flag(childAnnotationProps(model, p).length > 0),
+        },
       })),
     individual: () => {
       const classes = new Set(model.terms.filter((t) => t.type === 'concept').map((t) => t.id));
@@ -142,9 +176,9 @@ function build(model: Model): Index {
         return {
           key: t.id,
           ...(t.iri ? { iri: t.iri } : {}),
-          label: t.name || 'Unnamed',
+          label: nameOf(t),
           texts: textsOf(model, t),
-          sort: { name: t.name, iri: t.iri, type: types.map((c) => name.get(c)).join(', '), relations: degreeOf(t.id) },
+          sort: { name: nameOf(t), iri: t.iri, type: types.map((c) => name.get(c)).join(', '), relations: degreeOf(t.id) },
           facts: { assertedType: types },
         };
       });
@@ -185,6 +219,7 @@ function build(model: Model): Index {
     ],
     objectProperty: () => [NAME, IRI, { id: 'relations', label: 'Relationships that use it', numeric: true }],
     dataProperty: () => [NAME, IRI, { id: 'range', label: 'Datatype' }, { id: 'relations', label: 'Relationships', numeric: true }],
+    annotationProperty: () => [NAME, IRI, { id: 'superproperties', label: 'Superproperties', numeric: true }, { id: 'annotations', label: 'Annotations', numeric: true }],
     individual: () => [NAME, IRI, { id: 'type', label: 'Type (asserted classes)' }, { id: 'relations', label: 'Relationships', numeric: true }],
     relationship: () => [
       { id: 'from', label: 'From' },
@@ -251,6 +286,15 @@ function build(model: Model): Index {
         },
       ];
     },
+    annotationProperty: () => {
+      const all = records('annotationProperty');
+      return [
+        { id: 'domain', label: 'Domain', about: 'Whether the property has a domain (rdfs:domain).', type: 'one', options: setOrNot(all, 'domain') },
+        { id: 'range', label: 'Range', about: 'Whether the property has a range (rdfs:range).', type: 'one', options: setOrNot(all, 'range') },
+        { id: 'superproperty', label: 'Has a superproperty', about: 'Another annotation property it specialises (rdfs:subPropertyOf).', type: 'flag', options: yes(all, 'superproperty') },
+        { id: 'subproperty', label: 'Has a subproperty', about: 'Another annotation property that specialises it.', type: 'flag', options: yes(all, 'subproperty') },
+      ];
+    },
     individual: (dl, fast) => {
       const unavailable = reasoned ? noReasoning(dl, fast) : undefined;
       return [
@@ -315,17 +359,17 @@ function build(model: Model): Index {
     'individual|assertedType': () => {
       const n = new Map<string, number>();
       for (const r of records('individual')) for (const c of r.facts.assertedType) n.set(c, (n.get(c) ?? 0) + 1);
-      return [...n].map(([id, k]) => candidate(model, byId.get(id)!, k));
+      return [...n].map(([id, k]) => candidate(model, byId.get(id)!, k, lang));
     },
     // Any class can have instances that only follow: how many is not known until it is asked for.
-    'individual|inferredType': () => model.terms.filter((t) => t.type === 'concept').map((t) => candidate(model, t)),
+    'individual|inferredType': () => model.terms.filter((t) => t.type === 'concept').map((t) => candidate(model, t, undefined, lang)),
     'relationship|from': () => ends('from'),
     'relationship|to': () => ends('to'),
   };
   const ends = (end: 'from' | 'to') => {
     const n = new Map<string, number>();
     for (const r of model.relations) n.set(r[end], (n.get(r[end]) ?? 0) + 1);
-    return [...n].filter(([id]) => byId.has(id)).map(([id, k]) => candidate(model, byId.get(id)!, k));
+    return [...n].filter(([id]) => byId.has(id)).map(([id, k]) => candidate(model, byId.get(id)!, k, lang));
   };
   const candidatesMade = new Map<string, Candidate[]>();
 
@@ -351,11 +395,16 @@ function build(model: Model): Index {
   };
 }
 
-const indexes = new WeakMap<Model, Index>();
-/** The records of a model, made once for each revision of it: moving terms about on the canvas makes no new one. */
-const indexOf = (model: Model): Index => {
+const indexes = new WeakMap<Model, Map<string, Index>>();
+/** The records of a model, made once for each revision and display language of it: moving terms about on the canvas makes no new one. */
+const indexOf = (model: Model, lang = ''): Index => {
   const m = stable(model);
-  return indexes.get(m) ?? indexes.set(m, build(m)).get(m)!;
+  const byLang = indexes.get(m) ?? indexes.set(m, new Map()).get(m)!;
+  const hit = byLang.get(lang);
+  if (hit) return hit;
+  const made = build(m, lang);
+  byLang.set(lang, made);
+  return made;
 };
 
 /**
@@ -364,10 +413,10 @@ const indexOf = (model: Model): Index => {
  * on it is unavailable), and the OWL 2 DL reasoner's where there is one, which what is inferred
  * then takes in beside it.
  */
-export function createLocalEntityService(current: () => { model: Model; docId: string | null; dl?: ReasoningResult; fast?: Reasoning }): EntityQueryService {
+export function createLocalEntityService(current: () => { model: Model; docId: string | null; dl?: ReasoningResult; fast?: Reasoning; lang?: string }): EntityQueryService {
   return createRecordService(() => {
-    const { model, docId, dl, fast } = current();
-    const index = indexOf(model);
+    const { model, docId, dl, fast, lang } = current();
+    const index = indexOf(model, lang);
     return {
       ...ontologyRef(model, docId),
       records: index.records,

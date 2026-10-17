@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { addDatatype, addEnumValue, datatypeTurtle, enumOf, enumRange, literalText, removeDatatype, removeEnumValue, updateDatatype, usersOf } from '../model/datatypes';
 import { datatypeAxiom, withDatatype } from '../model/domains';
 import { keyOfRange } from '../model/expressions';
+import { nameIn } from '../model/labels';
 import { useStore } from '../model/store';
 import { DATATYPES, type EnumDatatype, type Term } from '../model/types';
 import { CommitInput } from './fields';
@@ -58,6 +59,7 @@ export function RangeSelect({ term, label = 'Datatype' }: { term: Term; label?: 
 /** The editor of one enumerated datatype: its name, the literals it lists, and how it is written to RDF. */
 export function EnumDatatypeEditor({ datatype: d }: { datatype: EnumDatatype }) {
   const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
   const st = useStore.getState;
   const [draft, setDraft] = useState({ value: '', dt: '', lang: '' });
   const [error, setError] = useState<string | undefined>();
@@ -133,7 +135,7 @@ export function EnumDatatypeEditor({ datatype: d }: { datatype: EnumDatatype }) 
         <code className="expression pre">{datatypeTurtle(model, d)}</code>
       </div>
       <small>
-        A datatype, not a class: its values are literals. Range of {users.map((t) => t.name || 'Unnamed').join(', ') || 'no property yet'}.{' '}
+        A datatype, not a class: its values are literals. Range of {users.map((t) => nameIn(t, model.lang, displayLang) || 'Unnamed').join(', ') || 'no property yet'}.{' '}
         <button className="link" title="Takes the datatype out of the model. A property that had it as its range is left without one." onClick={() => say(st().edit((m) => removeDatatype(m, d.id)))}>
           Delete this datatype
         </button>

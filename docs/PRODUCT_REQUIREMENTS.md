@@ -84,7 +84,7 @@ overwrites a decision the designer made.
 | User | What they do | What they need most | Served today |
 | --- | --- | --- | --- |
 | **Ontology engineer** | Authors and maintains OWL ontologies; uses restrictions, defined classes, reasoning. | Complete OWL 2 editing, lossless files, reliable reasoning, explanations. | Partly: authoring of class expressions and lossless round trips are missing (TD-01, TD-02). |
-| **Knowledge engineer / taxonomist** | Builds vocabularies, taxonomies, thesauri. | Fast hierarchy editing, labels in several languages, SKOS export, bulk import. | Well, for one language and pasted input. |
+| **Knowledge engineer / taxonomist** | Builds vocabularies, taxonomies, thesauri. | Fast hierarchy editing, labels in several languages, SKOS export, bulk import. | Well: labels in several languages with a display language, SKOS export, and CSV, TSV and Excel through a mapping screen. |
 | **Data architect** | Aligns a domain model with data assets and standards; designs the logical data models of applications from it. | Reuse of standard ontologies, SHACL for data; logical models derived from the ontology, with keys, cardinalities and rules decided by them, and traced back. | Well for reuse, SHACL and import; logical models are authored by hand (M17), derived from the ontology with reviewed proposals (M18, LM-3), and traced to it with impact reports and reviewed synchronization (M18, LM-4). |
 | **Logical data modeller / application designer** | Designs the entities, attributes, relationships and keys an application stores. | An ER editor; a starting point from the domain model that does not decide for them; to know what an ontology change means for their model. | In part: an LDM workspace and ER diagram (M17), proposals derived from the ontology, none imposed (M18, LM-3), and every element traced to its sources, with what an ontology change means for the model (M18, LM-4). |
 | **Semantic modeller / analyst** | Reads and reviews models more than writes them. | Clear pictures, hierarchy exploration, search, comparison. | Well. |
@@ -307,11 +307,14 @@ in *Entities* (`src/components/Entities.tsx`), edited in a Protégé-style side 
 ranges, and sub-, inverse, equivalent and disjoint links (`src/model/props.ts`). IRIs are made
 once and kept through renames; the suffix is editable; prefixes and namespaces are managed
 (`src/model/iri.ts`, `prefixes.ts`, `OntologySettings.tsx`). Two model types, OWL ontology and
-SKOS vocabulary, decide which features are offered (`src/model/modelTypes.ts`).
+SKOS vocabulary, decide which features are offered (`src/model/modelTypes.ts`). Since
+2026-10-17 annotation properties are entities of their own (`Model.annProps`), with
+superproperties, domains, ranges and annotations, and names, descriptions and notes may be in
+several languages, with a display language for entity names across the interface
+(`src/model/labels.ts`).
 
 **Gaps.** Statements the model has no place for are dropped on import (TD-01). Object
-properties are identified by name (TD-03). Annotation properties are not entities. One language
-per model. Refactoring is limited to moving a namespace.
+properties are identified by name (TD-03). Refactoring is limited to moving a namespace.
 
 **User stories.**
 
@@ -326,8 +329,8 @@ per model. Refactoring is limited to moving a namespace.
 | FR-M1-1 | Create, rename and delete classes, object properties, data properties and individuals from the canvas, the tables and the editor. | Existing | P0 |
 | FR-M1-2 | Every entity has an IRI from the moment it is created; name and IRI are independent; renaming never changes an IRI. | Implemented 2026-10-14 (a stand-in IRI until the first name; `src/model/iri.ts`) | P0 |
 | FR-M1-3 | Object properties have a stable identity independent of their name; two properties may share a label. | Implemented 2026-10-14 (model format 2; `src/model/identity.ts`) | P0 |
-| FR-M1-4 | Annotation properties are entities: declared, listed, arranged in a hierarchy, with domain and range. | Recommended | P1 |
-| FR-M1-5 | Labels, definitions and notes in several languages per entity; a display language for the whole interface. | Partially Implemented (annotation fields carry a language tag; one display language) | P1 |
+| FR-M1-4 | Annotation properties are entities: declared, listed, arranged in a hierarchy, with domain and range. | Implemented 2026-10-17 (`Model.annProps`; superproperties, domains, ranges and annotations; `src/model/annotationProps.ts`, `src/components/Entities.tsx`) | P1 |
+| FR-M1-5 | Labels, definitions and notes in several languages per entity; a display language for the whole interface. | Implemented 2026-10-17 (labels, definitions and notes in any number of languages; a display language for entity names in the header, remembered; `src/model/labels.ts`) | P1 |
 | FR-M1-6 | Refactoring: merge two entities, move entities to another namespace, replace one entity by another everywhere, deprecate with a successor. | Partially Implemented (`moveNamespace`) | P2 |
 | FR-M1-7 | For any entity, list every axiom that mentions it. | Partially Implemented (relationships and restrictions are listed) | P1 |
 | FR-M1-8 | Statements with no editor are preserved and written back unchanged. | Implemented 2026-10-14 (kept whole as read, `src/model/unmapped.ts`); since 2026-10-15 the corpus of nine ontologies loses nothing | P0 |
@@ -349,6 +352,17 @@ migration (NFR-9).
   removed.
 - FR-M1-2: no entity in a saved model lacks an IRI; no code path outside the local model uses a
   term id.
+- FR-M1-4: an annotation property is declared, renamed, given a superproperty, a domain and a
+  range, and listed in its own tab; fields that name it — by name, prefixed name or IRI — are
+  annotations made with it, counted and traced to the entities that use it; the RDF types it
+  `owl:AnnotationProperty` and keeps its domain, range and subproperty statements, and a model
+  exported and imported again states the same axioms; a property declared in another vocabulary
+  is kept as an external entity, found by its IRI.
+- FR-M1-5: an entity carries labels, definitions and notes in any number of languages; with a
+  display language chosen, the tables, the tree, the canvas and the editors' pickers show each
+  entity's name in it, the editor says when the name it edits is not the one shown, and the
+  choice is remembered across a reload; every language still reads as it did, and a search in
+  the model language finds an entity that has another language's name too.
 
 ### M2 Advanced OWL axiom and restriction editing
 

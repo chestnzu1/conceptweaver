@@ -6,6 +6,7 @@ import { sampleModel, skosSample } from '../model/sample';
 import { universitySample } from '../model/sampleUniversity';
 import { stressModel } from '../model/stress';
 import { stable } from '../model/stable';
+import { languageName, modelLanguages } from '../model/labels';
 import { configOf, supports, VIEW_LABEL, viewFor } from '../model/modelTypes';
 import { confirmDiscard, isDirty, layoutOf, problemCount, useStore } from '../model/store';
 import { LAYOUT_KINDS, LAYOUTS } from '../layout/types';
@@ -54,6 +55,10 @@ export function Header() {
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const theme = useStore((s) => s.theme);
+  const displayLang = useStore((s) => s.displayLang);
+  const languages = modelLanguages(model);
+  // A language this model has not (yet): said as it is, so that it can be seen and changed.
+  const offered = displayLang && !languages.includes(displayLang) ? [...languages, displayLang] : languages;
   const assistantOpen = useAssistant((s) => s.open);
   const docId = useStore((s) => s.doc.id);
   const dirty = useStore(isDirty);
@@ -169,6 +174,20 @@ export function Header() {
       </nav>
 
       <div className="header-tools">
+        {/* Only a model with more than one language has a choice to make. */}
+        {(offered.length > 1 || displayLang) && (
+          <label className="display-lang" title="The language entity names and descriptions are shown in">
+            <span className="sr-only">Display language</span>
+            <select aria-label="Display language" value={displayLang} onChange={(e) => st().setDisplayLang(e.target.value)}>
+              <option value="">Model language{model.lang ? ` (${languageName(model.lang)})` : ''}</option>
+              {offered.map((lang) => (
+                <option key={lang} value={lang}>
+                  {languageName(lang)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button className="btn icon" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!canUndo} onClick={() => st().undo()}>
           <Icon name="undo" />
         </button>

@@ -95,11 +95,12 @@ More on what the advanced reasoner does and does not cover is under
   | OWL/XML, functional syntax, Manchester syntax, OBO | `.owx`, `.ofn`, `.omn`, `.obo`, and `.owl` files saved in one of them | the local OWL service (`pnpm reasoner`), which has the OWL API |
 
   The syntax is told from how the file starts, not from its name. Everything is read into the
-  same model the same way: classes, object and data properties, individuals, the hierarchy,
-  restrictions, memberships and values become what the editor shows; a class expression there
-  is no drawing for is an axiom of its class, edited as one; labels in other languages and other annotations are
-  kept as annotations; the file's prefixes stay its prefixes; what it imports is recorded by its
-  IRI and not fetched. A file in an encoding other than UTF-8 is read in the one it declares.
+  same model the same way: classes, object properties, data properties, annotation properties,
+  individuals, the hierarchy, restrictions, memberships and values become what the editor shows;
+  a class expression there is no drawing for is an axiom of its class, edited as one; labels in
+  other languages and other annotations are kept as annotations; the file's prefixes stay its
+  prefixes; what it imports is recorded by its IRI and not fetched. A file in an encoding other
+  than UTF-8 is read in the one it declares.
   What cannot be read is refused in a message that stays on screen and says why: a file that is
   not well-formed, one that was cut short (it is not opened as a smaller ontology), a JSON-LD
   file that takes its context from elsewhere, or a syntax that needs the OWL service when none
@@ -209,10 +210,10 @@ More on what the advanced reasoner does and does not cover is under
 - **Asserted superclasses** – a class lists every superclass explicitly stated for it (not the
   inferred ones) and they can be added and removed one at a time. A superclass that is an
   expression is a class axiom (see *Class expressions*).
-- **Entities view** – classes, object properties, data properties and individuals each in their
-  own tab, with the side panel as the editor, in the manner of Protégé.
-  Under the tabs each of the five lists (classes, object properties, data properties,
-  individuals, relationships) has a bar of its own:
+- **Entities view** – classes, object properties, data properties, annotation properties and
+  individuals each in their own tab, with the side panel as the editor, in the manner of Protégé.
+  Under the tabs each of the six lists (classes, object properties, data properties, annotation
+  properties, individuals, relationships) has a bar of its own:
   - **Search** – as it is typed, by name, other labels (synonyms, and annotations that are names:
     `rdfs:label`, `skos:prefLabel`, `skos:altLabel`, `skos:hiddenLabel`, `skos:notation`,
     `dcterms:title`), the IRI with a prefix or in full, and the definition; a relationship by its
@@ -230,9 +231,10 @@ More on what the advanced reasoner does and does not cover is under
   - **Filters** – a panel that folds away, with what fits the list. Classes: root, leaf, multiple
     inheritance, asserted restrictions, inferred restrictions, unsatisfiable. Object properties:
     domain or range set or not, each characteristic, having an inverse. Data properties: domain
-    or range set or not, functional, datatype. Individuals: asserted class, and inferred class
-    (every individual a reasoner entails to be an instance). Relationships: kind, where it starts,
-    where it ends. Filters combine with each other and with the search and the order; the ones
+    or range set or not, functional, datatype. Annotation properties: domain or range set or
+    not, having a superproperty, having a subproperty. Individuals: asserted class, and inferred
+    class (every individual a reasoner entails to be an instance). Relationships: kind, where it
+    starts, where it ends. Filters combine with each other and with the search and the order; the ones
     that are on are listed under the bar, each with its own ×, beside *Clear all filters*. What
     rests on a reasoner says which one, takes in the OWL 2 DL result when there is a current one,
     and is not applied while the ontology is inconsistent, which it also says.
@@ -241,7 +243,7 @@ More on what the advanced reasoner does and does not cover is under
   open, and start afresh with another model. None of it is part of the model or changes it. An
   entity added while a list is narrowed is listed all the same, marked as just added; so is one
   opened from the Structure Explorer. The sidebar's search box narrows the sidebar and the
-  Governance tab, no longer these five tables.
+  Governance tab, no longer these six tables.
   *Add relationship* in its table of relationships starts one between the terms that are
   selected, or else from the first term by name to the first it can be related to and is not
   related to yet; its ends and its name are then set in its row, which is selected and brought
@@ -611,10 +613,18 @@ More on what the advanced reasoner does and does not cover is under
     equivalent and disjoint properties.
   - *Data property*: domain as its axioms, datatype and further range axioms, functional,
     superproperties, equivalent and disjoint properties.
+  - *Annotation property*: domain (what it may annotate) and range (what its values may be) as
+    the axioms they are, any number of superproperties, and annotations of its own.
   - *Individual*: types, object property assertions, data property assertions (checked against
     the property's datatype), same and different individuals.
   - Every entity: its IRI in full, prefixed name and namespace, and annotations, several per
     property and each with its own language.
+
+  A name, a description or a note may be in any language. When the model holds more than one,
+  the header offers a *display language*: the name shown in the lists, the sidebar tree, the
+  canvas and the editors' pickers is then the one in that language, where the entity has it,
+  while the editor still edits the entity's own name and says which one it is showing. The
+  choice is remembered in this browser, and *Model language* shows the names as they are edited.
 
   Entities are chosen by searching names or IRIs. An edit that makes no sense is refused with
   the reason shown at the field. Only what is asserted can be edited; what the reasoner works
@@ -992,11 +1002,9 @@ members of an enumeration is kept as one statement on that enumeration instead.
 
 Not read at all, so lost on import: property chains, keys (`owl:hasKey`), negative property
 assertions, `owl:disjointUnionOf`, a *named* datatype defined by anything but a list of
-literals (facets, unions; a property that has one as its range names it there),
-annotations on axioms,
-domains, ranges and hierarchies of annotation properties, `owl:imports` and the ontology's own
-annotations other than its name and description. A value whose datatype is not one of the twelve
-the app offers is kept as plain text.
+literals (facets, unions; a property that has one as its range names it there), annotations on
+axioms, `owl:imports` and the ontology's own annotations other than its name and description. A
+value whose datatype is not one of the twelve the app offers is kept as plain text.
 
 ## Moving the Structure Explorer to a semantic backend
 
@@ -1489,7 +1497,7 @@ it, and nothing was replaced):
   (`owl:propertyChainAxiom`), keys (`owl:hasKey`), negative property assertions, annotations on
   axioms, an ontology's version IRI and its annotations beyond name and description, a class
   defined by an `owl:intersectionOf` stated on itself (as older RDF/XML files write it), datatype
-  definitions, statements about annotation properties, and whatever else the reader takes
+  definitions, equivalent and disjoint annotation properties, and whatever else the reader takes
   nothing from. Each such statement is kept whole, as it was read (`src/model/unmapped.ts`), saved
   with the model, and written back at the end of every Turtle and JSON-LD export; the OWL 2 DL
   reasoner gets it too, the app's own reasoner does not. It is not shown or edited. The message

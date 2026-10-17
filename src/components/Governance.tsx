@@ -21,6 +21,7 @@ import {
 } from '../model/governance';
 import { standardAnnotation } from '../model/annotations';
 import { localName } from '../model/iri';
+import { nameIn } from '../model/labels';
 import { compactIri, isAbsoluteIri } from '../model/prefixes';
 import type { Finding } from '../validation/contracts';
 import { runIsStale, useStore } from '../model/store';
@@ -247,16 +248,20 @@ function FieldControl({ model, entity, field, values, names }: { model: Model; e
 
 /** Everything the registry has for one entity, grouped, with the entity's other annotations below. */
 function MetaForm({ model, entity, names }: { model: Model; entity: MetaEntity; names: Map<string, string> }) {
+  const displayLang = useStore((s) => s.displayLang);
   const fields = useMemo(() => fieldsFor(model, entity.kind), [model, entity.kind]);
   const term = 'term' in entity.owner ? entity.owner.term : undefined;
+  const at = entity.owner;
+  const owner = 'term' in at ? model.terms.find((t) => t.id === at.term) : model.props.find((p) => p.id === at.prop);
+  const shownName = (owner && nameIn(owner, model.lang, displayLang)) || entity.name || 'Unnamed';
   const profiles: EntityKind[] = [entity.structural, 'businessAsset', 'technicalAsset'];
   // Annotations no field of this kind of entity shows: they are listed at the end, so that nothing is hidden.
   const covered = fields.filter((f) => !f.bind).map((f) => fieldKey(f).toLowerCase());
   const others = entity.fields.filter((f) => !covered.includes((standardAnnotation(f.key) ?? f.key.trim()).toLowerCase())).length;
   return (
-    <div className="gov-form" aria-label={`Metadata of ${entity.name || 'Unnamed'}`}>
+    <div className="gov-form" aria-label={`Metadata of ${shownName}`}>
       <div className="gov-form-head">
-        <h3>{entity.name || 'Unnamed'}</h3>
+        <h3>{shownName}</h3>
         <IriCell iri={entity.iri} of={entity.name} />
         {term && !entity.external && (
           <label className="gov-profile" title="Which set of metadata fields this entity has. A data asset is still the class, property or individual it is in the model; the profile is recorded as its dcterms:type.">
@@ -481,18 +486,25 @@ function RegistryEditor({ model }: { model: Model }) {
  */
 export function GovernanceView({ configuring }: { configuring: boolean }) {
   const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
   const sel = useStore((s) => s.sel);
   const selProp = useStore((s) => s.selProp);
   const filter = useStore((s) => s.filter);
   const [limit, setLimit] = useState(PAGE);
   const entities = useMemo(() => metaEntities(model), [model]);
   const byId = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
-  const names = useMemo(() => new Map(entities.filter((e) => e.iri).map((e) => [e.iri!, e.name || 'Unnamed'])), [entities]);
+  // MetaEntity names are the primary names, which are what the metadata form edits; the list shows the language's.
+  const displayName = useMemo(() => new Map(entities.map((e) => {
+    const at = e.owner;
+    const x = 'term' in at ? model.terms.find((t) => t.id === at.term) : model.props.find((p) => p.id === at.prop);
+    return [e.id, (x && nameIn(x, model.lang, displayLang)) || e.name || 'Unnamed'];
+  })), [entities, model.terms, model.props, model.lang, displayLang]);
+  const names = useMemo(() => new Map(entities.filter((e) => e.iri).map((e) => [e.iri!, displayName.get(e.id) ?? e.name])), [entities, displayName]);
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return entities;
-    return entities.filter((e) => `${e.name}\n${e.description}\n${e.synonyms}\n${e.iri ?? ''}\n${KIND_LABEL[e.kind]}\n${metaText(e, (iri) => names.get(iri))}`.toLowerCase().includes(q));
-  }, [entities, names, filter]);
+    return entities.filter((e) => `${displayName.get(e.id)}\n${e.name}\n${e.description}\n${e.synonyms}\n${e.iri ?? ''}\n${KIND_LABEL[e.kind]}\n${metaText(e, (iri) => names.get(iri))}`.toLowerCase().includes(q));
+  }, [entities, names, displayName, filter]);
   const fields = useMemo(() => registry(model), [model]);
   const current = selProp ? byId.get('prop:' + selProp) : sel.terms.length === 1 ? byId.get(sel.terms[0]) : undefined;
   const status = fields.find((f) => f.id === 'status');
@@ -521,7 +533,7 @@ export function GovernanceView({ configuring }: { configuring: boolean }) {
               const missing = need.filter((f) => !valuesOf(model, e, f).length).length;
               return (
                 <tr key={e.id} className={'readonly' + (current?.id === e.id ? ' sel' : '')} tabIndex={0} aria-selected={current?.id === e.id} onClick={() => ('term' in e.owner ? st().select([e.owner.term]) : st().selectProp(e.owner.prop))} onKeyDown={(ev) => ev.key === 'Enter' && ('term' in e.owner ? st().select([e.owner.term]) : st().selectProp(e.owner.prop))}>
-                  <td>{e.name || 'Unnamed'}</td>
+                  <td>{displayName.get(e.id)}</td>
                   <td>{model.mode === 'skos' && e.kind === 'class' ? 'Concept' : KIND_LABEL[e.kind]}</td>
                   <td>{cell(e, status)}</td>
                   <td>{cell(e, owner)}</td>

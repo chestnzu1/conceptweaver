@@ -83,7 +83,7 @@ export function StructureExplore({ host, mode }: { host: StructureHost; mode: Hi
     setOwnOpen(next);
   };
 
-  const base = `${ontology.ontologyId}\n${ontology.revisionId}\n${mode}\n${filter}\n${reasoningKey}`;
+  const base = `${ontology.ontologyId}\n${ontology.revisionId}\n${mode}\n${filter}\n${reasoningKey}\n${host.displayLang}`;
   // `pool` fills as answers come in; `shown` is what is drawn, and stays until what replaces it is all there.
   const pool = useRef<Fetched>({ base: '', branches: new Map(), version: 0 });
   const [shown, setShown] = useState<Fetched>(pool.current);

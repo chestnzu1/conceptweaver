@@ -385,7 +385,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | 2.4 | **Tabular import.** CSV, TSV and Excel upload; a mapping screen; preview with row-level errors; commit as one change set; saved templates. Built on a mapping core (IRI templates, column rules, value conversion, preview with reasons) that does not assume the source is a file, for reuse by the database mapping of stage DI-2 (deferred, §11). Done 2026-10-16. | TD-17, FR-M7-2 to FR-M7-5, ADR-019 | L |
 | 2.5 | **Export in every OWL syntax** through the conversion the service already performs in the other direction. `ImportExportService`. Done 2026-10-16. | TD-13, FR-M11-2 | S |
 | 2.6 | **ELK in the companion**, and automatic choice of reasoner by profile. The libraries are already in the bundle. Done 2026-10-17. | FR-M3-5 | M |
-| 2.7 | Annotation properties as entities; labels in several languages with a display language. | FR-M1-4, FR-M1-5 | M |
+| 2.7 | Annotation properties as entities; labels in several languages with a display language. Done 2026-10-17. | FR-M1-4, FR-M1-5 | M |
 | 2.8 | Further axioms: property chains, keys, disjoint unions, negative assertions, annotations on axioms, moved out of the unmapped block one kind at a time. | FR-M2-4, FR-M2-5 | L |
 | 2.9 | Imports: `owl:imports` declared on export; the closure resolved transitively; missing imports reported. `AlignmentService`. | FR-M8-5 | M |
 | 2.10 | Structure: property hierarchies; comparison of two versions or two ontologies, reusing the difference from 2.3. | FR-M6-5, FR-M6-6 | M |
@@ -420,7 +420,8 @@ LM-3, whose accepted proposals make the first mappings, and 2.3, for the version
 reported between. The workstream needs nothing of 2.6 to 2.12, nor they of it; 2.8 (keys,
 disjoint unions and chains as typed axioms) widens what LM-3 can read, but LM-3 reads
 `owl:hasKey` and `owl:disjointUnionOf` from the ontology's statements whether or not 2.8 has
-typed them. 2.7 (labels in several languages) gives LM-3 the language to name elements in.
+typed them. 2.7 (labels in several languages) gives the interface its display language; the
+derivation's naming still takes the ontology's own label.
 
 ### Technical complexity
 
@@ -756,8 +757,9 @@ integration deferred (§11). Nothing completed changed.
 
 **2026-10-17: 2.6 done, then LM-1, LM-2, LM-3 and LM-4** (each with its status below). **The
 logical data modelling workstream's browser stages are done, and milestone MS-15 with them; LM-5
-waits for Phase 4. The next task is 2.7**, annotation properties as entities and labels in several
-languages (FR-M1-4, FR-M1-5), set out in §3.4; then the rest of 2.7 to 2.12 as demand and
+waits for Phase 4. 2.7 is done too**: annotation properties are entities and labels, definitions
+and notes may be in several languages, with a display language (FR-M1-4, FR-M1-5). **The next
+task is 2.8**, further axioms (FR-M2-4, FR-M2-5), set out in §3; then 2.9 to 2.12 as demand and
 dependencies allow.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
@@ -1049,8 +1051,9 @@ and the service: one change set with the configuration, refusals for a moved bas
 requirement, and the ontology untouched. `e2e/transformation.mjs` checks the dialog in the
 browser, from the configuration through the review, by kind and one by one, to the worker, the
 undo and the redo, and a second run that proposes nothing over a rename and a hand-made
-constraint. What it left: shape sets as a further input (FR-M18-7), labels in several languages
-(2.7), the assistant's LDM tools (5.7), and LDMs on a server (LM-5).
+constraint. What it left: shape sets as a further input (FR-M18-7), a choice of label language in
+the derivation's naming (2.7 gives the interface one), the assistant's LDM tools (5.7), and LDMs
+on a server (LM-5).
 
 **Status, 2026-10-17: LM-4 done** (FR-M18-8 to FR-M18-14, ADR-025), and milestone MS-15 with it.
 The mapping model is `SemanticMapping` in `src/logical/contracts.ts`: sources with the axioms they
@@ -1089,6 +1092,48 @@ chooses it; a dismissal that is not offered again; the two saved versions compar
 ontology's Turtle identical after every synchronization. What it left: mappings exported as RDF
 with PROV-O (FR-M18-15), shape sets as a further input to transformation (FR-M18-7), the
 assistant's LDM tools (5.7), and LDMs and their mappings on a server (LM-5).
+
+**Status, 2026-10-17: 2.7 done** (FR-M1-4, FR-M1-5). Annotation properties are entities of their
+own in `Model.annProps` (`src/model/types.ts`): a name, an IRI, a description, superproperties,
+domain and range axioms, annotations of their own, and whether they are declared in another
+vocabulary. A model saved in the format of today (7) keeps them; one of format 6 or earlier
+opens with none and the fields it has as they were. *Entities* lists them in a tab of their own, searched, ordered and filtered by
+whether they have a domain, a range, a superproperty or a child, and by how many annotations are
+made with them; the editor declares, renames and deletes one, arranges it under another (and
+refuses a cycle), gives it domain and range axioms in the expression editor, and lists the
+entities that use it, each one a link. `src/model/annotationProps.ts` finds the property a
+metadata field is an annotation with — by its name in any case, its IRI in full, in angle
+brackets or as a prefixed name — counts its uses across terms, object properties and other
+annotation properties, and walks the hierarchy. A field that names no declared property is still
+kept as written. Export writes each one as `owl:AnnotationProperty`, with `rdfs:label`, its
+description, `rdfs:subPropertyOf`, `rdfs:domain`, `rdfs:range` and its annotations; import reads
+one declared elsewhere as an external entity found by its IRI, and keeps the statements it did
+not make.
+
+Labels, definitions and notes may be in several languages. An entity's own name and description
+carry the language they were read in, and any number of `rdfs:label`, `skos:prefLabel`,
+`dcterms:title`, `skos:definition`, `rdfs:comment` or `dcterms:description` fields may be added,
+each with its language; every other annotation field carries one too. `src/model/labels.ts` gives
+an entity's name and description in a language, the languages a model has, and a language tag's
+name. With more than one language in the model, the header offers a display language (or the
+model's own); the choice is remembered in the browser and reaches the tables, the tree, the
+canvas labels, the inspector and the search, while each language's hierarchy is kept apart in the
+structure service's cache. A search in the model language still finds an entity that has another
+language's name too.
+
+`src/model/labels.test.ts` and `src/model/annotationProps.test.ts` check the two helper modules;
+`src/entities/local.test.ts` the annotation property list, its filters, counts and display-language
+names; `src/structure/local.test.ts` the separate hierarchies; `src/model/model.test.ts` the RDF
+round trip, including a property declared in another vocabulary and the statements a field makes.
+`e2e/annotations.mjs` drives the same in the browser: a property declared, arranged, given a
+domain and a range, used on a class, counted and traced back, named in German, the display
+language switched and remembered across a reload.
+
+What it left: the property hierarchy is a list of superproperties, not yet the tree of 2.10; an
+entity's own name is edited in the model language (a name in another language is added as a
+field), and the language a file gave the primary label is not itself editable; a few auxiliary
+screens (the import mapping and the logical model editor) still name entities in the model
+language. The derivation's naming uses the ontology's own label, not the display language.
 
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.

@@ -1,4 +1,5 @@
 import { enumerationExpression, isEnumeration } from '../model/axioms';
+import { nameIn } from '../model/labels';
 import { configOf, supports } from '../model/modelTypes';
 import { classText, namingFor } from '../model/manchester';
 import { compactIri } from '../model/prefixes';
@@ -38,11 +39,14 @@ interface LocalIndex {
   connections: Map<Iri, number>;
 }
 
-const cache = new WeakMap<Model, LocalIndex>();
+const cache = new WeakMap<Model, Map<string, LocalIndex>>();
 
-function indexOf(given: Model): LocalIndex {
+/** The index of a model's classes, named in `lang` (empty: the model's own language). */
+function indexOf(given: Model, lang = ''): LocalIndex {
   const model = stable(given);
-  const hit = cache.get(model);
+  const found = cache.get(model) ?? new Map<string, LocalIndex>();
+  cache.set(model, found);
+  const hit = found.get(lang);
   if (hit) return hit;
   // In a concept scheme everything is a concept, whatever kind a term had in a model it came from.
   const every = configOf(model).termTypes.length < 2;
@@ -60,9 +64,12 @@ function indexOf(given: Model): LocalIndex {
     termOf.set(iri, t.id);
     const curie = t.iri ? compactIri(model, t.iri) : undefined;
     const labels = [...t.synonyms.split(','), ...t.fields.filter((f) => LABELS.has(f.key)).map((f) => f.value)].map((s) => s.trim()).filter(Boolean);
+    // The name it is shown by, and the name it is also known by: both find it, whichever language is shown.
+    const shown = nameIn(t, model.lang, lang).trim();
+    const others = [t.name, ...labels].filter((s) => s && s !== shown);
     // Superclasses that are class expressions without a name are axioms of the class. They are counted, and are not classes here.
     const anonymous = t.classAxioms?.filter((a) => a.kind === 'SubClassOf' && a.expression.type !== 'Class').length ?? 0;
-    graph.classes.push({ iri, label: t.name || 'Unnamed', search: curie ? [...labels, curie] : labels, ...(t.external !== undefined ? { external: true } : {}), ...(anonymous ? { anonymousSuperclasses: anonymous } : {}) });
+    graph.classes.push({ iri, label: shown || 'Unnamed', search: curie ? [...others, curie] : others, ...(t.external !== undefined ? { external: true } : {}), ...(anonymous ? { anonymousSuperclasses: anonymous } : {}) });
   }
   for (const t of listed) {
     for (const up of assertedSuperclasses(model, t.id)) {
@@ -86,7 +93,7 @@ function indexOf(given: Model): LocalIndex {
     }
   }
   const out = { iriOf, termOf, graph, connections };
-  cache.set(model, out);
+  found.set(lang, out);
   return out;
 }
 
@@ -130,10 +137,10 @@ const UNNAMED_PROPERTY = 'urn:conceptweaver:property:';
  * is and is no statement about the class; domains are left out here. A class expression kept as
  * it was written, and the list of an enumeration, are given as text.
  */
-function axiomsOf(given: Model, iris: Iri[]): Map<Iri, ClassAxiom[]> {
+function axiomsOf(given: Model, iris: Iri[], lang = ''): Map<Iri, ClassAxiom[]> {
   const model = stable(given);
   const naming = namingFor(model);
-  const index = indexOf(model);
+  const index = indexOf(model, lang);
   const byId = new Map(model.terms.map((t) => [t.id, t]));
   const out = new Map<Iri, ClassAxiom[]>();
   for (const iri of iris) {
@@ -241,16 +248,17 @@ function dlAnswer(model: Model, index: LocalIndex, dl: LocalReasoning['dl']): In
   };
 }
 
-const answers = new WeakMap<Model, { engine: EngineId; from: Reasoning | LocalReasoning['dl'] | undefined; answer: InferredInput }>();
+const answers = new WeakMap<Model, { engine: EngineId; lang: string; from: Reasoning | LocalReasoning['dl'] | undefined; answer: InferredInput }>();
 
-/** What the chosen reasoner entails of the model as it is: the same object until the model, the choice or the reasoner's answer changes. */
-function inferredOf(given: Model, reasoning: LocalReasoning): InferredInput {
+/** What the chosen reasoner entails of the model as it is: the same object until the model, the choice, the language or the reasoner's answer changes. */
+function inferredOf(given: Model, reasoning: LocalReasoning, lang = ''): InferredInput {
   const model = stable(given);
   const hit = answers.get(model);
   const from = reasoning.engine === 'fast' ? reasoning.fast : reasoning.dl;
-  if (hit && hit.engine === reasoning.engine && hit.from === from) return hit.answer;
-  const answer = reasoning.engine === 'fast' ? fastAnswer(model, indexOf(model), reasoning.fast) : dlAnswer(model, indexOf(model), reasoning.dl);
-  answers.set(model, { engine: reasoning.engine, from, answer });
+  if (hit && hit.engine === reasoning.engine && hit.lang === lang && hit.from === from) return hit.answer;
+  const index = indexOf(model, lang);
+  const answer = reasoning.engine === 'fast' ? fastAnswer(model, index, reasoning.fast) : dlAnswer(model, index, reasoning.dl);
+  answers.set(model, { engine: reasoning.engine, lang, from, answer });
   return answer;
 }
 
@@ -259,9 +267,9 @@ function inferredOf(given: Model, reasoning: LocalReasoning): InferredInput {
  * editor when it is asked. With `reasoning`, and for a type of model that is reasoned over, it
  * has an inferred hierarchy as well.
  */
-export function createLocalStructureService(current: () => { model: Model; docId: string | null; reasoning?: LocalReasoning }): StructureService {
+export function createLocalStructureService(current: () => { model: Model; docId: string | null; reasoning?: LocalReasoning; lang?: string }): StructureService {
   return createGraphService(() => {
-    const { model, docId, reasoning } = current();
-    return { ...ontologyRef(model, docId), graph: () => indexOf(model).graph, axioms: (iris) => axiomsOf(model, iris), connections: () => indexOf(model).connections, ...(reasoning && supports(model, 'reasoning') ? { inferred: () => inferredOf(model, reasoning) } : {}) };
+    const { model, docId, reasoning, lang = '' } = current();
+    return { ...ontologyRef(model, docId), lang, graph: () => indexOf(model, lang).graph, axioms: (iris) => axiomsOf(model, iris, lang), connections: () => indexOf(model, lang).connections, ...(reasoning && supports(model, 'reasoning') ? { inferred: () => inferredOf(model, reasoning, lang) } : {}) };
   });
 }

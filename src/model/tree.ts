@@ -1,3 +1,4 @@
+import { nameIn } from './labels';
 import { compactIri } from './prefixes';
 import { assertedSuperclasses } from './props';
 import type { Model } from './types';
@@ -76,13 +77,14 @@ export function ancestorsOf(tree: ClassTree, ids: Iterable<string>): Set<string>
 }
 
 /** The classes whose name, synonyms, description or IRI (in full or with a prefix) contain the text. */
-export function matchingClasses(model: Model, text: string): Set<string> {
+export function matchingClasses(model: Model, text: string, lang = ''): Set<string> {
   const q = text.trim().toLowerCase();
   const out = new Set<string>();
   if (!q) return out;
   for (const t of model.terms) {
     if (t.type !== 'concept') continue;
-    const hay = `${t.name}\n${t.synonyms}\n${t.description}\n${t.iri ?? ''}\n${t.iri ? (compactIri(model, t.iri) ?? '') : ''}`.toLowerCase();
+    // The name it is shown by, whichever language is shown, and the names it is kept under.
+    const hay = `${nameIn(t, model.lang, lang)}\n${t.name}\n${t.synonyms}\n${t.description}\n${t.iri ?? ''}\n${t.iri ? (compactIri(model, t.iri) ?? '') : ''}`.toLowerCase();
     if (hay.includes(q)) out.add(t.id);
   }
   return out;

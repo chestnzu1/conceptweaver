@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { definedClasses } from '../model/axioms';
+import { nameIn } from '../model/labels';
 import { compactIri } from '../model/prefixes';
 import { stable } from '../model/stable';
 import { SIDEBAR_WIDTH, useStore } from '../model/store';
@@ -159,6 +160,7 @@ function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> })
   const width = useStore((s) => s.sidebarWidth);
   // Names, colours and the hierarchy do not change while terms are dragged about, so neither does this.
   const model = stable(useStore((s) => s.model));
+  const displayLang = useStore((s) => s.displayLang);
   const selected = useStore((s) => s.sel.terms);
   const filter = useStore((s) => s.filter);
   const setFilter = useStore((s) => s.setFilter);
@@ -200,7 +202,7 @@ function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> })
   }, [selectedKey]);
 
   // Searching narrows the tree to the matches and the classes leading to them, all opened up.
-  const matches = useMemo(() => matchingClasses(model, filter), [model, filter]);
+  const matches = useMemo(() => matchingClasses(model, filter, displayLang), [model, filter, displayLang]);
   const searching = filter.trim() !== '';
   const rows = useMemo(() => treeRows(tree, open, searching ? new Set([...matches, ...ancestorsOf(tree, matches)]) : undefined), [tree, open, searching, matches]);
   const byId = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
@@ -209,8 +211,10 @@ function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> })
 
   const flat = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return model.terms.filter((t) => t.type === type && (!q || `${t.name}\n${t.description}\n${t.synonyms}\n${t.iri ?? ''}`.toLowerCase().includes(q))).sort((a, b) => a.name.localeCompare(b.name));
-  }, [model.terms, filter, type]);
+    return model.terms
+      .filter((t) => t.type === type && (!q || `${nameIn(t, model.lang, displayLang)}\n${t.name}\n${t.description}\n${t.synonyms}\n${t.iri ?? ''}`.toLowerCase().includes(q)))
+      .sort((a, b) => nameIn(a, model.lang, displayLang).localeCompare(nameIn(b, model.lang, displayLang)));
+  }, [model.terms, model.lang, displayLang, filter, type]);
 
   const toggle = (id: string) => {
     const next = new Set(open);
@@ -258,6 +262,7 @@ function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> })
                 cycle={r.cycle}
                 defined={defined.has(r.id)}
                 term={byId.get(r.id)}
+                name={r.id === ROOT ? (skos ? 'Concept scheme' : 'owl:Thing') : (byId.get(r.id) && nameIn(byId.get(r.id)!, model.lang, displayLang)) || 'Unnamed'}
                 rootLabel={skos ? 'Concept scheme' : 'owl:Thing'}
                 selected={selectedSet.has(r.id)}
                 match={searching && matches.has(r.id)}
@@ -276,9 +281,9 @@ function TermListOpen({ asideRef }: { asideRef: RefObject<HTMLElement | null> })
           <ul>
             {flat.map((t) => (
               <li key={t.id}>
-                <button className={selectedSet.has(t.id) ? 'on' : ''} onClick={() => choose(t.id)} title={t.iri ? `${t.name}\n${t.iri}` : t.name}>
+                <button className={selectedSet.has(t.id) ? 'on' : ''} onClick={() => choose(t.id)} title={t.iri ? `${nameIn(t, model.lang, displayLang)}\n${t.iri}` : nameIn(t, model.lang, displayLang)}>
                   <span className={'dot ' + t.type} style={{ background: `var(--nc-${t.color || 'default'}-fill)`, borderColor: `var(--nc-${t.color || 'default'}-stroke)` }} />
-                  <span className="name">{t.name || 'Unnamed'}</span>
+                  <span className="name">{nameIn(t, model.lang, displayLang) || 'Unnamed'}</span>
                   {t.external !== undefined && <span className="tag auto" title="An entity of another ontology">ext</span>}
                 </button>
               </li>
@@ -311,6 +316,8 @@ interface RowProps {
   /** A defined class: it is equivalent to something (see definedClasses). */
   defined: boolean;
   term: Term | undefined;
+  /** Its name in the display language, or the label of the root. */
+  name: string;
   rootLabel: string;
   selected: boolean;
   match: boolean;
@@ -322,9 +329,8 @@ interface RowProps {
 
 /** One line of the tree. Memoised, so selecting a class redraws two lines, not the whole tree. */
 const TreeRowView = memo(
-  function TreeRowView({ id, depth, hasChildren, open, cycle, defined, term, rootLabel, selected, match, frozen, iri, onToggle }: RowProps) {
+  function TreeRowView({ id, depth, hasChildren, open, cycle, defined, term, name, selected, match, frozen, iri, onToggle }: RowProps) {
     const root = id === ROOT;
-    const name = root ? rootLabel : term?.name || 'Unnamed';
     const color = term?.color || 'default';
     return (
       <li role="treeitem" aria-expanded={hasChildren ? open : undefined} aria-selected={selected} aria-level={depth + 1} className={'tree-line' + (selected ? ' on' : '') + (match ? ' match' : '')} style={{ paddingLeft: 4 + depth * 12 }}>
@@ -357,5 +363,5 @@ const TreeRowView = memo(
     );
   },
   // `onToggle` is a new function each time but always does the same thing.
-  (a, b) => a.id === b.id && a.depth === b.depth && a.hasChildren === b.hasChildren && a.open === b.open && a.cycle === b.cycle && a.defined === b.defined && a.term === b.term && a.rootLabel === b.rootLabel && a.selected === b.selected && a.match === b.match && a.frozen === b.frozen && a.iri === b.iri,
+  (a, b) => a.id === b.id && a.depth === b.depth && a.hasChildren === b.hasChildren && a.open === b.open && a.cycle === b.cycle && a.defined === b.defined && a.term === b.term && a.name === b.name && a.rootLabel === b.rootLabel && a.selected === b.selected && a.match === b.match && a.frozen === b.frozen && a.iri === b.iri,
 );

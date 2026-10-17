@@ -41,7 +41,7 @@ export function StructureAnalyze({ host, mode }: { host: StructureHost; mode: Hi
   const [error, setError] = useState<string>();
   const [again, setAgain] = useState(0);
   const running = useRef<AbortController | null>(null);
-  const of = `${ontology.ontologyId}\n${ontology.revisionId}\n${mode}\n${reasoningKey}`;
+  const of = `${ontology.ontologyId}\n${ontology.revisionId}\n${mode}\n${reasoningKey}\n${host.displayLang}`;
   // Measured when the view is opened and again whenever the ontology, the hierarchy asked for or the reasoner's answer changes.
   // What was measured before stays on show meanwhile.
   useEffect(() => {

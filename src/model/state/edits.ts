@@ -10,13 +10,14 @@ import { bounds, type Anchor } from '../geometry';
 import { checkValues, metaEntity, registry, withProfile, writeValues, type MetaOwner, type MetaValue } from '../governance';
 import { PALETTE, patchNodes, resetOwn, withAnchor, withoutAnchors, type GraphStyle } from '../graphStyle';
 import { DEFAULT_PROP, linkProps, nameKey, propNamed } from '../identity';
+import { annotationUses, descendsFrom, fieldAnnProp } from '../annotationProps';
 import { baseIriOf, moveNamespace } from '../iri';
 import { allowsKind, configOf, supports, termTypeFor, viewFor } from '../modelTypes';
 import type { SettingsDraft } from '../prefixes';
 import { declaredProp, isInstanceOf, relChoices, type RelChoice } from '../props';
 import { reconnect, type End } from '../reconnect';
 import { cannotRelate, settleRelation, typed } from '../relating';
-import { INSTANCE_OF, newProp, newRelation, newTerm, PROP_LINKS, type DataGraphRef, type EntityKind, type Model, type ModelMode, type ObjProp, type Relation, type Term, type TermType } from '../types';
+import { INSTANCE_OF, newAnnotationProp, newProp, newRelation, newTerm, PROP_LINKS, type AnnotationProp, type DataGraphRef, type EntityKind, type ExtraField, type Model, type ModelMode, type ObjProp, type Relation, type Term, type TermType } from '../types';
 import { labelKey, suggestFor } from '../vocab';
 import { prune } from './document';
 import type { Slice } from './types';
@@ -119,6 +120,14 @@ export interface EditsSlice {
   renameProp: (id: string, name: string) => boolean;
   /** Removes an object property (by id) together with the relationships that use it. */
   deleteProp: (id: string) => void;
+  /** Declares a new annotation property and opens it. */
+  addAnnotationProp: () => string;
+  /** Changes what is declared about an annotation property, by id. */
+  updateAnnotationProp: (id: string, patch: Partial<Omit<AnnotationProp, 'id'>>) => void;
+  /** Renames an annotation property (by id), and the annotations made with it by name. */
+  renameAnnotationProp: (id: string, name: string) => boolean;
+  /** Removes an annotation property (by id) together with the annotations that use it. */
+  deleteAnnotationProp: (id: string) => void;
   /**
    * Saves the ontology IRI, default namespace and prefixes. Existing IRIs are left exactly as they
    * are, except that the entities of each namespace in `moveFrom` are moved into the default namespace.
@@ -583,6 +592,77 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
       };
     });
     set((s) => ({ selProp: s.selProp === id ? null : s.selProp, sel: prune(s.sel, s.model), highlight: [] }));
+  },
+  addAnnotationProp: () => {
+    if (!supports(get().model, 'annotationProperties')) return '';
+    const taken = new Set(get().model.annProps.map((p) => nameKey(p.name)));
+    let name = 'new annotation property';
+    for (let i = 2; taken.has(nameKey(name)); i++) name = `new annotation property ${i}`;
+    const p = newAnnotationProp({ name });
+    get().apply((m) => ({ ...m, annProps: [...m.annProps, p] }));
+    set({ selProp: p.id, sel: { terms: [], rels: [] } });
+    return p.id;
+  },
+  updateAnnotationProp: (id, patch) =>
+    get().apply((m) => {
+      const entry = m.annProps.find((p) => p.id === id);
+      if (!entry) return m;
+      const next: AnnotationProp = { ...entry, ...patch, id };
+      // A property cannot be filed under itself, nor under one of its own children: that is a ring.
+      if (patch.parents) next.parents = [...new Set(patch.parents)].filter((pid) => {
+        const parent = m.annProps.find((x) => x.id === pid);
+        return !!parent && parent.id !== id && !descendsFrom(m, parent, entry);
+      });
+      for (const k of ['domains', 'ranges', 'fields', 'parents'] as const) if (next[k] === undefined || !next[k]!.length) delete next[k];
+      return { ...m, annProps: m.annProps.map((p) => (p.id === id ? next : p)) };
+    }),
+  renameAnnotationProp: (id, name) => {
+    const clean = name.trim();
+    const m = get().model;
+    const entry = m.annProps.find((p) => p.id === id);
+    if (!clean || !entry) return false;
+    const twin = m.annProps.find((p) => p.id !== id && nameKey(p.name) === nameKey(clean) && p.external === undefined);
+    if (twin && entry.external === undefined) {
+      get().notify(`There is already an annotation property called “${clean}”.`);
+      return false;
+    }
+    // Fields keyed by the old name keep naming the property; those keyed by its IRI need no change.
+    const old = nameKey(entry.name);
+    const rename = <T extends { fields?: ExtraField[] }>(x: T): T => {
+      if (!x.fields?.some((f) => nameKey(f.key) === old && fieldAnnProp(m, f.key)?.id === id)) return x;
+      return { ...x, fields: x.fields.map((f) => (nameKey(f.key) === old && fieldAnnProp(m, f.key)?.id === id ? { ...f, key: clean } : f)) };
+    };
+    get().apply((mm) => ({
+      ...mm,
+      annProps: mm.annProps.map((p) => (p.id === id ? { ...p, name: clean } : rename(p))),
+      props: mm.props.map(rename),
+      terms: mm.terms.map(rename),
+    }));
+    return true;
+  },
+  deleteAnnotationProp: (id) => {
+    const m = get().model;
+    const entry = m.annProps.find((p) => p.id === id);
+    if (!entry) return;
+    const uses = annotationUses(m, entry).length;
+    const drop = <T extends { fields?: ExtraField[] }>(x: T): T =>
+      !x.fields?.some((f) => fieldAnnProp(m, f.key)?.id === id) ? x : { ...x, fields: x.fields.filter((f) => fieldAnnProp(m, f.key)?.id !== id) };
+    get().apply((mm) => ({
+      ...mm,
+      annProps: mm.annProps
+        .filter((p) => p.id !== id)
+        .map((p) => {
+          const out = drop(p);
+          if (!p.parents?.includes(id)) return out;
+          const parents = p.parents.filter((x) => x !== id);
+          const { parents: _was, ...rest } = out;
+          return parents.length ? { ...rest, parents } : rest;
+        }),
+      props: mm.props.map(drop),
+      terms: mm.terms.map(drop),
+    }));
+    set((s) => ({ selProp: s.selProp === id ? null : s.selProp }));
+    get().notify(`Deleted the annotation property “${entry.name}”${uses ? ` and ${uses} annotation${uses === 1 ? '' : 's'} made with it` : ''}.`);
   },
   setOntologySettings: (d, moveFrom = []) =>
     get().apply((m) => {

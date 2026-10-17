@@ -1,4 +1,5 @@
 import { addEnumMember, createEnumMember, declareAllDifferent, definedClasses, enumerationExpression, enumMembers, isEnumeration, removeEnumMember, setEnumeration } from '../model/axioms';
+import { nameIn } from '../model/labels';
 import { compactIri } from '../model/prefixes';
 import { useStore } from '../model/store';
 import type { Term } from '../model/types';
@@ -14,7 +15,9 @@ import { EntityPicker } from './EntityPicker';
  */
 export function ClassDefinition({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
   const st = useStore.getState;
+  const shown = (t: Term) => nameIn(t, model.lang, displayLang) || 'Unnamed';
   const on = isEnumeration(term);
   // Defined otherwise: by an equivalent class or an Equivalent To expression.
   const byEquivalents = !on && definedClasses(model).has(term.id);
@@ -42,11 +45,11 @@ export function ClassDefinition({ term }: { term: Term }) {
               Enumerated individuals <code className="pred">owl:oneOf</code>
             </span>
             {members.length > 0 && (
-              <ul className="enum-members" aria-label={`Members of ${term.name}`}>
+              <ul className="enum-members" aria-label={`Members of ${nameIn(term, model.lang, displayLang)}`}>
                 {members.map((m) => (
                   <li key={m.id}>
                     <button className="link" title="Open this individual" onClick={() => st().select([m.id])}>
-                      {m.name || 'Unnamed'}
+                      {shown(m)}
                     </button>
                     <code className="pred" title={m.iri}>
                       {short(m.iri) ?? 'IRI assigned when named'}
@@ -57,7 +60,7 @@ export function ClassDefinition({ term }: { term: Term }) {
                       </span>
                     )}
                     {!locked && (
-                      <button className="btn icon ghost" title="Take it off the list. The individual itself stays in the model." aria-label={`Remove ${m.name || 'Unnamed'} from the enumeration`} onClick={() => st().apply((mm) => removeEnumMember(mm, term.id, m.id))}>
+                      <button className="btn icon ghost" title="Take it off the list. The individual itself stays in the model." aria-label={`Remove ${shown(m)} from the enumeration`} onClick={() => st().apply((mm) => removeEnumMember(mm, term.id, m.id))}>
                         ×
                       </button>
                     )}
@@ -69,11 +72,11 @@ export function ClassDefinition({ term }: { term: Term }) {
               <EntityPicker
                 values={[]}
                 // Individuals that are not members yet. One individual can be a member of several enumerations.
-                options={() => model.terms.filter((t) => t.type === 'instance' && !term.oneOf!.includes(t.id)).map((t) => ({ id: t.id, name: t.name || 'Unnamed', iri: t.iri }))}
+                options={() => model.terms.filter((t) => t.type === 'instance' && !term.oneOf!.includes(t.id)).map((t) => ({ id: t.id, name: nameIn(t, model.lang, displayLang) || 'Unnamed', iri: t.iri }))}
                 // Any other name typed is a new individual, made and listed in one step.
                 custom={(text) => (model.terms.some((t) => t.type === 'instance' && t.name.trim().toLowerCase() === text.toLowerCase()) ? undefined : { id: 'new:' + text, name: text, tag: 'create individual' })}
                 noun="individual"
-                of={term.name}
+                of={nameIn(term, model.lang, displayLang)}
                 addLabel="Add an individual to the enumeration"
                 searchLabel="Search for an individual, or type the name of a new one"
                 empty={members.length ? 'Add individual' : 'No members yet. Add an individual'}

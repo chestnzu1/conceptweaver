@@ -23,7 +23,7 @@ Severity is about the cost of leaving the item alone while the product grows:
 | **Low** | Friction. Worth fixing when the area is touched anyway. |
 
 What is *not* debt deserves saying first, because it shapes the remediation: the codebase is
-unusually well tested for its age (85 unit-test files with 973 tests, and 39 browser scripts,
+unusually well tested for its age (87 unit-test files with 990 tests, and 40 browser scripts,
 one of them a UI audit), the model layer is free of UI imports, and two subsystems (`src/structure`,
 `src/entities`) are already written against service interfaces with HTTP clients and tests that
 enforce their boundaries. The recommended remediation is to spread that existing pattern, not
@@ -92,11 +92,12 @@ export and squeezed into it on import. What the diagram has no shape for is drop
 - Property chains, keys (`owl:hasKey`), negative property assertions, SWRL rules, annotations on
   axioms and `owl:disjointUnionOf` are not read. `leftOut` counts most of them and the user is
   told, which is honest, but the content is gone after a round trip.
-- Domains, ranges and hierarchies of annotation properties, the ontology's own annotations
-  beyond name and description, and `owl:imports` are not kept (README, *OWL constructs without
-  an editor*).
-- A model has one language (`Model.lang`); labels in other languages survive only as extra
-  annotation fields.
+- Annotation properties are entities since 2026-10-17 (task 2.7), with their domains, ranges,
+  superproperties and annotations; the ontology's own annotations beyond name and description,
+  and `owl:imports`, are not kept (README, *OWL constructs without an editor*).
+- A model has one own language (`Model.lang`); labels in other languages are kept as annotation
+  fields and, since 2026-10-17, shown through a display language (task 2.7), but the form still
+  edits the primary name in the model's language.
 
 **Impact.** An ontology engineer cannot safely open a professional ontology (one with property
 chains or axiom annotations is ordinary), edit it and save it back. This is the single largest
@@ -210,8 +211,7 @@ properties are not: a property *is* its name, lower-cased. Consequences:
   each with a `hasPart`);
 - names that differ only by case collide;
 - every rename is a multi-place rewrite, and a missed place silently detaches a relationship
-  into a "plain relationship";
-- annotation properties are not entities at all.
+  into a "plain relationship".
 
 **Impact.** Imports of real ontologies can merge or split properties incorrectly, and any
 backend that speaks IRIs has to translate through names.
@@ -227,7 +227,8 @@ name, once. Model format 2; format 1 is read and brought up to date by `normaliz
 `src/model/migration.test.ts` opens three models saved in format 1 and checks that their Turtle,
 their relationships, their properties and their picture are what they were. Two properties may
 share a name: FOAF's two "account" properties are now both kept on import (the round-trip corpus
-lost five fewer statements for it). Annotation properties are still not entities.
+lost five fewer statements for it). Annotation properties became entities of their own in format
+7 (roadmap task 2.7).
 
 ### TD-04 `store.ts` holds document, UI, jobs and persistence in one module — Medium
 

@@ -171,7 +171,7 @@ await node('Pet').locator('.node-box').click({ button: 'right' });
 ok((await page.locator('.menu').innerText()).includes('Individual'), 'and every kind of term');
 await page.keyboard.press('Escape');
 await tab('Entities');
-ok((await view.getByRole('tab').count()) === 6, 'and all six sections of Entities');
+ok((await view.getByRole('tab').count()) === 7, 'and all seven sections of Entities');
 
 console.log('console errors:', errors.length ? errors.slice(0, 3) : 'none');
 await browser.close();

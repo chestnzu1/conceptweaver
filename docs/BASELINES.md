@@ -266,6 +266,12 @@ a domain and range for Wine's `hasMaker`. Neither property states a domain (nor 
 range), and a property that states none is read as following its uses, which the writer then
 states.
 
+**Since then: annotation properties as entities** (task 2.7, 2026-10-17). A property declared
+`owl:AnnotationProperty`, with its domain, range, superproperties and annotations, is an entity
+of the model now, so the statements that declare it are the model's rather than kept as read.
+Nothing more is lost or added; 14 statements fewer are kept as text (FOAF 96 → 86, Pizza 24 →
+22, Relation Ontology 10 → 8 other statements).
+
 The rest of this section describes the baseline as it was before these tasks.
 
 Only Koala comes back with nothing lost. What is lost, by cause, from the lists:

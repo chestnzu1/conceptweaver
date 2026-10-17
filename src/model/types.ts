@@ -120,6 +120,43 @@ export interface ObjProp {
 export const PROP_LINKS = ['parents', 'inverses', 'equivalents', 'disjoints'] as const;
 export type PropLink = (typeof PROP_LINKS)[number];
 
+/**
+ * An annotation property of an ontology: a named, reusable property whose values are annotations
+ * (labels, notes, sources) rather than relationships or literal data. It is an entity of its own:
+ * declared, listed and arranged under the ones it specialises (rdfs:subPropertyOf), with a
+ * domain and a range. An entity's annotation with it is a field of that entity (ExtraField), by
+ * the property's name or IRI.
+ */
+export interface AnnotationProp {
+  id: string;
+  name: string;
+  description: string;
+  /** The property the description was read from, and the languages, as on a term. */
+  describedBy?: DescriptionProperty;
+  nameLang?: string;
+  descriptionLang?: string;
+  /** The annotation properties it specialises, by id (rdfs:subPropertyOf). */
+  parents?: string[];
+  /**
+   * What it applies to: an axiom for each rdfs:domain statement, all of which hold at once.
+   * Empty or left out: none is stated.
+   */
+  domains?: ClassAxiom[];
+  /** What its values are: an axiom for each rdfs:range statement. Empty or left out: none is stated. */
+  ranges?: ClassAxiom[];
+  /** Annotations other than the name and description, as on a term. */
+  fields?: ExtraField[];
+  /** Full IRI: kept from an import, or made once from the name. */
+  iri?: string;
+  /**
+   * The IRI only stands in: it was made before the entity had a name, and is replaced once, by
+   * one made from the first name it is given (see withIris). Not set on any other IRI.
+   */
+  pendingIri?: true;
+  /** Defined in another ontology and only referred to here: the id of that ontology, or '' if it is not known. */
+  external?: string;
+}
+
 /** A literal value an individual has for a data property. */
 export interface DataValue {
   /** Id of the data property term. */
@@ -342,10 +379,12 @@ export interface Prefix {
  * (from 2026-10-15): the SHACL shapes are shape sets, several named shapes graphs each holding
  * every SHACL Core construct as structure (shacl.ts), where they were one graph of node shapes in
  * fixed fields with Turtle for the rest (`shapes`). 6 (from 2026-10-17): the project's logical data
- * models (`logicalModels`, src/logical), none for a model of an earlier format. A model of an
- * earlier version is read and brought up to date by normalizeModel.
+ * models (`logicalModels`, src/logical), none for a model of an earlier format. 7 (from 2026-10-17):
+ * annotation properties are entities of their own (`annProps`), where an annotation was only a
+ * metadata field of the entity it annotated; a model of an earlier format has none until one is
+ * declared. A model of an earlier version is read and brought up to date by normalizeModel.
  */
-export const MODEL_VERSION = 6;
+export const MODEL_VERSION = 7;
 
 export interface Model {
   format: 'conceptweaver';
@@ -378,6 +417,12 @@ export interface Model {
   vocab: { enabled: boolean; map: Record<string, string> };
   /** Declared object properties. A relationship is a use of one when it names it (Relation.prop). */
   props: ObjProp[];
+  /**
+   * Declared annotation properties: the vocabulary of the annotations an entity can carry
+   * (rdfs:label in another language, a source, a note of its own), each an entity with a domain
+   * and a range. A field of an entity is an annotation with one when its key names it or is its IRI.
+   */
+  annProps: AnnotationProp[];
   terms: Term[];
   relations: Relation[];
   /** The SHACL shape sets: constraint models beside the ontology, never part of it (shacl.ts). */
@@ -436,6 +481,7 @@ export const MODEL_PARTS: Record<keyof Model, 'revision' | 'picture' | 'logical'
   lang: 'revision',
   vocab: 'revision',
   props: 'revision',
+  annProps: 'revision',
   terms: 'revision',
   relations: 'revision',
   shapeSets: 'revision',
@@ -577,7 +623,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], terms: [], relations: [], shapeSets: [], dataGraphs: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [], logicalModels: [] };
+  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], annProps: [], terms: [], relations: [], shapeSets: [], dataGraphs: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [], logicalModels: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -597,6 +643,10 @@ export function newTerm(p: Partial<Term> = {}): Term {
 
 export function newProp(p: Partial<ObjProp> & { name: string }): ObjProp {
   return { id: uid(), description: '', chars: [], ...p };
+}
+
+export function newAnnotationProp(p: Partial<AnnotationProp> & { name: string }): AnnotationProp {
+  return { id: uid(), description: '', ...p };
 }
 
 export function newRelation(p: Partial<Relation> & { from: string; to: string }): Relation {
@@ -881,6 +931,33 @@ export function normalizeModel(raw: unknown): Model {
       if (list.length) entry[link] = list;
     }
   }
+  // Annotation properties are entities of their own (format 7). An earlier format has none.
+  const annProps: AnnotationProp[] = [];
+  const annRead: { raw: Record<string, unknown>; entry: AnnotationProp }[] = [];
+  for (const p of (Array.isArray(o.annProps) ? o.annProps : []) as Record<string, unknown>[]) {
+    if (!p || typeof p !== 'object' || !str(p.name).trim()) continue;
+    let id = str(p.id);
+    if (!id || annProps.some((x) => x.id === id) || props.some((x) => x.id === id)) id = uid();
+    const entry: AnnotationProp = {
+      id,
+      name: str(p.name).trim(),
+      description: str(p.description),
+      ...describedBy(p.describedBy),
+      ...langs(p),
+      ...(classAxioms(p.domains) ? { domains: classAxioms(p.domains) } : {}),
+      ...(classAxioms(p.ranges) ? { ranges: classAxioms(p.ranges) } : {}),
+      ...(fieldList(p.fields).length ? { fields: fieldList(p.fields) } : {}),
+      ...(str(p.iri) ? { iri: str(p.iri), ...(p.pendingIri === true ? { pendingIri: true as const } : {}) } : {}),
+      ...(typeof p.external === 'string' ? { external: p.external } : {}),
+    };
+    annProps.push(entry);
+    annRead.push({ raw: p, entry });
+  }
+  const annIds = new Set(annProps.map((p) => p.id));
+  for (const { raw, entry } of annRead) {
+    const parents = [...new Set((Array.isArray(raw.parents) ? raw.parents : []).map((x) => str(x)).filter((id) => annIds.has(id) && id !== entry.id))];
+    if (parents.length) entry.parents = parents;
+  }
   // Models from the short-lived version that drew an object property as a term of its own:
   // each becomes a declared property, used between every domain and range term it had.
   const rawTerms = new Map((o.terms as Record<string, unknown>[]).filter((t) => t && typeof t === 'object').map((t) => [str(t.id), t]));
@@ -917,6 +994,7 @@ export function normalizeModel(raw: unknown): Model {
     lang: LANG.test(str(o.lang)) ? str(o.lang).toLowerCase() : '',
     vocab: { enabled: v.enabled === true, map },
     props,
+    annProps,
     terms,
     relations,
     // Format 5 has shape sets; an earlier one had one graph of shapes, which becomes one set.

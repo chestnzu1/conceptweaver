@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { alreadyIn, PROPOSAL_GROUPS, proposalsFor, proposalText, proposeShapes, withProposals, type Proposal } from '../model/proposals';
+import { nameIn } from '../model/labels';
 import { newSetFor, shapeNaming } from '../model/shapes';
 import { useStore } from '../model/store';
 import { EntityPicker, type Choice } from './EntityPicker';
@@ -12,6 +13,7 @@ import { EntityPicker, type Choice } from './EntityPicker';
  */
 export function ProposalsDialog({ classes }: { classes: string[] | null }) {
   const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
   const openSet = useStore((s) => s.shapesView.set);
   const st = useStore.getState;
   const all = useMemo(() => proposeShapes(model), [model]);
@@ -26,7 +28,7 @@ export function ProposalsDialog({ classes }: { classes: string[] | null }) {
   const takeable = (list: Proposal[]) => list.filter((p) => !has(p));
   const toggle = (ids: string[], on: boolean) => setChosen((c) => new Set(on ? [...c, ...ids] : [...c].filter((x) => !ids.includes(x))));
   const close = () => st().openProposals(undefined);
-  const classChoices = useMemo<Choice[]>(() => model.terms.filter((t) => t.type === 'concept' && t.iri).map((t) => ({ id: t.iri!, name: t.name || 'Unnamed', iri: t.iri })), [model.terms]);
+  const classChoices = useMemo<Choice[]>(() => model.terms.filter((t) => t.type === 'concept' && t.iri).map((t) => ({ id: t.iri!, name: nameIn(t, model.lang, displayLang) || 'Unnamed', iri: t.iri })), [model.terms, model.lang, displayLang]);
   const nameOf = (iri: string) => classChoices.find((c) => c.id === iri)?.name ?? naming.name(iri);
 
   const add = () => {

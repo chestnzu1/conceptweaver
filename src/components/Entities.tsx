@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ThHTMLAttributes } from 'react';
 import type { EntityMatch, ListKind, MatchField } from '../entities/contracts';
+import { fieldAnnProp } from '../model/annotationProps';
 import { inferredRestrictions } from '../model/inferred';
+import { labelFieldAt, nameIn, type Labeled } from '../model/labels';
 import { propNamed, propOf } from '../model/identity';
 import { CHARACTERISTICS, dataDomain, fitsAxioms, hasCardinality, objectProperties, isInstanceOf, plainRelationships, propLinks, offeredChoices, relChoice, restrictionsOf, type RelChoice } from '../model/props';
 import { endsForNew } from '../model/relating';
@@ -8,7 +10,7 @@ import { compactIri } from '../model/prefixes';
 import { useStore } from '../model/store';
 import { iriCut, setIriSuffix } from '../model/iri';
 import { configOf, type EntityColumn } from '../model/modelTypes';
-import { type Model, type Relation, type Term, type TermType } from '../model/types';
+import { type ExtraField, type Model, type Relation, type Term, type TermType } from '../model/types';
 import { EntityToolbar, filtersOn } from './EntityToolbar';
 import { useEntityList } from './entityQuery';
 import { EndSelect } from './EndSelect';
@@ -29,7 +31,7 @@ import { CLASS_AXIOM } from './ClassAxioms';
  * list of them to add to and take from; where it is stated otherwise (two axioms, which hold
  * together, or an expression), the axioms as they are written, changed where the entity is edited.
  */
-function AxiomsCell({ axioms, auto, used, of, which, empty, onChange, onReset, onOpen }: { axioms: ClassAxiom[]; auto: boolean; used: string[]; of: string; which: 'domain' | 'range'; empty: string; onChange: (axioms: ClassAxiom[]) => void; onReset: () => void; onOpen: () => void }) {
+function AxiomsCell({ axioms, auto, used, of, which, empty, onChange, onReset, onOpen }: { axioms: ClassAxiom[]; auto: boolean; used: string[]; of: string; which: 'domain' | 'range'; empty: string; onChange: (axioms: ClassAxiom[]) => void; onReset?: () => void; onOpen: () => void }) {
   const model = useStore((s) => s.model);
   const naming = useMemo(() => namingFor(model), [model]);
   const termOf = (iri: string) => model.terms.find((t) => t.iri === iri);
@@ -37,7 +39,7 @@ function AxiomsCell({ axioms, auto, used, of, which, empty, onChange, onReset, o
   const iris = auto ? undefined : unionClasses(axioms);
   const listed = auto ? used : iris?.every((iri) => termOf(iri)) ? iris.map((iri) => termOf(iri)!.id) : undefined;
   const set = (ids: string[]) => onChange(withUnionClasses(auto ? [] : axioms, ids.map(iriOf).filter((x): x is string => !!x)));
-  const reset = !auto && (
+  const reset = !auto && onReset && (
     <button className="link reset" title={which === 'domain' ? 'Let it follow where the property is used again' : 'Let it follow what the property points to again'} onClick={onReset}>
       reset
     </button>
@@ -63,7 +65,7 @@ function AxiomsCell({ axioms, auto, used, of, which, empty, onChange, onReset, o
   );
 }
 
-type Tab = 'concept' | 'object' | 'property' | 'instance' | 'relations' | 'governance';
+type Tab = 'concept' | 'object' | 'property' | 'annotation' | 'instance' | 'relations' | 'governance';
 
 /** Remembered while the app is open. */
 let lastTab: Tab = 'concept';
@@ -82,7 +84,7 @@ export const openEntityTab = (tab: Tab, key?: string) => {
 };
 
 /** The list each tab is, as the entity queries know it. The governance tab is no list of theirs. */
-const LIST: Partial<Record<Tab, ListKind>> = { concept: 'class', object: 'objectProperty', property: 'dataProperty', instance: 'individual', relations: 'relationship' };
+const LIST: Partial<Record<Tab, ListKind>> = { concept: 'class', object: 'objectProperty', property: 'dataProperty', annotation: 'annotationProperty', instance: 'individual', relations: 'relationship' };
 
 /** Rows shown at a time; a table of thousands of editable rows is slow to draw and no use to read. */
 const PAGE = 150;
@@ -135,12 +137,16 @@ export function EntitiesView() {
 
   const props = useMemo(() => objectProperties(model), [model]);
   const plain = useMemo(() => new Set(skos ? [] : plainRelationships(model).flatMap((p) => p.rels.map((r) => r.id))), [model, skos]);
-  const name = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
+  // Names are shown in the display language (FR-M1-5): the entity's own name where it is in that
+  // language, else its label in it, else its own name.
+  const displayLang = useStore((s) => s.displayLang);
+  const shown = (x: Labeled) => nameIn(x, model.lang, displayLang);
+  const name = useMemo(() => new Map(model.terms.map((t) => [t.id, nameIn(t, model.lang, displayLang) || 'Unnamed'])), [model.terms, model.lang, displayLang]);
   const names = (ids: string[]) => ids.map((id) => name.get(id)).join(', ');
   const type = useMemo(() => new Map(model.terms.map((t) => [t.id, t.type])), [model.terms]);
   // Where there is one kind of term, every term is of it.
   const of = (type: TermType) => model.terms.filter((t) => config.termTypes.length < 2 || t.type === type);
-  const sorted = useMemo(() => [...model.terms].sort((a, b) => a.name.localeCompare(b.name)), [model.terms]);
+  const sorted = useMemo(() => [...model.terms].sort((a, b) => nameIn(a, model.lang, displayLang).localeCompare(nameIn(b, model.lang, displayLang))), [model.terms, model.lang, displayLang]);
   // What each term is a kind of (or an instance of), and which terms have each data property.
   const { owners, degree } = useMemo(() => {
     const owners = new Map<string, string[]>();
@@ -157,6 +163,7 @@ export function EntitiesView() {
     concept: { label: config.termType.concept.plural, count: of('concept').length },
     object: { label: 'Object properties', count: props.length },
     property: { label: 'Data properties', count: of('property').length },
+    annotation: { label: 'Annotation properties', count: model.annProps.length },
     instance: { label: 'Individuals', count: of('instance').length },
     relations: { label: 'Relationships', count: model.relations.length },
     governance: { label: 'Governance & Metadata', count: -1 },
@@ -238,6 +245,7 @@ export function EntitiesView() {
     concept: { label: `Add ${config.termType.concept.label.toLowerCase()}`, run: () => addTerm('concept', `New ${config.termType.concept.label.toLowerCase()}`) },
     object: { label: 'Add object property', run: () => justAdded(st().addProp()) },
     property: { label: 'Add data property', run: () => addTerm('property', 'New data property') },
+    annotation: { label: 'Add annotation property', run: () => justAdded(st().addAnnotationProp()) },
     instance: { label: 'Add individual', run: () => addTerm('instance', 'New individual') },
     relations: {
       label: 'Add relationship',
@@ -259,6 +267,8 @@ export function EntitiesView() {
     concept: skos ? 'Every concept of the vocabulary, by its name and its IRI. Its labels, definition and ownership are under Governance & Metadata; what it is broader or narrower than is under Structure.' : 'The classes of the ontology, each with the restrictions its properties place on it. Click a row to edit it in the side panel.',
     object: 'Object properties link two terms. Each is declared once here and reused wherever its name is used. A domain or range marked “from use” follows where the property is used; choose a class in the cell to set it yourself.',
     property: 'Data properties hold a value such as a date or a number. Attach one to a class with a “has property” relation.',
+    annotation:
+      'Annotation properties say something about an entity — a note, a source, a review date — without changing what it means. Declare one here, then use it as a metadata field on any entity; its domain and range say what it may be used on and what its values may be.',
     instance: 'Individuals are particular things. Give one a type by making it “is a” of a class.',
     relations: skos
       ? 'Every relationship between two concepts.'
@@ -306,11 +316,11 @@ export function EntitiesView() {
    * What the words were found in that the row has no place for: a label in another language,
    * the full IRI where the prefixed one is shown, a definition the table has no column for.
    */
-  const foundElsewhere = (key: string, e: { iri?: string; synonyms?: string }, shows: { description: boolean; synonyms: boolean }) => {
+  const foundElsewhere = (key: string, e: { iri?: string; synonyms?: string }, shows: { description: boolean; synonyms: boolean }, shownName = '') => {
     const hits = matches.get(key);
     if (!hits?.length) return null;
     const names = shows.synonyms ? (e.synonyms ?? '').split(',').map((x) => x.trim()) : [];
-    const hidden = hits.filter((m) => (m.field === 'iri' ? !!e.iri && !!compactIri(model, e.iri) : m.field === 'description' ? !shows.description : m.field === 'label' ? !(m.property === 'skos:altLabel' && names.includes(m.text)) : false));
+    const hidden = hits.filter((m) => (m.field === 'iri' ? !!e.iri && !!compactIri(model, e.iri) : m.field === 'description' ? !shows.description : m.field === 'label' ? m.text !== shownName && !(m.property === 'skos:altLabel' && names.includes(m.text)) : false));
     if (!hidden.length) return null;
     return (
       <div className="hl-note">
@@ -327,6 +337,37 @@ export function EntitiesView() {
       <CommitInput aria-label={label} value={t[field]} onCommit={(v) => st().updateTerm(t.id, { [field]: field === 'name' ? v.trim() : v })} />
     </MarkedField>
   );
+  /**
+   * The name a row shows and edits, in the display language. Where the entity has a label in that
+   * language, the label is what is edited; otherwise its own name is, whatever language that is in.
+   */
+  const nameCell = (x: Labeled & { id: string; fields?: ExtraField[] }, kind: 'term' | 'prop' | 'annProp', label: string) => {
+    const value = shown(x);
+    const marks = matches.get(x.id)?.find((m) => (m.field === 'label' ? m.text === value : m.field === 'name' && m.text === value))?.ranges;
+    const commit = (v: string) => {
+      const clean = v.trim();
+      const own = (x.nameLang ?? model.lang).toLowerCase();
+      const at = displayLang && own !== displayLang ? labelFieldAt(x.fields, displayLang) : -1;
+      if (at < 0) {
+        if (kind === 'term') st().updateTerm(x.id, { name: clean });
+        else if (kind === 'prop') st().renameProp(x.id, clean);
+        else st().renameAnnotationProp(x.id, clean);
+        return;
+      }
+      // The words shown are a label in the display language: what is edited is that label.
+      const fields = [...(x.fields ?? [])];
+      if (clean) fields[at] = { ...fields[at], value: clean };
+      else fields.splice(at, 1);
+      if (kind === 'term') st().updateTerm(x.id, { fields });
+      else if (kind === 'prop') st().updateProp(x.id, { fields });
+      else st().updateAnnotationProp(x.id, { fields });
+    };
+    return (
+      <MarkedField text={value} ranges={marks}>
+        <CommitInput aria-label={label} value={value} onCommit={commit} />
+      </MarkedField>
+    );
+  };
   // A column that the list can be put in order by has a button for a heading: once for one way, again for the other, a third time for the model's own order.
   const sortHead = (label: ReactNode, sortId?: string, { key, ...props }: ThHTMLAttributes<HTMLTableCellElement> & { key?: string } = {}) => {
     const spec = sortId ? entities.description?.sorts.find((x) => x.id === sortId) : undefined;
@@ -355,8 +396,8 @@ export function EntitiesView() {
       sort: 'name',
       cell: (t) => (
         <>
-          {text(t, 'name', 'Name')}
-          {foundElsewhere(t.id, t, { description: config.entityColumns.includes('description'), synonyms: config.entityColumns.includes('synonyms') })}
+          {nameCell(t, 'term', 'Name')}
+          {foundElsewhere(t.id, t, { description: config.entityColumns.includes('description'), synonyms: config.entityColumns.includes('synonyms') }, shown(t))}
         </>
       ),
     },
@@ -418,23 +459,40 @@ export function EntitiesView() {
   // The rows of the list are keys in an order; what each row shows and edits is the entity itself.
   const termById = useMemo(() => new Map(model.terms.map((t) => [t.id, t])), [model.terms]);
   const propById = useMemo(() => new Map(props.map((p) => [p.id, p])), [props]);
+  const annPropById = useMemo(() => new Map(model.annProps.map((p) => [p.id, p])), [model.annProps]);
+  const annPropName = useMemo(() => new Map(model.annProps.map((p) => [p.id, nameIn(p, model.lang, displayLang) || 'Unnamed'])), [model.annProps, model.lang, displayLang]);
+  // How many annotations each annotation property makes, across every entity.
+  const annPropUses = useMemo(() => {
+    const uses = new Map<string, number>();
+    for (const e of [...model.terms, ...model.props, ...model.annProps]) {
+      for (const f of e.fields ?? []) {
+        const p = fieldAnnProp(model, f.key);
+        if (p) uses.set(p.id, (uses.get(p.id) ?? 0) + 1);
+      }
+    }
+    return uses;
+  }, [model]);
   const relById = useMemo(() => new Map(model.relations.map((r) => [r.id, r])), [model.relations]);
   const keys = extra ? [...entities.rows.map((r) => r.key), extra] : entities.rows.map((r) => r.key);
   const present = <T,>(found: (T | undefined)[]): T[] => found.filter((x): x is T => x !== undefined);
   const list = kind === 'class' || kind === 'dataProperty' || kind === 'individual' ? present(keys.map((k) => termById.get(k))) : [];
   const shownProps = kind === 'objectProperty' ? present(keys.map((k) => propById.get(k))) : [];
+  const shownAnnProps = kind === 'annotationProperty' ? present(keys.map((k) => annPropById.get(k))) : [];
   const shownRelations = kind === 'relationship' ? present(keys.map((k) => relById.get(k))) : [];
-  /** What a filter names by its key: a term, or an object property. */
+  /** What a filter names by its key: a term, an object property or an annotation property. */
   const resolve = (key: string) => {
     const t = termById.get(key);
-    if (t) return { name: t.name || 'Unnamed', iri: t.iri };
+    if (t) return { name: name.get(t.id) || 'Unnamed', iri: t.iri };
     const p = propById.get(key);
-    return p ? { name: p.name, iri: p.iri } : undefined;
+    if (p) return { name: shown(p), iri: p.iri };
+    const a = annPropById.get(key);
+    return a ? { name: shown(a), iri: a.iri } : undefined;
   };
   const noun: Record<ListKind, { one: string; many: string }> = {
     class: { one: config.termType.concept.label.toLowerCase(), many: config.termType.concept.plural.toLowerCase() },
     objectProperty: { one: 'object property', many: 'object properties' },
     dataProperty: { one: 'data property', many: 'data properties' },
+    annotationProperty: { one: 'annotation property', many: 'annotation properties' },
     individual: { one: 'individual', many: 'individuals' },
     relationship: { one: 'relationship', many: 'relationships' },
   };
@@ -520,10 +578,8 @@ export function EntitiesView() {
                   onClick={() => selProp !== p.id && st().selectProp(p.id)}
                 >
                   <td>
-                    <MarkedField text={p.name} ranges={marksIn(p.id, 'name', p.name)}>
-                      <CommitInput aria-label="Property name" value={p.name} onCommit={(v) => st().renameProp(p.id, v)} />
-                    </MarkedField>
-                    {foundElsewhere(p.id, p, { description: false, synonyms: false })}
+                    {nameCell(p, 'prop', 'Property name')}
+                    {foundElsewhere(p.id, p, { description: false, synonyms: false }, shown(p))}
                   </td>
                   <td className="ro">
                     <IriCell iri={p.iri} of={p.name} marks={iriMarks(p.id)} />
@@ -570,6 +626,66 @@ export function EntitiesView() {
           </table>
         )}
 
+        {tab === 'annotation' && (
+          <table>
+            <thead>
+              <tr>
+                {sortHead('Name', 'name', { style: { width: '16%' } })}
+                {sortHead('IRI', 'iri', { style: { width: '18%' } })}
+                {sortHead('Superproperties', 'superproperties', { style: { width: '15%' }, title: 'The annotation properties this one is a kind of (rdfs:subPropertyOf), as stated' })}
+                <th style={{ width: '17%' }}>Domain</th>
+                <th style={{ width: '17%' }}>Range</th>
+                {sortHead('Annotations', 'annotations', { style: { width: 90 }, className: 'num', title: 'How many annotations are made with it' })}
+                <th style={{ width: 50 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {shownAnnProps.map((p) => (
+                <tr
+                  key={p.id}
+                  data-key={p.id}
+                  className={rowClass(p.id, selProp === p.id)}
+                  title={p.id === extra ? pinnedTitle : undefined}
+                  onFocusCapture={() => selProp !== p.id && st().selectProp(p.id)}
+                  onClick={() => selProp !== p.id && st().selectProp(p.id)}
+                >
+                  <td>
+                    {nameCell(p, 'annProp', 'Annotation property name')}
+                    {foundElsewhere(p.id, p, { description: false, synonyms: false }, shown(p))}
+                  </td>
+                  <td className="ro">
+                    <IriCell iri={p.iri} of={p.name} marks={iriMarks(p.id)} />
+                  </td>
+                  <td className="ro">{p.parents?.map((id) => annPropName.get(id)).filter(Boolean).join(', ') || '—'}</td>
+                  {(['domain', 'range'] as const).map((side) => {
+                    const key = side === 'domain' ? 'domains' : 'ranges';
+                    return (
+                      <td key={side} className="cell-edit">
+                        <AxiomsCell
+                          axioms={p[key] ?? []}
+                          auto={false}
+                          used={[]}
+                          of={p.name}
+                          which={side}
+                          empty="anything"
+                          onChange={(next) => st().updateAnnotationProp(p.id, { [key]: next.length ? next : undefined })}
+                          onOpen={() => st().selectProp(p.id)}
+                        />
+                      </td>
+                    );
+                  })}
+                  <td className="num">{annPropUses.get(p.id) ?? 0}</td>
+                  <td className="row-actions">
+                    <button className="btn icon ghost" title="Delete the annotation property and the annotations made with it" aria-label={`Delete ${p.name}`} onClick={() => st().deleteAnnotationProp(p.id)}>
+                      ×
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
         {tab === 'property' && (
           <table>
             <thead>
@@ -590,8 +706,8 @@ export function EntitiesView() {
               {list.map((t) => (
                 <tr key={t.id} {...rowProps(t)}>
                   <td>
-                    {text(t, 'name', 'Name')}
-                    {foundElsewhere(t.id, t, { description: true, synonyms: false })}
+                    {nameCell(t, 'term', 'Name')}
+                    {foundElsewhere(t.id, t, { description: true, synonyms: false }, shown(t))}
                   </td>
                   <td className="ro">
                     <IriCell iri={t.iri} of={t.name} marks={iriMarks(t.id)} />
@@ -645,8 +761,8 @@ export function EntitiesView() {
               {list.map((t) => (
                 <tr key={t.id} {...rowProps(t)}>
                   <td>
-                    {text(t, 'name', 'Name')}
-                    {foundElsewhere(t.id, t, { description: true, synonyms: false })}
+                    {nameCell(t, 'term', 'Name')}
+                    {foundElsewhere(t.id, t, { description: true, synonyms: false }, shown(t))}
                   </td>
                   <td className="ro">
                     <IriCell iri={t.iri} of={t.name} marks={iriMarks(t.id)} />

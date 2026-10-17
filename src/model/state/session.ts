@@ -7,8 +7,9 @@ import { findPath } from '../checks';
 import { bounds } from '../geometry';
 import { normalizeByKind, type SavedStyle } from '../graphStyle';
 import { allowsView, supports, viewFor, type View } from '../modelTypes';
+import { isLang } from '../types';
 import { initialModel } from './document';
-import { stored, STYLES_KEY, THEME_KEY } from './storage';
+import { DISPLAY_LANG_KEY, stored, STYLES_KEY, THEME_KEY } from './storage';
 import type { Slice, State } from './types';
 import { viewOf, type GraphScope } from './view';
 
@@ -190,6 +191,13 @@ export interface SessionSlice {
   deleteSavedStyle: (name: string) => void;
   filter: string;
   theme: Theme;
+  /**
+   * The language entity names and descriptions are shown in (FR-M1-5): what the interface calls
+   * the entities it lists, draws and opens. Empty: the model's own language. A preference of the
+   * session, remembered in this browser; never part of the model.
+   */
+  displayLang: string;
+  setDisplayLang: (lang: string) => void;
   /** The entity editor takes more room, for entities with a lot to say about them. */
   editorWide: boolean;
   /** Whether the model details, which the side panel shows while nothing is selected, are folded away. */
@@ -315,6 +323,24 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   },
   filter: '',
   theme: loadTheme(),
+  displayLang: (() => {
+    try {
+      const lang = (stored(DISPLAY_LANG_KEY) ?? '').trim().toLowerCase();
+      return isLang(lang) ? lang : '';
+    } catch {
+      return '';
+    }
+  })(),
+  setDisplayLang: (wanted) => {
+    const lang = wanted.trim().toLowerCase();
+    const displayLang = isLang(lang) ? lang : '';
+    try {
+      localStorage.setItem(DISPLAY_LANG_KEY, displayLang);
+    } catch {
+      // Remembered for this visit only.
+    }
+    set({ displayLang });
+  },
   editorWide: (() => {
     try {
       return localStorage.getItem('conceptweaver:editor-wide') === 'on';

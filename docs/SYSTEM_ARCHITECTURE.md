@@ -1295,8 +1295,9 @@ class expressions where 2.1 has them) for a **scope** (the whole ontology, a bra
 chosen classes, with or without the entities of loaded imports) under a **configuration** saved
 with the LDM:
 
-- **naming**: names from labels in the display language, or from local names; letter case and
-  separators; singular names; collisions resolved by a suffix and reported;
+- **naming**: names from labels as the ontology writes them (the model's own language; choosing
+  the label language is left for later), or from local names; letter case and separators;
+  singular names; collisions resolved by a suffix and reported;
 - **the datatype table**: XSD datatype to logical type, with defaults (`xsd:string` text,
   `xsd:integer` and its subtypes integer, `xsd:decimal` decimal, `xsd:double` and `xsd:float`
   decimal, `xsd:boolean` boolean, `xsd:date` date, `xsd:time` time, `xsd:dateTime` dateTime,

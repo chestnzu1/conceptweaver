@@ -2,7 +2,7 @@ import { importIntoSet, newSetFor } from './shapes';
 import { describe, expect, it } from 'vitest';
 import { setIriSuffix, withIris } from './iri';
 import { fromTurtle, toTurtle } from './rdf';
-import { newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
+import { newAnnotationProp, newProp, emptyModel, newRelation, newTerm, normalizeModel, type Model } from './types';
 
 function films() {
   const m = emptyModel('Films');
@@ -129,5 +129,16 @@ describe('an IRI from the moment an entity exists', () => {
     expect(set.terms[0]).toMatchObject({ iri: 'http://example.org/films#F12' });
     expect(set.terms[0].pendingIri).toBeUndefined();
     expect(named(set, id, 'Documentary').terms[0].iri).toBe('http://example.org/films#F12');
+  });
+
+  it('stands in for the numbered name a second new entity is given, too', () => {
+    const m = emptyModel('Films');
+    m.baseIri = 'http://example.org/films#';
+    m.annProps = [newAnnotationProp({ name: 'new annotation property 2' })];
+    const first = withIris(m);
+    expect(first.annProps[0]).toMatchObject({ iri: 'http://example.org/films#newAnnotationProperty2', pendingIri: true });
+    const renamed = withIris({ ...first, annProps: first.annProps.map((p) => ({ ...p, name: 'source note' })) });
+    expect(renamed.annProps[0]).toMatchObject({ iri: 'http://example.org/films#sourceNote' });
+    expect(renamed.annProps[0].pendingIri).toBeUndefined();
   });
 });

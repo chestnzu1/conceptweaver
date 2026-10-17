@@ -53,6 +53,7 @@ export interface NodeLook {
 
 type Sized = Pick<Term, 'name' | 'type' | 'ranges'>;
 let lookOf: (t: Sized) => NodeLook | undefined = () => undefined;
+let nameOf: (t: Sized) => string = (t) => t.name;
 
 /**
  * Tells the geometry how the nodes of the graph on screen are drawn. There is one graph on
@@ -64,7 +65,21 @@ export function setNodeLook(fn: ((t: Sized) => NodeLook | undefined) | null): vo
   lookOf = fn ?? (() => undefined);
 }
 
+/**
+ * Tells the geometry what each node is called on screen: its name in the session's display
+ * language, where that is not its own. Everything that measures a node reads it through
+ * nodeLabel, so a longer name in another language makes the node as wide as it is drawn.
+ */
+export function setNodeNames(fn: ((t: Sized) => string) | null): void {
+  nameOf = fn ?? ((t) => t.name);
+}
+
 const fontOf = (look: NodeLook | undefined) => (look?.fontSize || look?.fontWeight ? `${look.fontWeight ?? 500} ${look.fontSize ?? 14}px system-ui, sans-serif` : NODE_FONT);
+
+/** The words a node is named with, before the datatype a data property shows: its name in the display language, or what the style puts there instead. */
+export function nodeName(t: Sized): string {
+  return lookOf(t)?.text ?? (nameOf(t) || '');
+}
 
 /** Text drawn on a node: the name, and for a data property its datatype ("Release date : date"). */
 export function nodeLabel(t: Sized): string {
@@ -73,7 +88,7 @@ export function nodeLabel(t: Sized): string {
   // written, which only the model knows.
   const key = t.type === 'property' ? propDatatype(t) : undefined;
   const range = t.type === 'property' && t.ranges?.length ? (look?.datatype ?? (!key ? 'data range' : key.startsWith('enum:') ? 'enumeration' : (key.split(':')[1] ?? key))) : '';
-  return (look?.text ?? (t.name || '')) + (range ? ` : ${range}` : '');
+  return nodeName(t) + (range ? ` : ${range}` : '');
 }
 
 export function nodeSize(t: Sized): { w: number; h: number } {

@@ -5,7 +5,7 @@ ontology's IRI, annotations and imports.
 Original: 372 axioms. Saved: 372 axioms.
 Lost: 0.
 Added: 1 (Annotation 1).
-Kept as it was, not editable here: 2 property chains, 2 annotations on axioms, 4 SWRL rules, 10 other statements.
+Kept as it was, not editable here: 2 property chains, 2 annotations on axioms, 4 SWRL rules, 8 other statements.
 
 Lost: in the original, not in what was saved
 

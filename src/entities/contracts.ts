@@ -31,7 +31,7 @@ export interface OntologyRef {
  * The lists the Entities page has, each of one kind of thing. A relationship is a statement
  * between two entities, listed like one.
  */
-export const LIST_KINDS = ['class', 'objectProperty', 'dataProperty', 'individual', 'relationship'] as const;
+export const LIST_KINDS = ['class', 'objectProperty', 'dataProperty', 'annotationProperty', 'individual', 'relationship'] as const;
 export type ListKind = (typeof LIST_KINDS)[number];
 
 export interface EntitySort {

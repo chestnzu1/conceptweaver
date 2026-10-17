@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { download } from '../model/files';
+import { nameIn } from '../model/labels';
 import { objectProperties } from '../model/props';
 import { isPropertyShape, PARAM, PARAMS, pathOf, pathToSparql, SH, shapeSetTurtle, sparqlToPath, termFromText, termToText, valuesOf, type ParamInfo, type Shape, type ShaclTerm, type ShaclValue, type ShapeProp, type ShapeSet } from '../model/shacl';
 import { importIntoSet, inlineIn, modelPrefixes, namespaceOf, nestedIds, newInlineShape, newNodeShape, newPropertyShape, newSetFor, setTurtle, shapeName, shapeNaming, shapesAbout, targetClasses, topShapes, turtleProblem, withoutInline, type ShapeNaming } from '../model/shapes';
@@ -32,13 +33,14 @@ const fileName = (model: Model, set: ShapeSet) => `${[model.name, set.name].map(
 
 /** The model's entities as choices whose identity is their IRI. */
 function useChoices(model: Model) {
+  const displayLang = useStore((s) => s.displayLang);
   return useMemo(() => {
     const of = { class: [] as Choice[], property: [] as Choice[], individual: [] as Choice[] };
-    for (const t of model.terms) if (t.iri) of[t.type === 'concept' ? 'class' : t.type === 'instance' ? 'individual' : 'property'].push({ id: t.iri, name: t.name || 'Unnamed', iri: t.iri });
-    if (model.mode !== 'skos') for (const p of objectProperties(model)) if (p.iri) of.property.push({ id: p.iri, name: p.name, iri: p.iri });
+    for (const t of model.terms) if (t.iri) of[t.type === 'concept' ? 'class' : t.type === 'instance' ? 'individual' : 'property'].push({ id: t.iri, name: nameIn(t, model.lang, displayLang) || 'Unnamed', iri: t.iri });
+    if (model.mode !== 'skos') for (const p of objectProperties(model)) if (p.iri) of.property.push({ id: p.iri, name: nameIn(p, model.lang, displayLang), iri: p.iri });
     const datatypes: Choice[] = [...DATATYPES.map((d) => ({ id: d.id.startsWith('xsd:') ? XSD + d.id.slice(4) : RDF + d.id.slice(4), name: d.id, tag: d.label })), { id: RDFS + 'Literal', name: 'rdfs:Literal', tag: 'any literal' }];
     return { ...of, datatype: datatypes };
-  }, [model]);
+  }, [model, displayLang]);
 }
 
 /** Edits of the set open in the view, each an edit of the model. */

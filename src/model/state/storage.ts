@@ -13,3 +13,6 @@ export const AUTOSAVE_KEY = 'conceptweaver:autosave';
 export const stored = (key: string) => localStorage.getItem(key) ?? localStorage.getItem(key.replace('conceptweaver:', 'termloom:'));
 
 export const STYLES_KEY = 'conceptweaver:graph-styles';
+
+/** The language entity names and descriptions are shown in. Empty: the model's own language. */
+export const DISPLAY_LANG_KEY = 'conceptweaver:display-lang';

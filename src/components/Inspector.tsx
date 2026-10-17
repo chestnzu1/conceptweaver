@@ -4,8 +4,10 @@ import type { End } from '../model/reconnect';
 import { SIDES, type Side } from '../model/geometry';
 import { creditOf, entailmentsOf } from '../model/reasoning';
 import { useMemo, useState } from 'react';
+import { childAnnotationProps, descendsFrom, annotationUses } from '../model/annotationProps';
 import { baseIriOf } from '../model/iri';
-import { QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type Relation, type Term } from '../model/types';
+import { nameIn } from '../model/labels';
+import { QUANTIFIERS, type Quantifier, isLang, relLabel, TYPE_CHOICES, typeChoice, type AnnotationProp, type Relation, type Term } from '../model/types';
 import { allowsView, configOf, MODEL_TYPE_LIST, supports, type EditorSection } from '../model/modelTypes';
 import { inferredRestrictions, NOT_INFERRED, type RestrictionSource } from '../model/inferred';
 import { propOf } from '../model/identity';
@@ -18,6 +20,7 @@ import { CommitInput, CommitTextarea, useLazyOptions } from './fields';
 import { SuperclassEditor } from './Iri';
 import { CharacteristicWarnings, ClassProperties, EditorHead, IndividualAssertions, InferredSupers, IriDetails, LinkEditor, PropLinks, Section } from './EntityEditor';
 import { Metadata } from './Metadata';
+import { EntityPicker, type Choice } from './EntityPicker';
 import { TermChips } from './TermChips';
 import { AxiomList } from './AxiomList';
 import { ClassAxioms } from './ClassAxioms';
@@ -38,11 +41,15 @@ export function Inspector() {
   const rels = model.relations.filter((r) => sel.rels.includes(r.id));
   const selProp = useStore((s) => s.selProp);
   const prop = selProp && model.mode !== 'skos' ? findProp(model, selProp) : undefined;
+  const annProp = selProp && !prop ? model.annProps.find((p) => p.id === selProp) : undefined;
+  // Chosen here so that the whole panel is drawn again in another language.
+  useStore((s) => s.displayLang);
   const wide = useStore((s) => s.editorWide);
   const modelHidden = useStore((s) => s.modelPanelHidden);
 
   let body;
   if (prop && !terms.length && !rels.length) body = <ObjectPropertyPanel key={prop.id} prop={prop} />;
+  else if (annProp && !terms.length && !rels.length) body = <AnnotationPropertyPanel key={annProp.id} prop={annProp} />;
   else if (terms.length === 1 && !rels.length) body = <TermPanel key={terms[0].id} term={terms[0]} />;
   else if (rels.length === 1 && !terms.length) body = <RelationPanel key={rels[0].id} rel={rels[0]} />;
   else if (terms.length + rels.length > 1) body = <MultiPanel terms={terms} rels={rels} />;
@@ -188,11 +195,13 @@ function TermPanel({ term }: { term: Term }) {
   const model = useStore((s) => s.model);
   const update = useStore((s) => s.updateTerm);
   const st = useStore.getState;
+  const displayLang = useStore((s) => s.displayLang);
   const skos = model.mode === 'skos';
   // Which parts of the editor there are is a matter of the type of model: a vocabulary's concept has its name, IRI and type here and nothing else.
   const config = configOf(model);
   const has = (section: EditorSection) => config.editorSections.includes(section);
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
+  const shown = nameIn(term, model.lang, displayLang);
   const related = resolveModel(model).relations.filter((r) => r.from === term.id || r.to === term.id);
 
   const kind = config.termType[term.type].label;
@@ -225,6 +234,7 @@ function TermPanel({ term }: { term: Term }) {
           Name <code className="pred">{config.rdf.label}</code>
         </span>
         <CommitInput value={term.name} onCommit={(v) => update(term.id, { name: v.trim() })} />
+        {displayLang && shown !== term.name && <small>Shown in the lists, the tree and on the canvas as “{shown}” in {displayLang}. The name edited here is the entity's own.</small>}
       </label>
       <IriDetails key={term.id} iri={term.iri} name={term.name} owner={{ term: term.id }} external={term.external !== undefined} />
       {config.termTypes.length > 1 ? (
@@ -659,10 +669,107 @@ function InferredRestrictionsPanel({ term }: { term: Term }) {
   );
 }
 
+/**
+ * An annotation property: declared once, used as a metadata field on any entity. Its
+ * superproperties put it under others; its domain and range say what it may annotate and what
+ * its values may be.
+ */
+function AnnotationPropertyPanel({ prop }: { prop: AnnotationProp }) {
+  const model = useStore((s) => s.model);
+  const displayLang = useStore((s) => s.displayLang);
+  const st = useStore.getState;
+  const naming = useMemo(() => namingFor(model), [model]);
+  const set = (patch: Partial<Omit<AnnotationProp, 'id'>>) => st().updateAnnotationProp(prop.id, patch);
+  const name = (p: AnnotationProp) => nameIn(p, model.lang, displayLang) || 'Unnamed';
+  const choice = (p: AnnotationProp): Choice => ({ id: p.id, name: name(p), iri: p.iri, ...(p.external !== undefined ? { tag: 'external' } : {}) });
+  const parents = (prop.parents ?? []).map((id) => model.annProps.find((p) => p.id === id)).filter((p): p is AnnotationProp => !!p);
+  const children = childAnnotationProps(model, prop);
+  const used = annotationUses(model, prop);
+  const axioms = (side: 'domain' | 'range') => {
+    const key = side === 'domain' ? 'domains' : 'ranges';
+    return (
+      <div className="field">
+        <span>
+          {side === 'domain' ? 'Domain: what it may annotate' : 'Range: what its values may be'} <code className="pred">rdfs:{side}</code>
+        </span>
+        <AxiomList
+          kind="class"
+          which={side}
+          of={prop.name}
+          axioms={prop[key] ?? []}
+          empty={side === 'domain' ? 'Any entity.' : 'Any value.'}
+          onChange={(next) => set(side === 'domain' ? { domains: next.length ? (next as ClassAxiom[]) : undefined } : { ranges: next.length ? (next as ClassAxiom[]) : undefined })}
+          inWords={(e) => (side === 'domain' ? domainInWords(prop.name, false, e as ClassExpression, naming) : rangeInWords(prop.name, { class: e as ClassExpression }, naming))}
+        />
+      </div>
+    );
+  };
+  return (
+    <>
+      <EditorHead kind={prop.external !== undefined ? 'External annotation property' : 'Annotation property'} />
+      {prop.external !== undefined && <ExternalNote id={prop.external} />}
+      <label className="field">
+        <span>
+          Name <code className="pred">rdfs:label</code>
+        </span>
+        <CommitInput value={prop.name} onCommit={(v) => st().renameAnnotationProp(prop.id, v)} />
+        {displayLang && name(prop) !== prop.name && <small>Shown in the lists, the tree and on the canvas as “{name(prop)}” in {displayLang}. The name edited here is the property's own.</small>}
+      </label>
+      <IriDetails key={prop.id} iri={prop.iri} name={prop.name} owner={{ annProp: prop.id }} external={prop.external !== undefined} />
+      <Section id="property-axioms" title="Property axioms">
+        <div className="field">
+          <span>
+            Superproperties <code className="pred">rdfs:subPropertyOf</code>
+          </span>
+          <EntityPicker
+            values={parents.map(choice)}
+            options={() => model.annProps.filter((p) => p.id !== prop.id && !descendsFrom(model, p, prop)).map(choice)}
+            onAdd={(id) => set({ parents: [...(prop.parents ?? []), id] })}
+            onRemove={(id) => set({ parents: prop.parents?.filter((x) => x !== id) })}
+            onOpen={(id) => st().selectProp(id)}
+            noun="superproperty"
+            of={prop.name}
+            addLabel="Add a superproperty"
+            empty="none"
+          />
+          {children.length > 0 && <small>Specialised by {children.map(name).join(', ')}.</small>}
+        </div>
+        {axioms('domain')}
+        {axioms('range')}
+      </Section>
+      <Section id="annotations" title="Annotations" count={(prop.fields?.length ?? 0) + (prop.description ? 1 : 0)}>
+        <label className="field">
+          <span>
+            Description <code className="pred">skos:definition</code>
+          </span>
+          <CommitTextarea rows={3} value={prop.description} placeholder="What does this annotation property mean?" onCommit={(description) => set({ description })} />
+        </label>
+        <Metadata title="Other annotations" fields={prop.fields ?? []} onChange={(fields) => set({ fields })} />
+      </Section>
+      <h3>Used by ({used.length})</h3>
+      {used.length === 0 && <p className="muted">Nothing uses it yet. Add it as a metadata field of an entity, under Governance &amp; Metadata or in the entity's annotations.</p>}
+      <ul className="rel-list">
+        {used.map(({ entity, field }, i) => (
+          <li key={i}>
+            <button title="Open the entity it annotates" onClick={() => ('type' in entity ? st().select([entity.id]) : st().selectProp(entity.id))}>
+              <span className="muted">{field.key}</span> {nameIn(entity, model.lang, displayLang) || 'Unnamed'}: {field.value}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button className="btn danger" onClick={() => st().deleteAnnotationProp(prop.id)}>
+        {used.length ? `Delete it and its ${used.length} annotation${used.length === 1 ? '' : 's'}` : 'Delete annotation property'}
+      </button>
+    </>
+  );
+}
+
 /** An object property: declared once, used by every relationship that carries its name. */
 function ObjectPropertyPanel({ prop }: { prop: PropView }) {
   const model = useStore((s) => s.model);
   const st = useStore.getState;
+  const displayLang = useStore((s) => s.displayLang);
+  const shown = nameIn(prop, model.lang, displayLang);
   const type = (id: string) => model.terms.find((t) => t.id === id)?.type;
   const name = new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed']));
   const naming = useMemo(() => namingFor(model), [model]);
@@ -700,6 +807,7 @@ function ObjectPropertyPanel({ prop }: { prop: PropView }) {
         </span>
         <CommitInput value={prop.name} onCommit={(v) => st().renameProp(prop.id, v)} />
         <small>Renaming it renames every relationship that uses it.</small>
+        {displayLang && shown !== prop.name && <small>Shown in the lists, the tree and on the canvas as “{shown}” in {displayLang}. The name edited here is the property's own.</small>}
       </label>
       <IriDetails key={prop.id} iri={prop.iri} name={prop.name} owner={{ prop: prop.id }} external={prop.external !== undefined} />
       <Section id="property-axioms" title="Property axioms">

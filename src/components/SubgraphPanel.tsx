@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { nameIn } from '../model/labels';
 import { stable } from '../model/stable';
 import { useStore, type GraphScope } from '../model/store';
 import { edgeTypes, MAX_DEPTH, searchTerms, type Direction } from '../model/subgraph';
@@ -11,6 +12,7 @@ import { LayoutBar, LayoutOptions } from './LayoutControls';
 /** `tools` are further buttons of the canvas, shown in the same bar: what it draws besides the model itself. */
 export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
   const model = stable(useStore((s) => s.model));
+  const displayLang = useStore((s) => s.displayLang);
   const sub = useStore((s) => s.subgraph);
   const stylePanel = useStore((s) => s.stylePanel);
   const selected = useStore((s) => s.sel.terms);
@@ -20,9 +22,9 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
   const open = panel === 'subgraph';
   const setOpen = (on: boolean) => setPanel(on ? 'subgraph' : null);
   const [query, setQuery] = useState('');
-  const name = useMemo(() => new Map(model.terms.map((t) => [t.id, t.name || 'Unnamed'])), [model.terms]);
+  const name = useMemo(() => new Map(model.terms.map((t) => [t.id, nameIn(t, model.lang, displayLang) || 'Unnamed'])), [model.terms, model.lang, displayLang]);
   const types = useMemo(() => edgeTypes(model), [model]);
-  const found = useMemo(() => searchTerms(model, query).filter((t) => !sub.roots.includes(t.id)), [model, query, sub.roots]);
+  const found = useMemo(() => searchTerms(model, query, 8, displayLang).filter((t) => !sub.roots.includes(t.id)), [model, query, sub.roots, displayLang]);
   const roots = sub.roots.filter((id) => name.has(id));
   const scope = useStore((s) => s.graphScope);
   const hasExternal = model.terms.some((t) => t.external !== undefined);

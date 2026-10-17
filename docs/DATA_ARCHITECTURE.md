@@ -41,10 +41,10 @@ not scheduled.
 
 | Store | Where in code | Contents | Limits |
 | --- | --- | --- | --- |
-| In-memory model | `Model` in `src/model/types.ts` | Everything: terms, relationships, object properties, shapes, mappings, external references, governance set-up, style, layout, enumerated datatypes. | Capped at 250,000 terms and 1,000,000 relationships (`MAX_TERMS`, `MAX_RELATIONS`; 50,000 and 100,000 until 2026-10-15). |
-| `localStorage` | `src/model/state/storage.ts` | Theme, panel state, saved graph styles, the reasoner's address. Until 2026-10-15 also the working copy, as one JSON string (TD-11); one left there is moved to IndexedDB when the app starts. | About 5 MB per origin. |
+| In-memory model | `Model` in `src/model/types.ts` | Everything: terms, relationships, object properties, annotation properties, shapes, mappings, external references, governance set-up, style, layout, enumerated datatypes. | Capped at 250,000 terms and 1,000,000 relationships (`MAX_TERMS`, `MAX_RELATIONS`; 50,000 and 100,000 until 2026-10-15). |
+| `localStorage` | `src/model/state/storage.ts` | Theme, panel state, saved graph styles, the reasoner's address, the display language. Until 2026-10-15 also the working copy, as one JSON string (TD-11); one left there is moved to IndexedDB when the app starts. | About 5 MB per origin. |
 | IndexedDB, database `conceptweaver` | `src/model/library.ts` | Object stores `models` (name, dates), `data` (the model JSON), `externals` (the Turtle of each added external ontology); `working` (database version 3, 2026-10-15): the working copy, as the model itself with which saved model it is, written 300 ms after each change; `datagraphs` (version 4): the content of data graphs; `versions` (version 5, 2026-10-16): named versions; `assistant` (version 6, 2026-10-16): the assistant's conversations and proposals, by ontology, never a key. | Per browser, as much as the browser gives the site; can be evicted (AR-09) unless the browser agrees to persistent storage, which is asked for once something has been edited. |
-| Undo history | `past`, `future` of the document slice (`src/model/state/document.ts`, steps of `src/editing/local.ts`) | Steps, each the parts of the model an edit replaced, before and after; its axioms worked out when asked for. | In memory: lost on reload; named versions are what is kept (§6.4). A step does not say which artifact it changed (TD-19). |
+| Undo history | `past`, `future` of the document slice (`src/model/state/document.ts`, steps of `src/editing/local.ts`) | Steps, each the parts of the model an edit replaced, before and after; its axioms worked out when asked for. | In memory: lost on reload; named versions are what is kept (§6.4). Which artifact a step changed is worked out from the parts it replaced (`stepArtifacts`, TD-19). |
 | Files | `src/model/files.ts`, `rdfFormats.ts`, `src/io/` | Read: own JSON, Turtle, N-Triples, N-Quads, TriG, RDF/XML, JSON-LD, and through the Java service OWL/XML, functional, Manchester, OBO. Write: own JSON, Turtle (OWL, SKOS, with inferred assertions), JSON-LD, RDF/XML, CSV, SVG, PNG, HTML, and through the Java service OWL/XML, functional and Manchester (2026-10-16). | — |
 | Java service | `reasoner/ReasonerService.java` | Nothing. It keeps no state between requests. | — |
 
@@ -68,7 +68,7 @@ engine built afresh from the exported Turtle (`src/model/sparql.ts`).
 | Diagrams: positions, style, layout, line ends | In the model | Relational, as JSON documents |
 | Logical data models, with their diagrams (from LM-1) | In the model (`Model.logicalModels`, model format 6) | Relational: LDM documents and logical change entries, each LDM a line of revisions (§11.7) |
 | Semantic mappings between the ontology and an LDM (from LM-3, LM-4) | In their LDM; their status and impact are worked out against the ontology, never stored | Relational, with the LDM; an index of their source IRIs (§11.7) |
-| Session: selection, viewport, open panels | `localStorage` | `localStorage` (never sent) |
+| Session: selection, viewport, open panels, display language | `localStorage` | `localStorage` (never sent) |
 | Search index | Built in memory per revision (`src/entities/service.ts`) | Lucene index beside TDB2 |
 | Database connection definitions (deferred, §10) | — | Relational (§10.2) |
 | Database credentials (deferred) | Never | The backend's secret handling only (§10.6) |
@@ -91,6 +91,7 @@ the migration map.
 | `terms` (name, description, synonyms, type, `iri`, `fields`, `ranges`, `domains`, `values`, `oneOf`, `classAxioms`) | Classes, data properties, individuals and what is said of them | Axioms and annotation assertions in the asserted graph |
 | `terms[].x`, `.y`, `.color` | Where a term is drawn and in which colour | `diagram.positions`, `diagram.style` |
 | `props` | Object properties with characteristics, domains and ranges (an axiom for each statement, model format 3), hierarchy | Axioms in the asserted graph |
+| `annProps` (model format 7, since 2026-10-17, roadmap 2.7) | Annotation properties as entities of their own, with a name and description in their own language, superproperties, domains, ranges and annotations | Axioms and annotation assertions in the asserted graph: `owl:AnnotationProperty` declarations, `rdfs:subPropertyOf`, `rdfs:domain`/`rdfs:range`, and the annotations on them |
 | `relations` | Subclass links, memberships, restrictions, facts, standard-property statements | Axioms in the asserted graph |
 | `relations[].fromCard`, `.toCard` and plain relationships (SKOS mode) | Diagram cardinalities and non-OWL lines | In a vocabulary: SKOS statements in the graph. Cardinality text: diagram metadata |
 | `vocab` | Which labels stand for which standard property | `project.settings` (an authoring convenience) |
@@ -1032,6 +1033,10 @@ tables with the rest (§9).
 
 ### 11.8 Compatibility
 
+- Model format 7 adds `annProps`, an empty list by default, for annotation properties as entities
+  (roadmap 2.7); the labels, definitions and notes of an entity in other languages stay the
+  annotation fields they were. A model of format 6 or earlier opens with no annotation
+  properties of its own and is otherwise unchanged; the fields it has are read as before.
 - Model format 6 adds `logicalModels`, an empty list by default. A model of format 5 or earlier
   opens with none and is otherwise unchanged; a fixture written by the format-5 code is frozen in
   CI before the change, as for every earlier format (NFR-9).
