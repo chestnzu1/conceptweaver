@@ -1,5 +1,6 @@
 import { drawnWhole } from '../culling';
 import { LIST_KINDS, type EntitySort, type FilterValues, type ListKind } from '../../entities/contracts';
+import type { ElementRef } from '../../logical/contracts';
 import type { HierarchyMode, Iri } from '../../structure/contracts';
 import { classIriOf } from '../../structure/local';
 import { findPath } from '../checks';
@@ -132,6 +133,25 @@ export interface ShapeFailure {
   line?: number;
 }
 
+/** The part of the LDM view on show: its lists, and the diagram. */
+export type LdmSection = 'entities' | 'relationships' | 'domains' | 'rules' | 'diagram' | 'traceability';
+
+/**
+ * What the LDM view has open (roadmap LM-2): the logical model, the part of it being edited, and
+ * the element of it. Only what is being looked at; nothing here is part of an LDM.
+ */
+export interface LdmViewState {
+  model: string | null;
+  section: LdmSection;
+  entity: string | null;
+  relationship: string | null;
+  domain: string | null;
+  rule: string | null;
+  /** The element another view asked to open, resolved by the LDM view to one of the above. */
+  element: ElementRef | null;
+  search: string;
+}
+
 export interface SessionSlice {
   sel: Selection;
   /** Key of the object property open in the side panel, when one is. */
@@ -188,7 +208,12 @@ export interface SessionSlice {
   /** Whether the panel of filters is open. It is the page's, not a list's: open, it stays open from tab to tab. */
   entityFiltersOpen: boolean;
   setEntityFiltersOpen: (open: boolean) => void;
-  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | 'openurl' | 'versions' | 'import' | 'logical' | null;
+  /** What the LDM view has open (roadmap LM-2). */
+  ldmView: LdmViewState;
+  setLdmView: (patch: Partial<LdmViewState>) => void;
+  /** Opens the LDM view on a logical model, and on an element of it where one is given. */
+  openLogical: (model: string, element?: ElementRef) => void;
+  dialog: 'bulk' | 'settings' | 'library' | 'saveas' | 'new' | 'openurl' | 'versions' | 'import' | 'logical' | 'transform' | 'impact' | null;
   toast: string | null;
   graphScope: GraphScope;
   setGraphScope: (scope: GraphScope) => void;
@@ -355,6 +380,16 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   setEntityView: (kind, patch) => set((s) => ({ entityViews: { ...s.entityViews, [kind]: { ...s.entityViews[kind], ...patch } } })),
   entityFiltersOpen: false,
   setEntityFiltersOpen: (entityFiltersOpen) => set({ entityFiltersOpen }),
+  ldmView: { model: null, section: 'entities', entity: null, relationship: null, domain: null, rule: null, element: null, search: '' },
+  setLdmView: (patch) => set((s) => ({ ldmView: { ...s.ldmView, ...patch } })),
+  openLogical: (model, element) => {
+    const kind = element ? Object.keys(element)[0] : undefined;
+    const section: LdmSection = kind === 'relationship' ? 'relationships' : kind === 'domain' ? 'domains' : kind === 'rule' ? 'rules' : kind === 'diagram' ? 'diagram' : kind === 'mapping' ? 'traceability' : 'entities';
+    set((s) => ({
+      view: 'ldm',
+      ldmView: { ...s.ldmView, model, section, element: element ?? null, entity: null, relationship: null, domain: null, rule: null, search: '' },
+    }));
+  },
   dialog: null,
   toast: null,
   graphScope: 'all',

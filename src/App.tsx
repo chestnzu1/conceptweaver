@@ -7,6 +7,8 @@ import { TermList } from './components/TermList';
 import { LibraryDialog, SaveAsDialog } from './components/Library';
 import { VersionsDialog } from './components/Versions';
 import { LogicalModelsDialog } from './components/LogicalModels';
+import { TransformationDialog } from './components/TransformationDialog';
+import { ImpactDialog } from './components/ImpactDialog';
 import { ImportTableDialog } from './components/ImportTable';
 import { OntologySettings } from './components/OntologySettings';
 import { RdfView } from './components/RdfView';
@@ -15,6 +17,7 @@ import { VocabView } from './components/VocabView';
 import { EntitiesView } from './components/Entities';
 import { AlignmentView } from './components/Alignment';
 import { ValidationView } from './components/Validation';
+import { LdmView } from './components/LogicalData';
 import { ShapesView } from './components/Shapes';
 import { StructureView } from './components/Structure';
 import { BulkDialog } from './components/views';
@@ -114,6 +117,7 @@ export function App() {
           <Canvas />
           {view === 'table' && <EntitiesView />}
           {view === 'structure' && <StructureView />}
+          {view === 'ldm' && <LdmView />}
           {view === 'shapes' && <ShapesView />}
           {view === 'checks' && <ValidationView />}
           {view === 'align' && <AlignmentView />}
@@ -132,6 +136,8 @@ export function App() {
       {dialog === 'openurl' && <OpenUrlDialog />}
       {dialog === 'versions' && <VersionsDialog />}
       {dialog === 'logical' && <LogicalModelsDialog />}
+      {dialog === 'transform' && <TransformationDialog />}
+      {dialog === 'impact' && <ImpactDialog />}
       {dialog === 'import' && <ImportTableDialog />}
       {message && <MessageDialog />}
       {dropping && <div className="drop-overlay">Drop a model (.json) or ontology (.ttl) to open it</div>}

@@ -4,7 +4,11 @@ import type { ChangeSet, OntologyEditService } from '../../editing/contracts';
 import { WORKING_COPY } from '../../structure/local';
 import { createLocalLogicalServices } from '../../logical/local';
 import type { LogicalModelEditService, LogicalModelQueryService } from '../../logical/contracts';
+import { createLocalTraceabilityService, createLocalTransformationService } from '../../traceability/local';
+import type { TraceabilityService, TransformationService } from '../../traceability/contracts';
+import { storedModel } from '../../projects/local';
 import { withoutEntities } from '../domains';
+import { importsClosure } from '../external';
 import { linkProps } from '../identity';
 import { withIris } from '../iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb, type WorkingCopy } from '../library';
@@ -129,6 +133,10 @@ export interface DocumentSlice {
   logicalQuery: LogicalModelQueryService;
   /** Changes to them: each one step of the history, never a change to the ontology. */
   logicalEdit: LogicalModelEditService;
+  /** Proposals for an LDM from the ontology, and their application (src/traceability). */
+  transformationService: TransformationService;
+  /** Traceability, impact and reviewed synchronization of the LDMs with the ontology (src/traceability). */
+  traceabilityService: TraceabilityService;
 }
 
 export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
@@ -189,7 +197,7 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     const d = opened(model);
     // A model too large to draw whole opens on the Structure Explorer, where the graph around a class is a click away.
     const view = viewFor(model, get().view);
-    set({ view: view === 'graph' && !drawnWhole(model) ? viewFor(model, 'structure') : view, showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, running: false, phase: '', job: null, checks: {}, data: MODEL_DATA, shapeSet: null, tab: 'results' }, shapesView: { set: null, shape: null }, reasoning: NO_REASONING });
+    set({ view: view === 'graph' && !drawnWhole(model) ? viewFor(model, 'structure') : view, showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, running: false, phase: '', job: null, checks: {}, data: MODEL_DATA, shapeSet: null, tab: 'results' }, shapesView: { set: null, shape: null }, ldmView: { model: null, section: 'entities', entity: null, relationship: null, domain: null, rule: null, element: null, search: '' }, reasoning: NO_REASONING });
     void get().loadExternals();
     get().fit();
   },
@@ -263,6 +271,17 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
           return d.model === s.model ? s : held(d);
         }),
     });
-    return { logicalQuery: query, logicalEdit: edit };
+    const transformation = createLocalTransformationService({
+      current: () => ({ model: get().model, ontologyId: get().doc.id ?? WORKING_COPY, revisionId: get().version.revision }),
+      withImports: (model) => (model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined),
+      edit,
+    });
+    const traceability = createLocalTraceabilityService({
+      current: () => ({ model: get().model, ontologyId: get().doc.id ?? WORKING_COPY, revisionId: get().version.revision }),
+      withImports: (model) => (model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined),
+      savedVersion: (version) => storedModel(version),
+      edit,
+    });
+    return { logicalQuery: query, logicalEdit: edit, transformationService: transformation, traceabilityService: traceability };
   })(),
 });

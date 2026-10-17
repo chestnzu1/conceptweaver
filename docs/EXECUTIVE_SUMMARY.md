@@ -31,10 +31,11 @@ Physical data models, DDL and database deployment are out of scope.
 
 ## 1. Current product maturity
 
-**A capable single-user ontology editor that runs entirely in the browser, at its MVP; not yet a
-platform, and not yet a logical data modelling tool.**
+**A capable single-user ontology editor that runs entirely in the browser, at its MVP, with
+logical data models that are authored, derived from the ontology and traced back to it; not yet a
+platform.**
 
-About 62,000 lines of TypeScript, 894 unit tests, and 34 browser scripts, one of them a UI audit,
+About 71,000 lines of TypeScript, 973 unit tests, and 39 browser scripts, one of them a UI audit,
 all run by one command (`pnpm verify`) and in CI.
 
 | Area | State, 2026-10-17 |
@@ -48,7 +49,7 @@ all run by one command (`pnpm verify`) and in CI.
 | Import and export | **Good.** CSV, TSV and Excel through a mapping screen; every OWL syntax written. |
 | AI assistance | **Partial.** An assistant with the user's own key, answering from the ontology through read-only lookups and proposing changes applied only on acceptance. |
 | Collaboration, server storage | **Missing.** |
-| Logical data modelling | **Missing.** Nothing exists; the parts to build from do (layouts and culling, the proposal and difference machinery of SHACL proposals and versions, the service pattern). |
+| Logical data modelling | **Good, in the browser.** Logical models are authored by hand in a workspace of their own, with an ER diagram and findings in the Validation view (LM-1, LM-2), derived from the ontology through reviewed proposals applied as one change set (LM-3), and traced to it: mappings with status, coverage and traces both ways, impact reports and reviewed synchronization (LM-4), all 2026-10-17. Server-side LDMs are missing (LM-5). |
 | Connecting to relational databases | **Missing, and deferred.** |
 
 ## 2. Major architectural weaknesses
@@ -61,9 +62,10 @@ what each left). What remains:
    model directly; the browser's limits are raised, not removed, until Phase 4.
 2. **No server history or collaboration** (TD-12 in part): versions are kept in one browser.
 3. ~~**The history and the revisions know one artifact** (TD-19, TD-20).~~ Done with roadmap
-   stage LM-1 (2026-10-17): a step names the artifacts it changed, every field of the model is
-   said to be the ontology's or another artifact's, and an LDM edit leaves the ontology's revision
-   as it was.
+   stages LM-1 and LM-2 (2026-10-17): a step names the artifacts it changed, every field of the
+   model is said to be the ontology's or another artifact's, and an LDM edit leaves the ontology's
+   revision as it was. LDMs are now authored in a workspace of their own, with an ER diagram and
+   with their findings in the Validation view.
 
 None requires a rewrite.
 
@@ -97,9 +99,9 @@ The first five, the MVP path, are done (2026-10-16). In order from here:
 | --- | --- | --- |
 | 1 | ~~ELK in the companion, with the reasoner chosen by profile (task 2.6)~~ | Done 2026-10-17. |
 | 2 | ~~Logical data model metamodel and services (LM-1), with revisions per artifact~~ | Done 2026-10-17. |
-| 3 | **The LDM editor and its ER diagram** (LM-2) | The next task: logical models authored and reviewed as their designers expect. |
-| 4 | **Ontology-to-LDM transformation** (LM-3) | The objective itself: logical models proposed from the ontology, constraints decided by the designer. |
-| 5 | **Semantic traceability and change impact** (LM-4) | What makes the derivation last: every element traced, every ontology change reported per model. |
+| 3 | ~~The LDM editor and its ER diagram (LM-2)~~ | Done 2026-10-17. |
+| 4 | ~~Ontology-to-LDM transformation (LM-3)~~ | Done 2026-10-17: logical models proposed from the ontology, constraints decided by the designer. |
+| 5 | ~~Semantic traceability and change impact (LM-4)~~ | Done 2026-10-17: every element traced, every ontology change reported per model. |
 | 6 | The remaining Phase 2 tasks, then the Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
 | 7 | Collaboration, publishing, assistance with LDM tools | The platform. |
 
@@ -109,18 +111,19 @@ The first five, the MVP path, are done (2026-10-16). In order from here:
 reasoning and validation without a frozen page, 10,000 classes, versions with differences,
 spreadsheet import, every OWL syntax exported.
 
-**Next: "design a logical model from the ontology, and trust the link"**, in the browser:
-logical data models as an artifact of their own, edited in a workspace and on an ER diagram;
-proposed from a chosen part of the ontology with no constraint imposed; every element traced to
-its axioms; every ontology change reported per model and synchronized only by reviewed proposals.
+**"Design a logical model from the ontology, and trust the link"** (reached 2026-10-17, LM-1 to
+LM-4), in the browser: logical data models as an artifact of their own, edited in a workspace and
+on an ER diagram; proposed from a chosen part of the ontology with no constraint imposed; every
+element traced to its axioms; every ontology change reported per model and synchronized only by
+reviewed proposals.
 Excluded: physical models and DDL, several diagrams per model, formal rule expressions, LDM
 assistance, server-side LDMs.
 
 ## 6. Suggested next development milestone
 
-**MS-13, independent logical models** ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.2),
-through LM-1 and LM-2. Task 2.6 (ELK) and LM-1 are done; LM-2 is next, its scope and acceptance
-criteria set out in the roadmap's §10.
+**MS-15, traceable and impact-aware**, is reached (2026-10-17) with LM-4. The next milestone is
+MS-16, server-side logical models, through LM-5 in Phase 4, after the remaining Phase 2 tasks; the
+next task is 2.7 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §10).
 
 ## 7. Logical data modelling in brief
 

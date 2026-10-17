@@ -166,8 +166,37 @@ More on what the advanced reasoner does and does not cover is under
   they are edited. A change that would break a model's rules (two entities of one name, a key of
   an attribute that is not there, a relationship to an entity that is gone, a generalization
   going round in a circle, a second primary key) is refused with its reason. Their entities are
-  edited through `LogicalModelEditService` today; the workspace and its ER diagram come next
-  (roadmap LM-2).
+  edited in the *LDM* view: the project's models, an entity list with search, and editors for
+  entities, attributes, relationships, domains, keys, specializations and rules, every action by
+  keyboard; or on the ER diagram, in Information Engineering (crow's-foot) notation, where
+  choosing an entity opens its editor and moving one changes only where the picture puts it, as
+  one undoable step. The Validation view reports what is worth saying about them, and each
+  finding opens its element there.
+- **Logical models from the ontology** (since 2026-10-17; `src/traceability/`) – *Derive from the
+  ontology…* in the LDM view proposes entities from classes, attributes from datatype properties,
+  relationships, or associative entities, from object properties, specializations (or a roll-up or
+  roll-down), domains from enumerations and candidate keys from `owl:hasKey`, for the whole
+  ontology, a branch or chosen classes, under a configuration saved with the model (naming, the
+  datatype table, the strategies, definitions). Each proposal shows the axioms it was read from, the
+  elements it would make or change, its strategy, why, and where OWL and the LDM differ; structure
+  comes chosen and constraints are candidates only, never chosen to begin with, so nothing is
+  written until you apply. Applying is one logical change set of that model, with the mappings it
+  implies: one undo takes it back. The run happens in a worker; the ontology is never changed; and
+  run again after your own edits, it proposes nothing over them.
+- **Traceability, impact and synchronization** (since 2026-10-17; `src/traceability/`) – the
+  *Traceability* part of the LDM view lists every semantic mapping of a model with its status
+  (*current*, *stale*, *broken*), what changed, and whether its elements were changed by you; the
+  derivation's coverage both ways (classes in scope with no element, elements with no source);
+  traces from the chosen element to the axioms it came from, and from an ontology IRI to every
+  element made from it in every logical model; and mappings made, edited and removed by hand.
+  *Impact…* works out, in a worker, what the ontology means for this model: against each mapping's
+  origin, or between two saved versions — not represented, source gone, element deleted, type,
+  cardinality, hierarchy or restriction changed, renamed, another axiom changed. Synchronization
+  offers additions, updates, removals and records for review for the ontology as it is: nothing
+  about an element you changed is chosen to begin with, a proposal you turn down is remembered
+  here and comes back only when the ontology says something new about its sources, and the chosen
+  ones are applied as one step of that logical model's history — undo takes it back. The ontology
+  is never written, and the model never moves by itself.
 - **Ontology settings** – File → Ontology settings: the ontology IRI, the default namespace new
   IRIs are made in, and namespace prefixes. Prefixes only change how an IRI is written (`ex:Actor`
   in tables, Turtle, SPARQL and search); they are kept on import and written on export.
@@ -615,9 +644,11 @@ More on what the advanced reasoner does and does not cover is under
 - **RDFS & OWL (optional)** – switch it on in the Vocabulary view to use standard properties
   (`rdfs:subClassOf`, `owl:equivalentClass`, `owl:sameAs`, …): pick one per relation, or map a
   relationship label to one so every relation with that label exports as it.
-- **Validation** – one tab for three kinds of check that answer different questions and are
-  never mixed up. They run when asked; results say when and which revision of the model they
-  are about, and are marked stale as soon as the model changes.
+- **Validation** – one tab for four kinds of check that answer different questions and are
+  never mixed up. The three ontology checks run when asked; results say when and which revision
+  of the model they are about, and are marked stale as soon as the model changes. The fourth,
+  *Logical data models*, is computed from the models themselves as the view shows them, so it is
+  never stale and needs no run.
   - *OWL consistency*: answered by one of two reasoners, chosen in the card (**Reasoning
     engine**), which always says which one answered.
     The **fast reasoner** is the built-in RDFS / OWL RL rule reasoner: in the browser, in a
@@ -654,10 +685,14 @@ More on what the advanced reasoner does and does not cover is under
     and namespaces, enumerations without members or with something on the list that does not
     belong there, …), each of which can be switched off per model. They are suggestions,
     not errors.
+  - *Logical data models*: an entity with no primary key, a many-to-many a relationship leaves
+    unresolved, and what an imported or older logical model breaks of its rules. Each finding
+    names its model and element, and *Open in the LDM* opens it where it is edited.
 
   Results can be filtered by category, severity and entity type and searched; clicking one
-  opens the entity. Some have a fix, which shows the change before making it. Reports export
-  as JSON and RDF. What the reasoner infers is listed under "Inferred facts".
+  opens the entity, and an LDM finding its element in the LDM workspace. Some have a fix, which
+  shows the change before making it. Reports export as JSON and RDF. What the reasoner infers is
+  listed under "Inferred facts".
 - **Align** – other ontologies, kept apart from yours, and three different things to do with one:
   - *Depend on it*: it becomes a dependency (`owl:imports`). Its axioms count when reasoning
     and validating, but are never written into your ontology.
@@ -865,10 +900,20 @@ that *Layered* says so and uses the built-in hierarchical layout.
 - `src/logical` – logical data models, apart from the ontology (ADR-022). `contracts.ts` is the
   metamodel, the logical change set and the two services (`LogicalModelQueryService`,
   `LogicalModelEditService`); `rules.ts` the rules a model is held to, changes applied and checked,
-  and removals with what names the element; `local.ts` the services over the project in the
-  editor; `exchange.ts` the file of one model; `text.ts` types, cardinalities and fields in
-  words. It takes nothing of the project but its type, and a test (`boundaries.test.ts`) keeps it
-  so.
+  and removals with what names the element; `edits.ts` the change sets the workspace's forms and
+  its diagram make; `findings.ts` what the Validation view says about a model; `local.ts` the
+  services over the project in the editor; `exchange.ts` the file of one model; `text.ts` types,
+  cardinalities and fields in words. It takes nothing of the project but its type, and a test
+  (`boundaries.test.ts`) keeps it so.
+- `src/traceability` – the ontology-to-LDM transformation (LM-3) and semantic traceability, impact
+  and synchronization (LM-4). `contracts.ts` is the `TransformationService` and the
+  `TraceabilityService` and what a proposal, a mapping description and a report are; `transform.ts`
+  the pure engine that reads the ontology and proposes LDM elements with their axioms, strategy,
+  rationale and the OWL-to-LDM difference; `impact.ts` the pure engine of mappings' status,
+  coverage, impact items and synchronization proposals; `local.ts` the services over the project
+  in the editor, which apply accepted changes through `LogicalModelEditService`; `worker.ts` and
+  `impactWorker.ts` the runs off the page. They read the ontology and the LDM as plain data and
+  know nothing of the interface, the store or RDF, and a test (`boundaries.test.ts`) keeps it so.
 - `src/editing` – what an edit is, and the service that makes edits (see *Edits as change sets*).
   `contracts.ts` is the change set, by OWL 2's axiom names and IRIs, and `OntologyEditService`
   (apply, validate, and the axioms about an entity). `axioms.ts` reads an RDF statement as an
@@ -1632,10 +1677,12 @@ proposals would stay change sets for the same edit service.
 
 ## Not there yet
 
-Logical data models are kept and changed through their services (LM-1), but the rest of the
-roadmap's logical data modelling track is not there yet (LM-2 to LM-5: an LDM editor with an ER
-diagram, reviewed transformation from the ontology, semantic traceability and change impact;
-docs/DEVELOPMENT_ROADMAP.md §1.3), Excel/PowerPoint/PDF export,
+Logical data models are kept, changed, edited, derived from the ontology and traced to it through
+their services (LM-1 to LM-4), with a workspace, an ER diagram, a reviewed transformation and
+impact reports of their own; the rest of the roadmap's logical data modelling track is not there
+yet (LM-5: LDMs on a server; docs/DEVELOPMENT_ROADMAP.md §1.3), nor are shape sets as a further
+input to the transformation (FR-M18-7), mappings exported with PROV-O (FR-M18-15),
+Excel/PowerPoint/PDF export,
 multiple saved models.
 Colours, positions, the layout and cardinalities live only in the JSON format; the Turtle export carries the
 terms, descriptions, synonyms and relations.

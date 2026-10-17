@@ -20,7 +20,7 @@ describe('types of model', () => {
     expect(MODEL_TYPE_LIST.map((t) => t.id)).toEqual(['ontology', 'skos']);
     const owl = MODEL_TYPES.ontology;
     const skos = MODEL_TYPES.skos;
-    expect(owl.views).toEqual(['graph', 'table', 'structure', 'shapes', 'checks', 'align', 'rdf', 'sparql', 'vocab']);
+    expect(owl.views).toEqual(['graph', 'table', 'structure', 'ldm', 'shapes', 'checks', 'align', 'rdf', 'sparql', 'vocab']);
     expect(skos.views).toEqual(['graph', 'table', 'structure']);
     expect(skos.entityTabs).toEqual(['concept', 'relations', 'governance']);
     expect(skos.entityColumns).toEqual(['name', 'iri', 'suffix', 'type']);

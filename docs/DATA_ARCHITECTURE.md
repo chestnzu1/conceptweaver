@@ -67,7 +67,7 @@ engine built afresh from the exported Turtle (`src/model/sparql.ts`).
 | Mapping metadata, import templates | In the model | Relational |
 | Diagrams: positions, style, layout, line ends | In the model | Relational, as JSON documents |
 | Logical data models, with their diagrams (from LM-1) | In the model (`Model.logicalModels`, model format 6) | Relational: LDM documents and logical change entries, each LDM a line of revisions (§11.7) |
-| Semantic mappings between the ontology and an LDM (from LM-3) | In their LDM | Relational, with the LDM; an index of their source IRIs (§11.7) |
+| Semantic mappings between the ontology and an LDM (from LM-3, LM-4) | In their LDM; their status and impact are worked out against the ontology, never stored | Relational, with the LDM; an index of their source IRIs (§11.7) |
 | Session: selection, viewport, open panels | `localStorage` | `localStorage` (never sent) |
 | Search index | Built in memory per revision (`src/entities/service.ts`) | Lucene index beside TDB2 |
 | Database connection definitions (deferred, §10) | — | Relational (§10.2) |
@@ -835,9 +835,13 @@ A cached snapshot may be missing on another machine. The existing treatment of e
 ontologies applies ("the content is not on this machine; add it again"; `externals` in
 `src/model/library.ts`): the mapping opens, and what needs the snapshot says so.
 
-## 11. Logical data models, semantic mappings and their revisions (Recommended)
+## 11. Logical data models, semantic mappings and their revisions
 
-Added on 2026-10-17. Nothing in this section exists today. It is the data side of
+Added on 2026-10-17. The local profile exists (LM-1 to LM-4, 2026-10-17): LDMs in the project
+document, each with its diagrams and semantic mappings, saved, versioned and carried in the
+project's file; mappings' status, impact and synchronization are worked out against the ontology
+and kept only as the mappings' baselines. The server profile (LM-5) is still design. This section
+is the data side of
 [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13 and of the roadmap's logical data modelling
 track, LM-1 to LM-5 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.3).
 

@@ -1,4 +1,4 @@
-import { BASE_TYPES, type BaseType, type BusinessRule, type ElementRef, type Generalization, type Key, type KeyMember, type LogicalChange, type LogicalDiagram, type LogicalDomain, type LogicalElement, type LogicalEntity, type LogicalModel, type LogicalRefusal, type LogicalType, type Relationship, type RelationshipEnd, type SemanticMapping, type UpdateTarget } from './contracts';
+import { BASE_TYPES, HIERARCHY_STRATEGIES, NAMING_CASES, NAMING_SEPARATORS, NAMING_SOURCES, OBJECT_PROPERTY_STRATEGIES, type BaseType, type BusinessRule, type BaseTypeName, type ElementRef, type Generalization, type Key, type KeyMember, type LogicalChange, type LogicalDiagram, type LogicalDomain, type LogicalElement, type LogicalEntity, type LogicalModel, type LogicalRefusal, type LogicalType, type Relationship, type RelationshipEnd, type SemanticMapping, type TransformationConfig, type UpdateTarget } from './contracts';
 
 /**
  * Logical data models as data: read safely from what was stored, changed by logical change sets,
@@ -54,6 +54,37 @@ function endFrom(v: unknown): RelationshipEnd | undefined {
   const o = obj(v);
   if (!o || !str(o.entity)) return undefined;
   return { entity: str(o.entity), role: str(o.role), min: int(o.min) ?? 0, max: o.max === 'many' ? 'many' : (int(o.max) ?? 'many') };
+}
+
+const oneOfString = <T extends string>(v: unknown, allowed: readonly T[]): T | undefined => (typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : undefined);
+
+/**
+ * A derivation configuration as it was stored (stage LM-3), read with what does not read left
+ * out; nothing where it is not one. The configuration is a convenience of the derivation, never
+ * part of what an LDM means, so one that does not read is left out rather than refused.
+ */
+export function transformationConfigFrom(v: unknown): TransformationConfig | undefined {
+  const o = obj(v);
+  const scope = obj(o?.scope);
+  const naming = obj(o?.naming);
+  if (!o || !scope || !naming) return undefined;
+  const kind = oneOfString(scope.kind, ['all', 'branch', 'classes'] as const);
+  const from = oneOfString(naming.from, NAMING_SOURCES);
+  const casing = oneOfString(naming.case, NAMING_CASES);
+  const separator = oneOfString(naming.separator, NAMING_SEPARATORS);
+  const hierarchy = oneOfString(o.hierarchy, HIERARCHY_STRATEGIES);
+  const objectProperties = oneOfString(o.objectProperties, OBJECT_PROPERTY_STRATEGIES);
+  if (!kind || !from || !casing || separator === undefined || !hierarchy || !objectProperties) return undefined;
+  const datatypes: Record<string, BaseTypeName> = {};
+  for (const [iri, type] of Object.entries(obj(o.datatypes) ?? {})) if (iri && (BASE_TYPES as readonly string[]).includes(str(type))) datatypes[iri] = str(type) as BaseTypeName;
+  return {
+    scope: { kind, classes: (Array.isArray(scope.classes) ? scope.classes : []).map(str).filter(Boolean), withImports: scope.withImports === true },
+    naming: { from, case: casing, separator, singular: naming.singular !== false },
+    datatypes,
+    hierarchy,
+    objectProperties,
+    definitions: o.definitions === true,
+  };
 }
 
 /** One LDM as it was stored, read with what does not read left out; nothing about it is taken on trust. */
@@ -114,7 +145,7 @@ export function logicalModelFrom(v: unknown): LogicalModel | undefined {
       const by = str(madeBy.by);
       return {
         id: str(m.id),
-        sources: list(m.sources).map((s) => ({ iri: str(s.iri), axioms: (Array.isArray(s.axioms) ? s.axioms : []).map(str).filter(Boolean) })).filter((s) => s.iri),
+        sources: list(m.sources).map((s) => ({ iri: str(s.iri), axioms: (Array.isArray(s.axioms) ? s.axioms : []).map(str).filter(Boolean), ...(str(s.label) ? { label: str(s.label) } : {}) })).filter((s) => s.iri),
         targets: (Array.isArray(m.targets) ? m.targets : []).map(refFrom).filter((x): x is ElementRef => !!x),
         strategy: str(m.strategy),
         rationale: str(m.rationale),
@@ -133,7 +164,8 @@ export function logicalModelFrom(v: unknown): LogicalModel | undefined {
       }
       return { id: str(d.id), name: str(d.name), positions };
     });
-  return { id: str(o.id), name: str(o.name), description: str(o.description), purpose: str(o.purpose), revision: str(o.revision) || newRevision(), domains, entities, relationships, generalizations, rules, mappings, diagrams };
+  const derivation = transformationConfigFrom(o.derivation);
+  return { id: str(o.id), name: str(o.name), description: str(o.description), purpose: str(o.purpose), revision: str(o.revision) || newRevision(), domains, entities, relationships, generalizations, rules, mappings, diagrams, ...(derivation ? { derivation } : {}) };
 }
 
 /** The LDMs of a model as they were stored: each read safely, the first of any two with one id kept. */
@@ -413,7 +445,7 @@ export function problemsOf(m: LogicalModel): LogicalRefusal[] {
 
 /** The fields an update may change, for each kind of target: never an id, never what belongs to other elements. */
 const UPDATABLE: Record<string, readonly string[]> = {
-  model: ['name', 'description', 'purpose'],
+  model: ['name', 'description', 'purpose', 'derivation'],
   entity: ['name', 'definition', 'abstract'],
   attribute: ['name', 'definition', 'type', 'optional', 'derived'],
   key: ['kind', 'name', 'members'],

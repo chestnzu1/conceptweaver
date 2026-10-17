@@ -121,13 +121,25 @@ export interface BusinessRule {
 }
 
 /**
+ * Where a mapping's source was in the ontology when the mapping was made: its IRI, the axioms
+ * used (OWL functional syntax), and the label it had then, so that a renamed source can be told
+ * from one that was always called this.
+ */
+export interface MappingSource {
+  iri: string;
+  axioms: string[];
+  /** The source's label when the mapping was made. */
+  label?: string;
+}
+
+/**
  * Where elements came from in the ontology (stage LM-4): sources by IRI and by the axioms used
  * (OWL functional syntax), targets by id, with the strategy, the rationale and the ontology
  * revision it was made from. Its status is worked out against the ontology, never stored.
  */
 export interface SemanticMapping {
   id: string;
-  sources: { iri: string; axioms: string[] }[];
+  sources: MappingSource[];
   targets: ElementRef[];
   strategy: string;
   rationale: string;
@@ -142,6 +154,52 @@ export interface LogicalDiagram {
   id: string;
   name: string;
   positions: Record<string, { x: number; y: number }>;
+}
+
+// ---------------------------------------------------------------- derivation (stage LM-3)
+
+/** Where a name comes from: the ontology's label, or the last part of its IRI. */
+export const NAMING_SOURCES = ['label', 'localName'] as const;
+export type NamingSource = (typeof NAMING_SOURCES)[number];
+
+/** How a name is cased. `asis` keeps what the source says, and changes only its separators. */
+export const NAMING_CASES = ['asis', 'lower', 'upper', 'pascal', 'camel'] as const;
+export type NamingCase = (typeof NAMING_CASES)[number];
+
+/** What joins the words of a name. Empty: none, as in PascalCase. */
+export const NAMING_SEPARATORS = [' ', '', '_', '-'] as const;
+export type NamingSeparator = (typeof NAMING_SEPARATORS)[number];
+
+/** What a subclass hierarchy becomes: a specialization, one rolled-up entity, or attributes rolled down. */
+export const HIERARCHY_STRATEGIES = ['specialization', 'rollup', 'rolldown'] as const;
+export type HierarchyStrategy = (typeof HIERARCHY_STRATEGIES)[number];
+
+/** What an object property becomes: a relationship, or (where both ends are many) an associative entity. */
+export const OBJECT_PROPERTY_STRATEGIES = ['relationship', 'associative'] as const;
+export type ObjectPropertyStrategy = (typeof OBJECT_PROPERTY_STRATEGIES)[number];
+
+/** Which classes of the ontology a transformation reads. */
+export interface TransformationScope {
+  kind: 'all' | 'branch' | 'classes';
+  /** Class IRIs: the root of a branch, or the classes chosen. */
+  classes: string[];
+  /** Include the classes of the ontologies it imports, as far as they are loaded here. */
+  withImports: boolean;
+}
+
+/**
+ * How an LDM is derived from the ontology (FR-M18-5). Kept with the LDM, so that running the
+ * transformation again works from the same choices.
+ */
+export interface TransformationConfig {
+  scope: TransformationScope;
+  naming: { from: NamingSource; case: NamingCase; separator: NamingSeparator; singular: boolean };
+  /** XSD datatype IRIs that differ from the standard logical type they would be given. */
+  datatypes: Record<string, BaseTypeName>;
+  hierarchy: HierarchyStrategy;
+  objectProperties: ObjectPropertyStrategy;
+  /** Read definitions from the ontology's descriptions. */
+  definitions: boolean;
 }
 
 /** One logical data model. */
@@ -161,6 +219,8 @@ export interface LogicalModel {
   rules: BusinessRule[];
   mappings: SemanticMapping[];
   diagrams: LogicalDiagram[];
+  /** How it was last derived from the ontology (stage LM-3), where it was. */
+  derivation?: TransformationConfig;
 }
 
 // ---------------------------------------------------------------- changes

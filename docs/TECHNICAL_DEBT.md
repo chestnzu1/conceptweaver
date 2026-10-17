@@ -23,7 +23,7 @@ Severity is about the cost of leaving the item alone while the product grows:
 | **Low** | Friction. Worth fixing when the area is touched anyway. |
 
 What is *not* debt deserves saying first, because it shapes the remediation: the codebase is
-unusually well tested for its age (42 unit-test files with 603 tests, and 21 browser scripts,
+unusually well tested for its age (85 unit-test files with 973 tests, and 39 browser scripts,
 one of them a UI audit), the model layer is free of UI imports, and two subsystems (`src/structure`,
 `src/entities`) are already written against service interfaces with HTTP clients and tests that
 enforce their boundaries. The recommended remediation is to spread that existing pattern, not
@@ -846,7 +846,8 @@ the connection form, to point the product at a replica where there is one.
 
 **Risks introduced by ontology-driven logical data modelling.** Added on 2026-10-17 with the
 roadmap's logical data modelling track ([SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13).
-Nothing of it is built yet; each is designed against from LM-1.
+LM-1 to LM-4 of the track are built in the browser (2026-10-17); each risk below says what their
+implementation holds to, and what remains open until LM-5 and the platform work.
 
 ### AR-17 The logical data model becomes a projection of the ontology, or a second ontology
 
@@ -857,6 +858,10 @@ Either way the LDM stops being a design of its own.
 *Mitigation.* ADR-022 and ADR-026: a metamodel with no OWL construct and no physical one;
 transformation as proposals over a chosen scope, many to many (FR-M18-6); elements with no
 semantic source are normal, not findings; the LDM is edited freely after it is made.
+
+*Status, 2026-10-17: held to in LM-1 to LM-4.* The metamodel (`src/logical/contracts.ts`) has
+no OWL construct; transformation proposes over a chosen scope; an element with no semantic
+source is ordinary, and every element of an LDM is edited freely after it is accepted.
 
 ### AR-18 Open-world axioms become closed-world constraints by default
 
@@ -869,6 +874,10 @@ constraints and shapes.
 the axiom means and what the constraint would require; NFR-18 is a test; the assistant's LDM
 proposals follow the same rule.
 
+*Status, 2026-10-17: held to in LM-3.* Restrictions and `owl:hasKey` are proposed as candidates
+only, never chosen by default (`src/traceability/transform.test.ts`), and are written only when
+the reviewer takes them.
+
 ### AR-19 Synchronization overwrites what the designer decided, or mappings drift unnoticed
 
 An ontology change that rewrites an LDM undoes design decisions; one that is not reported leaves
@@ -879,6 +888,11 @@ the LDM silently out of step with the domain.
 against what a mapping last made, and a customised element is only ever proposed for; impact
 reports per LDM (FR-M18-11).
 
+*Status, 2026-10-17: built in LM-4.* `src/traceability/impact.ts` works out status, coverage,
+impact and synchronization against the ontology; every proposal is reviewed in the *Impact…*
+dialog, a customised element is flagged and never chosen to begin with, and an accepted
+proposal is one undoable LDM change set that leaves the ontology untouched.
+
 ### AR-20 LDM edits invalidate what was worked out for the ontology, or are read stale
 
 Every result in the application is keyed by the ontology's revision (TD-20). If LDM edits move it,
@@ -887,6 +901,10 @@ they are kept out of it carelessly, anything reading through `stable()` sees an 
 
 *Mitigation.* Revisions per artifact from LM-1 (ADR-023); a test that an LDM edit leaves the
 ontology's results and proposals current (NFR-17); LDMs never read through `stable()`.
+
+*Status, 2026-10-17: built in LM-1 and LM-4.* Each LDM has its own revision, and the NFR-17 test
+(`src/logical/logical.test.ts`) holds that no artifact moves another's revision through LM-4's
+edits, transformation and synchronization.
 
 ### AR-21 A second editor, with its diagram, outruns one developer
 
@@ -897,6 +915,9 @@ remaining Phase 2 tasks (AR-05).
 first, the diagram as a view of the same operations; the proposal and difference machinery of
 SH-3 and 2.3 reused for review and comparison; several diagrams per LDM and formal rules deferred
 (FR-M17-13, FR-M17-9).
+
+*Status, 2026-10-17: the editor was built that way (LM-2).* One notation, forms first with the
+diagram as a view; several diagrams per LDM and formal rules remain deferred.
 
 ## 5. Refactoring priorities
 

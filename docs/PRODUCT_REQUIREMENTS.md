@@ -85,8 +85,8 @@ overwrites a decision the designer made.
 | --- | --- | --- | --- |
 | **Ontology engineer** | Authors and maintains OWL ontologies; uses restrictions, defined classes, reasoning. | Complete OWL 2 editing, lossless files, reliable reasoning, explanations. | Partly: authoring of class expressions and lossless round trips are missing (TD-01, TD-02). |
 | **Knowledge engineer / taxonomist** | Builds vocabularies, taxonomies, thesauri. | Fast hierarchy editing, labels in several languages, SKOS export, bulk import. | Well, for one language and pasted input. |
-| **Data architect** | Aligns a domain model with data assets and standards; designs the logical data models of applications from it. | Reuse of standard ontologies, SHACL for data; logical models derived from the ontology, with keys, cardinalities and rules decided by them, and traced back. | Well for reuse, SHACL and import; logical models not at all (M17, M18). |
-| **Logical data modeller / application designer** | Designs the entities, attributes, relationships and keys an application stores. | An ER editor; a starting point from the domain model that does not decide for them; to know what an ontology change means for their model. | Not at all (M17, M18). |
+| **Data architect** | Aligns a domain model with data assets and standards; designs the logical data models of applications from it. | Reuse of standard ontologies, SHACL for data; logical models derived from the ontology, with keys, cardinalities and rules decided by them, and traced back. | Well for reuse, SHACL and import; logical models are authored by hand (M17), derived from the ontology with reviewed proposals (M18, LM-3), and traced to it with impact reports and reviewed synchronization (M18, LM-4). |
+| **Logical data modeller / application designer** | Designs the entities, attributes, relationships and keys an application stores. | An ER editor; a starting point from the domain model that does not decide for them; to know what an ontology change means for their model. | In part: an LDM workspace and ER diagram (M17), proposals derived from the ontology, none imposed (M18, LM-3), and every element traced to its sources, with what an ontology change means for the model (M18, LM-4). |
 | **Semantic modeller / analyst** | Reads and reviews models more than writes them. | Clear pictures, hierarchy exploration, search, comparison. | Well. |
 | **Data governance professional** | Owns definitions, status, stewardship. | Metadata, lifecycle status, change history, approval. | Metadata yes; history and approval no. |
 | **Data engineer / integration specialist** (deferred track) | Makes data from operational databases available in shared terms. | To see a schema, map it to an ontology without guesswork, check the result on real rows, and hand the mapping to a standard engine. | Not at all; deferred. |
@@ -260,8 +260,8 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M14 Database connectivity and schema exploration | **Deferred**; not implemented | Free-text `database`, `schema`, `table`, `column` fields in `src/model/governance.ts` | Everything; needs the backend |
 | M15 Ontology-to-relational semantic mapping | **Deferred**; not implemented | Reusable parts only (entity lists, validation, matcher, IRI handling) | Everything |
 | M16 Relational data access: materialisation and virtual knowledge graph | **Deferred**; not implemented | SPARQL view over the ontology (`src/model/sparql.ts`) | Everything |
-| M17 Logical data model authoring | **Recommended**; not implemented | Parts to build from: layouts and culling (`src/layout/`, `src/model/culling.ts`), validation findings, the version difference (`src/projects/`) | Everything (roadmap LM-1, LM-2, LM-5) |
-| M18 Ontology-to-LDM transformation and semantic traceability | **Recommended**; not implemented | The proposal pattern of SH-3 (`src/model/proposals.ts`), the axiom difference (`changesBetween`), structured class expressions | Everything (roadmap LM-3, LM-4) |
+| M17 Logical data model authoring | **Partially Implemented** | `src/logical/` (the metamodel, its query and edit services, rules, findings; 2026-10-17), the LDM workspace and ER diagram (`src/components/LogicalData.tsx`, `LdmDiagram.tsx`) | Formal rule expressions (FR-M17-9), several diagrams (FR-M17-13), LDMs on a server (roadmap LM-5) |
+| M18 Ontology-to-LDM transformation and semantic traceability | **Partially Implemented** | `src/traceability/` (proposals from the ontology under a saved configuration; mappings, traceability, impact and reviewed synchronization; 2026-10-17), the *Derive from the ontology…* dialog (`src/components/TransformationDialog.tsx`), the LDM view's *Traceability* part (`src/components/Traceability.tsx`) and its *Impact…* dialog (`src/components/ImpactDialog.tsx`) | Shape sets as a further input (FR-M18-7); mappings exported as RDF with PROV-O (FR-M18-15) |
 
 ## 4. Non-functional requirements (apply to every module)
 
@@ -1163,11 +1163,11 @@ relationships with cardinality and optionality, identifiers, specializations and
 several per project; edited in a workspace and on an ER diagram; validated, versioned and, later,
 kept on a server. Logical only: no physical model, database type or DDL.
 
-**Status: Recommended; not implemented** (added 2026-10-17; roadmap LM-1, LM-2, LM-5). Parts to
-build from exist: the layouts, line geometry and culling of the Graph view (`src/layout/`,
-`src/model/geometry.ts`, `culling.ts`), the validation findings model (`src/model/validation.ts`),
-the version difference (`src/projects/difference.ts`) and the service pattern of `src/structure`.
-The design is [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.3 to §13.5 and
+**Status: Partially implemented** (added 2026-10-17; roadmap LM-1, LM-2, LM-5). The metamodel and
+its services (`src/logical/`), the LDM workspace and its ER diagram (`src/components/LogicalData.tsx`,
+`LdmDiagram.tsx`) and LDM findings in the Validation view exist (2026-10-17). What remains is
+FR-M17-9, FR-M17-13 and the server's LDMs (LM-5). The design is
+[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.3 to §13.5 and
 [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.
 
 **User stories.**
@@ -1188,14 +1188,14 @@ The design is [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.3 to §13.5 
 | FR-M17-2 | Logical entities: a name unique in the LDM, a definition, and a mark for an abstract supertype. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-3 | Logical attributes: a name unique in the entity, inherited ones included; a definition; a logical type or a domain; optional or mandatory (optional unless the user says otherwise); a mark for derived. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-4 | Logical data types, technology-neutral: text (with an optional maximum length), integer, decimal (precision, scale), boolean, date, time, date-time, duration, binary, identifier; and named domains over them, restricted by length, range, pattern or enumerated values with codes and labels. No database-specific type. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
-| FR-M17-5 | Relationships between two entities (the same one for a recursive relationship), each end with a role, a minimum and a maximum cardinality (minimum 0: optional); identifying or not; many-to-many allowed, with a command that resolves it into an associative entity. | **Existing** in part (2026-10-17, LM-1): relationships, their ends, identifying ones; resolving a many-to-many is LM-2 | P1 |
+| FR-M17-5 | Relationships between two entities (the same one for a recursive relationship), each end with a role, a minimum and a maximum cardinality (minimum 0: optional); identifying or not; many-to-many allowed, with a command that resolves it into an associative entity. | **Existing** (2026-10-17, LM-1 and LM-2): the metamodel, and the command in the relationship editor | P1 |
 | FR-M17-6 | Identifiers: per entity at most one primary key and any number of candidate keys, each of attributes and, for an identifying relationship, of the relationship's end. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-7 | Generalization: a supertype and its subtypes, complete or incomplete, exclusive or overlapping, with an optional discriminator attribute; subtypes inherit attributes and keys; no cycles. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-8 | Business rules in words, named, attached to entities, attributes or relationships, each a constraint or a derivation, proposed or accepted. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-9 | A formal expression for a business rule, in a small language over attributes (comparisons, ranges, required-if, uniqueness within a scope), checked as it is typed. | Recommended | P2 |
-| FR-M17-10 | LDM validation in the Validation view: an entity with no primary key, a key naming a missing attribute, a relationship end on a missing entity, duplicate names, a generalization cycle, an attribute with no type, an unresolved many-to-many (information), an attribute repeating an inherited one; each finding opens its element. | Recommended (LM-2) | P1 |
-| FR-M17-11 | The LDM workspace: a view of its own with the project's LDMs, an entity list with search, and editors for entities, attributes, relationships, keys, generalizations, rules and domains; every action by keyboard. | Recommended (LM-2) | P1 |
-| FR-M17-12 | An ER diagram of an LDM in Information Engineering notation (crow's foot), laid out by the existing layouts and culled at scale; its positions kept apart from the LDM's meaning; edits on it are the same operations as in the forms. | Recommended (LM-2) | P1 |
+| FR-M17-10 | LDM validation in the Validation view: an entity with no primary key, a key naming a missing attribute, a relationship end on a missing entity, duplicate names, a generalization cycle, an attribute with no type, an unresolved many-to-many (information), an attribute repeating an inherited one; each finding opens its element. | **Existing** (2026-10-17, roadmap LM-2) | P1 |
+| FR-M17-11 | The LDM workspace: a view of its own with the project's LDMs, an entity list with search, and editors for entities, attributes, relationships, keys, generalizations, rules and domains; every action by keyboard. | **Existing** (2026-10-17, roadmap LM-2) | P1 |
+| FR-M17-12 | An ER diagram of an LDM in Information Engineering notation (crow's foot), laid out by the existing layouts and culled at scale; its positions kept apart from the LDM's meaning; edits on it are the same operations as in the forms. | **Existing** (2026-10-17, roadmap LM-2): the diagram, its positions and its tools; a relationship is drawn by the tool and edited in its editor, not by dragging between entities | P1 |
 | FR-M17-13 | Several diagrams per LDM, each of a chosen subset of its entities. | Recommended | P2 |
 | FR-M17-14 | Every LDM edit is one undoable step, kept in the working copy, saved with the project and in its versions; the difference between two versions lists LDM changes element by element and field by field, apart from the ontology's. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-15 | An LDM is exported to and imported from a documented, versioned JSON format, losslessly; the project's own file carries its LDMs. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
@@ -1234,12 +1234,14 @@ FR-M17-17: the server projects of Phase 4.
 and decisions the user reviews; and keeping each LDM traceable to the ontology through explicit
 semantic mappings, with stale detection, change impact reports and reviewed synchronization.
 
-**Status: Recommended; not implemented** (added 2026-10-17; roadmap LM-3, LM-4). Patterns to
-build on exist: shapes proposed from the ontology, each with what the axiom means and where it
-differs, none chosen by default, origin kept as the axiom in functional syntax and marked stale
-when it goes (`src/model/proposals.ts`, FR-M4-15); the axiom-level difference between two states
-of the ontology (`changesBetween`, M10); structured class expressions (M2). The design is
-[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.6 to §13.9.
+**Status: In part — implemented 2026-10-17** (LM-3 and LM-4: FR-M18-1 to FR-M18-6 and FR-M18-8
+to FR-M18-14; FR-M18-7 and FR-M18-15 remain). Patterns it builds on exist: shapes proposed from the ontology, each
+with what the axiom means and where it differs, none chosen by default, origin kept as the axiom in
+functional syntax and marked stale when it goes (`src/model/proposals.ts`, FR-M4-15); the
+axiom-level difference between two states of the ontology (`changesBetween`, M10); structured class
+expressions (M2). The design is [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.6 to §13.9.
+The transformation, traceability and impact are `src/traceability/`, reviewed in the *Derive from
+the ontology…* dialog, the LDM view's *Traceability* part and its *Impact…* dialog.
 
 **Why the open world matters here.** An ontology says what is true of a domain; an LDM says what
 an application stores. `Film SubClassOf directedBy some Director` means every film has a
@@ -1263,20 +1265,20 @@ candidates for the designer to choose.
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
-| FR-M18-1 | Propose an LDM, new or into an existing one, from a chosen scope of the ontology (all, a branch, chosen classes, with or without loaded imports), as a set of proposals; nothing is created until accepted, and the ontology is never changed. | Recommended (LM-3) | P1 |
-| FR-M18-2 | Transformation rules: classes to entities; datatype properties to attributes, typed by a configurable XSD-to-logical table; object properties to relationships or associative entities; inverse pairs to one relationship with two roles; subclass hierarchies to specializations, or rolled up or down; enumerations to domains; `owl:hasKey` to candidate keys. | Recommended (LM-3) | P1 |
-| FR-M18-3 | Restrictions, domains, ranges, cardinalities and keys are offered as candidate constraints (mandatory, a maximum, a key, a rule), never chosen to begin with; each says what the axiom means in OWL, what the constraint would require, and where they differ. A property's functionality shapes the proposed relationship, shown as its reason. | Recommended (LM-3) | P1 |
-| FR-M18-4 | Each proposal shows its source axioms, the elements it would create or change, its strategy and its rationale; proposals are chosen, edited or dismissed one by one or by kind; the chosen ones are applied as one logical change set, with the semantic mappings they imply, undone in one step. | Recommended (LM-3) | P1 |
-| FR-M18-5 | A configuration saved with each LDM: naming (from labels or local names, case, separators, singular), the datatype table, the default hierarchy and object-property strategies, the scope, definitions from annotations or not. | Recommended (LM-3) | P1 |
-| FR-M18-6 | Many to many: a class may become several entities and several classes one; a property several attributes; elements may be mapped by hand where no rule applies, and may have no semantic source at all. | Recommended (LM-3, LM-4) | P1 |
+| FR-M18-1 | Propose an LDM, new or into an existing one, from a chosen scope of the ontology (all, a branch, chosen classes, with or without loaded imports), as a set of proposals; nothing is created until accepted, and the ontology is never changed. | Implemented (LM-3, 2026-10-17) | P1 |
+| FR-M18-2 | Transformation rules: classes to entities; datatype properties to attributes, typed by a configurable XSD-to-logical table; object properties to relationships or associative entities; inverse pairs to one relationship with two roles; subclass hierarchies to specializations, or rolled up or down; enumerations to domains; `owl:hasKey` to candidate keys. | Implemented (LM-3, 2026-10-17) | P1 |
+| FR-M18-3 | Restrictions, domains, ranges, cardinalities and keys are offered as candidate constraints (mandatory, a maximum, a key, a rule), never chosen to begin with; each says what the axiom means in OWL, what the constraint would require, and where they differ. A property's functionality shapes the proposed relationship, shown as its reason. | Implemented (LM-3, 2026-10-17) | P1 |
+| FR-M18-4 | Each proposal shows its source axioms, the elements it would create or change, its strategy and its rationale; proposals are chosen, edited or dismissed one by one or by kind; the chosen ones are applied as one logical change set, with the semantic mappings they imply, undone in one step. | Implemented (LM-3, 2026-10-17; applied as one change set, and *Apply and edit* opens the element) | P1 |
+| FR-M18-5 | A configuration saved with each LDM: naming (from labels or local names, case, separators, singular), the datatype table, the default hierarchy and object-property strategies, the scope, definitions from annotations or not. | Implemented (LM-3, 2026-10-17) | P1 |
+| FR-M18-6 | Many to many: a class may become several entities and several classes one; a property several attributes; elements may be mapped by hand where no rule applies, and may have no semantic source at all. | Implemented (LM-3 and LM-4, 2026-10-17: roll-up and associative entities; mappings by hand) | P1 |
 | FR-M18-7 | A shape set may be chosen as a further input: its constraints are offered as candidate constraints naming the shape, never imposed. | Recommended | P2 |
-| FR-M18-8 | Semantic mappings: each relates ontology sources (entity IRIs and the axioms used, in functional syntax) to LDM targets (element ids), with its strategy, rationale, origin (ontology, revision, named version), what it last made of its targets, and how and when it was made (transformation, by hand, synchronization, assistant). | Recommended (LM-4) | P1 |
-| FR-M18-9 | Traceability both ways: from an LDM element to its sources, from an ontology entity to every element made from it in every LDM; coverage of each LDM: ontology entities in scope not represented, elements with no semantic source. | Recommended (LM-4) | P1 |
-| FR-M18-10 | Stale detection: a mapping whose source axiom changed is stale, one whose source entity or target element is gone is broken, each with what changed; worked out against the ontology as it is. | Recommended (LM-4) | P1 |
-| FR-M18-11 | Change impact report, per LDM, for the ontology now against each mapping's origin or between two versions: the affected elements and mappings, each with the kind of change (not represented, source removed, type changed, cardinality axiom changed, hierarchy changed, renamed). | Recommended (LM-4) | P1 |
-| FR-M18-12 | Synchronization proposals from an impact report, reviewed as transformation proposals are; an element the user customised (it differs from what its mapping last made) is never changed without explicit acceptance; a dismissed proposal is not offered again until its source changes again. | Recommended (LM-4) | P1 |
-| FR-M18-13 | Several LDMs derived from one ontology, each with its own configuration, mappings and impact report. | Recommended (LM-4) | P1 |
-| FR-M18-14 | Mappings are kept with their LDM, in the project's versions and differences; deleting an LDM element breaks the mappings to it and changes nothing in the ontology. | Recommended (LM-4) | P1 |
+| FR-M18-8 | Semantic mappings: each relates ontology sources (entity IRIs and the axioms used, in functional syntax) to LDM targets (element ids), with its strategy, rationale, origin (ontology, revision, named version), what it last made of its targets, and how and when it was made (transformation, by hand, synchronization, assistant). | Implemented (LM-4, 2026-10-17) | P1 |
+| FR-M18-9 | Traceability both ways: from an LDM element to its sources, from an ontology entity to every element made from it in every LDM; coverage of each LDM: ontology entities in scope not represented, elements with no semantic source. | Implemented (LM-4, 2026-10-17) | P1 |
+| FR-M18-10 | Stale detection: a mapping whose source axiom changed is stale, one whose source entity or target element is gone is broken, each with what changed; worked out against the ontology as it is. | Implemented (LM-4, 2026-10-17) | P1 |
+| FR-M18-11 | Change impact report, per LDM, for the ontology now against each mapping's origin or between two versions: the affected elements and mappings, each with the kind of change (not represented, source removed, type changed, cardinality axiom changed, hierarchy changed, renamed). | Implemented (LM-4, 2026-10-17) | P1 |
+| FR-M18-12 | Synchronization proposals from an impact report, reviewed as transformation proposals are; an element the user customised (it differs from what its mapping last made) is never changed without explicit acceptance; a dismissed proposal is not offered again until its source changes again. | Implemented (LM-4, 2026-10-17) | P1 |
+| FR-M18-13 | Several LDMs derived from one ontology, each with its own configuration, mappings and impact report. | Implemented (LM-4, 2026-10-17) | P1 |
+| FR-M18-14 | Mappings are kept with their LDM, in the project's versions and differences; deleting an LDM element breaks the mappings to it and changes nothing in the ontology. | Implemented (LM-4, 2026-10-17) | P1 |
 | FR-M18-15 | Mappings exported as RDF with PROV-O provenance, for other tools. | Future | P3 |
 
 **Module non-functional points.** NFR-18 above all: no constraint without the user's choice.
@@ -1800,19 +1802,18 @@ throughout; stage DI-4).
 **Objective.** Start an application's logical data model from the part of the ontology it needs,
 and decide its constraints oneself.
 
-**Entry point.** *Propose from the ontology* in the LDM workspace, or *Derive a logical model* on a
-class in the ontology's editors (Recommended throughout; roadmap LM-3).
+**Entry point.** *Derive from the ontology…* in the *LDM* view (Existing, 2026-10-17; roadmap LM-3).
 
 | Step | User action | System response | Status |
 | --- | --- | --- | --- |
-| 1 | Chooses *New logical model from the ontology* and names it *Film catalogue* | An empty LDM, and the transformation dialog: scope, configuration, target. | Recommended |
-| 2 | Chooses the scope: the branch under `Work`, with `Person` and `Award` added | Counts: 6 classes, 9 datatype properties, 5 object properties in scope. | Recommended |
-| 3 | Sets the configuration: names in snake case from English labels; hierarchies as specializations | Saved with the LDM. | Recommended |
-| 4 | Presses *Propose* | Proposals worked out in the background, grouped as structure and candidate constraints; the structure selected, the constraints not. | Recommended |
-| 5 | Opens the proposal for `film`'s director | The axiom `Film SubClassOf directedBy some Director`, the relationship `film` to `person` (many-to-one, because `directedBy` is functional), and the candidate *director is mandatory*, with: "The ontology says every film has a director, known or not; a mandatory end would refuse a film whose director is not recorded." | Recommended |
-| 6 | Chooses that candidate, leaves the others, dismisses the proposal for `Award`'s subclasses and picks roll-up for them instead | The proposals change accordingly; nothing is created yet. | Recommended |
-| 7 | Presses *Apply* | One change to the LDM: entities, attributes, relationships, the one constraint chosen, and their semantic mappings; undo takes it back whole. The ontology's revision is unchanged. | Recommended |
-| 8 | Opens the ER diagram | The entities laid out; each element's panel shows its sources in the ontology. | Recommended |
+| 1 | Makes a logical model *Film catalogue* and opens *Derive from the ontology…* | The transformation dialog: scope, configuration, target. | Existing |
+| 2 | Chooses the scope: a branch, with `Person` and `Award` added, and imported classes if wanted | The proposals are read from those classes. | Existing |
+| 3 | Sets the configuration: names in snake case from English labels; hierarchies as specializations | Saved with the LDM. | Existing |
+| 4 | Presses *Propose again* | Proposals worked out in a worker, grouped by what they would make; the structure selected, the candidate constraints not. | Existing |
+| 5 | Opens the proposal for `film`'s director | The axiom `Film SubClassOf directedBy some Director`, the relationship `film` to `person` (many-to-one, because `directedBy` is functional), and the candidate *director is mandatory*, with: "The ontology says every film has a director, known or not; a mandatory end would refuse a film whose director is not recorded." | Existing |
+| 6 | Chooses that candidate, leaves the others, dismisses the proposal for `Award`'s subclasses and changes the hierarchy strategy to roll-up | The proposals change accordingly; nothing is created yet. | Existing |
+| 7 | Presses *Apply the chosen* | One change to the LDM: entities, attributes, relationships, the one constraint chosen, and their semantic mappings; undo takes it back whole. The ontology's revision is unchanged. | Existing |
+| 8 | Opens the ER diagram, or the *Traceability* part | The entities laid out; each element's sources in the ontology, and how its mapping stands. | Existing |
 
 ```mermaid
 flowchart LR
@@ -1842,16 +1843,16 @@ flowchart LR
 
 **Objective.** Shape a logical model as the application needs it, independently of the ontology.
 
-**Entry point.** The *LDM* view (Recommended; roadmap LM-1, LM-2).
+**Entry point.** The *LDM* view (2026-10-17; roadmap LM-2).
 
 | Step | User action | System response | Status |
 | --- | --- | --- | --- |
-| 1 | Opens the *LDM* view and chooses *Film catalogue* | The entity list and the ER diagram; validation findings counted in the header. | Recommended |
-| 2 | Adds an entity `film_credit` and resolves the many-to-many between `film` and `person` into it | Two one-to-many relationships and the associative entity, with a key of the two ends; one step in the history. | Recommended |
-| 3 | Gives `film` a primary key `film_code` (identifier) | The key on the diagram; the finding *no primary key* goes. | Recommended |
-| 4 | Adds a domain `rating` with five codes, and uses it for an attribute | The domain listed; the attribute typed by it. | Recommended |
-| 5 | Adds a rule: "A film's release date is not before 1888." | A rule in words, attached to `release_date`. | Recommended |
-| 6 | Saves a version, then compares it with the previous | The LDM's changes element by element, apart from the ontology's (none). | Recommended |
+| 1 | Opens the *LDM* view and chooses *Film catalogue* | The entity list and the ER diagram; its findings are in the Validation view's LDM category. | Existing |
+| 2 | Adds an entity `film_credit` and resolves the many-to-many between `film` and `person` into it | Two one-to-many relationships and the associative entity, with a key of the two ends; one step in the history. | Existing |
+| 3 | Gives `film` a primary key `film_code` (identifier) | The key on the diagram; the finding *no primary key* goes. | Existing |
+| 4 | Adds a domain `rating` with five codes, and uses it for an attribute | The domain listed; the attribute typed by it. | Existing |
+| 5 | Adds a rule: "A film's release date is not before 1888." | A rule in words, attached to `release_date`. | Existing |
+| 6 | Saves a version, then compares it with the previous | The LDM's changes element by element, apart from the ontology's (none). | Existing |
 
 **Difficulties to design for.**
 
@@ -1868,17 +1869,17 @@ flowchart LR
 **Objective.** Know what an ontology change means for every logical model derived from it, and
 bring each up to date without losing one's own decisions.
 
-**Entry point.** A banner in the *LDM* view, "The ontology has changed since this model's
-mappings were made" (Recommended; roadmap LM-4).
+**Entry point.** The *Traceability* part of the *LDM* view, whose summary says how many mappings are
+stale or broken, and *Impact…* (Existing, 2026-10-17; roadmap LM-4).
 
 | Step | User action | System response | Status |
 | --- | --- | --- | --- |
-| 1 | The ontology team removes `:runningTime` and makes `directedBy` no longer functional | In each LDM derived from the ontology, the affected mappings are marked stale or broken. | Recommended |
-| 2 | Opens *Impact* for *Film catalogue* | The report: `film.running_time` has lost its source; the relationship `film` to `person` no longer has its reason for *many-to-one*. | Recommended |
-| 3 | Opens *Impact* for *Rights management*, derived from the same ontology | Its own report: one attribute affected. | Recommended |
-| 4 | Opens the synchronization proposals | *Remove `running_time`* (proposed, not selected: the user had renamed it, so it is customised); *make the relationship many-to-many* (offered, with the reason). | Recommended |
-| 5 | Keeps `running_time` as application-specific and dismisses the cardinality change | The mapping of `running_time` is removed; the element stays, with no semantic source; the dismissal is remembered until the source changes again. | Recommended |
-| 6 | Compares two named versions of the ontology instead | The same report between those versions, for planning a change before it is made. | Recommended |
+| 1 | The ontology team removes `:runningTime` and makes `directedBy` no longer functional | In each LDM derived from the ontology, the affected mappings are marked stale or broken. | Existing |
+| 2 | Opens *Impact* for *Film catalogue* | The report: `film.running_time` has lost its source; the relationship `film` to `person` no longer has its reason for *many-to-one*. | Existing |
+| 3 | Opens *Impact* for *Rights management*, derived from the same ontology | Its own report: one attribute affected. | Existing |
+| 4 | Opens the synchronization proposals | *Remove `running_time`* (proposed, not selected: the user had renamed it, so it is customised); *make the relationship many-to-many* (offered, with the reason). | Existing |
+| 5 | Keeps `running_time` as application-specific and dismisses the cardinality change | The removal is turned down and the mapping removed by hand in the *Traceability* part; the element stays, with no semantic source; the dismissal is remembered until the source changes again. | Existing |
+| 6 | Compares two named versions instead | The same report between those versions, for planning a change before it is made. | Existing |
 
 **Difficulties to design for.**
 

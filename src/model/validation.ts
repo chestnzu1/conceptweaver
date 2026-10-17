@@ -565,7 +565,7 @@ export async function validate(model: Model, data: DataGraph, scope: Scope | Cat
   }
   await tick('');
   const rank: Record<Level, number> = { error: 0, warning: 1, info: 2 };
-  const order: Record<Category, number> = { owl: 0, shacl: 1, quality: 2 };
+  const order: Record<Category, number> = { owl: 0, shacl: 1, quality: 2, ldm: 3 };
   run.findings.sort((a, b) => rank[a.severity] - rank[b.severity] || order[a.category] - order[b.category]);
   return run;
 }

@@ -37,6 +37,12 @@ async function unpack(v: StoredVersion): Promise<Model> {
   return normalizeModel(JSON.parse(await new Response(stream).text()));
 }
 
+/** A saved version's model and name, for reading it outside this service (traceability's between-versions impact). */
+export async function storedModel(id: string): Promise<{ model: Model; name: string } | undefined> {
+  const v = await storedVersion(id);
+  return v ? { model: await unpack(v), name: v.name } : undefined;
+}
+
 const info = ({ packed: _p, data: _d, ...v }: StoredVersion): VersionInfo => v;
 
 export function createLocalProjectService(host: ProjectHost): ProjectService {

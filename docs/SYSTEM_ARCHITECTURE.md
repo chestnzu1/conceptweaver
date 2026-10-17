@@ -220,8 +220,8 @@ must not be in it (ADR-014); it belongs to the deferred data-integration track (
 | Local implementations | Today's pure functions, called through the interfaces; reasoner and validation in workers. | Recommended (functions exist) |
 | HTTP implementations | One POST or GET per question; refusals as typed errors. | Existing for two services |
 | Geometry, layouts, styling | Stay in the browser in every profile: they are about the picture. | Existing |
-| LDM workspace and ER diagram | Edit logical models through their services; the diagram is a view of its own over the layouts and geometry, its positions kept apart from the LDM's meaning. | Recommended, roadmap LM-2 |
-| Transformation and impact review | Show proposals with their sources and rationale, collect the user's choices, apply them as logical change sets. | Recommended, LM-3, LM-4 |
+| LDM workspace and ER diagram | Edit logical models through their services; the diagram is a view of its own over the layouts and geometry, its positions kept apart from the LDM's meaning. | **Existing** (2026-10-17, LM-2) |
+| Transformation and impact review | Show proposals with their sources and rationale, collect the user's choices, apply them as logical change sets. | **Existing** (2026-10-17, LM-3, LM-4) |
 
 **Server (one deployable, internal modules with enforced dependencies)**
 
@@ -263,8 +263,8 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `ProjectService` | versions, save a version, a version's model, diff, restore; list, open and save | `src/projects/local.ts` over `library.ts` | **Existing** for versions (2026-10-16); list, open and save are still `library.ts` called directly |
 | `LogicalModelQueryService` | models, summary, entities (searched, paged), describe an element, relationships of an entity, keys, generalizations | `src/logical/local.ts` over the project document (§13.4): the models with their counts, a model, entities, an element described (keys and generalizations among them), an entity's relationships | **Existing** (2026-10-17, LM-1) |
 | `LogicalModelEditService` | create, duplicate, delete an LDM; `validate(changeSet)`, `apply(changeSet)` of a logical change set | `src/logical/local.ts`, over the rules of `rules.ts`; each change one step of the document's history | **Existing** (2026-10-17, LM-1) |
-| `TransformationService` | propose (job): proposals for a scope of the ontology under a configuration; apply a selection as a logical change set with its mappings | In a worker, over the ontology's statements and the LDM | Recommended, LM-3 |
-| `TraceabilityService` | mappings of an element or an IRI, coverage, staleness, impact (job), synchronization proposals; mappings made and edited by hand | Over the LDMs' mappings and `changesBetween` | Recommended, LM-4 |
+| `TransformationService` | propose (job): proposals for a scope of the ontology under a configuration; apply a selection as a logical change set with its mappings | In a worker, over the ontology's statements and the LDM | **Existing** (2026-10-17, LM-3) |
+| `TraceabilityService` | mappings of an element or an IRI, coverage, staleness, impact (job), synchronization proposals; mappings made and edited by hand | Over the LDMs' mappings and `changesBetween` | **Existing** (2026-10-17, LM-4) |
 | `DataSourceService` | list, create, update, remove, test; never answers with a secret | None: backend only | **Deferred** (§12) |
 | `SchemaService` | refresh (job), snapshot, objects (paged search), table detail, relationships, sample rows, difference of two snapshots | A cached snapshot, read-only | **Deferred** (§12) |
 | `MappingService` | get, apply a mapping change, coverage, validate (job), import and export R2RML, revisions | Editing and static checks over a cached snapshot | **Deferred** (§12) |
@@ -435,7 +435,7 @@ what one person can maintain.
 | Own SVG canvas | **Keep** (ADR-008) | Routing, label placement, styles, line ends and exports are built on it. A graph library would replace roughly 4,000 lines that work and would not remove the need for subgraph loading. |
 | n3, oxigraph, rdf-validate-shacl | **Keep for the Local profile** | They are what makes the app work with no server. |
 | A component library | **Do not add** | The UI is consistent and passes its own audit of contrast, text size and pointer-target size (`e2e/ui-audit.mjs`); a library would be a restyle of every view. |
-| A diagramming library for the ER diagram | **Do not add** (ADR-008) | The ER diagram of a logical model (roadmap LM-2) is an SVG view of its own over the existing layouts, line geometry and culling; one notation needs no library, and a library would not share the canvas's tested routing and export. |
+| A diagramming library for the ER diagram | **Do not add** (ADR-008) | The ER diagram of a logical model (LM-2) is an SVG view of its own over the existing layouts, line geometry and culling; one notation needs no library, and a library would not share the canvas's tested routing and export. |
 
 ### 6.2 Backend
 
@@ -996,10 +996,12 @@ is cheap and is what makes the first release interoperable.
 | **ADR-018** | Access to external databases is read-only. Writing back is a separate future capability with its own design for transactions, authorisation and integrity. | Risk out of proportion to the first four stages. | A concrete write-back use case is specified. |
 | **ADR-019** | One mapping core (IRI templates, column-to-property rules, value conversion, preview with reasons) serves both tabular file import and database mapping. | They are the same problem with different lifecycles; building it once in Phase 2 saves building it twice. | — |
 
-## 13. Ontology-driven logical data modelling (Recommended)
+## 13. Ontology-driven logical data modelling
 
-Added on 2026-10-17. Nothing in this section exists in the code yet: it is the design behind the
-roadmap's logical data modelling track, LM-1 to LM-5
+Added on 2026-10-17. LM-1 to LM-4 exist (2026-10-17): the metamodel, its two services, the LDM
+workspace and its ER diagram, LDM findings in the Validation view, the reviewed transformation,
+and the semantic mappings with traceability, impact and synchronization. LM-5 is still design.
+This section is the design behind the roadmap's logical data modelling track, LM-1 to LM-5
 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §1.3), and the product's active direction:
 
 > OWL ontology → semantic-to-logical transformation → editable logical data model → semantic
@@ -1016,7 +1018,7 @@ roadmap's logical data modelling track, LM-1 to LM-5
 | **How many** | One per project | Several per ontology | Several per ontology |
 | **Edited in** | Graph, Entities, Structure, the entity editor | The Shapes view (SH-1) | The LDM workspace and its ER diagram (LM-2) |
 | **Changed by** | Axiom change sets (§4.3) | Steps of the history (SH-1) | Logical change sets (§13.5) |
-| **Status** | **Existing** | **Existing** | **Existing** as a kept, versioned artifact (LM-1); its workspace is LM-2 |
+| **Status** | **Existing** | **Existing** | **Existing** (2026-10-17): the artifact and its revisions (LM-1), its workspace and ER diagram (LM-2), derivation (LM-3), mappings, impact and synchronization (LM-4) |
 
 They are related by mappings, never by one being stored in or generated from another:
 
@@ -1173,30 +1175,36 @@ in their scope; every reference resolves within the LDM; at most one primary key
 are attributes of the entity, inherited ones included, or ends of identifying relationships of
 which the entity is the child; no generalization cycle; a discriminator is an attribute of the
 supertype; a relationship end's minimum is not above its maximum. **What validation reports**
-without refusing (FR-M17-10): an entity with no primary key, a many-to-many not resolved
-(information), an attribute that repeats an inherited one, an entity in two exclusive
-generalizations, a domain no attribute uses, a mandatory end on both sides of a recursive
-relationship.
+without refusing (FR-M17-10): an entity with no primary key (a warning), a many-to-many not yet
+resolved (information), and, for an imported or older document that slipped past the rules, each
+break of them, every finding naming the element it is about. An attribute that repeats an
+inherited one is refused rather than reported: the editor does not let it be made.
 
 **What it deliberately lacks.** Tables, columns, physical types, nullability as storage,
 indexes, storage parameters, schemas of a database, DDL (ADR-026); and class expressions, IRIs as
 identity, inference (ADR-022). Several diagrams per LDM (FR-M17-13) and formal rule expressions
-(FR-M17-9) come after the first release of LM-2.
+(FR-M17-9) come after LM-2.
 
 ### 13.4 Service boundaries
 
-Four interfaces in `src/logical/` and `src/traceability/`, each with a `contracts.ts`, a local
-implementation, a boundary test and a JSON round-trip test, following `src/structure` (ADR-002).
+Four interfaces: the first two in `src/logical/`, the transformation and traceability in
+`src/traceability/`, following `src/structure` (ADR-002): each a `contracts.ts` of plain data and
+a local implementation, kept apart by a boundary test, and tested question by question, command
+by command.
 
 | Service | Questions and commands | Reads | Writes | Stage |
 | --- | --- | --- | --- | --- |
 | `LogicalModelQueryService` | models; summary; entities (searched, paged); describe an element; relationships of an entity; keys; generalizations | LDMs | Nothing | LM-1 |
 | `LogicalModelEditService` | create, duplicate, delete an LDM; `validate`, `apply` a `LogicalChangeSet` | LDMs | LDMs only | LM-1 |
-| `TransformationService` | `propose(scope, config, target?)` (a job); `apply(proposals, choices)` as one logical change set with its mappings | The ontology, through the existing services and its statements, read-only; the target LDM | Through `LogicalModelEditService` only | LM-3 |
-| `TraceabilityService` | mappings of an element or an IRI; coverage; staleness; `impact(ldm, from?, to?)` (a job); synchronization proposals; mappings made and edited by hand | The ontology now and in versions (`changesBetween`, `ProjectService`); LDMs | Through `LogicalModelEditService` only | LM-4 |
+| `TransformationService` | `propose(scope, config, target?)` (a job); `apply(proposals, choices)` as one logical change set with its mappings | The ontology, through the existing services and its statements, read-only; the target LDM | Through `LogicalModelEditService` only | **Existing** (2026-10-17, LM-3) |
+| `TraceabilityService` | mappings of an element or an IRI; coverage; staleness; `impact(ldm, from?, to?)` (a job); synchronization proposals; mappings made and edited by hand | The ontology now and in versions (`changesBetween`, `ProjectService`); LDMs | Through `LogicalModelEditService` only | **Existing** (2026-10-17, LM-4) |
 
-LDM validation is a scope of the existing `ValidationService` (`{ kind: 'ldm', model }`), so its
-findings appear in the Validation view with the others, stale when the LDM's revision moves.
+LDM validation is not a `ValidationService` job. `src/logical/findings.ts` computes the findings
+from `model.logicalModels` whenever the Validation view shows them, so there is nothing to start
+and nothing that can be stale when an LDM's revision moves. The view presents them as a category
+of the results beside `owl`, `shacl` and `quality` — a category of its own, not one of the
+`CATEGORIES` the ontology's worker runs — and each finding names its LDM and element, so it
+opens where the element is edited.
 
 ```mermaid
 flowchart LR
@@ -1211,7 +1219,6 @@ flowchart LR
   TS["TraceabilityService"]
   OS["EntityQueryService, StructureService,<br/>the ontology's statements (read-only)"]
   PS["ProjectService<br/>versions, differences"]
-  VS["ValidationService"]
   W --> Q
   W --> E
   T --> TR
@@ -1222,7 +1229,6 @@ flowchart LR
   TS --> PS
   TS --> Q
   TS --> E
-  VS --> Q
 ```
 
 Boundaries enforced by test: the `src/logical` services import nothing of the ontology's model;
@@ -1301,11 +1307,12 @@ with the LDM:
   many-to-many;
 - **definitions** from `rdfs:comment`, `skos:definition` or neither.
 
-Each proposal is one change it would make, with the axioms it rests on (in Manchester syntax, and
-kept in functional syntax as its mapping's source), the LDM elements it would create or change,
+Each proposal is one change it would make, with the axioms it rests on (in functional syntax, and
+kept as its mapping's source), the LDM elements it would create or change,
 the strategy, the rationale in words, and, where OWL and the LDM differ, what differs. **Structure
 for the scope chosen is offered selected; constraints are never selected to begin with**
-(ADR-024, NFR-18).
+(ADR-024, NFR-18). The engine is `src/traceability/transform.ts`, pure and run in a worker by
+`local.ts`; the review is the *Derive from the ontology…* dialog of the LDM view.
 
 | In the ontology | What it says (open world, no unique names) | What may be proposed | Selected to begin with |
 | --- | --- | --- | --- |
@@ -1417,7 +1424,7 @@ reports: two applications may read one domain differently, and both readings are
 | --- | --- |
 | Layouts over a neutral graph (`src/layout/`, `LayoutGraph`), line geometry (`src/model/geometry.ts`), culling (`src/model/culling.ts`) | The ER diagram, as a view of its own |
 | Entity lists, search and pickers (`src/components/Entities.tsx`, `EntityPicker.tsx`) | Entity and attribute lists, and choosing an entity in the workspace |
-| Validation runs and findings (`src/model/validation.ts`, `src/validation/`, the Validation view) | LDM validation as one more scope and category |
+| Validation findings (`src/model/validation.ts`, `src/validation/`, the Validation view) | LDM findings as one more category, computed from the models themselves rather than run as a job |
 | The version difference and its view (`src/projects/difference.ts`, `Versions.tsx`) | LDM differences between versions |
 | The axiom difference (`changesBetween` in `src/editing/local.ts`) | Impact reports |
 | Proposals reviewed one by one, with origin kept as functional syntax and staleness (`src/model/proposals.ts`, SH-3) | Transformation and synchronization proposals; mapping sources |

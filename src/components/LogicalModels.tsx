@@ -49,7 +49,7 @@ export function LogicalModelsDialog() {
       <div className="dialog logical-models" role="dialog" aria-modal="true" aria-labelledby="logical-title" onKeyDown={(e) => e.key === 'Escape' && close()}>
         <h2 id="logical-title">Logical data models</h2>
         <p className="muted">
-          How applications organise this project’s data: entities, attributes, relationships and keys, apart from the ontology and never written into it. Each is kept with the project and in its versions, and every change is undone like any other. Their entities are edited in the LDM workspace, which comes next.
+          How applications organise this project’s data: entities, attributes, relationships and keys, apart from the ontology and never written into it. Each is kept with the project and in its versions, and every change is undone like any other. Their entities are edited in the LDM workspace.
         </p>
         <div className="logical-new">
           <label className="field">
@@ -85,6 +85,16 @@ export function LogicalModelsDialog() {
                     {c.domains ? `, ${c.domains} domain${c.domains === 1 ? '' : 's'}` : ''}
                   </span>
                 </div>
+                <button
+                  className="btn small"
+                  title="Read and edit the entities, relationships, domains and rules of this logical model"
+                  onClick={() => {
+                    st().setDialog(null);
+                    st().openLogical(m.id);
+                  }}
+                >
+                  Open
+                </button>
                 <button className="btn small" onClick={() => void run(() => st().logicalEdit.duplicate({ model: m.id }), `“${m.name}” was copied.`)}>
                   Duplicate
                 </button>

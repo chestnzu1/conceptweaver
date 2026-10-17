@@ -24,7 +24,7 @@ const panel = page.locator('.inspector');
 const view = page.locator('.view');
 const dialog = page.getByRole('dialog');
 const node = (name) => page.locator('.node', { has: page.locator('text', { hasText: new RegExp('^' + name + '$') }) });
-const ALL = 'Graph|Entities|Structure|Shapes|Validation|Align|RDF|SPARQL|Vocabulary';
+const ALL = 'Graph|Entities|Structure|LDM|Shapes|Validation|Align|RDF|SPARQL|Vocabulary';
 // Adds a term by double-clicking the canvas and typing its name.
 const addTerm = async (name, x, y) => {
   await page.locator('#graph-svg').dblclick({ position: { x, y } });

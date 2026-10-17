@@ -15,9 +15,9 @@ platform. An OWL ontology is the semantic foundation from which relational logic
 > traceability and change impact analysis
 
 The roadmap keeps its five phases, its rules, and everything done in them. The **logical data
-modelling track, LM-1 to LM-5** (§1.3), is the active product track: LM-1 to LM-4 run in the
-browser, in a workstream beside the remaining Phase 2 tasks; LM-5 moves their services to the
-server in Phase 4. Physical data models, database schema generation, SQL DDL and deployment are
+modelling track, LM-1 to LM-5** (§1.3), is the active product track: LM-1 to LM-4 are built in
+the browser (2026-10-17), in a workstream beside the remaining Phase 2 tasks; LM-5 moves their
+services to the server in Phase 4. Physical data models, database schema generation, SQL DDL and deployment are
 not part of it.
 
 The **ontology-to-relational data-integration track, DI-1 to DI-5** (database connections, schema
@@ -104,9 +104,9 @@ magnitude for planning, not commitments.
 | MS-10 | **Standard, durable mappings** | (DI-3.) As specified in §11. | Was 4 | **Deferred** |
 | MS-11 | **Ask the data** | (DI-4.) As specified in §11. | Was 5 | **Deferred** |
 | MS-12 | **Constraint model** | Shapes are edited in a view of their own, in shape sets beside the ontology; the W3C SHACL Core tests read and write back without loss and validate to their expected reports; a finding opens the property shape and constraint it failed; shapes are proposed from the ontology and accepted one by one. | 2 (SH-1 to SH-3) | Reached 2026-10-16 |
-| MS-13 | **Independent logical models** | Two LDMs in one project are authored by hand: entities, attributes with logical types and domains, relationships with cardinality and optionality, keys, a specialization and business rules; edited in the LDM workspace and on its ER diagram; validated; undone and redone; saved, versioned and compared element by element. No LDM edit changes the ontology's revision, and no ontology edit an LDM's. | 2 (LM-1, LM-2) | |
-| MS-14 | **Reviewed transformation** | An LDM is proposed from a chosen part of the ontology under a chosen configuration; every proposal names its source axioms, strategy and rationale; nothing is created until accepted; no mandatory attribute or end, no key and no rule comes from an axiom or a shape unless the user chose it; running it again proposes nothing over what the user edited. | 2 (LM-3) | |
-| MS-15 | **Traceable and impact-aware** | Every element made from the ontology names its sources and the ontology version it came from; after an ontology change, an impact report lists the affected elements of every LDM derived from it; synchronization proposals are reviewed, applied as LDM changes, and never overwrite an element the user edited. | 2 (LM-4) | |
+| MS-13 | **Independent logical models** | Two LDMs in one project are authored by hand: entities, attributes with logical types and domains, relationships with cardinality and optionality, keys, a specialization and business rules; edited in the LDM workspace and on its ER diagram; validated; undone and redone; saved, versioned and compared element by element. No LDM edit changes the ontology's revision, and no ontology edit an LDM's. | 2 (LM-1, LM-2) | Reached 2026-10-17 |
+| MS-14 | **Reviewed transformation** | An LDM is proposed from a chosen part of the ontology under a chosen configuration; every proposal names its source axioms, strategy and rationale; nothing is created until accepted; no mandatory attribute or end, no key and no rule comes from an axiom or a shape unless the user chose it; running it again proposes nothing over what the user edited. | 2 (LM-3) | Reached 2026-10-17 |
+| MS-15 | **Traceable and impact-aware** | Every element made from the ontology names its sources and the ontology version it came from; after an ontology change, an impact report lists the affected elements of every LDM derived from it; synchronization proposals are reviewed, applied as LDM changes, and never overwrite an element the user edited. | 2 (LM-4) | Reached 2026-10-17 |
 | MS-16 | **Server-side logical models** | LDMs and their semantic mappings live on the server with revisions of their own; a 2,000-entity LDM is opened, searched and edited without being loaded whole; the local services and the server pass the same contract fixtures. | 4 (LM-5) | |
 
 Milestones are numbered in the order they were added, not the order they are reached. MS-8 to
@@ -138,9 +138,9 @@ SQL types, indexes, DDL) is none of the three, and is not on this roadmap.
 | Stage | Contents | Needs | Placed in | Size |
 | --- | --- | --- | --- | --- |
 | **LM-1** Logical data model metamodel | A typed metamodel of its own (entities, attributes, logical types and domains, relationships and their ends, cardinality and optionality, identifiers and candidate keys, generalization, business rules); LDM documents with their own identity, several per project; `LogicalModelQueryService` and `LogicalModelEditService`; logical change sets; persistence, undo and redo, versions and differences. | 1.6, 1.8, 1.10, 2.3 (all done) | Phase 2 workstream, first; done 2026-10-17 | L |
-| **LM-2** Logical data model editor | An LDM workspace of its own: entity, attribute, relationship, key, specialization and rule editing; an ER diagram; validation of the LDM; several LDMs in a project. | LM-1 (done); the layouts, geometry and culling of 2.2 | Next | XL |
-| **LM-3** Ontology-to-LDM transformation | Proposals of LDM elements from a chosen scope of the ontology, under a configuration, each with its source axioms, strategy and rationale; reviewable and non-destructive; open-world axioms and shapes offered as candidate constraints only. | LM-1; 2.1 (structured class expressions); LM-2's workspace to review in | After LM-2's workspace; its diagram can follow | L |
-| **LM-4** Semantic traceability and change impact | The semantic mapping model (sources, targets, strategy, rationale, origin version, status, customisation); traceability both ways; stale detection; impact reports; reviewed synchronization proposals; several LDMs from one ontology. | LM-3; 2.3 | After LM-3 | L |
+| **LM-2** Logical data model editor | An LDM workspace of its own: entity, attribute, relationship, key, specialization and rule editing; an ER diagram; validation of the LDM; several LDMs in a project. | LM-1 (done); the layouts, geometry and culling of 2.2 | Phase 2 workstream, second; done 2026-10-17 | XL |
+| **LM-3** Ontology-to-LDM transformation | Proposals of LDM elements from a chosen scope of the ontology, under a configuration, each with its source axioms, strategy and rationale; reviewable and non-destructive; open-world axioms and shapes offered as candidate constraints only. | LM-1; 2.1 (structured class expressions); LM-2's workspace to review in | Phase 2 workstream, third; done 2026-10-17 | L |
+| **LM-4** Semantic traceability and change impact | The semantic mapping model (sources, targets, strategy, rationale, origin version, status, customisation); traceability both ways; stale detection; impact reports; reviewed synchronization proposals; several LDMs from one ontology. | LM-3; 2.3 | Phase 2 workstream, fourth; done 2026-10-17 | L |
 | **LM-5** Server-side LDM services | The LM-1 to LM-4 interfaces answered by the Java application for server projects: LDM revisions, paged queries, transformation and impact as jobs. | LM-1 to LM-4's contracts; 4.2, 4.3 | Phase 4 | L |
 
 ```mermaid
@@ -201,7 +201,8 @@ flowchart LR
 **Consequences of this placement.**
 
 - **2.6, ELK in the companion, came first** (done 2026-10-17). LM-1 followed it (done
-  2026-10-17), and the rest of the workstream proceeds beside 2.7 to 2.12, ordered by demand (§3).
+  2026-10-17), then LM-2, LM-3 and LM-4 (all done 2026-10-17), and the rest of the workstream
+  proceeds beside 2.7 to 2.12, ordered by demand (§3).
 - **Phase 3 has no prerequisite of the LDM work**: database connection and schema discovery
   (3.8, 3.9) are deferred with data integration.
 - **Phase 4 gains LM-5** and no longer carries the mapping workbench (4.10 to 4.13, deferred).
@@ -399,9 +400,9 @@ order within it is fixed; its place among 2.6 to 2.12 is by demand, with 2.6 fir
 | # | Task | Resolves | Size |
 | --- | --- | --- | --- |
 | LM-1 | **Logical data model metamodel.** A typed metamodel in a service area of its own (`src/logical/`): LDM documents with their own identity, several per project, each with entities, attributes, logical data types and named domains, relationships with two ends (role, minimum and maximum cardinality, optionality), identifying relationships, primary identifiers and candidate keys, generalizations (complete or not, exclusive or overlapping, with a discriminator), and business rules stated in words. `LogicalModelQueryService` (models, summary, entities, describe, relationships, search, paged) and `LogicalModelEditService` (`validate`, `apply` of a `LogicalChangeSet`), with local implementations, typed refusals, a boundary test and a JSON round-trip test of every question. Kept in the project document beside the ontology and the shape sets (model format 6; a format-5 model opens with none, from a frozen fixture), so in the working copy, My Models and versions; each LDM edit one undoable step that says it changed that LDM (TD-19); each LDM a revision of its own, which the ontology's revision does not follow, nor it the ontology's (TD-20, NFR-17). Differences between versions list LDM changes element by element. An LDM exported and imported as a documented JSON format. A small dialog to create, rename, duplicate, delete, import and export LDMs; the editor is LM-2. Done 2026-10-17. | FR-M17-1 to FR-M17-8, FR-M17-14 to FR-M17-16, NFR-17, NFR-20, TD-19, TD-20, ADR-022, ADR-023, ADR-026 | L |
-| LM-2 | **Logical data model editor.** An *LDM* view beside Graph, Entities, Structure and Shapes: the project's LDMs; an entity list with search; an entity editor (attributes, types and domains, optionality, keys, specialization, rules); a relationship editor (the two ends, cardinality, optionality, identifying; resolving a many-to-many into an associative entity); an ER diagram in one notation (Information Engineering), drawn with the existing layouts, line geometry and culling as a view of its own, not the ontology's canvas, its positions kept apart from the LDM's meaning; edits on the diagram the same operations as in the forms. LDM validation as a category of the Validation view, each finding opening its element. Every action by keyboard. | FR-M17-10 to FR-M17-12 | XL |
-| LM-3 | **Ontology-to-LDM transformation.** `TransformationService`: for a chosen scope of the ontology (all, a branch, chosen classes) and a configuration saved with the LDM (naming, the datatype table, the hierarchy and object-property strategies, definitions from annotations), proposals of LDM elements, new or into an existing LDM: entities from classes; attributes from datatype properties; relationships, or associative entities, from object properties; specializations from subclass hierarchies, or roll-up and roll-down; domains from enumerations; candidate keys from `owl:hasKey`. Restrictions, domains, ranges and cardinalities (and, once FR-M18-7 is built, a chosen shape set's constraints) are offered only as candidate constraints, never chosen to begin with. Each proposal shows its source axioms, the elements it would make or change, its strategy and rationale, and where OWL and the LDM differ; accepted, edited or dismissed one by one or by kind; applied as one logical change set with the semantic mappings it implies. Runs in a worker. Never changes the ontology; run again, it proposes nothing over what the user edited. | FR-M18-1 to FR-M18-6 (FR-M18-7 as capacity allows), NFR-18, ADR-024 | L |
-| LM-4 | **Semantic traceability and change impact.** `TraceabilityService` and the semantic mapping model in full: ontology sources (entity IRIs, and the axioms used in functional syntax, as SH-3 keeps a shape's origin), LDM targets (element ids), strategy, rationale, the ontology revision and version it was made from, status (current, stale, broken), whether its targets were customised since, and how it was made (transformation, by hand, synchronization, assistant). Traceability from an LDM element to its sources and from an ontology entity to every element made from it, in every LDM; coverage on both sides; mappings made and edited by hand; stale detection against the ontology as it is; an impact report for the ontology now against each mapping's origin, or between two versions; synchronization proposals from it, reviewed as transformation proposals are, never changing a customised element without acceptance, a dismissed one not offered again until its source changes again. | FR-M18-8 to FR-M18-14, ADR-025 | L |
+| LM-2 | **Logical data model editor.** An *LDM* view beside Graph, Entities, Structure and Shapes: the project's LDMs; an entity list with search; an entity editor (attributes, types and domains, optionality, keys, specialization, rules); a relationship editor (the two ends, cardinality, optionality, identifying; resolving a many-to-many into an associative entity); an ER diagram in one notation (Information Engineering), drawn with the existing layouts, line geometry and culling as a view of its own, not the ontology's canvas, its positions kept apart from the LDM's meaning; edits on the diagram the same operations as in the forms. LDM validation as a category of the Validation view, each finding opening its element. Every action by keyboard. Done 2026-10-17. | FR-M17-10 to FR-M17-12 | XL |
+| LM-3 | **Ontology-to-LDM transformation.** `TransformationService`: for a chosen scope of the ontology (all, a branch, chosen classes) and a configuration saved with the LDM (naming, the datatype table, the hierarchy and object-property strategies, definitions from annotations), proposals of LDM elements, new or into an existing LDM: entities from classes; attributes from datatype properties; relationships, or associative entities, from object properties; specializations from subclass hierarchies, or roll-up and roll-down; domains from enumerations; candidate keys from `owl:hasKey`. Restrictions, domains, ranges and cardinalities (and, once FR-M18-7 is built, a chosen shape set's constraints) are offered only as candidate constraints, never chosen to begin with. Each proposal shows its source axioms, the elements it would make or change, its strategy and rationale, and where OWL and the LDM differ; accepted, edited or dismissed one by one or by kind; applied as one logical change set with the semantic mappings it implies. Runs in a worker. Never changes the ontology; run again, it proposes nothing over what the user edited. Built in `src/traceability/` (`contracts.ts`, the pure engine `transform.ts`, `local.ts` over `LogicalModelEditService`, `worker.ts`), with a boundary test, a test of the proposals and their application, and `e2e/transformation.mjs`; reviewed in the *Derive from the ontology…* dialog of the LDM view. Existing mappings are read back so that a second run leaves hand edits alone. FR-M18-7 is not built. Done 2026-10-17. | FR-M18-1 to FR-M18-6, NFR-18, ADR-024 | L |
+| LM-4 | **Semantic traceability and change impact.** `TraceabilityService` and the semantic mapping model in full: ontology sources (entity IRIs, and the axioms used in functional syntax, as SH-3 keeps a shape's origin), LDM targets (element ids), strategy, rationale, the ontology revision and version it was made from, status (current, stale, broken), whether its targets were customised since, and how it was made (transformation, by hand, synchronization, assistant). Traceability from an LDM element to its sources and from an ontology entity to every element made from it, in every LDM; coverage on both sides; mappings made and edited by hand; stale detection against the ontology as it is; an impact report for the ontology now against each mapping's origin, or between two versions; synchronization proposals from it, reviewed as transformation proposals are, never changing a customised element without acceptance, a dismissed one not offered again until its source changes again. Built in `src/traceability/`: `contracts.ts` the `TraceabilityService` and what a mapping, a report and a proposal are; `impact.ts` the pure engine (status, customisation, coverage, impact items, synchronization proposals); `local.ts` over `LogicalModelEditService` and the project's versions; `impactWorker.ts` the run off the page. Reviewed in the LDM view's *Traceability* part (`src/components/Traceability.tsx`: every mapping with its status, coverage both ways, tracing from an element or an IRI, mappings made and edited by hand) and the *Impact…* dialog (`src/components/ImpactDialog.tsx`: the report against each mapping's origin or between two saved versions, synchronization, dismissals kept in this browser). Tests: `traceability.test.ts`, the boundary test and `e2e/traceability.mjs`. Done 2026-10-17. | FR-M18-8 to FR-M18-14, ADR-025 | L |
 
 ### Dependencies
 
@@ -639,7 +640,7 @@ Not sequenced strictly; ordered by what users of a team product ask for first.
 | 5.4 | **Audit and notifications.** | FR-M13-6, FR-M13-7 | M |
 | 5.5 | **Publishing.** Generated documentation; release pages; stable IRIs with content negotiation. | FR-M11-5, FR-M11-6 | L |
 | 5.6 | **Alignment at depth.** SSSOM; catalogue search; module extraction. | FR-M8-6 to FR-M8-8 | M |
-| 5.7 | **Assistance.** An embedding matcher behind `MATCHERS`; drafting of definitions; question to query. Each a proposal, each behind an explicit provider setting. Begun 2026-10-16, ahead of its phase: the assistant (bring your own key; read-only tools; typed proposals compiled to change sets, reviewed and accepted; README, *The assistant*). **For logical models**, once LM-1 and LM-3 exist: LDM read tools (a project's LDMs, an LDM's summary, an element's details, its mappings, an impact report), explanations of a mapping or an impact in words, transformation suggestions as transformation proposals, and typed LDM changes proposed through the same tool, compiled to logical change sets and reviewed and accepted as ontology proposals are. The same assistant, providers, key handling and review: no second architecture. Left: the matcher, drafting and SPARQL, the LDM tools, and the server side (the key kept per user, encrypted). | M12 (FR-M12-8 to FR-M12-11 for LDMs), ADR-010, AR-10, AR-18 | L, and M for the LDM tools |
+| 5.7 | **Assistance.** An embedding matcher behind `MATCHERS`; drafting of definitions; question to query. Each a proposal, each behind an explicit provider setting. Begun 2026-10-16, ahead of its phase: the assistant (bring your own key; read-only tools; typed proposals compiled to change sets, reviewed and accepted; README, *The assistant*). **For logical models**, with LM-1 to LM-4 existing: LDM read tools (a project's LDMs, an LDM's summary, an element's details, its mappings, an impact report), explanations of a mapping or an impact in words, transformation suggestions as transformation proposals, and typed LDM changes proposed through the same tool, compiled to logical change sets and reviewed and accepted as ontology proposals are. The same assistant, providers, key handling and review: no second architecture. Left: the matcher, drafting and SPARQL, the LDM tools, and the server side (the key kept per user, encrypted). | M12 (FR-M12-8 to FR-M12-11 for LDMs), ADR-010, AR-10, AR-18 | L, and M for the LDM tools |
 | 5.8 | **Integration.** A documented public API; webhooks on revisions and releases; export of releases to a Git repository; a read-only SPARQL endpoint. | FR-M9-7 | M |
 | 5.9 | **Editing together in real time.** | FR-M13-8 | XL |
 
@@ -647,7 +648,7 @@ Not sequenced strictly; ordered by what users of a team product ask for first.
 
 Phase 4 throughout. 5.3 needs 5.1. 5.5 needs releases (4.6). 5.9 last, and only if asked for:
 review-based collaboration (5.3) covers most governance needs without it. The LDM part of 5.7 needs LM-1
-and LM-3; like the assistant itself, it can be built in the page ahead of this phase.
+to LM-4; like the assistant itself, it can be built in the page ahead of this phase.
 
 ### Technical complexity
 
@@ -753,9 +754,11 @@ and with them milestone MS-4, the MVP; then 2.5** (each with its status below). 
 **2026-10-17: the roadmap realigned** with ontology-driven logical data modelling (§1.3); data
 integration deferred (§11). Nothing completed changed.
 
-**2026-10-17: 2.6 done, then LM-1** (each with its status below). **The next task is LM-2**, the
-logical data model editor and its ER diagram, set out below after 2.6 and LM-1 as they were.
-After them come SH-1 as it was set out, and the status of each stage and task done.
+**2026-10-17: 2.6 done, then LM-1, LM-2, LM-3 and LM-4** (each with its status below). **The
+logical data modelling workstream's browser stages are done, and milestone MS-15 with them; LM-5
+waits for Phase 4. The next task is 2.7**, annotation properties as entities and labels in several
+languages (FR-M1-4, FR-M1-5), set out in §3.4; then the rest of 2.7 to 2.12 as demand and
+dependencies allow.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
 
@@ -965,6 +968,127 @@ ontology by a list, which LDMs were not on (`carriedOver` in `src/editing/local.
 it now, and the NFR-17 test applies such a proposal. What it left: the editor and the diagram
 (LM-2); an LDM's revision is a local id that moves with each change, not a line of revisions
 (LM-5); diagrams, kept with the LDM, move its revision like any change until LM-2 says otherwise.
+
+**Status, 2026-10-17: LM-2 done** (FR-M17-10 to FR-M17-12, FR-M17-5's associative entity, NFR-7,
+NFR-17). The workspace is `src/components/LogicalData.tsx`, a tab of its own (*LDM*). It lists the
+project's models (a select when there are several), the counts of what each holds, and *Logical
+models…* to make, rename, duplicate, import, export and delete them; each model's row in that
+dialog also opens the workspace. Its sections are entities (a list with search; arrow keys choose,
+`n` makes one, Delete removes one with what is only its own, each one undoable step); an entity
+editor (name, definition, abstract; attributes with a definition, one of the ten logical types or
+a named domain, a text length or a decimal precision and scale, optional and derived, and
+inherited attributes shown with where they come from; primary and candidate keys whose members
+are its attributes or the identity borrowed at an identifying end; specialization with supertypes,
+subtypes, completeness, exclusivity and a discriminator, an edge that would close a circle never
+offered; and the rules about it); relationships (both ends with entity, role, minimum and maximum,
+identifying, and a command that resolves a many-to-many into an associative entity with two
+identifying relationships and a key borrowing both ends, carrying what named the relationship
+over, as one change set); domains (base type, length, range, pattern and values, with what uses
+them, a domain in use not deletable); and business rules in words (kind, status, and what they are
+about). Every edit goes through `LogicalModelEditService`, one step of the history, and no LDM
+edit moves the ontology's revision (NFR-17).
+
+The ER diagram (`src/components/LdmDiagram.tsx`) is Information Engineering / crow's foot: each
+end drawn with its own cardinality (a foot for many, a stroke for exactly one, a ring for
+optional), solid for an identifying relationship and dashed otherwise, a recursive relationship as
+a loop. It is drawn from the same model in a view of its own: the built-in hierarchy layout places
+the entities, but where they sit is stored only once someone moves one
+(`LogicalModel.diagrams[0].positions`), apart from what the model means, and a name or attribute
+edit does not move the picture. Choosing an entity (click, Enter or Space) opens its editor; arrow
+keys nudge it (Shift for more), `+`, `-` and `0` zoom and fit; a drag is one undoable step. Its
+tools make an entity or a relationship with the same change sets as the sections.
+
+Validation (`src/logical/findings.ts`, shown in *Validation*) is a category of its own, worked out
+from the document as it stands rather than from the last validation run, so its findings are never
+stale: every rule of the LDM (duplicate names, keys and relationship ends that resolve, a second
+primary key, cycles, types, discriminators and what rules name), an entity without a primary key
+(warning) and a many-to-many (information). Each names the model and the element; the row's entity
+and *Open in the LDM* open it where it is edited.
+
+`src/logical/edits.test.ts` checks every change the workspace builds (names free whatever their
+case, defaults, keys, domains and types, ends, many-to-many resolution, cycles, rules, diagrams and
+cascade removal); `src/logical/findings.test.ts` the findings and their stable ids; and
+`e2e/logical-workspace.mjs` the workspace in the browser, by keyboard and by form, through the
+diagram and the validation view to a reload. Doing it found and fixed two things: the view's
+keyboard handler had captured the first render's apply, which was the empty state, so `n` did
+nothing once a model was made; and *Add value* on a domain made a value with no code, which the
+LDM's own rules refused, so the button did nothing (it now makes a `Value`, `Value 2`… code to
+change). What it left: drawing a relationship by dragging from one entity to another is not
+offered — relationships are made in their section or by the diagram's tool, then edited in their
+editor; several diagrams per LDM (FR-M17-13) and formal rule expressions (FR-M17-9) remain out of
+scope.
+
+**Status, 2026-10-17: LM-3 done** (FR-M18-1 to FR-M18-6, NFR-18, ADR-024). The transformation is
+`src/traceability/`: `contracts.ts` the `TransformationService` (propose, apply) and what a
+proposal is; `transform.ts` the pure engine, reading the ontology and the LDM as plain data;
+`local.ts` the service over the project in the editor, applying accepted proposals through
+`LogicalModelEditService`; `worker.ts` the run off the page. *Derive from the ontology…* in the
+LDM view reviews them. The configuration sits at the top: the scope (the whole ontology, a branch
+and what is under it, or chosen classes; with or without imported classes); names from labels or
+from the last part of each IRI, as written or lower, upper, Pascal or camel case, joined by a
+space, nothing, an underscore or a hyphen, entity names optionally singular; the datatype table,
+each XSD type's logical type changeable and kept with the model; hierarchies as a specialization,
+one entity per hierarchy, or attributes copied into each subtype; object properties as
+relationships, or associative entities where both ends are many; definitions read from the
+ontology or not. Below it the proposals are grouped by what they would make, chosen one by one or
+by kind, each with the axioms it was read from, the elements it would make or change, its
+strategy, why, and where OWL and the LDM differ; structure comes chosen, while a candidate
+constraint (a mandatory attribute or end, a maximum, a key, a rule) is never chosen to begin with.
+Accepting applies the chosen proposals, with the semantic mappings they imply, as one logical
+change set of that LDM — one undo takes it back — and saves the configuration with it; *Apply
+and edit* opens the element it made. A result worked out against an LDM that has moved on is
+refused, and so is a proposal whose requirement is not accepted. Running it again reads the
+mappings back and proposes nothing over what the user changed; what it leaves alone it lists with
+why. The ontology is never written.
+
+`src/traceability/transform.test.ts` checks the proposals for the example ontology — a structure
+proposal per class, datatype property, object property and subclass edge; nothing mandatory; one
+relationship for an inverse pair; roll-up and roll-down; associative entities; functionality as a
+reason; restrictions and keys as candidates only; enumerations as domains; scopes and naming —
+and the service: one change set with the configuration, refusals for a moved base or a missing
+requirement, and the ontology untouched. `e2e/transformation.mjs` checks the dialog in the
+browser, from the configuration through the review, by kind and one by one, to the worker, the
+undo and the redo, and a second run that proposes nothing over a rename and a hand-made
+constraint. What it left: shape sets as a further input (FR-M18-7), labels in several languages
+(2.7), the assistant's LDM tools (5.7), and LDMs on a server (LM-5).
+
+**Status, 2026-10-17: LM-4 done** (FR-M18-8 to FR-M18-14, ADR-025), and milestone MS-15 with it.
+The mapping model is `SemanticMapping` in `src/logical/contracts.ts`: sources with the axioms they
+were read from, targets, strategy, rationale, origin (ontology, revision, named version),
+baseline, and how and when it was made. `src/traceability/impact.ts` works out, against the
+ontology as it is or against two saved versions, each mapping's status (*current*, *stale*,
+*broken*), whether its targets differ from what it last made (*customised*), coverage both ways,
+the impact items and the synchronization proposals; `local.ts` is the service over the project
+and its versions, applying accepted proposals through `LogicalModelEditService`; and
+`impactWorker.ts` runs impact and synchronization off the page. The LDM view's *Traceability*
+part lists every mapping with its status and what changed; the derivation's coverage (classes in
+scope without an element, elements without a source); a trace from the chosen element to its
+sources and from an ontology IRI to every element made from it in every LDM; and mappings made,
+edited and removed by hand. The *Impact…* dialog shows the report against each mapping's origin
+or between two saved versions, every item with its kind (not represented, source gone, element
+deleted, type, cardinality, hierarchy or restriction changed, renamed, another axiom changed),
+the axioms no longer or newly stated, the element it concerns and whether the user changed it, and
+opens the element. Synchronization is offered for the present only, as additions, updates,
+removals and records: nothing about an element the user changed is chosen to begin with, a
+proposal turned down is remembered in this browser and not offered again until what the ontology
+says of its sources changes, and the accepted proposals are applied as one undoable step of that
+LDM. Two LDMs from one ontology each read their own configuration, mappings, coverage and impact
+report; mappings travel in their LDM, in the project's versions and in the difference between
+them. The ontology is never written, and an LDM never moves by itself.
+
+`src/traceability/traceability.test.ts` checks status and customisation, impact kinds (a removed
+property, a renamed class, a changed datatype), two LDMs from one ontology, version-to-version
+reports with no synchronization for the past, dismissed proposals, the apply as one commit, hand
+mappings and tracing both ways; the boundary test keeps the area to its own files, the ontology
+read-only and the contracts free of runtime imports. `e2e/traceability.mjs` drives the
+acceptance in the browser: two models from one ontology, one of them changed by hand, a datatype
+property removed, each impact report — worked out in a worker — naming exactly its attribute as
+source gone and its mapping broken; the removal offered and applied as one change set that one
+undo takes back; a customised attribute offered but never chosen, and changed only when the user
+chooses it; a dismissal that is not offered again; the two saved versions compared; and the
+ontology's Turtle identical after every synchronization. What it left: mappings exported as RDF
+with PROV-O (FR-M18-15), shape sets as a further input to transformation (FR-M18-7), the
+assistant's LDM tools (5.7), and LDMs and their mappings on a server (LM-5).
 
 **Stage SH-1: shapes as a first-class editor.** It comes before 2.3 so that versions cover shape
 sets from the start, and SH-2 and SH-3 build on it.

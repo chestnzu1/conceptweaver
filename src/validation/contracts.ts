@@ -20,12 +20,15 @@ import type { DlReport, EngineId, JobState, OntologyRef } from '../reasoning/con
 
 export type { OntologyRef };
 
-export type Category = 'owl' | 'shacl' | 'quality';
+export type Category = 'owl' | 'shacl' | 'quality' | 'ldm';
+
+/** An element of a logical data model, as its editor names it (`ElementRef` in src/logical/contracts.ts). */
+export type LdmElementRef = { entity: string } | { attribute: string } | { key: string } | { relationship: string } | { generalization: string } | { rule: string } | { domain: string } | { mapping: string } | { diagram: string };
 export type Level = 'error' | 'warning' | 'info';
-export type EntityType = 'class' | 'object property' | 'data property' | 'individual' | 'relationship' | 'shape' | 'ontology' | 'data';
+export type EntityType = 'class' | 'object property' | 'data property' | 'individual' | 'relationship' | 'shape' | 'ontology' | 'data' | 'logical model' | 'logical element';
 
 export interface EntityRef {
-  kind: 'term' | 'prop' | 'rel' | 'shape' | 'model' | 'external';
+  kind: 'term' | 'prop' | 'rel' | 'shape' | 'model' | 'external' | 'ldm';
   /** Term id, property key, relation id, shape id, or for something outside the model its IRI. */
   id: string;
   name: string;
@@ -80,6 +83,8 @@ export interface Finding {
   justificationNote?: string;
   /** Which reasoner found it, when it was not the app's own. */
   engine?: string;
+  /** For an LDM finding: the logical model, and the element it opens where there is one. */
+  ldm?: { model: string; element?: LdmElementRef };
 }
 
 /** An entity an axiom of a justification mentions, with how it is written in that axiom. */
@@ -174,6 +179,10 @@ export interface Fix {
   preview: string;
 }
 
+/**
+ * The categories a validation job runs. LDM findings are not a job: they are worked out from the
+ * logical models as the document stands, every time the results are shown.
+ */
 export const CATEGORIES: Category[] = ['owl', 'shacl', 'quality'];
 
 /** Which checks to run: one category, or all of them. */

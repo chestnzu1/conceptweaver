@@ -43,7 +43,7 @@ export const SHACL_ENGINE = {
   not: ['SHACL-SPARQL constraints and SPARQL targets (sh:sparql, sh:SPARQLTarget): shapes using them are read but those parts are not checked.', 'SHACL Advanced Features (rules, functions, node expressions).', 'Entailment regimes (sh:entailment): the data graph is validated as given. The only inference is the one SHACL itself prescribes, rdfs:subClassOf for class targets and sh:class.'],
 };
 
-const CATEGORY_LABEL: Record<Category, string> = { owl: 'OWL', shacl: 'SHACL', quality: 'Quality' };
+const CATEGORY_LABEL: Record<Category, string> = { owl: 'OWL', shacl: 'SHACL', quality: 'Quality', ldm: 'LDM' };
 export const categoryLabel = (c: Category) => CATEGORY_LABEL[c];
 
 /** The run as JSON: everything shown, without the model itself. */

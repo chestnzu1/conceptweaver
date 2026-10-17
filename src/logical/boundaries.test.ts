@@ -14,7 +14,7 @@ const imports = (file: string) => [...readFileSync(here + file, 'utf8').matchAll
 
 describe('what the logical models depend on', () => {
   it('is each other, and the project they are kept in', () => {
-    expect(files.sort()).toEqual(['contracts.ts', 'exchange.ts', 'local.ts', 'rules.ts', 'text.ts']);
+    expect(files.sort()).toEqual(['contracts.ts', 'edits.ts', 'exchange.ts', 'findings.ts', 'local.ts', 'rules.ts', 'text.ts']);
     for (const file of files) {
       for (const from of imports(file)) {
         if (from.startsWith('./') || from === '../model/types') continue;

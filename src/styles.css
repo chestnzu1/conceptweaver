@@ -3382,6 +3382,84 @@ table.prefixes small {
   margin-bottom: 4px;
 }
 
+/* Deriving an LDM from the ontology (LM-3): the configuration first, then the proposals by kind. */
+.dialog.transform .transform-config {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px 12px;
+  align-items: end;
+}
+
+.dialog.transform .transform-config .check {
+  min-height: 28px;
+}
+
+.transform-scope {
+  margin: 0;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.transform-scope legend {
+  padding: 0 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.transform-classes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 10px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.transform-datatypes summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.transform-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px 10px;
+}
+
+.transform-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.transform-choose-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.transform-choose-all .link {
+  min-height: 24px;
+}
+
+.transform-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.transform-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* These proposals have no dismiss button in the corner, so they need no room for one. */
+.transform .proposal {
+  padding-right: 10px;
+}
+
 .dialog-actions .field.into {
   display: flex;
   flex-direction: row;
@@ -8092,4 +8170,694 @@ tbody tr.pinned td:first-child {
 
 .diff-entities li.update code {
   color: var(--ink);
+}
+
+/* ------------------------------------------------------ logical data models */
+
+/* The LDM workspace (roadmap LM-2): the model's entities, relationships, domains and rules on the
+   left, the editor of the chosen one on the right, and the ER diagram as a view of the same
+   model. Nothing here is an ontology view: these are separate artifacts (ADR-022). */
+
+.ldm-view {
+  overflow: hidden;
+}
+
+.ldm-view > .tabs {
+  align-self: flex-start;
+  margin: 8px 16px 0;
+}
+
+.ldm-head {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ldm-empty {
+  margin: auto;
+  max-width: 540px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  text-align: center;
+}
+
+.ldm-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.ldm-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.ldm-list-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ldm-list-tools input[type='search'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.ldm-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ldm-list li > button {
+  width: 100%;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ldm-list li > button:hover {
+  background: var(--panel-2);
+}
+
+.ldm-list li > button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ldm-rule-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ldm-editor {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ldm-title {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.ldm-title .field {
+  min-width: 180px;
+}
+
+/* Inputs in the workspace are the same kind as elsewhere, but stand on the canvas without a
+   surrounding table cell. */
+.ldm-view input:not([type='checkbox']):not([type='radio']),
+.ldm-view select,
+.ldm-view textarea {
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+}
+
+.ldm-view textarea {
+  resize: vertical;
+}
+
+.ldm-view input:not([type='checkbox']):focus,
+.ldm-view select:focus,
+.ldm-view textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.ldm-view input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.ldm-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.ldm-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ldm-block-head h3 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.ldm-block-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ldm-label {
+  min-width: 96px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ldm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.ldm-param {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.ldm-param > input {
+  width: 60px;
+}
+
+.ldm-attribute,
+.ldm-key {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.ldm-attribute-line,
+.ldm-key-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ldm-attribute-line .name {
+  width: 150px;
+}
+
+.ldm-attribute .definition {
+  width: 100%;
+}
+
+.ldm-type {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ldm-members {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ldm-inherited {
+  padding: 2px 4px;
+  font-size: 12.5px;
+}
+
+.ldm-plain-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.ldm-note {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--info) 35%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+}
+
+.ldm-end {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.ldm-end legend {
+  padding: 0 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ldm-targets {
+  min-height: 150px;
+}
+
+/* The ER diagram: a picture of the same model, in Information Engineering notation. */
+.ldm-diagram-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.ldm-diagram {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ldm-diagram-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ldm-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--canvas);
+}
+
+.ldm-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ldm-canvas svg {
+  display: block;
+}
+
+.ldm-node {
+  cursor: grab;
+  touch-action: none;
+}
+
+.ldm-node:active {
+  cursor: grabbing;
+}
+
+.ldm-node:focus {
+  outline: none;
+}
+
+.ldm-node-box {
+  fill: var(--panel);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.ldm-node.on .ldm-node-box {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.ldm-node:focus-visible .ldm-node-box {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.ldm-node-name {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ldm-node-rule {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.ldm-node-attr {
+  fill: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.ldm-node-type {
+  fill: var(--ink-3);
+}
+
+.ldm-pk {
+  fill: var(--accent);
+  font-weight: 700;
+}
+
+.ldm-attr-mark {
+  fill: var(--ink-3);
+}
+
+.ldm-rel {
+  stroke: var(--edge);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.ldm-mark line {
+  stroke: var(--edge);
+  stroke-width: 1.5;
+}
+
+.ldm-mark circle {
+  fill: var(--canvas);
+  stroke: var(--edge);
+  stroke-width: 1.5;
+}
+
+.ldm-rel-label {
+  fill: var(--ink-3);
+  font-size: 11px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+}
+
+/* Traceability (LM-4): what each element was made from, what is covered, and tracing either way. */
+.ldm-traceability .trace-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 4px 12px 8px;
+}
+
+.ldm-traceability .trace-summary .muted {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.trace-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trace-status.current {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+}
+
+.trace-status.stale {
+  border-color: color-mix(in srgb, var(--warn) 50%, var(--line));
+  color: var(--warn);
+}
+
+.trace-status.broken {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  color: var(--danger);
+}
+
+.trace-status.customised {
+  border-color: color-mix(in srgb, var(--info) 45%, var(--line));
+  color: var(--info);
+}
+
+.trace-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.trace-dot.current {
+  background: var(--accent);
+}
+
+.trace-dot.stale {
+  background: var(--warn);
+}
+
+.trace-dot.broken {
+  background: var(--danger);
+}
+
+.trace-mappings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+}
+
+.trace-mappings > li > button {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 1px 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trace-mappings > li > button:hover {
+  background: var(--panel-2);
+}
+
+.trace-mappings > li > button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.trace-mappings .trace-dot {
+  grid-row: span 2;
+  align-self: center;
+}
+
+.trace-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-mappings .muted.small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-coverage {
+  margin-top: 8px;
+}
+
+.trace-quality {
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.trace-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.trace-facts dt {
+  color: var(--ink-2);
+}
+
+.trace-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.trace-from-element,
+.trace-results {
+  margin-top: 6px;
+}
+
+.trace-from-element > p,
+.trace-results > p {
+  margin: 0 0 4px;
+}
+
+.trace-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+/* Impact and synchronization (LM-4): what the ontology moved, and the proposals it makes. */
+.dialog.impact-dialog {
+  width: min(980px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.impact-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.impact-controls .field {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.impact-controls > .muted {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.impact-compared {
+  margin: 0;
+}
+
+.impact-items,
+.impact-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.impact-group h3,
+.dialog.impact-dialog .proposal-group h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.impact-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.impact-item.customised {
+  border-left-color: var(--info);
+  background: color-mix(in srgb, var(--info) 5%, transparent);
+}
+
+.impact-item > .muted {
+  margin: 0;
+}
+
+.impact-item .tag {
+  margin-left: 8px;
+}
+
+.impact-item .axiom,
+.dialog.impact-dialog .proposal .axiom {
+  display: block;
+  margin-top: 4px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.impact-item details summary,
+.dialog.impact-dialog .proposal details summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.impact-item .link {
+  align-self: flex-start;
+  min-height: 24px;
+}
+
+.impact-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.impact-sync-actions .muted {
+  margin: 0;
+}
+
+.dialog.impact-dialog .proposal.customised {
+  border-left: 3px solid var(--info);
+  background: color-mix(in srgb, var(--info) 5%, transparent);
+}
+
+.dialog.impact-dialog .proposal .tag {
+  margin-left: 4px;
+  font-weight: 400;
+}
+
+.dialog.impact-dialog .proposal > .muted {
+  margin: 0;
+}
+
+.dialog.impact-dialog .proposal > .link {
+  align-self: flex-start;
+  min-height: 24px;
 }

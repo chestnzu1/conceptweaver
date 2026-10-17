@@ -44,7 +44,7 @@ await side.getByRole('button', { name: 'Expand all' }).click();
 await tab(/^Validation/);
 await settled();
 ok(/^Validated \d.* · revision [0-9a-f]{8} · \d+ entities$/.test(flat(await v.locator('.run-state').innerText())), 'opening the tab runs the checks once and says when, which revision, and how much: ' + flat(await v.locator('.run-state').innerText()));
-ok((await v.locator('.card h3').allInnerTexts()).map(flat).join(' | ').toUpperCase() === 'OWL CONSISTENCY | SHACL VALIDATION | ONTOLOGY QUALITY', 'three categories, each with a card of its own');
+ok((await v.locator('.card h3').allInnerTexts()).map(flat).join(' | ').toUpperCase() === 'OWL CONSISTENCY | SHACL VALIDATION | ONTOLOGY QUALITY | LOGICAL DATA MODELS', 'four categories, each with a card of its own');
 ok(flat(await card('OWL consistency').locator('.status').innerText()) === 'Status: No contradiction found' && flat(await card('OWL consistency').innerText()).includes('Unsatisfiable classes: 0'), 'OWL: consistent, 0 unsatisfiable classes');
 ok(flat(await card('SHACL validation').innerText()).includes('No shapes yet'), 'SHACL: nothing to validate against until there are shapes');
 ok(/Warnings: \d+/.test(flat(await card('Ontology quality').innerText())) && flat(await card('Ontology quality').innerText()).includes('not errors'), 'Quality: counts, and a reminder that these are not errors');

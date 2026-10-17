@@ -9,6 +9,7 @@ import type { Inference } from '../model/store';
 import { currentDl, runIsStale, useStore } from '../model/store';
 import { creditOf, DL_REASONERS, ENGINES, reasonerHealth, type DlReasonerChoice, type ReasoningResult } from '../model/reasoning';
 import { MODEL_DATA, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../validation/contracts';
+import { ldmProblems, type LdmProblem } from '../logical/findings';
 import { fixOf } from '../validation/local';
 import { categoryLabel, DL_LIMITS, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE } from '../validation/report';
 import { CommitInput } from './fields';
@@ -23,6 +24,24 @@ import { Disclosure } from './Icon';
 const PAGE = 200;
 const SEVERITY_LABEL: Record<Level, string> = { error: 'Error', warning: 'Warning', info: 'Suggestion' };
 const fileBase = (name: string) => name.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'model';
+
+/** An LDM problem as a result of the validation view, opening where it is edited. */
+function fromLdm(p: LdmProblem): Finding {
+  return {
+    id: p.id,
+    category: 'ldm',
+    severity: p.severity,
+    rule: p.rule,
+    ruleId: p.ruleId,
+    message: p.message,
+    entity: p.element
+      ? { kind: 'ldm', id: Object.values(p.element)[0] as string, name: p.elementName, type: 'logical element' }
+      : { kind: 'ldm', id: p.model, name: p.modelName, type: 'logical model' },
+    terms: [],
+    rels: [],
+    ldm: { model: p.model, ...(p.element ? { element: p.element } : {}) },
+  };
+}
 
 export function ValidationView() {
   const model = useStore((s) => s.model);
@@ -45,7 +64,11 @@ export function ValidationView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docSeq]);
 
-  const findings = run?.findings ?? [];
+  // The logical models are checked from the document as it is, not from the last validation run:
+  // their findings are never stale, and are there before any run.
+  const ldm = useMemo(() => ldmProblems(model.logicalModels), [model.logicalModels]);
+  const ldmFindings = useMemo(() => ldm.map(fromLdm), [ldm]);
+  const findings = useMemo(() => [...(run?.findings ?? []), ...ldmFindings], [run?.findings, ldmFindings]);
   const count = (c: Category, l?: Level) => findings.filter((f) => f.category === c && (!l || f.severity === l)).length;
   const reasoning = useReasoning(tab === 'inferences');
   // What the OWL 2 DL reasoner entails, when it is the one chosen and was asked about the model as it is.
@@ -245,6 +268,28 @@ export function ValidationView() {
             </button>
           </p>
         </section>
+
+        <section className={'card ' + (model.logicalModels.length ? (count('ldm', 'error') ? 'is-bad' : count('ldm', 'warning') ? 'is-warn' : 'is-good') : '')}>
+          <h3>Logical data models</h3>
+          {!model.logicalModels.length ? (
+            <p className="muted">No logical data model yet: entities, attributes and rules for how an application organises its data, apart from the ontology.</p>
+          ) : (
+            <>
+              <p className="status">
+                Models: <strong>{model.logicalModels.length}</strong>
+              </p>
+              <p>
+                Errors: <strong>{count('ldm', 'error')}</strong> · Warnings: <strong>{count('ldm', 'warning')}</strong> · Suggestions: <strong>{count('ldm', 'info')}</strong>
+              </p>
+              <p className="muted">Worked out from the model as it is: what breaks an LDM’s rules, an entity nothing identifies, and a many-to-many an associative entity could resolve.</p>
+            </>
+          )}
+          <p>
+            <button className="link" onClick={() => (model.logicalModels[0] ? st().openLogical(model.logicalModels[0].id) : st().setView('ldm'))}>
+              Open the logical models
+            </button>
+          </p>
+        </section>
       </div>
 
       <div className="tabs sub" role="tablist" aria-label="Validation">
@@ -262,7 +307,7 @@ export function ValidationView() {
         ))}
       </div>
 
-      {tab === 'results' && <Results findings={findings} counts={{ owl: count('owl'), shacl: count('shacl'), quality: count('quality') }} stale={stale} ran={!!run} dataName={run?.data.source === 'graph' ? (run.shacl?.dataSource ?? '') : ''} />}
+      {tab === 'results' && <Results findings={findings} counts={{ owl: count('owl'), shacl: count('shacl'), quality: count('quality'), ldm: count('ldm') }} stale={stale} ran={!!run || ldmFindings.length > 0} dataName={run?.data.source === 'graph' ? (run.shacl?.dataSource ?? '') : ''} />}
       {tab === 'graphs' && <DataGraphs chooseFile={chooseFile} />}
       {tab === 'rules' && <Rules />}
       {tab === 'inferences' && (
@@ -599,6 +644,7 @@ function Results({ findings, counts, stale, ran, dataName }: { findings: Finding
     else if (e.kind === 'rel') st().select([], [e.id]);
     else if (e.kind === 'shape') st().openShapes(null, e.id);
     else if (e.kind === 'model') st().select([]);
+    else if (e.kind === 'ldm' && f.ldm) st().openLogical(f.ldm.model, f.ldm.element);
   };
   const showOnCanvas = (f: Finding) => {
     if (f.terms.length) st().focusTerm(f.terms[0]);
@@ -634,6 +680,7 @@ function Results({ findings, counts, stale, ran, dataName }: { findings: Finding
             <option value="owl">OWL ({counts.owl})</option>
             <option value="shacl">SHACL ({counts.shacl})</option>
             <option value="quality">Quality ({counts.quality})</option>
+            <option value="ldm">LDM ({counts.ldm})</option>
           </select>
         </label>
         <label>
@@ -683,7 +730,8 @@ function Results({ findings, counts, stale, ran, dataName }: { findings: Finding
                   onClick={() => {
                     setOpen(open === f.id ? null : f.id);
                     setFixing(null);
-                    openEntity(f);
+                    // An LDM finding stays here until asked to open: its detail says what it is about.
+                    if (f.category !== 'ldm') openEntity(f);
                   }}
                 >
                   <td>
@@ -695,7 +743,15 @@ function Results({ findings, counts, stale, ran, dataName }: { findings: Finding
                   <td className="entity">
                     {f.entity ? (
                       <>
-                        <button className="link" title={`${f.entity.iri ?? ''}\nOpen this ${f.entity.type}`}>
+                        <button
+                          className="link"
+                          title={`${f.entity.iri ?? ''}\nOpen this ${f.entity.type}`}
+                          onClick={(e) => {
+                            if (f.category !== 'ldm') return;
+                            e.stopPropagation();
+                            openEntity(f);
+                          }}
+                        >
                           {f.entity.name}
                         </button>
                         <span className="muted"> {f.entity.type}</span>
@@ -718,7 +774,13 @@ function Results({ findings, counts, stale, ran, dataName }: { findings: Finding
                       <dl>
                         <dt>Category</dt>
                         <dd>
-                          {f.category === 'owl' ? `OWL logical consistency: from ${f.engine ? `${f.engine}, the OWL 2 DL reasoner` : 'the app’s own reasoner'}` : f.category === 'shacl' ? 'SHACL constraint: the data does not have the required shape' : 'Ontology quality: a modelling diagnostic, not an error in the logic'}
+                          {f.category === 'owl'
+                            ? `OWL logical consistency: from ${f.engine ? `${f.engine}, the OWL 2 DL reasoner` : 'the app’s own reasoner'}`
+                            : f.category === 'shacl'
+                              ? 'SHACL constraint: the data does not have the required shape'
+                              : f.category === 'ldm'
+                                ? 'Logical data model: how the model organises its data, apart from the ontology'
+                                : 'Ontology quality: a modelling diagnostic, not an error in the logic'}
                         </dd>
                         {f.entity && (
                           <>
@@ -815,6 +877,11 @@ function Results({ findings, counts, stale, ran, dataName }: { findings: Finding
                         {f.fix && fixing !== f.id && (
                           <button className="btn small" disabled={stale} title={stale ? 'Run the checks again first: the model has changed since this was found' : 'Shows what would change before anything is changed'} onClick={() => setFixing(f.id)}>
                             {f.fix.label}…
+                          </button>
+                        )}
+                        {f.category === 'ldm' && (
+                          <button className="btn small" onClick={() => openEntity(f)}>
+                            Open in the LDM
                           </button>
                         )}
                         {(f.terms.length > 0 || f.rels.length > 0) && (
