@@ -30,7 +30,19 @@ function services() {
     [NS + 'Organisation', [restriction('hasLocalProfile', 'OrganisationLocalProfile'), { kind: 'expression', key: 'x|subClassOf|[ ]', relation: 'subClassOf', text: '[ ]' }]],
   ]);
   const answer: InferredInput = { provenance: REASONED, entailed: { subClassOf: [...input.subClassOf, { sub: NS + 'Clerk', sup: NS + 'Organisation' }], links: 'direct', equivalent: [[NS + 'Org', NS + 'Organisation']], unsatisfiable: [NS + 'Chimera'] }, explain: () => ['a ground'] };
-  const local = createGraphService(() => ({ ...REF, graph: () => input, inferred: () => answer, axioms: (iris) => new Map(iris.filter((i) => axioms.has(i)).map((i) => [i, axioms.get(i)!])), connections: () => new Map([[NS + 'Party', 9]]) }));
+  const properties = {
+    properties: [
+      { ref: { iri: NS + 'relatedTo', label: 'related to', type: 'object' as const } },
+      { ref: { iri: NS + 'worksFor', label: 'works for', type: 'object' as const } },
+      { ref: { iri: NS + 'employedBy', label: 'employed by', type: 'object' as const }, search: ['employment'] },
+      { ref: { iri: NS + 'age', label: 'age', type: 'data' as const } },
+    ],
+    subPropertyOf: [
+      { sub: NS + 'worksFor', sup: NS + 'relatedTo' },
+      { sub: NS + 'employedBy', sup: NS + 'worksFor' },
+    ],
+  };
+  const local = createGraphService(() => ({ ...REF, graph: () => input, properties: () => properties, inferred: () => answer, axioms: (iris) => new Map(iris.filter((i) => axioms.has(i)).map((i) => [i, axioms.get(i)!])), connections: () => new Map([[NS + 'Party', 9]]) }));
   return { local, ...wired(local) };
 }
 
@@ -60,6 +72,12 @@ describe('the structure service over HTTP', () => {
     await both((s) => s.compare({ ...REF, classAIri: NS + 'Clerk', classBIri: NS + 'Chimera' }));
     await both((s) => s.explain({ ...REF, subClassIri: NS + 'Clerk', superClassIri: NS + 'Party' }));
     await both((s) => s.explain({ ...REF, subClassIri: NS + 'Clerk', superClassIri: NS + 'Organisation' }));
+    await both((s) => s.propertyChildren({ ...REF }));
+    await both((s) => s.propertyChildren({ ...REF, parentIri: NS + 'relatedTo', limit: 1 }));
+    await both((s) => s.propertyChildren({ ...REF, parentIri: NS + 'relatedTo', filter: 'employ', through: NS + 'worksFor' }));
+    await both((s) => s.propertyBranches({ ...REF, parents: [{}, { parentIri: NS + 'relatedTo' }] }));
+    await both((s) => s.propertyPaths({ ...REF, propertyIri: NS + 'employedBy' }));
+    await both((s) => s.propertySummary({ ...REF, propertyIri: NS + 'worksFor' }));
     // Every question the service has was asked, each as one request to its own address.
     expect(new Set(sent.map((x) => x.url.replace('http://backend.example/api/structure/', ''))).size).toBe(QUESTIONS.length);
     expect(sent.every((x) => x.url.startsWith('http://backend.example/api/structure/'))).toBe(true);
@@ -74,9 +92,13 @@ describe('the structure service over HTTP', () => {
     expect(await refused(remote.children({ ...REF, mode: 'asserted', cursor: 'nowhere' }))).toBe('invalid');
     expect(await refused(remote.members({ ...REF, mode: 'asserted', set: 'no-such-set' }))).toBe('not-found');
     expect(await refused(remote.branches({ ...REF, mode: 'asserted', parents: Array.from({ length: MAX_BRANCHES + 1 }, () => ({})) }))).toBe('invalid');
-    // A source without a reasoner has no inferred hierarchy to ask for.
+    expect(await refused(remote.propertyChildren({ ...REF, revisionId: 'r0' }))).toBe('stale-revision');
+    expect(await refused(remote.propertySummary({ ...REF, propertyIri: NS + 'Nobody' }))).toBe('not-found');
+    expect(await refused(remote.propertyBranches({ ...REF, parents: Array.from({ length: MAX_BRANCHES + 1 }, () => ({})) }))).toBe('invalid');
+    // A source without a reasoner has no inferred hierarchy to ask for, and one without properties has no property hierarchy.
     const bare = wired(createGraphService(() => ({ ...REF, graph: () => wide(3) }))).remote;
     expect(await refused(bare.children({ ...REF, mode: 'inferred' }))).toBe('unsupported');
+    expect(await refused(bare.propertyChildren({ ...REF }))).toBe('unsupported');
     // A question that was given up is not sent at all.
     const abort = new AbortController();
     abort.abort();

@@ -16,6 +16,11 @@ import type { AxiomLine, DataGraphDifference, Difference, EntityDifference, Enti
  * statement, so that the order of a file or where a term sits is never a change), told by the
  * entity each is about; the shape sets' statements, set by set; the data graphs; the settings
  * that are no part of the ontology; and whether the drawing alone changed.
+ *
+ * A name given another value is told as one rename rather than as a label removed and another
+ * added, and a class put under another superclass as one move rather than as two subclass
+ * statements — each only where exactly one line went and one came, so that nothing is guessed.
+ * The paired lines are taken out of the entity's changes; the counts in `axioms` still include them.
  */
 export function difference(before: Model, after: Model): Difference {
   const was = namingFor(before);
@@ -41,6 +46,13 @@ export function difference(before: Model, after: Model): Difference {
     e.status = declared('add') && !declared('remove') ? 'added' : declared('remove') && !declared('add') ? 'removed' : 'changed';
     // What is added first, then what is removed, each in the order the editor writes them.
     e.changes.sort((a, b) => (a.op === b.op ? a.text.localeCompare(b.text) : a.op === 'add' ? -1 : 1));
+    const names = new Set([RDFS_LABEL, SKOS_PREF_LABEL]);
+    // The ontology's own name is written with the property the model says it is.
+    if (e.kind === 'ontology') for (const [m, n] of [[before, was], [after, now]] as const) {
+      const property = m.namedBy ? n.expand(m.namedBy) : undefined;
+      if (property) names.add(property);
+    }
+    pair(e, names, nameOf);
   }
   const order: Record<EntityDifference['status'], number> = { changed: 0, added: 1, removed: 2 };
   const entities = [...byEntity.values()].sort((a, b) => Number(b.kind === 'ontology') - Number(a.kind === 'ontology') || order[a.status] - order[b.status] || a.name.localeCompare(b.name));
@@ -86,6 +98,55 @@ export function difference(before: Model, after: Model): Difference {
   const logical = logicalDifference(before.logicalModels, after.logicalModels);
   const drawing = !same(before.style, after.style) || !same(before.layout, after.layout) || !same(positions(before), positions(after)) || logical.diagrams;
   return { entities, shapeSets, dataGraphs, logicalModels: logical.models, settings, drawing, axioms: { added: changes.filter((c) => c.op === 'add').length, removed: changes.filter((c) => c.op === 'remove').length } };
+}
+
+/** The properties an entity's name is written with: the two the editor reads names from, and the ontology's own where it says. */
+const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+const SKOS_PREF_LABEL = 'http://www.w3.org/2004/02/skos/core#prefLabel';
+
+/** The value of a name line of the entity, where it is one. */
+function nameLine(c: AxiomLine, entity: EntityDifference, names: ReadonlySet<string>): string | undefined {
+  const a = c.axiom;
+  if (a.type === 'AnnotationAssertion') {
+    if (a.subject !== entity.iri || !names.has(a.property) || !('value' in a.value)) return undefined;
+    return a.value.value;
+  }
+  // The ontology's own name is said of the ontology, not of an entity that happens to share its IRI.
+  if (a.type === 'OntologyAnnotation' && entity.kind === 'ontology' && names.has(a.property) && 'value' in a.value) return a.value.value;
+  return undefined;
+}
+
+/** The named superclass of a `SubClassOf` that puts this class under it, where that is what the line says. */
+function superOf(c: AxiomLine, entity: EntityDifference): string | undefined {
+  const a = c.axiom;
+  // Not an anonymous superclass, nor an expression around the class: only a class put under a named class.
+  return a.type === 'SubClassOf' && a.sub.type === 'Class' && a.sub.iri === entity.iri && a.sup.type === 'Class' ? a.sup.iri : undefined;
+}
+
+/**
+ * Tells a renamed entity and a moved class as one change each, where exactly one line went and
+ * one came. A name in two languages, or a class both given a superclass and moved, stays as the
+ * lines it is: nothing is guessed.
+ */
+function pair(e: EntityDifference, names: ReadonlySet<string>, nameOf: (iri: string) => string): void {
+  const gone = e.changes.filter((c) => c.op === 'remove');
+  const came = e.changes.filter((c) => c.op === 'add');
+  const drop = (...lines: AxiomLine[]) => {
+    e.changes = e.changes.filter((c) => !lines.includes(c));
+  };
+  const namesGone = gone.filter((c) => nameLine(c, e, names) !== undefined);
+  const namesCame = came.filter((c) => nameLine(c, e, names) !== undefined);
+  if (namesGone.length === 1 && namesCame.length === 1) {
+    e.renamed = { from: nameLine(namesGone[0], e, names)!, to: nameLine(namesCame[0], e, names)! };
+    drop(namesGone[0], namesCame[0]);
+  }
+  if (e.kind !== 'class') return;
+  const movesGone = gone.filter((c) => superOf(c, e) !== undefined);
+  const movesCame = came.filter((c) => superOf(c, e) !== undefined);
+  if (movesGone.length === 1 && movesCame.length === 1) {
+    e.moved = { from: nameOf(superOf(movesGone[0], e)!), to: nameOf(superOf(movesCame[0], e)!) };
+    drop(movesGone[0], movesCame[0]);
+  }
 }
 
 /** The elements of an LDM by id, each as a change would name it; a diagram is the picture and is not among them. */
@@ -318,5 +379,8 @@ export function axiomText(a: Axiom, n: Naming): string {
   }
 }
 
-/** The lines of a difference that are about one entity, by its IRI: for telling where an edit went. */
+/**
+ * The lines of a difference that are about one entity, by its IRI: for telling where an edit
+ * went. A rename or a move is said by the entity's `renamed` or `moved`, not among these lines.
+ */
 export const changesOf = (d: Difference, iri: string): AxiomLine[] => d.entities.find((e) => e.iri === iri)?.changes ?? [];

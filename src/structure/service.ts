@@ -25,12 +25,20 @@ import {
   type PathQuery,
   type PathResult,
   type Provenance,
+  type PropertyBranchesQuery,
+  type PropertyHierarchyPage,
+  type PropertyHierarchyQuery,
+  type PropertyPathQuery,
+  type PropertyPathResult,
+  type PropertySummary,
+  type PropertySummaryQuery,
   type StructureAnalysis,
   type StructureService,
   type SubclassExplanation,
   type SummaryQuery,
 } from './contracts';
 import { ancestorsOf, buildHierarchy, buildInferredHierarchy, byRef, chainBetween, depthsOf, descendantsOf, entryOf, narrow, nodeOf, pathsTo, searchClasses, type ClassGraphInput, type EntailedInput, type Hierarchy, type Narrowed } from './graph';
+import { buildPropertyHierarchy, byPropRef, narrowProperties, propertyDescendantsOf, propertyEntryOf, propertyNodeOf, propertyPathsTo, type PropertyGraphInput, type PropertyHierarchy, type NarrowedProperties } from './propertyGraph';
 
 /**
  * The Structure Explorer's questions, answered from the classes and subclass links of an
@@ -62,6 +70,12 @@ export interface GraphSource extends OntologyRef {
   lang?: string;
   /** Asked for once for each revision and language; what it gives must not be changed afterwards. */
   graph(): ClassGraphInput;
+  /**
+   * The object and data properties, and the rdfs:subPropertyOf links stated between them. There
+   * is no inferred property hierarchy: a reasoner does not draw one, so only what is stated is
+   * known. Left out by a source without properties (a concept scheme, say).
+   */
+  properties?(): PropertyGraphInput;
   /**
    * What the reasoner in use entails, when the inferred hierarchy is asked for. The same object
    * for as long as nothing about it has changed: the hierarchy built from it is kept by it.
@@ -118,9 +132,12 @@ interface Answering {
 
 export function createGraphService(source: () => GraphSource): StructureService {
   const built = new Map<string, { input: ClassGraphInput; asserted: Hierarchy }>();
+  // The property hierarchy of a revision and language, built once and kept like the classes' one.
+  const builtProps = new Map<string, { input: PropertyGraphInput; hierarchy: PropertyHierarchy }>();
   // An inferred hierarchy belongs to the reasoner's answer it was built from, and goes when that does.
   const inferred = new WeakMap<InferredInput, Hierarchy>();
   const narrowings = new WeakMap<Hierarchy, Map<string, Narrowed>>();
+  const narrowingsProps = new WeakMap<PropertyHierarchy, Map<string, NarrowedProperties>>();
   // A hierarchy is measured once. The unsatisfiable classes in it are the reasoner's, so it is measured again when the reasoner's answer is another.
   const analyses = new WeakMap<Hierarchy, { reasoned: Hierarchy | null; analysis: Analysis; sorted: Map<string, ClassSetItem[]> }>();
 
@@ -158,6 +175,27 @@ export function createGraphService(source: () => GraphSource): StructureService 
     if (!text) return undefined;
     const kept = narrowings.get(hierarchy) ?? narrowings.set(hierarchy, new Map()).get(hierarchy)!;
     return keep(kept, text, kept.get(text) ?? narrow(hierarchy, text), KEPT_FILTERS);
+  };
+  /** The ontology the question is about with its property hierarchy, or the reason it cannot be answered. */
+  const atProps = (query: OntologyRef, options?: CallOptions) => {
+    if (options?.signal?.aborted) throw new StructureError('aborted', 'The question was given up.');
+    const now = source();
+    if (query.ontologyId !== now.ontologyId || query.revisionId !== now.revisionId) throw new StructureError('stale-revision', 'The ontology has changed since this was asked about.');
+    if (!now.properties) throw new StructureError('unsupported', 'There is no property hierarchy to read in this ontology.');
+    // As with the classes: the same revision in another language is another hierarchy to read from.
+    const key = `${now.ontologyId}\n${now.revisionId}\n${now.lang ?? ''}`;
+    let revision = builtProps.get(key);
+    if (!revision) {
+      const input = now.properties();
+      revision = { input, hierarchy: buildPropertyHierarchy(input) };
+    }
+    return { now, revision: keep(builtProps, key, revision, KEPT_REVISIONS) };
+  };
+  const propertiesNarrowed = (hierarchy: PropertyHierarchy, filter: string | undefined) => {
+    const text = filter?.trim().toLowerCase();
+    if (!text) return undefined;
+    const kept = narrowingsProps.get(hierarchy) ?? narrowingsProps.set(hierarchy, new Map()).get(hierarchy)!;
+    return keep(kept, text, kept.get(text) ?? narrowProperties(hierarchy, text), KEPT_FILTERS);
   };
   const ref = (q: OntologyRef) => ({ ontologyId: q.ontologyId, revisionId: q.revisionId });
   /** The hierarchy of a mode measured, from what was kept if it was measured before. None, where there is no such hierarchy. */
@@ -198,6 +236,27 @@ export function createGraphService(source: () => GraphSource): StructureService 
       ...(to < list.length ? { nextCursor: `at:${to}` } : {}),
       ...(found ? { matched: found.matches.size } : {}),
       provenance,
+    };
+  };
+  /** One page of the subproperties of a property, or of the properties at the top. */
+  const propertyPageOf = (query: OntologyRef, hierarchy: PropertyHierarchy, asked: Pick<PropertyHierarchyQuery, 'parentIri' | 'limit' | 'cursor' | 'through' | 'filter'>): PropertyHierarchyPage => {
+    const head = { ...ref(query), ...(asked.parentIri !== undefined ? { parentIri: asked.parentIri } : {}) };
+    const parent = asked.parentIri === undefined ? undefined : propertyEntryOf(hierarchy, asked.parentIri);
+    const all = parent ? parent.children : hierarchy.top;
+    const found = propertiesNarrowed(hierarchy, asked.filter);
+    const list = found ? all.filter((iri) => found.kept.has(iri)) : all;
+    const limit = clamp(asked.limit, PAGE, MAX_PAGE);
+    const wanted = asked.cursor === undefined && asked.through !== undefined ? list.indexOf(asked.through) : -1;
+    const from = wanted < 0 ? offsetOf(asked.cursor) : Math.floor(wanted / limit) * limit;
+    const to = from + limit;
+    return {
+      ...head,
+      nodes: list.slice(from, to).map((iri: Iri) => propertyNodeOf(hierarchy, iri, found)),
+      offset: from,
+      total: list.length,
+      ...(to < list.length ? { nextCursor: `at:${to}` } : {}),
+      ...(found ? { matched: found.matches.size } : {}),
+      provenance: asserted(query.revisionId),
     };
   };
   const positionOf = (hierarchy: Hierarchy, iri: Iri, mode: HierarchyMode, provenance: Provenance): HierarchyPosition => {
@@ -305,6 +364,35 @@ export function createGraphService(source: () => GraphSource): StructureService 
       const limit = clamp(query.limit, PAGE, MAX_PAGE);
       const from = offsetOf(query.cursor);
       return { ...head, items: items.slice(from, from + limit), offset: from, total: items.length, ...(from + limit < items.length ? { nextCursor: `at:${from + limit}` } : {}) };
+    },
+
+    async propertyChildren(query: PropertyHierarchyQuery, options?: CallOptions): Promise<PropertyHierarchyPage> {
+      return propertyPageOf(query, atProps(query, options).revision.hierarchy, query);
+    },
+
+    async propertyBranches(query: PropertyBranchesQuery, options?: CallOptions): Promise<PropertyHierarchyPage[]> {
+      if (query.parents.length > MAX_BRANCHES) throw new StructureError('invalid', `No more than ${MAX_BRANCHES} properties can be asked about at once.`);
+      const { hierarchy } = atProps(query, options).revision;
+      return query.parents.map((parent) => propertyPageOf(query, hierarchy, { ...parent, filter: query.filter }));
+    },
+
+    async propertyPaths(query: PropertyPathQuery, options?: CallOptions): Promise<PropertyPathResult> {
+      const { hierarchy } = atProps(query, options).revision;
+      return { ...ref(query), ...propertyPathsTo(hierarchy, query.propertyIri, clamp(query.limit, PATHS, MAX_PATHS)), provenance: asserted(query.revisionId) };
+    },
+
+    async propertySummary(query: PropertySummaryQuery, options?: CallOptions): Promise<PropertySummary> {
+      const { hierarchy } = atProps(query, options).revision;
+      const e = propertyEntryOf(hierarchy, query.propertyIri);
+      return {
+        ...ref(query),
+        property: e.ref,
+        superproperties: e.parents.map((iri) => hierarchy.entries.get(iri)!.ref).sort(byPropRef),
+        subpropertyCount: e.children.length,
+        descendantCount: propertyDescendantsOf(hierarchy, query.propertyIri),
+        inCycle: e.inCycle,
+        provenance: asserted(query.revisionId),
+      };
     },
   };
 }

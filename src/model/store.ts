@@ -27,7 +27,7 @@ import { emptyModel, type ModelMode } from './types';
  */
 
 export type { View } from './modelTypes';
-export { SIDEBAR_WIDTH, type Editing, type EntityViewState, type StructureMode, type StructureState, type Theme, type Viewport } from './state/session';
+export { SIDEBAR_WIDTH, type Editing, type EntityViewState, type StructureKind, type StructureMode, type StructureState, type Theme, type Viewport } from './state/session';
 export type { SubgraphState } from './state/subgraph';
 export { layoutOf, viewOf, type GraphScope } from './state/view';
 export type { Tween } from './state/layout';

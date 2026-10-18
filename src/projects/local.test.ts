@@ -118,3 +118,100 @@ describe('versions of a project', () => {
     expect(await storedVersions(info.id)).toEqual([]);
   });
 });
+
+const CLASSES = `@prefix : <http://example.org/w#> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<http://example.org/w> a owl:Ontology .
+:Work a owl:Class . :Person a owl:Class . :Film a owl:Class . :Studio a owl:Class .`;
+
+describe('a rename and a move, told as one change each', () => {
+  it('tells a class given another name as a rename, not a label removed and another added', async () => {
+    const m = withIris(fromTurtle(CLASSES));
+    const ed = editor(m);
+    const v = await ed.service.saveVersion('p', 'Before', '');
+    const work = m.terms.find((t) => t.name === 'Work')!;
+    ed.set({ ...m, terms: m.terms.map((t) => (t.id === work.id ? { ...t, name: 'Opus' } : t)) });
+    const d = await ed.service.diff('p', { version: v.id }, 'current');
+    expect(d.entities.find((e) => e.iri === work.iri)).toMatchObject({ name: 'Opus', kind: 'class', status: 'changed', renamed: { from: 'Work', to: 'Opus' }, changes: [] });
+    // The statement counts still say what changed in the ontology.
+    expect(d.axioms).toEqual({ added: 1, removed: 1 });
+    const back = await ed.service.diff('p', 'current', { version: v.id });
+    expect(back.entities.find((e) => e.iri === work.iri)).toMatchObject({ renamed: { from: 'Opus', to: 'Work' }, changes: [] });
+  });
+
+  it('keeps the other lines of an entity that was also renamed', async () => {
+    const m = withIris(fromTurtle(CLASSES));
+    const ed = editor(m);
+    const v = await ed.service.saveVersion('p', 'Before', '');
+    const work = m.terms.find((t) => t.name === 'Work')!;
+    ed.set({ ...m, terms: m.terms.map((t) => (t.id === work.id ? { ...t, name: 'Opus', description: 'A body of work.' } : t)) });
+    const d = await ed.service.diff('p', { version: v.id }, 'current');
+    const e = d.entities.find((x) => x.iri === work.iri)!;
+    expect(e.renamed).toEqual({ from: 'Work', to: 'Opus' });
+    expect(e.changes).toHaveLength(1);
+    expect(e.changes[0]).toMatchObject({ op: 'add' });
+    expect(e.changes[0].text).toContain('skos:definition');
+  });
+
+  it('tells a class put under another superclass as a move, not as two subclass statements', async () => {
+    const m = withIris(fromTurtle(`${CLASSES}\n:Film rdfs:subClassOf :Work .`));
+    const ed = editor(m);
+    const v = await ed.service.saveVersion('p', 'Before', '');
+    const [film, work, person] = ['Film', 'Work', 'Person'].map((name) => m.terms.find((t) => t.name === name)!);
+    let next = addIsA(m, film.id, person.id).model!;
+    next = { ...next, relations: next.relations.filter((r) => !(r.from === film.id && r.to === work.id && r.kind === 'generalization')) };
+    ed.set(next);
+    const d = await ed.service.diff('p', { version: v.id }, 'current');
+    expect(d.entities.find((e) => e.iri === film.iri)).toMatchObject({ kind: 'class', moved: { from: 'Work', to: 'Person' }, changes: [] });
+    expect(d.axioms).toEqual({ added: 1, removed: 1 });
+    const back = await ed.service.diff('p', 'current', { version: v.id });
+    expect(back.entities.find((e) => e.iri === film.iri)).toMatchObject({ moved: { from: 'Person', to: 'Work' } });
+  });
+
+  it('never pairs when more than one line went or came', async () => {
+    const m = withIris(fromTurtle(`${CLASSES}\n:Film rdfs:subClassOf :Work, :Person .`));
+    const ed = editor(m);
+    const v = await ed.service.saveVersion('p', 'Before', '');
+    const [film, work, person, studio] = ['Film', 'Work', 'Person', 'Studio'].map((name) => m.terms.find((t) => t.name === name)!);
+    let next = addIsA(m, film.id, studio.id).model!;
+    next = { ...next, relations: next.relations.filter((r) => !(r.from === film.id && (r.to === work.id || r.to === person.id) && r.kind === 'generalization')) };
+    ed.set(next);
+    const d = await ed.service.diff('p', { version: v.id }, 'current');
+    const e = d.entities.find((x) => x.iri === film.iri)!;
+    // Two superclasses went and one came: a move cannot tell which was the move, so the lines stay.
+    expect(e.moved).toBeUndefined();
+    expect(e.changes).toHaveLength(3);
+    expect(d.axioms).toEqual({ added: 1, removed: 2 });
+    // A label in two languages renamed in one, and another removed: again the lines stay.
+    const base = withIris(fromTurtle(CLASSES));
+    const labelled = { ...base, terms: base.terms.map((t) => (t.name === 'Work' ? { ...t, fields: [{ key: 'rdfs:label', value: 'Travail', lang: 'fr' }] } : t)) };
+    const ed2 = editor(labelled);
+    const v2 = await ed2.service.saveVersion('p', 'Before', '');
+    const work2 = labelled.terms.find((t) => t.name === 'Work')!;
+    ed2.set({ ...labelled, terms: labelled.terms.map((t) => (t.id === work2.id ? { ...t, name: 'Opus', fields: [] } : t)) });
+    const d2 = await ed2.service.diff('p', { version: v2.id }, 'current');
+    const e2 = d2.entities.find((x) => x.iri === work2.iri)!;
+    expect(e2.renamed).toBeUndefined();
+    expect(e2.changes).toHaveLength(3);
+  });
+
+  it('tells a renamed ontology by the property its name is written with', async () => {
+    const base = withIris(fromTurtle(CLASSES));
+    const m: Model = { ...base, namedBy: 'dcterms:title' };
+    const ed = editor(m);
+    const v = await ed.service.saveVersion('p', 'Before', '');
+    ed.set({ ...m, name: 'Renamed ontology' });
+    const d = await ed.service.diff('p', { version: v.id }, 'current');
+    expect(d.entities.find((e) => e.kind === 'ontology')).toMatchObject({ renamed: { from: m.name, to: 'Renamed ontology' }, changes: [] });
+  });
+
+  it('compares two models saved in My Models, the same way as two versions', async () => {
+    const a = await saveModel(withIris(fromTurtle(CLASSES)));
+    const base = withIris(fromTurtle(CLASSES));
+    const work = base.terms.find((t) => t.name === 'Work')!;
+    const b = await saveModel({ ...base, terms: base.terms.map((t) => (t.id === work.id ? { ...t, name: 'Opus' } : t)) });
+    const { service } = editor(withIris(fromTurtle(CLASSES)));
+    const d = await service.diff('p', { model: a.id }, { model: b.id });
+    expect(d.entities.find((e) => e.iri === work.iri)).toMatchObject({ renamed: { from: 'Work', to: 'Opus' } });
+    await expect(service.diff('p', { model: 'nobody' }, 'current')).rejects.toMatchObject({ code: 'not-found' });
+  });
+});

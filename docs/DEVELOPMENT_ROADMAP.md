@@ -388,7 +388,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | 2.7 | Annotation properties as entities; labels in several languages with a display language. Done 2026-10-17. | FR-M1-4, FR-M1-5 | M |
 | 2.8 | Further axioms: property chains, keys, disjoint unions, negative assertions, annotations on axioms, moved out of the unmapped block one kind at a time. Done 2026-10-17. | FR-M2-4, FR-M2-5 | L |
 | 2.9 | Imports: `owl:imports` declared on export; the closure resolved transitively; missing imports reported. `AlignmentService`. Done 2026-10-18. | FR-M8-5 | M |
-| 2.10 | Structure: property hierarchies; comparison of two versions or two ontologies, reusing the difference from 2.3. | FR-M6-5, FR-M6-6 | M |
+| 2.10 | Structure: property hierarchies; comparison of two versions or two ontologies, reusing the difference from 2.3. Done 2026-10-18. | FR-M6-5, FR-M6-6 | M |
 | 2.11 | Remaining interfaces: `GraphService` over `extractSubgraph`, `SparqlService` with a choice of asserted or inferred graph. Views moved off direct model reads as each is touched. | TD-05, FR-M9-4 | M |
 | 2.12 | Update mode for tabular import; several diagrams per ontology; custom quality rules as SPARQL. | FR-M7-6, FR-M5-7, FR-M4-7 | M each |
 
@@ -764,8 +764,11 @@ on axioms are typed axioms (model format 8), edited in the property, class and i
 editors, and no longer kept as text (FR-M2-4, FR-M2-5). **2.9 is done too**: `owl:imports` is
 declared on export, both reasoners follow the imports closure transitively, and an import whose
 content is not in the browser is reported as a finding naming it (FR-M8-5), behind an
-`AlignmentService`. **The next task is 2.10**, structure, set out in §3; then 2.11 and 2.12 as
-demand and dependencies allow.
+`AlignmentService`. **2.10 is done too**: object and data properties are browsed in one tree
+under the properties they are stated to be subproperties of, and a version is compared with
+another version, the model now or a model in My Models, a renamed class and a moved class each
+told as one change (FR-M6-5, FR-M6-6). **The next task is 2.11**, the remaining service
+interfaces, set out in §3; then 2.12 as demand and dependencies allow.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
 
@@ -1141,7 +1144,7 @@ round trip, including a property declared in another vocabulary and the statemen
 domain and a range, used on a class, counted and traced back, named in German, the display
 language switched and remembered across a reload.
 
-What it left: the property hierarchy is a list of superproperties, not yet the tree of 2.10; an
+What it left: an
 entity's own name is edited in the model language (a name in another language is added as a
 field), and the language a file gave the primary label is not itself editable; a few auxiliary
 screens (the import mapping and the logical model editor) still name entities in the model

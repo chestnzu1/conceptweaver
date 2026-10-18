@@ -224,6 +224,84 @@ export interface ClassSearchResult extends OntologyRef {
   total: number;
 }
 
+// ---------------------------------------------------------------- browsing the property hierarchy
+
+/** The direct subproperties of an object or data property, or the properties at the top, a page at a time. */
+export interface PropertyHierarchyQuery extends OntologyRef {
+  /** The property whose direct subproperties are asked for. Left out: the properties with no superproperty stated. */
+  parentIri?: Iri;
+  /** How many to answer with. Left out, the service decides; it may also give fewer than were asked for. */
+  limit?: number;
+  /** Where to go on from: the `nextCursor` of a page. */
+  cursor?: string;
+  /** Answer with the page that holds this subproperty rather than with the first one. */
+  through?: Iri;
+  /** Text to narrow the hierarchy to: only the properties whose label, other labels or IRI contain it, with the properties leading down to one. */
+  filter?: string;
+}
+
+/** The same question for several properties at once: the first page of the direct subproperties of each. */
+export interface PropertyBranchesQuery extends OntologyRef {
+  filter?: string;
+  /** What to ask for each: as in a PropertyHierarchyQuery, without a cursor. */
+  parents: Pick<PropertyHierarchyQuery, 'parentIri' | 'limit' | 'through'>[];
+}
+
+/** An object or data property as it stands in the hierarchy. It is one property however many places it is listed in. */
+export interface PropertyHierarchyNode {
+  property: PropertyRef;
+  /** How many direct subproperties it has; with a filter, how many of them the filter leaves. */
+  childCount: number;
+  /** How many properties it is directly under. More than one: it is listed under each of them. */
+  parentCount: number;
+  /** It is one of a group of properties that are each other's superproperties. */
+  inCycle?: boolean;
+  /** With a filter: this property is one the filter found, not only on the way to one. */
+  match?: boolean;
+}
+
+export interface PropertyHierarchyPage extends OntologyRef {
+  parentIri?: Iri;
+  /** In order of label. */
+  nodes: PropertyHierarchyNode[];
+  offset: number;
+  total: number;
+  nextCursor?: string;
+  /** With a filter: how many properties of the whole hierarchy it finds. */
+  matched?: number;
+  provenance: Provenance;
+}
+
+export interface PropertyPathQuery extends OntologyRef {
+  propertyIri: Iri;
+  /** How many ways down to give at most. */
+  limit?: number;
+}
+
+export interface PropertyPathResult extends OntologyRef {
+  /** Each a way down the hierarchy to the property: from one at the top to the property itself. Shortest first. */
+  paths: PropertyRef[][];
+  truncated: boolean;
+  provenance: Provenance;
+}
+
+export interface PropertySummaryQuery extends OntologyRef {
+  propertyIri: Iri;
+}
+
+/** Where a property stands in the stated hierarchy. */
+export interface PropertySummary extends OntologyRef {
+  property: PropertyRef;
+  /** Its direct superproperties, in order of label. */
+  superproperties: PropertyRef[];
+  /** How many direct subproperties it has. */
+  subpropertyCount: number;
+  /** How many properties are below it, at any depth. */
+  descendantCount: number;
+  inCycle: boolean;
+  provenance: Provenance;
+}
+
 // ---------------------------------------------------------------- comparing two classes
 
 /** A property a restriction is on. Told apart by IRI, like everything else. */
@@ -232,6 +310,8 @@ export interface PropertyRef {
   label: string;
   /** Whether its values are individuals (an object property) or literals (a data property). */
   type: 'object' | 'data';
+  /** Defined in another ontology and only referred to in this one. */
+  external?: boolean;
 }
 
 /** What the values of a restriction belong to: a named class, or a datatype. */
@@ -522,6 +602,14 @@ export interface StructureService {
   analyze(query: AnalysisQuery, options?: AnalysisOptions): Promise<StructureAnalysis>;
   /** The classes behind one of an analysis's numbers, a page at a time. */
   members(query: ClassSetQuery, options?: CallOptions): Promise<ClassSetPage>;
+  /** The direct subproperties of an object or data property, or the properties at the top, a page at a time. Only what is stated is known: no reasoner draws a property hierarchy. */
+  propertyChildren(query: PropertyHierarchyQuery, options?: CallOptions): Promise<PropertyHierarchyPage>;
+  /** The same for several properties in one question: a page for each, in the order they were asked for. */
+  propertyBranches(query: PropertyBranchesQuery, options?: CallOptions): Promise<PropertyHierarchyPage[]>;
+  /** The ways down the hierarchy to a property. */
+  propertyPaths(query: PropertyPathQuery, options?: CallOptions): Promise<PropertyPathResult>;
+  /** The structure of one property at a glance. */
+  propertySummary(query: PropertySummaryQuery, options?: CallOptions): Promise<PropertySummary>;
 }
 
 /**

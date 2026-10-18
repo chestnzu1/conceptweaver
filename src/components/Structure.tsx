@@ -6,13 +6,14 @@ import { objectProperties } from '../model/props';
 import { ENGINES } from '../model/reasoning';
 import { useReasoning } from './reasoning';
 import { stable } from '../model/stable';
-import { currentReasoning, useStore, type StructureMode } from '../model/store';
+import { currentReasoning, useStore, type StructureKind, type StructureMode } from '../model/store';
 import type { HierarchyMode, Iri, OntologyRef, StructureService } from '../structure/contracts';
 import { createLocalStructureService, ontologyRef, termOfClass } from '../structure/local';
 import { openEntityTab } from './Entities';
 import { StructureAnalyze } from './StructureAnalyze';
 import { StructureCompare } from './StructureCompare';
 import { StructureExplore } from './StructureExplore';
+import { StructurePropertyExplore } from './StructurePropertyExplore';
 
 /**
  * Where the Structure Explorer gets its answers. Today that is the model in the editor, and for
@@ -36,7 +37,7 @@ export interface StructureHost {
   displayLang: string;
   /** A class as the app shows it elsewhere, or null when there is no such class any more. */
   look: (iri: Iri) => { label: string; iri?: string; color: string } | null;
-  /** Opens the class in the Entities view, where it is edited. */
+  /** Opens a class or a property in the Entities view, where it is edited. */
   openInEntities: (iri: Iri) => void;
   /** Shows the class on the canvas. */
   viewInGraph: (iri: Iri) => void;
@@ -76,6 +77,11 @@ const HIERARCHIES: { id: HierarchyMode; label: string; about: string }[] = [
   { id: 'inferred', label: 'Inferred', about: 'What the chosen reasoner entails: each class under the classes directly above it, equivalent classes together, and the classes that can have no instance set apart.' },
 ];
 
+const KINDS: { id: StructureKind; label: string; about: string }[] = [
+  { id: 'classes', label: 'Classes', about: 'The hierarchy of the classes, as it is stated or as a reasoner entails it.' },
+  { id: 'properties', label: 'Properties', about: 'Object and data properties under the properties they are stated to be subproperties of (rdfs:subPropertyOf). There is no inferred property hierarchy.' },
+];
+
 /**
  * The Structure Explorer: the hierarchy of the ontology to look through, to compare classes in
  * and to measure. It reads the ontology and changes nothing in it; an entity is edited in the
@@ -88,6 +94,7 @@ export function StructureView() {
   const docId = useStore((s) => s.doc.id);
   const docSeq = useStore((s) => s.docSeq);
   const mode = useStore((s) => s.structure.mode);
+  const kind = useStore((s) => s.structure.kind);
   const wanted = useStore((s) => s.structure.hierarchy);
   const engine = useStore((s) => s.validation.engine);
   const running = useStore((s) => s.validation.running);
@@ -99,6 +106,9 @@ export function StructureView() {
   const st = useStore.getState;
   const config = configOf(model);
   const reasons = supports(model, 'reasoning');
+  // A concept scheme has no properties of its own: every term in it is a concept, so only classes are browsed.
+  const browses = mode === 'explore' && config.termTypes.length > 1;
+  const onProperties = browses && kind === 'properties';
   // A type of model that is not reasoned over has the asserted hierarchy and no other.
   const hierarchy: HierarchyMode = reasons ? wanted : 'asserted';
   // The same for as long as the ontology is: what was asked of one revision is not asked again because a reasoner started or stopped.
@@ -115,11 +125,20 @@ export function StructureView() {
         return t ? { label: nameIn(t, model.lang, displayLang) || 'Unnamed', iri: t.iri, color: t.color || 'default' } : null;
       },
       openInEntities: (iri) => {
-        const t = term(iri);
-        if (!t) return;
-        openEntityTab('concept', t.id);
-        st().select([t.id]);
-        st().setView('table');
+        const t = term(iri) ?? model.terms.find((x) => x.iri === iri && x.type === 'property');
+        if (t) {
+          openEntityTab(t.type === 'property' ? 'property' : 'concept', t.id);
+          st().select([t.id]);
+          st().setView('table');
+          return;
+        }
+        // An object property is no term: it is declared once and used by relationships, and it has a section of its own.
+        const prop = model.mode === 'skos' ? undefined : objectProperties(model).find((p) => p.iri === iri);
+        if (prop) {
+          openEntityTab('object', prop.id);
+          st().selectProp(prop.id);
+          st().setView('table');
+        }
       },
       viewInGraph: (iri) => {
         const t = term(iri);
@@ -173,13 +192,36 @@ export function StructureView() {
       <div className="view-head">
         <div className="tabs" role="tablist" aria-label="What to do with the structure">
           {MODES.map((m) => (
-            <button key={m.id} role="tab" aria-selected={mode === m.id} className={mode === m.id ? 'on' : ''} onClick={() => st().setStructure({ mode: m.id })}>
+            <button
+              key={m.id}
+              role="tab"
+              aria-selected={mode === m.id}
+              className={mode === m.id ? 'on' : ''}
+              // The class in focus is a hint to Compare, which has no properties to compare: a property in focus is put aside.
+              onClick={() => st().setStructure({ mode: m.id, ...(m.id !== 'explore' && kind === 'properties' ? { focus: null } : {}) })}
+            >
               {m.label}
             </button>
           ))}
         </div>
+        {browses && (
+          <div className="st-kind">
+            <span id="st-kind">Browse</span>
+            <div className="tabs" role="group" aria-labelledby="st-kind">
+              {KINDS.map((k) => (
+                <button key={k.id} aria-pressed={kind === k.id} className={kind === k.id ? 'on' : ''} title={k.about} onClick={() => kind !== k.id && st().setStructure({ kind: k.id, focus: null, search: '' })}>
+                  {k.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {mode !== 'compare' &&
-          (reasons ? (
+          (onProperties ? (
+            <span className="st-basis" title="Each property is under every property it is stated to be a subproperty of. No reasoner draws a property hierarchy, so nothing inferred is shown.">
+              Stated property hierarchy <code className="pred">rdfs:subPropertyOf</code>
+            </span>
+          ) : reasons ? (
             <div className="st-which">
               <span id="st-which">Hierarchy</span>
               <div className="tabs" role="group" aria-labelledby="st-which">
@@ -197,7 +239,7 @@ export function StructureView() {
           ))}
       </div>
       {/* Another model in the editor, or the other hierarchy, starts the explorer afresh; what was open in each is remembered. */}
-      {mode === 'explore' && <StructureExplore key={`${docSeq} ${hierarchy}`} host={host} mode={hierarchy} />}
+      {mode === 'explore' && (onProperties ? <StructurePropertyExplore key={`${docSeq} properties`} host={host} /> : <StructureExplore key={`${docSeq} ${hierarchy}`} host={host} mode={hierarchy} />)}
       {mode === 'compare' && <StructureCompare key={docSeq} host={host} />}
       {mode === 'analyze' && <StructureAnalyze key={`${docSeq} ${hierarchy}`} host={host} mode={hierarchy} />}
     </div>

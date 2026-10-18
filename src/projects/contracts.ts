@@ -45,6 +45,10 @@ export interface EntityDifference {
   kind: EntityKind;
   status: 'added' | 'removed' | 'changed';
   changes: AxiomLine[];
+  /** It was given another name: the old and the new one. Its label lines are not in `changes`. */
+  renamed?: { from: string; to: string };
+  /** It is under another superclass: the old one and the new one, by name. Those `SubClassOf` lines are not in `changes`. */
+  moved?: { from: string; to: string };
 }
 
 export interface ShapeSetDifference {
@@ -96,8 +100,12 @@ export interface Difference {
   axioms: { added: number; removed: number };
 }
 
-/** A state of a project to compare: one of its versions, or the model in the editor now. */
-export type StateRef = { version: string } | 'current';
+/**
+ * A state of a project to compare: one of its versions, the model in the editor now, or a model
+ * saved in My Models. Two saved models are compared the same way two versions are, so that an
+ * ontology can be compared with one it was aligned to or copied from.
+ */
+export type StateRef = { version: string } | { model: string } | 'current';
 
 export interface ProjectService {
   /** The versions of a project, newest first. */

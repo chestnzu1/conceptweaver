@@ -11,7 +11,7 @@ import { StructureError, type AnalysisOptions, type CallOptions, type StructureE
  */
 
 /** The questions, by the name each is asked under. */
-export const QUESTIONS = ['children', 'branches', 'paths', 'summary', 'search', 'compare', 'explain', 'analyze', 'members'] as const;
+export const QUESTIONS = ['children', 'branches', 'paths', 'summary', 'search', 'compare', 'explain', 'analyze', 'members', 'propertyChildren', 'propertyBranches', 'propertyPaths', 'propertySummary'] as const;
 export type Question = (typeof QUESTIONS)[number];
 
 /** How each reason for not answering is said in HTTP. Anything else that goes wrong is a 500, which is nobody's refusal. */
@@ -51,6 +51,10 @@ export function createHttpStructureService(base: string, send: typeof fetch = fe
       return result;
     },
     members: (query, options) => ask('members', query, options),
+    propertyChildren: (query, options) => ask('propertyChildren', query, options),
+    propertyBranches: (query, options) => ask('propertyBranches', query, options),
+    propertyPaths: (query, options) => ask('propertyPaths', query, options),
+    propertySummary: (query, options) => ask('propertySummary', query, options),
   };
 }
 

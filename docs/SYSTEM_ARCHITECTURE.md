@@ -62,7 +62,7 @@ flowchart LR
 | Views | `src/components` (37 `.tsx`) | 12,500 lines | Graph, Entities, Structure, Validation, Align, RDF, SPARQL, Vocabulary; side panels and dialogs. |
 | Store | `src/model/store.ts` | 1,800 lines | All state and 99 actions: document, undo, selection, jobs, persistence. |
 | Model layer | `src/model` (71 files) | 21,100 lines incl. tests | Types, OWL rules, RDF reading and writing, both reasoning paths, validation, alignment, governance, geometry. No UI imports. |
-| Structure service | `src/structure` | 4,800 lines incl. tests | Hierarchy questions behind `StructureService`; local and HTTP implementations. |
+| Structure service | `src/structure` | 4,800 lines incl. tests | Class and property hierarchy questions behind `StructureService`; local and HTTP implementations. |
 | Entities service | `src/entities` | 1,500 lines incl. tests | Search, sort, filter behind `EntityQueryService`; local and HTTP implementations. |
 | Layouts | `src/layout` | 1,400 lines | Seven layouts over a neutral `LayoutGraph`; run in a worker. |
 | HTML export | `src/export` | 1,300 lines | Self-contained viewer page. |
@@ -251,7 +251,7 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 
 | Service | Questions and commands | Local implementation | Status |
 | --- | --- | --- | --- |
-| `StructureService` | children, branches, paths, summary, search, compare, explain, analyze, members | `src/structure/local.ts` | **Existing** |
+| `StructureService` | children, branches, paths, summary, search, compare, explain, analyze, members; the same four of the class questions for properties (stated `rdfs:subPropertyOf` only) | `src/structure/local.ts` | **Existing** |
 | `EntityQueryService` | describe, query, options | `src/entities/local.ts` | **Existing** |
 | `OntologyEditService` | `apply(changeSet)`, `validate(changeSet)`, `entity(iri)` | `src/editing/local.ts`, over the rule functions of `axioms.ts`; the document's edits are its steps | **Existing** (2026-10-15) |
 | `ReasoningService` | `start(revision, engine)`, `status(job)`, `cancel(job)`, `result(job)` | `src/reasoning/local.ts`: `reasoner.ts` in a worker; HermiT through `reasoning.ts` | **Existing** (2026-10-15) |
@@ -260,7 +260,7 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `ImportExportService` | `detect`, `read(document)`, `write(model, syntax)` | `src/io/local.ts`, over `rdfFormats.ts`, `rdf.ts` and `rdfxml.ts`; OWL's own syntaxes written by the OWL service | **Existing** (2026-10-16) |
 | `SparqlService` | `query(revision, text, graph)` | `sparql.ts` | Recommended, Phase 2 |
 | `AlignmentService` | read an ontology and show its entities and collisions; load the content of the ontologies the model depends on; add, remove, reuse and copy; the imports closure and its missing imports; mappings, their objections and suggestions | `src/alignment/local.ts` over `external.ts`, `alignment.ts` and `matcher.ts`; the browser's cache through the host | **Existing** (2026-10-18) |
-| `ProjectService` | versions, save a version, a version's model, diff, restore; list, open and save | `src/projects/local.ts` over `library.ts` | **Existing** for versions (2026-10-16); list, open and save are still `library.ts` called directly |
+| `ProjectService` | versions, save a version, a version's model, diff between versions or saved models, restore; list, open and save | `src/projects/local.ts` over `library.ts` | **Existing** for versions (2026-10-16); diff with a saved model (2026-10-18); list, open and save are still `library.ts` called directly |
 | `LogicalModelQueryService` | models, summary, entities (searched, paged), describe an element, relationships of an entity, keys, generalizations | `src/logical/local.ts` over the project document (§13.4): the models with their counts, a model, entities, an element described (keys and generalizations among them), an entity's relationships | **Existing** (2026-10-17, LM-1) |
 | `LogicalModelEditService` | create, duplicate, delete an LDM; `validate(changeSet)`, `apply(changeSet)` of a logical change set | `src/logical/local.ts`, over the rules of `rules.ts`; each change one step of the document's history | **Existing** (2026-10-17, LM-1) |
 | `TransformationService` | propose (job): proposals for a scope of the ontology under a configuration; apply a selection as a logical change set with its mappings | In a worker, over the ontology's statements and the LDM | **Existing** (2026-10-17, LM-3) |

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { listModels, type SavedInfo } from '../model/library';
 import { useStore } from '../model/store';
 import type { Difference, StateRef, VersionInfo } from '../projects/contracts';
 import { nothingChanged } from '../projects/difference';
@@ -24,6 +25,7 @@ export function VersionsDialog() {
   const name = useStore((s) => s.model.name);
   const st = useStore.getState;
   const [versions, setVersions] = useState<VersionInfo[] | null>(null);
+  const [models, setModels] = useState<SavedInfo[]>([]);
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [from, setFrom] = useState('');
@@ -48,9 +50,18 @@ export function VersionsDialog() {
     }
   }, [project, st]);
   useEffect(() => void load(), [load]);
+  // The other models of My Models, as a whole ontology to compare with.
+  useEffect(() => {
+    void listModels().then(setModels, () => setModels([]));
+  }, []);
 
-  const label = (ref: string) => (ref === 'current' ? 'the model now' : `version ${versions?.find((v) => v.id === ref)?.seq ?? '?'}`);
-  const ref = (id: string): StateRef => (id === 'current' ? 'current' : { version: id });
+  const label = (ref: string) =>
+    ref === 'current'
+      ? 'the model now'
+      : ref.startsWith('model:')
+        ? `the model “${models.find((m) => 'model:' + m.id === ref)?.name ?? '?'}”`
+        : `version ${versions?.find((v) => v.id === ref)?.seq ?? '?'}`;
+  const ref = (id: string): StateRef => (id === 'current' ? 'current' : id.startsWith('model:') ? { model: id.slice('model:'.length) } : { version: id });
   const compare = async (a: string, b: string) => {
     if (!project || !a || a === b) return;
     setFrom(a);
@@ -150,6 +161,15 @@ export function VersionsDialog() {
                     </option>
                   ))}
                   <option value="current">The model now</option>
+                  {models.length > 0 && (
+                    <optgroup label="My Models">
+                      {models.map((m) => (
+                        <option key={m.id} value={`model:${m.id}`}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <span>with</span>
                 <select aria-label="Compare with" value={to} onChange={(e) => setTo(e.target.value)}>
@@ -159,6 +179,15 @@ export function VersionsDialog() {
                       Version {v.seq}: {v.name}
                     </option>
                   ))}
+                  {models.length > 0 && (
+                    <optgroup label="My Models">
+                      {models.map((m) => (
+                        <option key={m.id} value={`model:${m.id}`}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <button className="btn small" disabled={from === to} onClick={() => void compare(from, to)}>
                   Compare
@@ -190,6 +219,8 @@ function DifferenceView({ d, title }: { d: Difference; title: string }) {
   const model = useStore((s) => s.model);
   const [all, setAll] = useState(false);
   const count = (s: string) => d.entities.filter((e) => e.status === s).length;
+  const renamed = d.entities.filter((e) => e.renamed).length;
+  const moved = d.entities.filter((e) => e.moved).length;
   const byIri = useMemo(() => new Map<string, { term: string } | { prop: string }>([...model.terms.filter((t) => t.iri).map((t): [string, { term: string }] => [t.iri!, { term: t.id }]), ...model.props.filter((p) => p.iri).map((p): [string, { prop: string }] => [p.iri!, { prop: p.id }])]), [model]);
   const open = (iri: string) => {
     const at = byIri.get(iri);
@@ -204,7 +235,7 @@ function DifferenceView({ d, title }: { d: Difference; title: string }) {
         <p className="nothing">No changes to the ontology{d.drawing ? '. Only where terms sit, or how the graph is drawn, changed.' : '.'}</p>
       ) : (
         <p className="muted">
-          {[count('changed') && `${count('changed')} entit${count('changed') === 1 ? 'y' : 'ies'} changed`, count('added') && `${count('added')} added`, count('removed') && `${count('removed')} removed`].filter(Boolean).join(', ') || 'No entity changed'} · {d.axioms.added} axiom{d.axioms.added === 1 ? '' : 's'} added, {d.axioms.removed} removed
+          {[count('changed') && `${count('changed')} entit${count('changed') === 1 ? 'y' : 'ies'} changed`, count('added') && `${count('added')} added`, count('removed') && `${count('removed')} removed`, renamed && `${renamed} renamed`, moved && `${moved} moved`].filter(Boolean).join(', ') || 'No entity changed'} · {d.axioms.added} axiom{d.axioms.added === 1 ? '' : 's'} added, {d.axioms.removed} removed
           {d.shapeSets.length ? ` · ${d.shapeSets.length} shape set${d.shapeSets.length === 1 ? '' : 's'}` : ''}
           {d.logicalModels.length ? ` · ${d.logicalModels.length} logical model${d.logicalModels.length === 1 ? '' : 's'}` : ''}
           {d.drawing ? ' · and the drawing' : ''}
@@ -225,6 +256,16 @@ function DifferenceView({ d, title }: { d: Difference; title: string }) {
               <span className={'tag ' + e.status}>{e.status}</span>
             </div>
             <ul>
+              {e.renamed && (
+                <li className="update">
+                  <code>~ renamed from “{e.renamed.from}” to “{e.renamed.to}”</code>
+                </li>
+              )}
+              {e.moved && (
+                <li className="update">
+                  <code>~ no longer under {e.moved.from}; now under {e.moved.to}</code>
+                </li>
+              )}
               {e.changes.map((l, i) => (
                 <li key={i} className={l.op}>
                   <code>

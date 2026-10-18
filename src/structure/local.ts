@@ -1,5 +1,5 @@
 import { enumerationExpression, isEnumeration } from '../model/axioms';
-import { nameIn } from '../model/labels';
+import { nameIn, type Labeled } from '../model/labels';
 import { configOf, supports } from '../model/modelTypes';
 import { classText, namingFor } from '../model/manchester';
 import { compactIri } from '../model/prefixes';
@@ -12,6 +12,7 @@ import { owlFindings } from '../model/validation';
 import { resolveModel } from '../model/vocab';
 import type { ClassAxiom, Iri, OntologyRef, ReasonerRef, StructureService } from './contracts';
 import type { ClassGraphInput } from './graph';
+import type { PropertyGraphInput, PropertyInput } from './propertyGraph';
 import { createGraphService, type InferredInput } from './service';
 
 /**
@@ -23,6 +24,11 @@ import { createGraphService, type InferredInput } from './service';
  * IRI. What is read here is what is asserted: a class is under the named classes it is stated
  * to be a subclass of. An individual's class and a class's data properties are not part of the
  * hierarchy, and a superclass that is an anonymous class expression is not a class in it.
+ *
+ * The property hierarchy is read here too: object properties and data properties, under the
+ * properties they are stated to be subproperties of. A relationship's property is a use of an
+ * object property, and an individual's value of a data property is not a statement about the
+ * hierarchy of either.
  */
 
 /** What a class that has no IRI yet (one without a name) is known by here. It is never written anywhere. */
@@ -35,6 +41,8 @@ interface LocalIndex {
   iriOf: Map<string, Iri>;
   termOf: Map<Iri, string>;
   graph: ClassGraphInput;
+  /** The stated hierarchy of object and data properties. */
+  props: PropertyGraphInput;
   /** How many relationships of the model each class is at one end of. */
   connections: Map<Iri, number>;
 }
@@ -92,7 +100,44 @@ function indexOf(given: Model, lang = ''): LocalIndex {
       if (iri !== undefined) connections.set(iri, (connections.get(iri) ?? 0) + 1);
     }
   }
-  const out = { iriOf, termOf, graph, connections };
+  // The property hierarchy, read the same way and named in the same language. Object properties
+  // are declared on the model and data properties are terms, so each kind's links are resolved
+  // among its own: a data property's superproperty is another data property.
+  const namedProp = (x: Labeled & { iri?: string }, fallback: Iri, type: 'object' | 'data', external: boolean): PropertyInput => {
+    const shown = nameIn(x, model.lang, lang).trim();
+    const labels = (x.fields ?? []).filter((f) => LABELS.has(f.key)).map((f) => f.value.trim()).filter(Boolean);
+    const curie = x.iri ? compactIri(model, x.iri) : undefined;
+    const others = [x.name, ...labels].filter((s) => s && s !== shown);
+    return { ref: { iri: x.iri || fallback, label: shown || 'Unnamed', type, ...(external ? { external: true } : {}) }, search: curie ? [...others, curie] : others };
+  };
+  const props: PropertyGraphInput = { properties: [], subPropertyOf: [] };
+  const objectIriOf = new Map<string, Iri>();
+  for (const p of model.props) {
+    const input = namedProp(p, UNNAMED_PROPERTY + p.id, 'object', p.external !== undefined);
+    objectIriOf.set(p.id, input.ref.iri);
+    props.properties.push(input);
+  }
+  const dataIriOf = new Map<string, Iri>();
+  const propertyTerms = model.terms.filter((t) => t.type === 'property');
+  for (const t of propertyTerms) {
+    const input = namedProp(t, UNNAMED + t.id, 'data', t.external !== undefined);
+    dataIriOf.set(t.id, input.ref.iri);
+    props.properties.push(input);
+  }
+  for (const p of model.props) {
+    for (const up of p.parents ?? []) {
+      const sup = objectIriOf.get(up);
+      if (sup !== undefined) props.subPropertyOf.push({ sub: objectIriOf.get(p.id)!, sup });
+    }
+  }
+  const termType = new Map(model.terms.map((t) => [t.id, t.type]));
+  for (const t of propertyTerms) {
+    for (const up of assertedSuperclasses(model, t.id)) {
+      if (termType.get(up) !== 'property') continue;
+      props.subPropertyOf.push({ sub: dataIriOf.get(t.id)!, sup: dataIriOf.get(up)! });
+    }
+  }
+  const out = { iriOf, termOf, graph, props, connections };
   found.set(lang, out);
   return out;
 }
@@ -270,6 +315,15 @@ function inferredOf(given: Model, reasoning: LocalReasoning, lang = ''): Inferre
 export function createLocalStructureService(current: () => { model: Model; docId: string | null; reasoning?: LocalReasoning; lang?: string }): StructureService {
   return createGraphService(() => {
     const { model, docId, reasoning, lang = '' } = current();
-    return { ...ontologyRef(model, docId), lang, graph: () => indexOf(model, lang).graph, axioms: (iris) => axiomsOf(model, iris, lang), connections: () => indexOf(model, lang).connections, ...(reasoning && supports(model, 'reasoning') ? { inferred: () => inferredOf(model, reasoning, lang) } : {}) };
+    return {
+      ...ontologyRef(model, docId),
+      lang,
+      graph: () => indexOf(model, lang).graph,
+      axioms: (iris) => axiomsOf(model, iris, lang),
+      connections: () => indexOf(model, lang).connections,
+      // In a concept scheme every term is a concept: there are no properties to browse.
+      ...(configOf(model).termTypes.length > 1 ? { properties: () => indexOf(model, lang).props } : {}),
+      ...(reasoning && supports(model, 'reasoning') ? { inferred: () => inferredOf(model, reasoning, lang) } : {}),
+    };
   });
 }

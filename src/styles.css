@@ -6232,8 +6232,9 @@ code.expression.pre {
   white-space: nowrap;
 }
 
-/* Which of the two hierarchies is on show. */
-.st-which {
+/* Which of the two hierarchies is on show, and which hierarchy is browsed. */
+.st-which,
+.st-kind {
   display: flex;
   align-items: center;
   gap: 8px;

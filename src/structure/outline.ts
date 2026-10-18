@@ -11,10 +11,10 @@ import type { HierarchyNode, HierarchyPage, Iri } from './contracts';
  */
 
 /** A run of the subclasses of one class, as one or more pages gave it. */
-export interface Part {
+export interface Part<N = HierarchyNode> {
   /** Where in the whole list the run starts. */
   offset: number;
-  nodes: HierarchyNode[];
+  nodes: N[];
   /** What to ask for what follows the run, when something does. */
   nextCursor?: string;
 }
@@ -24,15 +24,15 @@ export interface Part {
  * the runs that were asked for, in order and apart from each other. A class far down a long
  * list is fetched with the page it is on, not with everything before it.
  */
-export interface Branch {
+export interface Branch<N = HierarchyNode> {
   total: number;
-  parts: Part[];
+  parts: Part<N>[];
 }
 
 /** The branch with one more page in it. Pages that meet become one run. */
-export function withPage(branch: Branch | undefined, page: Pick<HierarchyPage, 'offset' | 'nodes' | 'total' | 'nextCursor'>): Branch {
-  const added: Part = { offset: page.offset, nodes: page.nodes, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
-  const parts: Part[] = [];
+export function withPage<N = HierarchyNode>(branch: Branch<N> | undefined, page: Pick<HierarchyPage, 'offset' | 'total' | 'nextCursor'> & { nodes: N[] }): Branch<N> {
+  const added: Part<N> = { offset: page.offset, nodes: page.nodes, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
+  const parts: Part<N>[] = [];
   for (const part of [...(branch?.parts ?? []), added].sort((a, b) => a.offset - b.offset)) {
     const last = parts[parts.length - 1];
     const end = last ? last.offset + last.nodes.length : -1;
@@ -49,11 +49,21 @@ export function withPage(branch: Branch | undefined, page: Pick<HierarchyPage, '
   return { total: page.total, parts };
 }
 
+/** What the outline needs of a node, whichever hierarchy it is of: a class, or a property. */
+export interface NodeRead {
+  iri: Iri;
+  childCount: number;
+  inCycle?: boolean;
+}
+
+/** A class node, read as the outline needs it. The default for the class hierarchy, whose nodes are `HierarchyNode`s. */
+const classRead = (n: HierarchyNode): NodeRead => ({ iri: n.class.iri, childCount: n.childCount, inCycle: n.inCycle });
+
 /** Whether a subclass is among what has been fetched of a branch. */
-export const holds = (branch: Branch | undefined, iri: Iri): boolean => !!branch?.parts.some((p) => p.nodes.some((n) => n.class.iri === iri));
+export const holds = <N = HierarchyNode>(branch: Branch<N> | undefined, iri: Iri, read: (n: N) => NodeRead = classRead as (n: N) => NodeRead): boolean => !!branch?.parts.some((p) => p.nodes.some((n) => read(n).iri === iri));
 
 /** How many of its subclasses have been fetched. */
-export const fetchedOf = (branch: Branch): number => branch.parts.reduce((n, p) => n + p.nodes.length, 0);
+export const fetchedOf = <N = HierarchyNode>(branch: Branch<N>): number => branch.parts.reduce((n, p) => n + p.nodes.length, 0);
 
 /** The key the classes at the top are kept under, where a class is kept under its IRI. */
 export const TOP = '';
@@ -74,12 +84,12 @@ export class Places {
   }
 }
 
-export type OutlineRow =
+export type OutlineRow<N = HierarchyNode> =
   | {
       kind: 'class';
       place: number;
       depth: number;
-      node: HierarchyNode;
+      node: N;
       /** It has subclasses to show and is not a class met again on the way down. */
       expandable: boolean;
       open: boolean;
@@ -108,8 +118,8 @@ export type OutlineRow =
  * is open and its subclasses have been fetched. Where a list has more than was fetched, a line
  * says so.
  */
-export function rowsOf(branches: ReadonlyMap<string, Branch>, places: Places, open: ReadonlySet<number>): OutlineRow[] {
-  const rows: OutlineRow[] = [];
+export function rowsOf<N = HierarchyNode>(branches: ReadonlyMap<string, Branch<N>>, places: Places, open: ReadonlySet<number>, read: (n: N) => NodeRead = classRead as (n: N) => NodeRead): OutlineRow<N>[] {
+  const rows: OutlineRow<N>[] = [];
   // The classes in a ring that the walk is under at the moment. Only they can be met again.
   const above = new Set<Iri>();
   const stack: { place: number; key: string; depth: number; part: number; next: number; ring?: Iri }[] = [{ place: ROOT, key: TOP, depth: 0, part: 0, next: 0 }];
@@ -131,25 +141,26 @@ export function rowsOf(branches: ReadonlyMap<string, Branch>, places: Places, op
       continue;
     }
     const node = part.nodes[frame.next++];
-    const iri = node.class.iri;
+    const r = read(node);
+    const iri = r.iri;
     const place = places.at(frame.place, iri);
-    const repeat = !!node.inCycle && above.has(iri);
-    const expandable = node.childCount > 0 && !repeat;
+    const repeat = !!r.inCycle && above.has(iri);
+    const expandable = r.childCount > 0 && !repeat;
     const isOpen = expandable && open.has(place);
     const fetched = branches.has(iri);
     rows.push({ kind: 'class', place, depth: frame.depth, node, expandable, open: isOpen, loading: isOpen && !fetched, repeat });
     if (!isOpen || !fetched) continue;
-    if (node.inCycle) above.add(iri);
-    stack.push({ place, key: iri, depth: frame.depth + 1, part: 0, next: 0, ...(node.inCycle ? { ring: iri } : {}) });
+    if (r.inCycle) above.add(iri);
+    stack.push({ place, key: iri, depth: frame.depth + 1, part: 0, next: 0, ...(r.inCycle ? { ring: iri } : {}) });
   }
   return rows;
 }
 
 /** The classes whose subclasses the lines need and that have not been fetched: the top, if it has not, and every open class that waits. */
-export function wanting(branches: ReadonlyMap<string, Branch>, places: Places, open: ReadonlySet<number>): Iri[] {
+export function wanting<N = HierarchyNode>(branches: ReadonlyMap<string, Branch<N>>, places: Places, open: ReadonlySet<number>, read: (n: N) => NodeRead = classRead as (n: N) => NodeRead): Iri[] {
   if (!branches.has(TOP)) return [TOP];
   const out = new Set<Iri>();
-  for (const row of rowsOf(branches, places, open)) if (row.kind === 'class' && row.loading) out.add(row.node.class.iri);
+  for (const row of rowsOf(branches, places, open, read)) if (row.kind === 'class' && row.loading) out.add(read(row.node).iri);
   return [...out];
 }
 
@@ -160,7 +171,7 @@ export function wanting(branches: ReadonlyMap<string, Branch>, places: Places, o
  * all the classes of that level together, so that a deep hierarchy costs as many exchanges as
  * it has levels and not as many as it has branches.
  */
-export async function openWide(branches: ReadonlyMap<string, Branch>, places: Places, fetch: (parents: Iri[]) => Promise<void>, budget: number): Promise<{ open: Set<number>; cut: boolean }> {
+export async function openWide<N = HierarchyNode>(branches: ReadonlyMap<string, Branch<N>>, places: Places, fetch: (parents: Iri[]) => Promise<void>, budget: number, read: (n: N) => NodeRead = classRead as (n: N) => NodeRead): Promise<{ open: Set<number>; cut: boolean }> {
   const open = new Set<number>();
   if (!branches.has(TOP)) await fetch([TOP]);
   let lines = fetchedOf(branches.get(TOP) ?? { total: 0, parts: [] });
@@ -172,14 +183,15 @@ export async function openWide(branches: ReadonlyMap<string, Branch>, places: Pl
     let expected = lines;
     for (const at of level) {
       for (const node of branches.get(at.key)?.parts.flatMap((p) => p.nodes) ?? []) {
-        const iri = node.class.iri;
-        if (!node.childCount || (node.inCycle && at.above.has(iri))) continue;
+        const r = read(node);
+        const iri = r.iri;
+        if (!r.childCount || (r.inCycle && at.above.has(iri))) continue;
         if (expected >= budget) {
           cut = true;
           continue;
         }
-        expected += node.childCount;
-        opening.push({ place: places.at(at.place, iri), iri, above: node.inCycle ? new Set([...at.above, iri]) : at.above });
+        expected += r.childCount;
+        opening.push({ place: places.at(at.place, iri), iri, above: r.inCycle ? new Set([...at.above, iri]) : at.above });
       }
     }
     const missing = [...new Set(opening.map((x) => x.iri))].filter((iri) => !branches.has(iri));

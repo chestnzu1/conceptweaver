@@ -589,10 +589,13 @@ it is deep, wide or irregular; and comparing things.
 `src/structure/`): *Explore* (asserted or inferred class hierarchy, paged, with a summary of the
 class in focus), *Compare* (two classes: what each asserts and inherits), *Analyze* (metrics,
 distributions, diagnostics, with the classes behind each number). All through `StructureService`
-with an HTTP client ready.
+with an HTTP client ready. Since 2026-10-18 (roadmap 2.10) *Explore* also browses the object and
+data properties in one tree under what they are stated to be subproperties of
+(`StructurePropertyExplore.tsx` over `propertyGraph.ts`); the difference engine tells a renamed
+class and a moved class as one change each, and a version can be compared with another version,
+the model now, or a model in My Models (`src/projects/`, `Versions.tsx`).
 
-**Gaps.** Classes only: no property hierarchies. Comparison is between two classes, not two
-versions or two ontologies. The HTTP implementation has no server.
+**Gaps.** The HTTP implementation has no server.
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
@@ -600,14 +603,16 @@ versions or two ontologies. The HTTP implementation has no server.
 | FR-M6-2 | Summary of a class: stated and inferred superclasses, equivalents, depth, descendants, ways down to it. | Existing | P0 |
 | FR-M6-3 | Compare two classes: asserted and inherited restrictions side by side. | Existing | P1 |
 | FR-M6-4 | Metrics and diagnostics of the hierarchy, each with the classes behind it. | Existing | P1 |
-| FR-M6-5 | Object- and data-property hierarchies in the same explorer. | Recommended | P1 |
-| FR-M6-6 | Compare two versions of an ontology, or two ontologies: entities and axioms added, removed and changed. | Recommended | P1 |
+| FR-M6-5 | Object- and data-property hierarchies in the same explorer. | Implemented 2026-10-18 (`StructurePropertyExplore.tsx` over `propertyGraph.ts`: both kinds in one tree, each badged by kind, stated `rdfs:subPropertyOf` only) | P1 |
+| FR-M6-6 | Compare two versions of an ontology, or two ontologies: entities and axioms added, removed and changed. | Implemented 2026-10-18 (`src/projects/difference.ts` names renames and moves; `Versions.tsx` compares with a version, the model now, or a model in My Models) | P1 |
 | FR-M6-7 | The explorer is answered by a server for server-side ontologies. | Partially Implemented (client only) | P1 |
 
 **Dependencies.** FR-M6-6 needs M10. FR-M6-7 needs Phase 3.
 
 **Acceptance criteria.**
 
+- FR-M6-5: object and data properties are browsed branch by branch in one tree, each marked by
+  its kind; a search finds either kind, and the summary describes the property in focus.
 - FR-M6-6: for two versions that differ by one renamed class, one moved class and one removed
   restriction, the comparison shows exactly those three changes, grouped by entity.
 - FR-M6-7: the existing `http.test.ts` suite passes against the Java implementation.
@@ -1573,7 +1578,7 @@ flowchart TD
 | 5 | Opens *Analyze* | Counts, depth and breadth distributions, diagnostics; a click on a number lists the classes behind it. | Existing |
 | 6 | On the graph, chooses *Show as a subgraph* for a class | The class and its neighbours to a chosen depth; neighbours expand in place. | Existing |
 | 7 | Selects two terms and asks for the path between them | The shortest path is spotlighted. | Existing |
-| 8 | Browses the hierarchy of properties | — | Recommended (FR-M6-5) |
+| 8 | Browses the hierarchy of properties | *Explore* switches from classes to properties: object and data properties in one tree under their stated superproperties, each badged by kind, with search and a summary. | Existing (2026-10-18, FR-M6-5) |
 | 9 | Opens a 50,000-class ontology and goes straight to a neighbourhood | — | Recommended (FR-M5-5) |
 
 **Difficulties.**
@@ -1581,7 +1586,6 @@ flowchart TD
 - The full graph of anything large is not readable; the subgraph mode is the answer but has to
   be found.
 - The canvas draws everything first (TD-10).
-- Structure covers classes only.
 
 **UX opportunities.**
 

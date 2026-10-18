@@ -211,6 +211,104 @@ describe('the hierarchy of the model in the editor', () => {
   });
 });
 
+describe('the property hierarchy of the model in the editor', () => {
+  /** Object properties ("related to" > "works for" > "employed by") and data properties ("Stage name" > "Screen name"). */
+  function props(): Model {
+    const m = emptyModel('Props');
+    m.baseIri = NS;
+    m.vocab.enabled = true;
+    const termId: Record<string, string> = {};
+    const term = (name: string, patch: Parameters<typeof newTerm>[0] = {}) => {
+      const t = newTerm({ name, ...patch });
+      termId[name] = t.id;
+      m.terms.push(t);
+    };
+    term('Actor');
+    term('Stage name', { type: 'property', ranges: withDatatype({}, 'xsd:string') });
+    term('Screen name', { type: 'property', ranges: withDatatype({}, 'xsd:string') });
+    // A data property is under another one as a term is under a class: by a generalization between the two properties.
+    m.relations.push(newRelation({ from: termId['Screen name'], to: termId['Stage name'], kind: 'generalization' }));
+    // A generalization to a class is in the terms' superclasses too, but not in the property hierarchy.
+    m.relations.push(newRelation({ from: termId['Screen name'], to: termId.Actor, kind: 'generalization' }));
+    const propId: Record<string, string> = {};
+    const prop = (name: string, patch: Omit<Parameters<typeof newProp>[0], 'name'> = {}) => {
+      const p = newProp({ name, ...patch });
+      propId[name] = p.id;
+      m.props.push(p);
+    };
+    prop('related to');
+    prop('works for', { parents: [propId['related to']] });
+    prop('employed by', { parents: [propId['works for']], fields: [{ key: 'skos:altLabel', value: 'Employment' }] });
+    prop('acts in', { external: 'film' });
+    // An individual's class and a class's use of a data property are not superproperties of it.
+    m.relations.push(newRelation({ from: termId.Actor, to: termId['Stage name'], kind: 'property' }));
+    return withIris(m);
+  }
+  const propAsk = (m: Model, extra: { parentIri?: Iri; filter?: string } = {}) => ({ ...ontologyRef(m, null), ...extra });
+  const propLabels = (page: Awaited<ReturnType<StructureService['propertyChildren']>>) => page.nodes.map((n) => n.property.label);
+
+  it('is its object properties and data properties under their stated superproperties, named by IRI', async () => {
+    const m = props();
+    const service = serve(() => m);
+    const top = await service.propertyChildren(propAsk(m));
+    expect(propLabels(top)).toEqual(['acts in', 'related to', 'Stage name']);
+    expect(top.nodes[0].property).toEqual({ iri: NS + 'actsIn', label: 'acts in', type: 'object', external: true });
+    expect(top.nodes[2].property).toEqual({ iri: NS + 'stageName', label: 'Stage name', type: 'data' });
+    expect(top.provenance).toEqual({ engine: null, revisionId: revisionOf(m), status: 'current', completeness: 'complete', notes: [] });
+    // An object property is under the object property stated for it; a data property under the data property.
+    expect(propLabels(await service.propertyChildren(propAsk(m, { parentIri: NS + 'relatedTo' })))).toEqual(['works for']);
+    expect(propLabels(await service.propertyChildren(propAsk(m, { parentIri: NS + 'worksFor' })))).toEqual(['employed by']);
+    expect(propLabels(await service.propertyChildren(propAsk(m, { parentIri: NS + 'stageName' })))).toEqual(['Screen name']);
+    const screen = (await service.propertyChildren(propAsk(m, { parentIri: NS + 'stageName' }))).nodes[0];
+    expect(screen).toMatchObject({ property: { type: 'data' }, childCount: 0, parentCount: 1 });
+    // The class's use of a data property, and an individual's class, are not in it.
+    const summary = await service.propertySummary({ ...ontologyRef(m, null), propertyIri: NS + 'stageName' });
+    expect(summary).toMatchObject({ subpropertyCount: 1, descendantCount: 1 });
+    expect(summary.superproperties).toEqual([]);
+  });
+
+  it('names the properties in the display language, and is searched by label, other labels and IRI', async () => {
+    const m = props();
+    const related = m.props.find((p) => p.name === 'related to')!;
+    const stage = m.terms.find((t) => t.name === 'Stage name')!;
+    const bilingual = {
+      ...m,
+      lang: 'en',
+      props: m.props.map((p) => (p.id === related.id ? { ...p, fields: [...(p.fields ?? []), { key: 'skos:prefLabel', value: 'Relacionado con', lang: 'es' }] } : p)),
+      terms: m.terms.map((t) => (t.id === stage.id ? { ...t, fields: [...t.fields, { key: 'skos:prefLabel', value: 'Nombre artistico', lang: 'es' }] } : t)),
+    };
+    const es = createLocalStructureService(() => ({ model: bilingual, docId: null, lang: 'es' }));
+    expect(propLabels(await es.propertyChildren(propAsk(bilingual)))).toEqual(['acts in', 'Nombre artistico', 'Relacionado con']);
+    // The other language still reads as it did, and a name in it is still found.
+    const en = serve(() => bilingual);
+    expect(propLabels(await en.propertyChildren(propAsk(bilingual)))).toEqual(['acts in', 'related to', 'Stage name']);
+    expect((await en.propertyChildren(propAsk(bilingual, { filter: 'artistico' }))).matched).toBe(1);
+    const found = async (text: string) => (await en.propertyChildren(propAsk(bilingual, { filter: text }))).matched;
+    expect(await found('employment')).toBe(1);
+    expect(await found(':worksFor')).toBe(1);
+    expect(await found('related')).toBe(1);
+    expect(await found('actor')).toBe(0);
+  });
+
+  it('has no property hierarchy in a concept scheme', async () => {
+    const m = emptyModel('Glossary');
+    m.mode = 'skos';
+    m.terms = [newTerm({ id: 'a', name: 'Animal' }), newTerm({ id: 'd', name: 'Dog' })];
+    const model = withIris(m);
+    await expect(serve(() => model).propertyChildren(propAsk(model))).rejects.toMatchObject({ code: 'unsupported' });
+  });
+
+  it('never changes the model', async () => {
+    const m = props();
+    const before = JSON.stringify(m);
+    const service = serve(() => m);
+    await service.propertyChildren(propAsk(m, { parentIri: NS + 'relatedTo' }));
+    await service.propertyPaths({ ...ontologyRef(m, null), propertyIri: NS + 'employedBy' });
+    await service.propertySummary({ ...ontologyRef(m, null), propertyIri: NS + 'employedBy' });
+    expect(JSON.stringify(m)).toBe(before);
+  });
+});
+
 describe('revisions of the model in the editor', () => {
   it('are told apart by what the model says, not by where its terms sit', () => {
     const { m, id } = cast();

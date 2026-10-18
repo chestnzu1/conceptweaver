@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { HierarchyQuery, Iri, StructureService } from './contracts';
+import type { HierarchyQuery, Iri, PropertyHierarchyNode, StructureService } from './contracts';
 import { graphOf, NS, wide } from './fixtures';
 import type { ClassGraphInput } from './graph';
 import { fetchedOf, holds, openWide, Places, ROOT, rowsOf, TOP, wanting, withPage, type Branch, type OutlineRow } from './outline';
@@ -88,6 +88,53 @@ describe('the hierarchy as it is read', () => {
     expect(places.at(ROOT, NS + 'Person')).toBe(a);
     expect(places.at(a, NS + 'Person')).not.toBe(a);
     expect(places.at(ROOT, NS + 'Film')).not.toBe(a);
+  });
+});
+
+describe('a hierarchy of something other than classes', () => {
+  const prop = (name: string, childCount = 0, extra: Partial<PropertyHierarchyNode> = {}): PropertyHierarchyNode => ({ property: { iri: NS + name, label: name, type: 'object' }, childCount, parentCount: 1, ...extra });
+  const readProp = (n: PropertyHierarchyNode) => ({ iri: n.property.iri, childCount: n.childCount, inCycle: n.inCycle });
+  const branch = (...nodes: PropertyHierarchyNode[]): Branch<PropertyHierarchyNode> => withPage(undefined, { offset: 0, total: nodes.length, nodes });
+  const drawing = (rows: OutlineRow<PropertyHierarchyNode>[]) =>
+    rows
+      .map((r) => (r.kind === 'more' ? `${'  '.repeat(r.depth)}… ${r.hidden} more` : `${'  '.repeat(r.depth)}${r.expandable ? (r.open ? '▼ ' : '▶ ') : '  '}${r.node.property.label}${r.repeat ? ' (again)' : ''}`))
+      .join('\n');
+
+  it('is read with its own reader: its properties in its places, opened and wanted as they are', async () => {
+    const branches = new Map<string, Branch<PropertyHierarchyNode>>([
+      [TOP, branch(prop('related to', 1), prop('age'))],
+      [NS + 'related to', branch(prop('works for', 1))],
+    ]);
+    const places = new Places();
+    expect(drawing(rowsOf(branches, places, new Set(), readProp))).toBe(['▶ related to', '  age'].join('\n'));
+    const open = new Set([places.at(ROOT, NS + 'related to')]);
+    expect(wanting(branches, places, open, readProp)).toEqual([]);
+    expect(drawing(rowsOf(branches, places, open, readProp))).toBe(['▼ related to', '  ▶ works for', '  age'].join('\n'));
+    // The open property has been fetched, so nothing is waited for; one that has not been is.
+    const unfetched = new Map<string, Branch<PropertyHierarchyNode>>([[TOP, branch(prop('related to', 1))]]);
+    const p2 = new Places();
+    expect(wanting(unfetched, p2, new Set([p2.at(ROOT, NS + 'related to')]), readProp)).toEqual([NS + 'related to']);
+    expect(holds(branches.get(TOP), NS + 'related to', readProp)).toBe(true);
+    expect(holds(branches.get(TOP), NS + 'works for', readProp)).toBe(false);
+    expect(fetchedOf(branches.get(NS + 'related to')!)).toBe(1);
+  });
+
+  it('opens wide by its reader, and goes round a ring of properties once', async () => {
+    const branches = new Map<string, Branch<PropertyHierarchyNode>>([[TOP, branch(prop('top', 1))]]);
+    const places = new Places();
+    const fetch = async (parents: Iri[]) => {
+      for (const p of parents) {
+        const below: Record<string, PropertyHierarchyNode[]> = {
+          [NS + 'top']: [prop('a', 1, { inCycle: true })],
+          [NS + 'a']: [prop('b', 1, { inCycle: true })],
+          [NS + 'b']: [prop('a', 1, { inCycle: true })],
+        };
+        if (below[p]) branches.set(p, branch(...below[p]));
+      }
+    };
+    const all = await openWide(branches, places, fetch, 100, readProp);
+    expect(all.cut).toBe(false);
+    expect(drawing(rowsOf(branches, places, all.open, readProp))).toBe(['▼ top', '  ▼ a', '    ▼ b', '        a (again)'].join('\n'));
   });
 });
 

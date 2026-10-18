@@ -44,6 +44,9 @@ export const MIN_ZOOM = 0.03;
 /** What the Structure Explorer is used for at the moment: looking through the hierarchy, setting two classes side by side, or measuring the whole. */
 export type StructureMode = 'explore' | 'compare' | 'analyze';
 
+/** Which hierarchy the explorer browses. Properties have only the stated one, and only an ontology has any. */
+export type StructureKind = 'classes' | 'properties';
+
 /**
  * The Structure Explorer. It reads the ontology and changes nothing in it, and what it is
  * looking at is its own: a class is brought into focus there without being selected, so the
@@ -51,6 +54,8 @@ export type StructureMode = 'explore' | 'compare' | 'analyze';
  */
 export interface StructureState {
   mode: StructureMode;
+  /** Which hierarchy the explorer browses: that of the classes, or that of the properties. */
+  kind: StructureKind;
   /** Which hierarchy is on show: what is stated, or what the chosen reasoner entails. */
   hierarchy: HierarchyMode;
   /** In the inferred hierarchy: whether the places that are entailed and nowhere stated are marked. */
@@ -226,7 +231,7 @@ export interface SessionSlice {
   graphScope: GraphScope;
   setGraphScope: (scope: GraphScope) => void;
   structure: StructureState;
-  setStructure: (patch: Partial<Pick<StructureState, 'mode' | 'hierarchy' | 'markInferred' | 'focus' | 'search' | 'compare'>>) => void;
+  setStructure: (patch: Partial<Pick<StructureState, 'mode' | 'kind' | 'hierarchy' | 'markInferred' | 'focus' | 'search' | 'compare'>>) => void;
   /** Opens an object property, by id. */
   selectProp: (id: string | null) => void;
   select: (terms: string[], rels?: string[]) => void;
@@ -423,7 +428,7 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
     set({ graphScope });
     get().fit();
   },
-  structure: { mode: 'explore', hierarchy: 'asserted', markInferred: true, focus: null, pointed: 0, search: '', compare: { a: null, b: null } },
+  structure: { mode: 'explore', kind: 'classes', hierarchy: 'asserted', markInferred: true, focus: null, pointed: 0, search: '', compare: { a: null, b: null } },
   setStructure: (patch) => set((s) => ({ structure: { ...s.structure, ...patch } })),
   selectProp: (selProp) => set({ selProp, sel: { terms: [], rels: [] } }),
   select: (terms, rels = []) => set((s) => ({ sel: { terms, rels }, selProp: terms.length || rels.length ? null : s.selProp, structure: pointingAt(s, terms, rels) })),

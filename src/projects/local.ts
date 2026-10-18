@@ -1,4 +1,4 @@
-import { putVersion, storedVersion, storedVersions, type StoredVersion } from '../model/library';
+import { loadModel, putVersion, storedVersion, storedVersions, type StoredVersion } from '../model/library';
 import { toTurtle } from '../model/rdf';
 import { shapesToTurtle } from '../model/shapes';
 import { normalizeModel, uid, type Model } from '../model/types';
@@ -51,7 +51,16 @@ export function createLocalProjectService(host: ProjectHost): ProjectService {
     if (!v || v.project !== project) throw new ProjectError('not-found', 'That version is not kept in this browser any more.');
     return v;
   };
-  const state = async (project: string, ref: StateRef) => (ref === 'current' ? host.current() : unpack(await found(project, ref.version)));
+  const state = async (project: string, ref: StateRef) => {
+    if (ref === 'current') return host.current();
+    // A saved model of My Models: another ontology to compare with, whole, as it is saved.
+    if ('model' in ref) {
+      const saved = await loadModel(ref.model);
+      if (!saved) throw new ProjectError('not-found', 'That model is not kept in this browser any more.');
+      return saved.model;
+    }
+    return unpack(await found(project, ref.version));
+  };
   return {
     async versions(project) {
       return (await storedVersions(project)).map(info).reverse();
