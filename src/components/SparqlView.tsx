@@ -1,56 +1,110 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { download } from '../model/files';
 import { termIris } from '../model/rdf';
-import { examplesFor, runSparql, type Cell, type SparqlResult } from '../model/sparql';
-import { useStore } from '../model/store';
+import { examplesFor } from '../model/sparql';
+import { currentDl, useStore } from '../model/store';
 import type { Model } from '../model/types';
+import { ontologyRef } from '../structure/local';
+import { DEFAULT_GRAPH, GRAPHS, SparqlError, type SparqlAnswer, type SparqlCell, type SparqlGraph } from '../sparql/contracts';
+import { createLocalSparqlService } from '../sparql/local';
 
 const QUERY_KEY = 'conceptweaver:sparql';
+const GRAPH_KEY = 'conceptweaver:sparql:graph';
 const ROWS = 500;
 
-/** The last query run for this type of model; SKOS and OWL queries don't carry over to each other. */
-function savedQuery(mode: Model['mode']): string {
+/** How each graph is offered, and what the header says the answer was read from. */
+const GRAPH_LABEL: Record<SparqlGraph, string> = { asserted: 'Asserted', imports: 'Asserted with imports', inferred: 'Inferred' };
+const GRAPH_READ: Record<SparqlGraph, string> = {
+  asserted: 'read from the asserted graph',
+  imports: 'read from the asserted graph with imports',
+  inferred: 'read from the graph with inferred statements',
+};
+
+function remembered(key: string): string | null {
   try {
-    return localStorage.getItem(`${QUERY_KEY}:${mode}`) || examplesFor(mode)[0].query;
+    return localStorage.getItem(key);
   } catch {
-    return examplesFor(mode)[0].query;
+    return null;
   }
 }
 
-type Run = { state: 'idle' } | { state: 'running' } | { state: 'error'; message: string } | { state: 'done'; result: SparqlResult; ms: number; model: Model };
+function remember(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Just not remembered.
+  }
+}
 
-const csvCell = (c: Cell | null) => {
+/** The last query run for this type of model; SKOS and OWL queries don't carry over to each other. */
+function savedQuery(mode: Model['mode']): string {
+  return remembered(`${QUERY_KEY}:${mode}`) || examplesFor(mode)[0].query;
+}
+
+/** The graph last chosen for this type of model. */
+function savedGraph(mode: Model['mode']): SparqlGraph {
+  const kept = remembered(`${GRAPH_KEY}:${mode}`);
+  return GRAPHS.includes(kept as SparqlGraph) ? (kept as SparqlGraph) : DEFAULT_GRAPH;
+}
+
+/** The graph is read where the ontology is, by whichever service is in place; the view asks the same way of both. */
+const SERVICE = createLocalSparqlService({
+  current: () => {
+    const s = useStore.getState();
+    return { model: s.model, docId: s.doc.id, dl: currentDl(s) };
+  },
+  imports: () => {
+    const s = useStore.getState();
+    return s.alignmentService.contents(s.model, s.ext.loaded);
+  },
+});
+
+type Run = { state: 'idle' } | { state: 'running' } | { state: 'error'; message: string } | { state: 'done'; answer: SparqlAnswer; ms: number };
+
+const csvCell = (c: SparqlCell | null) => {
   const v = c ? (c.kind === 'literal' ? c.value : c.text) : '';
   return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 };
 
 export function SparqlView() {
   const model = useStore((s) => s.model);
+  const docId = useStore((s) => s.doc.id);
   const focusTerm = useStore((s) => s.focusTerm);
   const examples = examplesFor(model.mode);
   const [query, setQuery] = useState(() => savedQuery(model.mode));
+  const [graph, setGraph] = useState<SparqlGraph>(() => savedGraph(model.mode));
   const [run, setRun] = useState<Run>({ state: 'idle' });
   const token = useRef(0);
   // A query can return tens of thousands of rows; drawing them all at once freezes the page.
   const [shown, setShown] = useState(ROWS);
   const iris = useMemo(() => termIris(model), [model]);
 
-  const execute = async (text = query) => {
+  const execute = async (text = query, choice = graph) => {
     const mine = ++token.current;
     setShown(ROWS);
     setRun({ state: 'running' });
+    const mode = useStore.getState().model.mode;
+    remember(`${QUERY_KEY}:${mode}`, text);
+    remember(`${GRAPH_KEY}:${mode}`, choice);
     try {
-      localStorage.setItem(`${QUERY_KEY}:${useStore.getState().model.mode}`, text);
-    } catch {
-      // The query just isn't remembered.
-    }
-    const current = useStore.getState().model;
-    const t0 = performance.now();
-    try {
-      const result = await runSparql(current, text);
-      if (mine === token.current) setRun({ state: 'done', result, ms: Math.max(1, Math.round(performance.now() - t0)), model: current });
+      let now = useStore.getState();
+      // The OWL 2 DL reasoner is asked here, as the owl-inferred export asks it, when the inferred graph is wanted from it.
+      if (choice === 'inferred' && now.validation.engine === 'dl' && !currentDl(now)) {
+        await now.runValidation('owl');
+        if (mine !== token.current) return;
+        now = useStore.getState();
+      }
+      const t0 = performance.now();
+      const answer = await SERVICE.query({ ...ontologyRef(now.model, now.doc.id), text, graph: choice });
+      if (mine === token.current) setRun({ state: 'done', answer, ms: Math.max(1, Math.round(performance.now() - t0)) });
     } catch (e) {
-      if (mine === token.current) setRun({ state: 'error', message: e instanceof Error ? e.message : String(e) });
+      if (mine !== token.current) return;
+      if (e instanceof SparqlError) {
+        if (e.code === 'aborted') return;
+        // The ontology was edited while the query was out: ask about it as it is now.
+        if (e.code === 'stale-revision') return void execute(text, choice);
+      }
+      setRun({ state: 'error', message: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -60,13 +114,14 @@ export function SparqlView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const result = run.state === 'done' ? run.result : undefined;
-  const stale = run.state === 'done' && run.model !== model;
+  const result = run.state === 'done' ? run.answer.result : undefined;
+  const current = ontologyRef(model, docId);
+  const stale = run.state === 'done' && (run.answer.ontologyId !== current.ontologyId || run.answer.revisionId !== current.revisionId);
   const summary =
     run.state === 'running'
       ? 'Running…'
       : run.state === 'done'
-        ? `${result!.type === 'ask' ? 'Answered' : `${result!.rows.length} ${result!.type === 'graph' ? 'triples' : result!.rows.length === 1 ? 'row' : 'rows'}`} in ${run.ms} ms`
+        ? `${result!.type === 'ask' ? 'Answered' : `${result!.rows.length} ${result!.type === 'graph' ? 'triples' : result!.rows.length === 1 ? 'row' : 'rows'}`} in ${run.ms} ms · ${GRAPH_READ[run.answer.graph]}`
         : '';
 
   const saveCsv = () => {
@@ -98,6 +153,26 @@ export function SparqlView() {
           <span className="muted">
             Prefixes <code>:</code> <code>owl:</code> <code>rdf:</code> <code>rdfs:</code> <code>skos:</code> <code>xsd:</code> are declared for you.
           </span>
+          <span className="spacer" />
+          <label className="field">
+            <span>Read from</span>
+            <select
+              aria-label="What the query reads"
+              title="What the query reads: the ontology as stated, together with what it imports, or with what a reasoner infers"
+              value={graph}
+              onChange={(e) => {
+                const choice = e.target.value as SparqlGraph;
+                setGraph(choice);
+                void execute(query, choice);
+              }}
+            >
+              {GRAPHS.map((g) => (
+                <option key={g} value={g}>
+                  {GRAPH_LABEL[g]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <textarea
           value={query}
@@ -136,6 +211,7 @@ export function SparqlView() {
       </div>
 
       <div className="table-wrap">
+        {run.state === 'done' && run.answer.notes.length > 0 && <p className="muted pad">{run.answer.notes.join(' ')}</p>}
         {run.state === 'error' && <pre className="sparql-error">{run.message}</pre>}
         {result?.type === 'ask' && <div className="ask">{result.value ? 'Yes (true)' : 'No (false)'}</div>}
         {result && result.type !== 'ask' && (

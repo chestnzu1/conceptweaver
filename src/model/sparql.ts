@@ -1,5 +1,5 @@
 import { loadOxigraph, type OxStore } from './oxigraph';
-import { compactIri } from './prefixes';
+import { compactIri, longestMatch } from './prefixes';
 import { prefixesOf, toTurtle } from './rdf';
 import type { Model } from './types';
 
@@ -32,7 +32,17 @@ const PROLOGUE = /^(\s*(#[^\n]*\n|(PREFIX\s+[^\s:]*:\s*<[^>]*>|BASE\s*<[^>]*>)))
 
 /** Runs a read-only SPARQL query over the model's RDF (the same graph as the Turtle export). */
 export async function runSparql(model: Model, query: string): Promise<SparqlResult> {
-  const prefixes = prefixesOf(model);
+  return queryTurtle(model, toTurtle(model), query, prefixesOf(model));
+}
+
+/**
+ * Runs a read-only SPARQL query over a graph given as Turtle. `model` is what IRIs are shortened
+ * by, and `prefixes` are what the query may use without declaring them: the model's own, and
+ * after them those of whatever else the graph holds (the imports closure). The engine is loaded
+ * on first use, and the store it loads the graph into is kept for as long as the graph is the
+ * same, so asking again about an unchanged graph costs only the query.
+ */
+export async function queryTurtle(model: Model, turtle: string, query: string, prefixes: [string, string][]): Promise<SparqlResult> {
   const form = query.replace(PROLOGUE, '').match(/^(SELECT|ASK|CONSTRUCT|DESCRIBE)\b/i)?.[1].toUpperCase();
   if (!form) {
     throw new Error(
@@ -42,7 +52,6 @@ export async function runSparql(model: Model, query: string): Promise<SparqlResu
     );
   }
   const { Store } = await loadEngine();
-  const turtle = toTurtle(model);
   if (cached?.turtle !== turtle) {
     const store = new Store();
     store.load(turtle, { format: 'text/turtle' });
@@ -54,7 +63,7 @@ export async function runSparql(model: Model, query: string): Promise<SparqlResu
   const header = prefixes.filter(([p]) => !declared.has(p)).map(([p, ns]) => `PREFIX ${p}: <${ns}>`).join(' ');
   const text = header + '\n' + query;
 
-  const short = (iri: string) => compactIri(model, iri) ?? `<${iri}>`;
+  const short = (iri: string) => compactIri(model, iri) ?? longestMatch(prefixes, iri) ?? `<${iri}>`;
   const cell = (type: string, value: string, lang?: string): Cell =>
     type === 'uri' || type === 'NamedNode'
       ? { kind: 'iri', value, text: short(value) }

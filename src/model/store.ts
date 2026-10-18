@@ -48,7 +48,7 @@ export const useStore = create<State>()((...a) => ({
 
 // An edit can add or remove what the subgraph shows.
 useStore.subscribe((s, prev) => {
-  if (s.model !== prev.model && s.subgraph.active) s.refreshSubgraph();
+  if (s.model !== prev.model && s.subgraph.active) void s.refreshSubgraph();
 });
 
 /**

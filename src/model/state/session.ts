@@ -439,41 +439,57 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   selectAll: () => set((s) => ({ sel: { terms: viewOf(s).terms.map((t) => t.id), rels: [] } })),
   focusTerm: (id) => {
     if (!get().model.terms.some((x) => x.id === id)) return;
+    /** Shows and centres it, once the canvas has it: a subgraph it has just joined is worked out a moment later. */
+    const centre = () => {
+      const { canvasSize, vp } = get();
+      const t = viewOf(get()).terms.find((x) => x.id === id);
+      if (!t) return;
+      set((s) => ({ view: 'graph', sel: { terms: [id], rels: [] }, structure: pointingAt(s, [id]), vp: { ...vp, x: canvasSize.w / 2 - t.x * vp.k, y: canvasSize.h / 2 - t.y * vp.k } }));
+    };
     // A graph too large to draw whole is drawn around the term.
     if (!get().subgraph.active && !drawnWhole(get().model)) {
       get().setSubgraph({ roots: [id], expanded: [], hidden: [] });
-      get().visualizeSubgraph();
+      void get().visualizeSubgraph().then(centre);
+      return;
     }
     // Asked to show a term that the subgraph leaves out: it joins the subgraph as a starting point.
     if (get().subgraph.active && !viewOf(get()).terms.some((x) => x.id === id)) {
       const { roots, hidden } = get().subgraph;
       get().setSubgraph({ roots: [...roots, id], hidden: hidden.filter((x) => x !== id) });
+      void get().refreshSubgraph().then(centre);
+      return;
     }
-    const { canvasSize, vp } = get();
-    const t = viewOf(get()).terms.find((x) => x.id === id);
-    if (!t) return;
-    set((s) => ({ view: 'graph', sel: { terms: [id], rels: [] }, structure: pointingAt(s, [id]), vp: { ...vp, x: canvasSize.w / 2 - t.x * vp.k, y: canvasSize.h / 2 - t.y * vp.k } }));
+    centre();
   },
   focusRelation: (id) => {
     const r = get().model.relations.find((x) => x.id === id);
     if (!r) return;
+    /** Shows and centres it, once the canvas has both ends: a subgraph just grown for them is worked out a moment later. */
+    const centre = () => {
+      const { canvasSize, vp } = get();
+      const view = viewOf(get());
+      const a = view.terms.find((x) => x.id === r.from);
+      const b = view.terms.find((x) => x.id === r.to);
+      if (!a || !b) return;
+      const cx = (a.x + b.x) / 2;
+      const cy = (a.y + b.y) / 2;
+      set({ view: 'graph', sel: { terms: [], rels: [id] }, vp: { ...vp, x: canvasSize.w / 2 - cx * vp.k, y: canvasSize.h / 2 - cy * vp.k } });
+    };
     if (!get().subgraph.active && !drawnWhole(get().model)) {
       get().setSubgraph({ roots: [...new Set([r.from, r.to])], expanded: [], hidden: [] });
-      get().visualizeSubgraph();
+      void get().visualizeSubgraph().then(centre);
+      return;
     }
     if (get().subgraph.active) {
       const shown = new Set(viewOf(get()).terms.map((t) => t.id));
       const missing = [r.from, r.to].filter((x) => !shown.has(x));
-      if (missing.length) get().setSubgraph({ roots: [...get().subgraph.roots, ...missing], hidden: get().subgraph.hidden.filter((x) => !missing.includes(x)) });
+      if (missing.length) {
+        get().setSubgraph({ roots: [...get().subgraph.roots, ...missing], hidden: get().subgraph.hidden.filter((x) => !missing.includes(x)) });
+        void get().refreshSubgraph().then(centre);
+        return;
+      }
     }
-    const { canvasSize, vp } = get();
-    const view = viewOf(get());
-    const a = view.terms.find((x) => x.id === r.from);
-    const b = view.terms.find((x) => x.id === r.to);
-    if (!a || !b) return;
-    const cx = (a.x + b.x) / 2;
-    const cy = (a.y + b.y) / 2;
-    set({ view: 'graph', sel: { terms: [], rels: [id] }, vp: { ...vp, x: canvasSize.w / 2 - cx * vp.k, y: canvasSize.h / 2 - cy * vp.k } });
+    centre();
   },
   showPath: (a, b) => {
     const path = findPath(get().model, a, b);

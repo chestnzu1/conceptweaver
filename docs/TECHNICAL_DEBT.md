@@ -291,6 +291,15 @@ local implementation calls the same model functions. Order by payoff: entity edi
 entity can be edited without loading the ontology), then validation and alignment. The canvas
 comes last and through `GraphService` (subgraph in, positions kept locally).
 
+**Progress, 2026-10-18 (roadmap task 2.11).** The subgraph pipeline and the SPARQL view now ask
+services. `src/model/state/subgraph.ts` builds the subgraph through `GraphService`
+(`src/graph/`), and `SubgraphPanel.tsx` asks it for the edge kinds and the search, so the last of
+the canvas's model reads behind a service is in place (`Canvas.tsx` still reads the model for
+its other drawing). `SparqlView.tsx` asks `SparqlService` (`src/sparql/`) and no longer calls
+`runSparql`; the graph it reads — asserted, with imports, or with inferred statements — is part
+of the question. The entity editor, validation and alignment views, and the canvas's remaining
+reads, still go to the model directly.
+
 ### TD-06 The same rule is written in more than one place — Medium
 
 **Where and what.**

@@ -442,7 +442,7 @@ describe('arranging a model', () => {
     await arrange('circular');
     const model = st().model;
     st().setSubgraph({ roots: [film.id], depth: 1 });
-    st().visualizeSubgraph();
+    await st().visualizeSubgraph();
     expect(layoutOf(st()).kind).toBe('hierarchy');
     const shown = viewOf(st()).terms.length;
     expect(shown).toBeGreaterThan(3);
@@ -467,7 +467,7 @@ describe('arranging a model', () => {
     st().showFullGraph();
     expect(layoutOf(st()).kind).toBe('circular');
     // A subgraph is laid out by its own layout when it is drawn afresh.
-    st().visualizeSubgraph();
+    await st().visualizeSubgraph();
     expect(layoutOf(st()).kind).toBe('manual');
   });
 

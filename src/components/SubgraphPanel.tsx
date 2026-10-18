@@ -1,9 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { MAX_DEPTH, type GraphKind, type TermMatch } from '../graph/contracts';
 import { nameIn } from '../model/labels';
 import { stable } from '../model/stable';
 import { useStore, type GraphScope } from '../model/store';
-import { edgeTypes, MAX_DEPTH, searchTerms, type Direction } from '../model/subgraph';
+import type { Direction } from '../model/subgraph';
+import { ontologyRef } from '../structure/local';
 import { LayoutBar, LayoutOptions } from './LayoutControls';
+import { TYPING_PAUSE, useSettled } from './useSettled';
 
 /**
  * The switch between the full graph and a subgraph, and the settings of the subgraph: the terms
@@ -12,8 +15,10 @@ import { LayoutBar, LayoutOptions } from './LayoutControls';
 /** `tools` are further buttons of the canvas, shown in the same bar: what it draws besides the model itself. */
 export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
   const model = stable(useStore((s) => s.model));
+  const docId = useStore((s) => s.doc.id);
   const displayLang = useStore((s) => s.displayLang);
   const sub = useStore((s) => s.subgraph);
+  const graphService = useStore((s) => s.graphService);
   const stylePanel = useStore((s) => s.stylePanel);
   const selected = useStore((s) => s.sel.terms);
   const st = useStore.getState;
@@ -23,8 +28,34 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
   const setOpen = (on: boolean) => setPanel(on ? 'subgraph' : null);
   const [query, setQuery] = useState('');
   const name = useMemo(() => new Map(model.terms.map((t) => [t.id, nameIn(t, model.lang, displayLang) || 'Unnamed'])), [model.terms, model.lang, displayLang]);
-  const types = useMemo(() => edgeTypes(model), [model]);
-  const found = useMemo(() => searchTerms(model, query, 8, displayLang).filter((t) => !sub.roots.includes(t.id)), [model, query, sub.roots, displayLang]);
+  const { ontologyId, revisionId } = ontologyRef(model, docId);
+  // What there is to follow is a question of the service; the last answer stays while a new one is on its way.
+  const [kinds, setKinds] = useState<GraphKind[] | null>(null);
+  useEffect(() => {
+    const gone = new AbortController();
+    graphService.kinds({ ontologyId, revisionId }, { signal: gone.signal }).then(
+      (answer) => setKinds(answer.kinds),
+      () => undefined,
+    );
+    return () => gone.abort();
+  }, [graphService, ontologyId, revisionId]);
+  // Terms to start from are searched for by the service, once the typing has paused.
+  const settled = useSettled(query, TYPING_PAUSE);
+  const [matches, setMatches] = useState<TermMatch[] | null>(null);
+  useEffect(() => {
+    const text = settled.trim();
+    if (!text) {
+      setMatches(null);
+      return;
+    }
+    const gone = new AbortController();
+    graphService.search({ ontologyId, revisionId, text, limit: 8, lang: displayLang }, { signal: gone.signal }).then(
+      (answer) => setMatches(answer.matches),
+      () => undefined,
+    );
+    return () => gone.abort();
+  }, [graphService, ontologyId, revisionId, settled, displayLang]);
+  const found = (matches ?? []).filter((t) => !sub.roots.includes(t.id));
   const roots = sub.roots.filter((id) => name.has(id));
   const scope = useStore((s) => s.graphScope);
   const hasExternal = model.terms.some((t) => t.external !== undefined);
@@ -142,7 +173,7 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
 
           <fieldset className="field subgraph-types">
             <legend>Relationships to follow</legend>
-            {types.map((t) => (
+            {(kinds ?? []).map((t) => (
               <label key={t.key} className="check">
                 <input
                   type="checkbox"
@@ -154,7 +185,7 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
                 </span>
               </label>
             ))}
-            {!types.length && <span className="muted">The model has no relationships yet.</span>}
+            {kinds && !kinds.length && <span className="muted">The model has no relationships yet.</span>}
           </fieldset>
 
           <label className="field">

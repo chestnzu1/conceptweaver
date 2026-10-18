@@ -711,17 +711,18 @@ closure). FR-M8-9 is M12.
 sorting and filters, answered by a query service with matches highlighted (`src/entities/`). A
 sidebar search and hierarchy. A SPARQL view over the asserted ontology using oxigraph in the
 page, with example queries per model type, results as a table, CSV download, and the last query
-remembered (`src/model/sparql.ts`, `SparqlView.tsx`).
+remembered. A query can read the asserted graph, that graph with what the ontology imports, or
+the graph with what a reasoner infers, and the result header says which; a query is answered
+through a service that can run in the page or at a backend (`src/sparql/`, FR-M9-4).
 
-**Gaps.** SPARQL sees the asserted graph only. One remembered query, no named ones. No search
-across axioms and annotations as such.
+**Gaps.** One remembered query, no named ones. No search across axioms and annotations as such.
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
 | FR-M9-1 | Search entities by name, label, IRI and definition, with matches highlighted. | Existing | P0 |
 | FR-M9-2 | Sort and filter each list by what is said about its entities. | Existing | P0 |
 | FR-M9-3 | SPARQL `SELECT`, `ASK` and `CONSTRUCT` over the ontology, with examples and CSV download. | Existing | P1 |
-| FR-M9-4 | Choose what a query reads: asserted, asserted with imports, or with inferred statements. | Recommended | P1 |
+| FR-M9-4 | Choose what a query reads: asserted, asserted with imports, or with inferred statements. | Implemented 2026-10-18 (`src/sparql/local.ts`, `SparqlView.tsx`) | P1 |
 | FR-M9-5 | Named, saved queries per project. | Recommended | P2 |
 | FR-M9-6 | One search box across entities, annotations and axioms, with results grouped by kind. | Recommended | P2 |
 | FR-M9-7 | A read-only SPARQL endpoint for a published ontology. | Future | P3 |

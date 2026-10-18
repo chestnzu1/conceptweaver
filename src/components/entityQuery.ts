@@ -5,6 +5,7 @@ import { MAX_PAGE } from '../entities/service';
 import { currentDl, currentReasoning, useStore, type EntityViewState } from '../model/store';
 import { useReasoning } from './reasoning';
 import { ontologyRef } from '../structure/local';
+import { TYPING_PAUSE, useSettled } from './useSettled';
 
 /**
  * Where the Entities page gets its lists. Today that is the model in the editor, with what the
@@ -16,20 +17,6 @@ export const entityService: EntityQueryService = createLocalEntityService(() => 
   const s = useStore.getState();
   return { model: s.model, docId: s.doc.id, dl: currentDl(s), fast: currentReasoning(s), lang: s.displayLang };
 });
-
-/** How long the search waits for the typing to pause before it asks. */
-const TYPING_PAUSE = 160;
-
-/** A value as it was a moment ago, so that what follows it is not redone at every keystroke. Emptied, it follows at once. */
-function useSettled(value: string, ms: number): string {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    if (!value.trim()) return setSettled(value);
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return value.trim() ? settled : value;
-}
 
 export interface EntityList {
   ontology: OntologyRef;

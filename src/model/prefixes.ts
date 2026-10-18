@@ -49,6 +49,17 @@ export function compactIri(m: Model, iri: string): string | undefined {
   return best ? `${best.prefix}:${iri.slice(best.iri.length)}` : undefined;
 }
 
+/**
+ * The prefixed form of an IRI under a given list of prefixes, or undefined if none covers it.
+ * `compactIri` reads a model's prefixes; this takes any list, such as the closure of an
+ * ontology and the ones it imports, where the model's own list comes first.
+ */
+export function longestMatch(prefixes: [string, string][], iri: string): string | undefined {
+  let best: [string, string] | undefined;
+  for (const p of prefixes) if (iri.startsWith(p[1]) && LOCAL.test(iri.slice(p[1].length)) && (!best || p[1].length > best[1].length)) best = p;
+  return best ? `${best[0]}:${iri.slice(best[1].length)}` : undefined;
+}
+
 /** The full IRI for a prefixed name, or undefined if the prefix is not known. */
 export function expandIri(m: Model, curie: string): string | undefined {
   const at = curie.indexOf(':');

@@ -389,7 +389,7 @@ no server (§1.4) come after 2.2 and before 2.3, and make milestone MS-12.
 | 2.8 | Further axioms: property chains, keys, disjoint unions, negative assertions, annotations on axioms, moved out of the unmapped block one kind at a time. Done 2026-10-17. | FR-M2-4, FR-M2-5 | L |
 | 2.9 | Imports: `owl:imports` declared on export; the closure resolved transitively; missing imports reported. `AlignmentService`. Done 2026-10-18. | FR-M8-5 | M |
 | 2.10 | Structure: property hierarchies; comparison of two versions or two ontologies, reusing the difference from 2.3. Done 2026-10-18. | FR-M6-5, FR-M6-6 | M |
-| 2.11 | Remaining interfaces: `GraphService` over `extractSubgraph`, `SparqlService` with a choice of asserted or inferred graph. Views moved off direct model reads as each is touched. | TD-05, FR-M9-4 | M |
+| 2.11 | Remaining interfaces: `GraphService` over `extractSubgraph`, `SparqlService` with a choice of asserted, imported or inferred graph. Views moved off direct model reads as each is touched. Done 2026-10-18. | TD-05, FR-M9-4 | M |
 | 2.12 | Update mode for tabular import; several diagrams per ontology; custom quality rules as SPARQL. | FR-M7-6, FR-M5-7, FR-M4-7 | M each |
 
 ### The logical data modelling workstream (LM-1 to LM-4)
@@ -767,8 +767,12 @@ content is not in the browser is reported as a finding naming it (FR-M8-5), behi
 `AlignmentService`. **2.10 is done too**: object and data properties are browsed in one tree
 under the properties they are stated to be subproperties of, and a version is compared with
 another version, the model now or a model in My Models, a renamed class and a moved class each
-told as one change (FR-M6-5, FR-M6-6). **The next task is 2.11**, the remaining service
-interfaces, set out in §3; then 2.12 as demand and dependencies allow.
+told as one change (FR-M6-5, FR-M6-6). **2.11 is done too**: the subgraph the canvas draws and
+the SPARQL view ask `GraphService` and `SparqlService`, and a query can read the asserted graph,
+that graph with what the ontology imports, or the graph with what a reasoner infers, the result
+header saying which; an answer names the ontology revision it is about and is retried after an
+edit (TD-05, FR-M9-4). **The next task is 2.12**, update mode for tabular import, several
+diagrams per ontology and custom quality rules as SPARQL, as demand and dependencies allow.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
 

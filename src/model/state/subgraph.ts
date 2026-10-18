@@ -2,7 +2,10 @@ import { drawnWhole, GRAPH_LIMIT } from '../culling';
 import { builtIn } from '../../layout/compute';
 import { graphOf } from '../../layout/graph';
 import { noLayout, type GraphLayout } from '../../layout/types';
-import { DEFAULT_MAX_NODES, extractSubgraph, MAX_DEPTH, type Direction, type Subgraph } from '../subgraph';
+import { DEFAULT_MAX_NODES, MAX_DEPTH, MAX_NODES, type GraphService, type Neighbourhood } from '../../graph/contracts';
+import { createLocalGraphService } from '../../graph/local';
+import { ontologyRef } from '../../structure/local';
+import type { Direction, Subgraph } from '../subgraph';
 import type { Slice } from './types';
 
 /** The subgraph view: a slice of the session. It is a way of looking at the model, never part of it. */
@@ -34,35 +37,32 @@ export const NO_SUBGRAPH: SubgraphState = { active: false, roots: [], depth: 1, 
 
 export interface SubgraphSlice {
   subgraph: SubgraphState;
+  /** The graph questions as a service (src/graph/contracts.ts): the walk, the search and the kinds of relationship. */
+  graphService: GraphService;
   /** Changes subgraph settings (roots, depth, direction, filters, limit) and updates what is shown. */
   setSubgraph: (patch: Partial<Pick<SubgraphState, 'roots' | 'depth' | 'direction' | 'off' | 'expanded' | 'hidden' | 'maxNodes'>>) => void;
   /** Works out the subgraph afresh. With `relayout` every visible term is placed anew; otherwise only new ones are. */
-  refreshSubgraph: (relayout?: boolean) => void;
+  refreshSubgraph: (relayout?: boolean) => Promise<void>;
   /** Switches to subgraph mode, laying the subgraph out. */
-  visualizeSubgraph: () => void;
+  visualizeSubgraph: () => Promise<void>;
   /** Back to subgraph mode as it was left: same terms, same places, same expansions. */
-  resumeSubgraph: () => void;
+  resumeSubgraph: () => Promise<void>;
   /** Back to the full graph; the subgraph's settings are kept for next time. */
   showFullGraph: () => void;
   /** Shows or stops showing the direct neighbours of one term. */
   toggleExpand: (id: string) => void;
 }
 
-export const subgraphSlice: Slice<SubgraphSlice> = (set, get) => ({
-  subgraph: NO_SUBGRAPH,
-  setSubgraph: (patch) => {
-    const clean = { ...patch };
-    if (clean.depth !== undefined) clean.depth = Math.max(0, Math.min(MAX_DEPTH, Math.floor(clean.depth)));
-    if (clean.maxNodes !== undefined) clean.maxNodes = Math.max(1, Math.min(5000, Math.floor(clean.maxNodes) || DEFAULT_MAX_NODES));
-    set((s) => ({ subgraph: { ...s.subgraph, ...clean } }));
-    if (!get().subgraph.active) return;
-    get().refreshSubgraph();
-    // A change of scope can put terms well outside what is on screen; expanding or hiding one term does not move the view.
-    if (['roots', 'depth', 'direction', 'off', 'maxNodes'].some((k) => k in patch)) get().fit();
-  },
-  refreshSubgraph: (relayout = false) => {
+export const subgraphSlice: Slice<SubgraphSlice> = (set, get) => {
+  const graphService = createLocalGraphService(() => ({ model: get().model, docId: get().doc.id }));
+
+  /** Which refresh is wanted: an answer to an earlier one, arriving late, is let go. */
+  let refreshToken = 0;
+
+  /** Puts an answer in the store, placing the terms that are new and keeping the others where they are. */
+  function apply(answer: Neighbourhood, relayout: boolean): void {
     const { model, subgraph: sub } = get();
-    const result = extractSubgraph(model, sub);
+    const result: Subgraph = { terms: answer.terms, rels: answer.rels, via: new Map(Object.entries(answer.via)), more: new Map(Object.entries(answer.more)), truncated: answer.truncated };
     const byId = new Map(model.terms.map((t) => [t.id, t]));
     let pos: SubgraphState['pos'] = {};
     if (relayout || !Object.keys(sub.pos).length) {
@@ -101,34 +101,75 @@ export const subgraphSlice: Slice<SubgraphSlice> = (set, get) => ({
     }
     for (const id of Object.keys(pos)) if (!byId.has(id)) delete pos[id];
     set((s) => ({ subgraph: { ...s.subgraph, pos, result }, sel: { terms: s.sel.terms.filter((id) => pos[id]), rels: s.sel.rels } }));
-  },
-  visualizeSubgraph: () => {
-    if (!get().subgraph.roots.length) {
-      get().notify('Choose at least one term to start the subgraph from.');
+  }
+
+  /** Asks the graph service for what the subgraph's settings show now. */
+  async function refresh(relayout: boolean): Promise<void> {
+    const mine = ++refreshToken;
+    for (;;) {
+      const { model, doc, subgraph: sub } = get();
+      const answer = await get().graphService.neighbourhood({
+        ...ontologyRef(model, doc.id),
+        roots: sub.roots,
+        depth: sub.depth,
+        direction: sub.direction,
+        off: sub.off,
+        expanded: sub.expanded,
+        hidden: sub.hidden,
+        maxNodes: sub.maxNodes,
+      });
+      // Another refresh was asked for while this one was on its way: its answer is the one wanted.
+      if (mine !== refreshToken) return;
+      // The model was edited while the question was out: ask about the revision it is now.
+      const now = ontologyRef(get().model, get().doc.id);
+      if (answer.ontologyId !== now.ontologyId || answer.revisionId !== now.revisionId) continue;
+      apply(answer, relayout);
       return;
     }
-    set((s) => ({ subgraph: { ...s.subgraph, active: true, expanded: [], hidden: [] }, view: 'graph', highlight: [], highlightLabel: '' }));
-    get().refreshSubgraph(true);
-    get().fit();
-    if (get().subgraph.layout.kind === 'layered') get().rearrange();
-    const { result, maxNodes } = get().subgraph;
-    if (result?.truncated) get().notify(`The subgraph is cut off at ${maxNodes} terms. Lower the depth, switch off some relationship types, or raise the limit.`);
-  },
-  resumeSubgraph: () => {
-    set((s) => ({ subgraph: { ...s.subgraph, active: true }, view: 'graph', highlight: [], highlightLabel: '' }));
-    // The model may have been edited in the meantime, so what is visible is worked out again; places are kept.
-    get().refreshSubgraph();
-    get().fit();
-  },
-  showFullGraph: () => {
-    if (!get().subgraph.active) return;
-    // A model too large to draw whole has no full graph: the canvas asks for a class to draw it around instead.
-    if (!drawnWhole(get().model)) get().notify(`This model has ${get().model.terms.length.toLocaleString('en')} terms, too many to draw at once (more than ${GRAPH_LIMIT.toLocaleString('en')}): the graph is drawn around the terms you choose.`);
-    set((s) => ({ subgraph: { ...s.subgraph, active: false } }));
-    get().fit();
-  },
-  toggleExpand: (id) => {
-    const { expanded } = get().subgraph;
-    get().setSubgraph({ expanded: expanded.includes(id) ? expanded.filter((x) => x !== id) : [...expanded, id] });
-  },
-});
+  }
+
+  return {
+    subgraph: NO_SUBGRAPH,
+    graphService,
+    setSubgraph: (patch) => {
+      const clean = { ...patch };
+      if (clean.depth !== undefined) clean.depth = Math.max(0, Math.min(MAX_DEPTH, Math.floor(clean.depth)));
+      if (clean.maxNodes !== undefined) clean.maxNodes = Math.max(1, Math.min(MAX_NODES, Math.floor(clean.maxNodes) || DEFAULT_MAX_NODES));
+      set((s) => ({ subgraph: { ...s.subgraph, ...clean } }));
+      if (!get().subgraph.active) return;
+      const done = refresh(false);
+      // A change of scope can put terms well outside what is on screen; expanding or hiding one term does not move the view.
+      if (['roots', 'depth', 'direction', 'off', 'maxNodes'].some((k) => k in patch)) void done.then(() => get().fit());
+    },
+    refreshSubgraph: (relayout = false) => refresh(relayout),
+    visualizeSubgraph: async () => {
+      if (!get().subgraph.roots.length) {
+        get().notify('Choose at least one term to start the subgraph from.');
+        return;
+      }
+      set((s) => ({ subgraph: { ...s.subgraph, active: true, expanded: [], hidden: [] }, view: 'graph', highlight: [], highlightLabel: '' }));
+      await refresh(true);
+      get().fit();
+      if (get().subgraph.layout.kind === 'layered') get().rearrange();
+      const { result, maxNodes } = get().subgraph;
+      if (result?.truncated) get().notify(`The subgraph is cut off at ${maxNodes} terms. Lower the depth, switch off some relationship types, or raise the limit.`);
+    },
+    resumeSubgraph: async () => {
+      set((s) => ({ subgraph: { ...s.subgraph, active: true }, view: 'graph', highlight: [], highlightLabel: '' }));
+      // The model may have been edited in the meantime, so what is visible is worked out again; places are kept.
+      await refresh(false);
+      get().fit();
+    },
+    showFullGraph: () => {
+      if (!get().subgraph.active) return;
+      // A model too large to draw whole has no full graph: the canvas asks for a class to draw it around instead.
+      if (!drawnWhole(get().model)) get().notify(`This model has ${get().model.terms.length.toLocaleString('en')} terms, too many to draw at once (more than ${GRAPH_LIMIT.toLocaleString('en')}): the graph is drawn around the terms you choose.`);
+      set((s) => ({ subgraph: { ...s.subgraph, active: false } }));
+      get().fit();
+    },
+    toggleExpand: (id) => {
+      const { expanded } = get().subgraph;
+      get().setSubgraph({ expanded: expanded.includes(id) ? expanded.filter((x) => x !== id) : [...expanded, id] });
+    },
+  };
+};
