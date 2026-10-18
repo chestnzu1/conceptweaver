@@ -8,7 +8,6 @@ import { createLocalTraceabilityService, createLocalTransformationService } from
 import type { TraceabilityService, TransformationService } from '../../traceability/contracts';
 import { storedModel } from '../../projects/local';
 import { withoutEntities } from '../domains';
-import { importsClosure } from '../external';
 import { linkProps } from '../identity';
 import { withIris } from '../iri';
 import { loadModel as loadSaved, saveModel as saveToLibraryDb, type WorkingCopy } from '../library';
@@ -273,12 +272,12 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     });
     const transformation = createLocalTransformationService({
       current: () => ({ model: get().model, ontologyId: get().doc.id ?? WORKING_COPY, revisionId: get().version.revision }),
-      withImports: (model) => (model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined),
+      withImports: (model) => (model.externals.some((e) => e.imports) ? get().alignmentService.closure(model, new Map(Object.entries(get().ext.loaded))).model : undefined),
       edit,
     });
     const traceability = createLocalTraceabilityService({
       current: () => ({ model: get().model, ontologyId: get().doc.id ?? WORKING_COPY, revisionId: get().version.revision }),
-      withImports: (model) => (model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined),
+      withImports: (model) => (model.externals.some((e) => e.imports) ? get().alignmentService.closure(model, new Map(Object.entries(get().ext.loaded))).model : undefined),
       savedVersion: (version) => storedModel(version),
       edit,
     });

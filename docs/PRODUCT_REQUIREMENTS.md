@@ -684,7 +684,7 @@ search.
 | FR-M8-2 | Reuse an external entity by reference (its own IRI) or by copy. | Existing | P0 |
 | FR-M8-3 | Record mappings with standard predicates, with status, author and comment; review them in one list. | Existing | P1 |
 | FR-M8-4 | Suggest mappings; accept or turn down each; never suggest a rejected one again. | Existing (lexical) | P1 |
-| FR-M8-5 | `owl:imports` is declared on export and the imports closure is resolved transitively, with missing imports reported. | Partially Implemented (one level, not declared) | P1 |
+| FR-M8-5 | `owl:imports` is declared on export and the imports closure is resolved transitively, with missing imports reported. | Existing | P1 |
 | FR-M8-6 | Import and export mappings as SSSOM. | Recommended | P2 |
 | FR-M8-7 | Extract a module of an external ontology (the part needed for chosen terms) instead of the whole. | Future | P3 |
 | FR-M8-8 | Search public catalogues for terms to reuse. | Future | P3 |
@@ -1596,7 +1596,7 @@ to someone else's.
 | 4 | Relates a local class to an external one | A mapping with a chosen predicate; each predicate says what it means and what a reasoner will make of it. | Existing |
 | 5 | Opens *Suggestions* | Lexical candidates with a score; each is accepted or turned down, and a rejected one is not offered again. | Existing |
 | 6 | Reviews mappings | One list with status (proposed, approved, needs review), author and comment; exported as Turtle. | Existing |
-| 7 | The added ontology's own imports are fetched and reasoned with | — | Recommended (FR-M8-5) |
+| 7 | An added ontology imports others | They are read from the browser's cache too, however deep the chain, and reasoned with; one whose content is not there is reported as a missing import, naming it. | Existing |
 | 8 | Searches a public catalogue for a term | — | Future |
 
 ```mermaid

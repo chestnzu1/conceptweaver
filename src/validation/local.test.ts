@@ -86,7 +86,7 @@ describe('the checks as a job', () => {
       given = input.withImports;
       return onThePage(input, signal, progress);
     };
-    const { service } = serviceOver(model, look, { withImports: () => closure });
+    const { service } = serviceOver(model, look, { withImports: () => ({ model: closure, missing: [] }) });
     await service.report((await service.start({ ...ref, categories: ['owl'], data: MODEL_DATA, engine: 'fast', imports: true })).job);
     expect(given).toBe(closure);
     await service.report((await service.start({ ...ref, categories: ['owl'], data: MODEL_DATA, engine: 'fast' })).job);

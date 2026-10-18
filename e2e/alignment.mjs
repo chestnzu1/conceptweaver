@@ -282,6 +282,59 @@ await page.locator('.ext-preview').getByRole('button', { name: 'Reference ontolo
 await sub(/^Ontology library/);
 ok((await v.locator('.ontologies li').count()) === 1 && (await v.locator('.stale').count()) === 0, 'adding the file again restores the same library entry rather than making a second');
 
+// ---------------------------------------------------------------- phase 6: an import of an import (FR-M8-5)
+fs.writeFileSync(tmp + '/middle.ttl', `@prefix mid: <http://example.org/middle#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ppl: <http://example.org/people#> .
+<http://example.org/middle> a owl:Ontology ; rdfs:label "Middle Ontology" ; owl:imports <http://example.org/people> .
+mid:Team a owl:Class ; rdfs:label "Team" ; rdfs:subClassOf ppl:Person .
+`);
+// The studio now imports the middle ontology alone, which imports the People ontology in turn.
+await v.getByRole('checkbox', { name: /^Dependency/ }).uncheck();
+ok(flat(await v.locator('.ontologies li', { hasText: 'People Ontology' }).innerText()).includes('library only'), 'the People ontology is no longer imported directly, only through the middle one it is about to meet');
+await v.locator('.add-ontology input[type=file]').setInputFiles(tmp + '/middle.ttl');
+await page.locator('.ext-preview').getByRole('button', { name: 'Reference ontology' }).click();
+ok(flat(await v.locator('.ontologies li', { hasText: 'Middle Ontology' }).innerText()).includes('dependency · owl:imports'), 'the middle ontology is a dependency');
+await v.getByRole('button', { name: 'Reuse Team' }).click();
+ok(flat(await v.locator('.ontology-detail .entity-list li', { hasText: 'Team' }).innerText()).includes('referred to'), 'its Team class is reused');
+// Studio is a kind of Team; Team is a kind of Person; the People ontology says Person and Organisation cannot share members.
+await tab('Graph');
+await side.getByRole('button', { name: 'Expand all' }).click();
+await side.locator('.tree-line .label', { has: page.locator('.name', { hasText: /^Studio$/ }) }).click();
+await supers.locator('.chip-add').click();
+await supers.getByRole('combobox').fill('Team');
+await supers.locator('.subgraph-found button').first().dispatchEvent('pointerdown');
+await tab(/^Validation/);
+await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
+await page.locator('.validation').getByRole('button', { name: 'OWL', exact: true }).click();
+await page.waitForFunction(() => /Unsatisfiable classes: 1/.test(document.querySelector('.validation .card')?.textContent ?? ''));
+const chain = flat(await page.locator('.validation').innerText());
+ok(chain.includes('“Studio” can never have instances: it falls under both “Organisation” and “Person”'), 'all three ontologies are reasoned over: Studio reaches Person only through the middle one, and only the People one says Organisation and Person cannot share members');
+// Take the third out of the browser's cache: the two remain, and the missing one is named.
+await page.evaluate(async () => {
+  await new Promise((r) => {
+    const q = indexedDB.open('conceptweaver');
+    q.onsuccess = () => {
+      const t = q.result.transaction('externals', 'readwrite');
+      const s = t.objectStore('externals');
+      s.getAll().onsuccess = (e) => { for (const c of e.target.result) if (c.iri === 'http://example.org/people') s.delete(c.id); };
+      t.oncomplete = () => { q.result.close(); r(); };
+    };
+  });
+});
+await page.reload();
+await page.waitForSelector('.node');
+await tab('Align');
+await page.waitForSelector('.alignment .stale');
+ok(flat(await v.locator('.stale').innerText()).includes('“People Ontology”'), 'the ontology reached only through the other is reported as not in this browser');
+await tab(/^Validation/);
+await page.waitForFunction(() => /^Validated /.test(document.querySelector('.run-state')?.textContent ?? ''));
+await page.locator('.validation').getByRole('button', { name: 'OWL', exact: true }).click();
+await page.waitForFunction(() => /Unsatisfiable classes: 0/.test(document.querySelector('.validation .card')?.textContent ?? ''));
+const missingImport = flat(await page.locator('.validation').innerText());
+ok(missingImport.includes('Missing import') && missingImport.includes('“People Ontology” <http://example.org/people> is imported, but its content is not in this browser'), 'and it is a finding of its own, naming the import that could not be read: ' + (missingImport.match(/Missing import[^·]*/) ?? [''])[0].slice(0, 160));
+
 console.log('console errors:', errors.length ? errors.slice(0, 3) : 'none');
 await browser.close();
 process.exit(failed || errors.length ? 1 : 0);

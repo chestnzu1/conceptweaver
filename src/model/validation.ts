@@ -12,7 +12,7 @@ import { describedData, MODEL_DATA, sameData, type Category, type DataGraph, typ
 import { subjectLines } from './dataLines';
 import { isPropertyShape, PARAM, pathOf, pathToSparql } from './shacl';
 import { findShape, ownerOf, SH, shapeByIri, shapeName, shapesToTurtle } from './shapes';
-import type { Model } from './types';
+import type { ExternalRef, Model } from './types';
 import { quoted, quotedName } from './words';
 
 /**
@@ -505,6 +505,8 @@ export interface ValidateOptions {
   tick?: (phase: string) => Promise<void>;
   /** The ontology together with the ones it imports: what the OWL checks reason over, where it imports anything. */
   withImports?: Model;
+  /** Imports the ontology depends on, directly or through another, whose content is not available: the OWL checks ran without them. */
+  missingImports?: ExternalRef[];
   /** Asks the OWL 2 DL reasoner, when that is the engine chosen. Without it the app's own reasoner answers. */
   askDl?: () => Promise<DlReport>;
   /** The app's own reasoner's answer about the model, where it has one already: it is not asked again. */
@@ -516,7 +518,7 @@ export interface ValidateOptions {
 }
 
 export async function validate(model: Model, data: DataGraph, scope: Scope | Category[], previous: ValidationReport | null, options: ValidateOptions = {}): Promise<ValidationReport> {
-  const { tick = async () => {}, withImports, askDl, reasoning, ref = { ontologyId: '', revisionId: '' }, shapeSet } = options;
+  const { tick = async () => {}, withImports, missingImports, askDl, reasoning, ref = { ontologyId: '', revisionId: '' }, shapeSet } = options;
   const categories: Category[] = Array.isArray(scope) ? scope : scope === 'all' ? ['owl', 'shacl', 'quality'] : [scope];
   const print = fingerprintOf(model);
   // What was found of the same model is kept for the checks not run now; SHACL's only when it was of the same data and shapes.
@@ -550,6 +552,24 @@ export async function validate(model: Model, data: DataGraph, scope: Scope | Cat
     run.owl = r.summary;
     run.dl = undefined;
     run.findings.push(...r.findings);
+  }
+  if (wants('owl')) {
+    // An import the browser does not have is left out of the reasoning, and said: its axioms may be what makes the ontology consistent, or not.
+    for (const ref of missingImports ?? []) {
+      run.findings.push({
+        id: `owl:missing-import:${ref.iri || ref.namespace || ref.id}`,
+        category: 'owl',
+        severity: 'warning',
+        rule: 'Missing import',
+        ruleId: 'missing-import',
+        message: `“${ref.name}”${ref.iri ? ` <${ref.iri}>` : ''} is imported, but its content is not in this browser, so the ontology was reasoned over without it.`,
+        explanation: 'An imported ontology’s axioms hold in the importing one. What is concluded here is about what was at hand only.',
+        suggestion: 'Add the ontology again from its file or URL under Alignment, Ontology library, so that its axioms count.',
+        entity: { kind: 'external', id: ref.iri || ref.namespace || ref.id, name: ref.name, type: 'ontology', ...(ref.iri ? { iri: ref.iri } : {}) },
+        terms: [],
+        rels: [],
+      });
+    }
   }
   if (wants('quality')) {
     await tick('Checking quality rules…');

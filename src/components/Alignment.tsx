@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addMapping, importMappings, listMappings, mappedCounts, MAPPING_PREDICATES, mappingIssues, mappingPredicate, mappingsToTurtle, removeMapping, setMappingMeta, type EntityKind, type Mapping } from '../model/alignment';
-import { copyEntities, externalUse, importsClosure, reuseEntity, type Entity, type ExtEntity } from '../model/external';
+import { addMapping, importMappings, mappedCounts, MAPPING_PREDICATES, mappingPredicate, mappingsToTurtle, removeMapping, setMappingMeta, type EntityKind, type Mapping } from '../model/alignment';
+import { externalUse, type Entity, type ExtEntity } from '../model/external';
 import { download } from '../model/files';
 import { listModels, loadModel, type SavedInfo } from '../model/library';
-import { suggestMappings, type Suggestion } from '../model/matcher';
+import type { Suggestion } from '../model/matcher';
 import { compactIri } from '../model/prefixes';
 import { toTurtle } from '../model/rdf';
 import { asTurtle, fetchDocument, fileText, ONTOLOGY_FILES } from '../model/rdfFormats';
@@ -106,11 +106,12 @@ const fmtDate = (ms: number) => (ms ? new Date(ms).toLocaleDateString() : '—')
 
 export function AlignmentView() {
   const model = stable(useStore((s) => s.model));
+  const service = useStore((s) => s.alignmentService);
   const { loaded, missing, tab, selected, preview } = useStore((s) => s.ext);
   const docSeq = useStore((s) => s.docSeq);
   const st = useStore.getState;
   useEffect(() => void st().loadExternals(), [docSeq, model.externals, st]);
-  const mappings = useMemo(() => listMappings(model), [model]);
+  const mappings = useMemo(() => service.mappings(model), [service, model]);
   const ref = model.externals.find((e) => e.id === selected) ?? model.externals[0];
 
   return (
@@ -134,7 +135,7 @@ export function AlignmentView() {
       </div>
       {missing.length > 0 && (
         <p className="stale" role="alert">
-          The content of {missing.map((id) => `“${model.externals.find((e) => e.id === id)?.name}”`).join(', ')} is not in this browser, so {missing.length === 1 ? 'it' : 'they'} cannot be browsed or checked here. The references and mappings are kept. Add the ontology again from its file or URL to restore it.
+          The content of {missing.map((e) => `“${e.name}”`).join(', ')} is not in this browser, so {missing.length === 1 ? 'it' : 'they'} cannot be browsed or counted when reasoning. The references and mappings are kept. Add the ontology again from its file or URL to restore it.
         </p>
       )}
       {tab === 'library' && <Library model={model} loaded={loaded} missing={missing} current={ref} mappings={mappings} />}
@@ -348,7 +349,7 @@ function OntologyPicker({ model, current }: { model: Model; current?: ExternalRe
   );
 }
 
-function Library({ model, loaded, missing, current, mappings }: Common & { missing: string[]; current?: ExternalRef }) {
+function Library({ model, loaded, missing, current, mappings }: Common & { missing: ExternalRef[]; current?: ExternalRef }) {
   const st = useStore.getState;
   const [kind, setKind] = useState<EntityKind>('class');
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -368,14 +369,14 @@ function Library({ model, loaded, missing, current, mappings }: Common & { missi
   const entityOf = (i: Item): ExtEntity => (i.prop ? { prop: i.id } : { term: i.id });
   const reuse = (i: Item) => {
     if (!current || !ext) return;
-    const r = reuseEntity(st().model, current, ext, entityOf(i));
+    const r = st().alignmentService.reuse(current, ext, entityOf(i));
     if (r.added) placed(() => st().apply(() => r.model));
     st().notify(r.added ? `“${i.name}” can now be chosen as a superclass, domain, range or filler. It keeps its IRI ${i.iri}.` : `“${i.name}” is already in your ontology.`);
   };
   const copy = () => {
     if (!current || !ext) return;
     const chosen = items.filter((i) => picked.has(i.id));
-    const r = copyEntities(st().model, current, ext, { terms: chosen.filter((i) => !i.prop).map((i) => i.id), props: chosen.filter((i) => i.prop).map((i) => i.id) });
+    const r = st().alignmentService.copy(current, ext, { terms: chosen.filter((i) => !i.prop).map((i) => i.id), props: chosen.filter((i) => i.prop).map((i) => i.id) });
     placed(() => st().apply(() => r.model));
     setPicked(new Set());
     st().notify(`Copied ${r.copied} ${r.copied === 1 ? 'entity' : 'entities'} with their definitions; they are now yours to maintain.${r.referenced ? ` ${r.referenced} they refer to are kept as references.` : ''}${r.skipped.length ? ` ${r.skipped.length} skipped: already in your ontology.` : ''}`);
@@ -391,7 +392,7 @@ function Library({ model, loaded, missing, current, mappings }: Common & { missi
                 <span className="muted">{e.iri || e.namespace}</span>
                 <span>
                   <span className={'tag ' + (e.imports ? 'dep' : 'auto')}>{e.imports ? 'dependency · owl:imports' : 'library only'}</span>
-                  {missing.includes(e.id) && <span className="tag warn">content missing</span>}
+                  {missing.some((x) => x.id === e.id) && <span className="tag warn">content missing</span>}
                 </span>
               </button>
             </li>
@@ -511,7 +512,7 @@ function Align({ model, loaded, current, mappings }: Common & { current?: Extern
   const create = () => {
     if (!local || !other || !ext) return;
     // The external entity becomes a reference in the model if it is not one yet, then the mapping is stated; one undo step for both.
-    const reused = reuseEntity(st().model, current, ext, other.prop ? { prop: other.id } : { term: other.id });
+    const reused = st().alignmentService.reuse(current, ext, other.prop ? { prop: other.id } : { term: other.id });
     const mineRef: Entity = { kind: local.prop ? 'prop' : 'term', id: local.id };
     const problem = placed(() => st().edit(() => (reverse ? addMapping(reused.model, reused.entity, predicate, mineRef) : addMapping(reused.model, mineRef, predicate, reused.entity))));
     setError(problem);
@@ -620,9 +621,9 @@ function Mappings({ model, loaded, mappings }: Common) {
     if (model.mode !== 'skos') st().requestChecks('mappings');
   }, [revision, loaded, model.mode, st]);
   const check = useMemo(() => {
-    const closure = importsClosure(model, new Map(Object.entries(loaded)));
-    return { owl: reported?.owl, findings: reported?.findings ?? [], missing: closure.missing, issues: mappingIssues(model, mappings) };
-  }, [model, loaded, mappings, reported]);
+    const closure = st().alignmentService.closure(model, new Map(Object.entries(loaded)));
+    return { owl: reported?.owl, findings: reported?.findings ?? [], missing: closure.missing, issues: st().alignmentService.issues(model, mappings) };
+  }, [model, loaded, mappings, reported, st]);
   const open = (e: Mapping['source']) => (e.ref.kind === 'term' ? st().select([e.ref.id]) : st().selectProp(e.ref.id));
   const lookup = (iri: string) => {
     for (const ext of Object.values(loaded)) {
@@ -824,7 +825,7 @@ function Suggestions({ model, loaded, current, mappings }: Common & { current?: 
   const list = found?.for === current.id ? found.list.filter((s) => !mapped.has(s.key) && !rejected.has(s.key)) : null;
   const accept = (s: Suggestion) => {
     if (!ext) return;
-    const reused = reuseEntity(st().model, current, ext, s.external.prop ? { prop: s.external.id } : { term: s.external.id });
+    const reused = st().alignmentService.reuse(current, ext, s.external.prop ? { prop: s.external.id } : { term: s.external.id });
     const problem = placed(() => st().edit(() => addMapping(reused.model, { kind: s.local.prop ? 'prop' : 'term', id: s.local.id }, choice[s.key] ?? '', reused.entity, { method: 'suggested', score: s.score })));
     setError(problem ? { key: s.key, text: problem } : undefined);
   };
@@ -833,7 +834,7 @@ function Suggestions({ model, loaded, current, mappings }: Common & { current?: 
       <div className="row wrap">
         <span className="muted">Candidates between your ontology and</span>
         <OntologyPicker model={model} current={current} />
-        <button className="btn primary" disabled={!ext} onClick={() => ext && setFound({ for: current.id, list: suggestMappings(st().model, ext, { mapped }) })}>
+        <button className="btn primary" disabled={!ext} onClick={() => ext && setFound({ for: current.id, list: st().alignmentService.suggest(st().model, ext, mapped) })}>
           Find candidates
         </button>
         {model.rejected.length > 0 && (

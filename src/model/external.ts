@@ -297,21 +297,47 @@ export function copyEntities(model: Model, ref: Pick<ExternalRef, 'id' | 'name' 
 const everything = (ext: Model) => ({ terms: ext.terms.map((t) => t.id), props: ext.props.map((p) => p.id) });
 
 /**
- * The model together with the content of the ontologies it imports: what a reasoner has to
- * look at, since an imported ontology's axioms hold in the importing one. It is worked out when
- * needed and never stored; an import whose content is not available is left out and named.
+ * The key under which the content of an ontology is kept by its ontology IRI: an ontology that
+ * another one imports is known by that IRI, not by an id this editor gave it.
  */
-export function importsClosure(model: Model, loaded: Map<string, Model>): { model: Model; missing: ExternalRef[] } {
+export const iriKey = (iri: string) => `iri:${iri}`;
+
+export interface Closure {
+  model: Model;
+  /** Imports whose content is not available, the ones it imports directly and those they import. */
+  missing: ExternalRef[];
+}
+
+/**
+ * The model together with the content of the ontologies it imports: what a reasoner has to
+ * look at, since an imported ontology's axioms hold in the importing one, and so do those of
+ * the ontologies that one imports. It is followed transitively, once per ontology, and worked out
+ * when needed and never stored; an import whose content is not available is left out and named.
+ *
+ * `loaded` holds content by the reference's id (the model's own externals) and by `iriKey`
+ * (an ontology another one imports, and the same ontologies held by IRI).
+ */
+export function importsClosure(model: Model, loaded: Map<string, Model>): Closure {
   let out = model;
   const missing: ExternalRef[] = [];
-  for (const ref of model.externals) {
-    if (!ref.imports) continue;
-    const ext = loaded.get(ref.id);
+  const seen = new Set<string>();
+  const identity = (ref: ExternalRef) => ref.iri || ref.namespace || ref.id;
+  const resolve = (ref: ExternalRef): Model | undefined => (ref.iri ? (loaded.get(iriKey(ref.iri)) ?? loaded.get(ref.iri)) : undefined) ?? loaded.get(ref.id);
+  // An import found in another ontology is named as the model's own reference to it, where it has one.
+  const known = (ref: ExternalRef) => (ref.iri ? (model.externals.find((e) => e.iri === ref.iri) ?? ref) : ref);
+  // What is to be read, and then what those ontologies import in turn.
+  const queue = model.externals.filter((e) => e.imports);
+  while (queue.length) {
+    const ref = queue.shift()!;
+    if (seen.has(identity(ref))) continue;
+    seen.add(identity(ref));
+    const ext = resolve(ref);
     if (!ext) {
-      missing.push(ref);
+      missing.push(known(ref));
       continue;
     }
     out = copyEntities(out, ref, ext, everything(ext), true).model;
+    for (const next of ext.externals) if (next.imports) queue.push(next);
   }
   return { model: out, missing };
 }

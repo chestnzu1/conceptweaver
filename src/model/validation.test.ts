@@ -8,7 +8,7 @@ import { QUALITY_RULES, setRule } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
 import { SH, type ShaclValue } from './shacl';
 import { importIntoSet, newPropertyShape, newSetFor, setTurtle, shapesToTurtle } from './shapes';
-import { emptyModel, newProp, newRelation, newTerm, normalizeModel, type Model, type Term, type TermType } from './types';
+import { emptyModel, newProp, newRelation, newTerm, normalizeModel, type ExternalRef, type Model, type Term, type TermType } from './types';
 import { MODEL_DATA, owlFindings, qualityFindings, shaclFindings, validate, type DataGraph } from './validation';
 import { isStale, reportJson, reportTurtle } from '../validation/report';
 import { revisionOf } from '../structure/local';
@@ -123,6 +123,25 @@ describe('OWL logical consistency', () => {
     // Every Person has a name, and Bob has none stated. That is unknown, not wrong.
     const n = { ...m, relations: [...m.relations, newRelation({ from: id.Person, to: id['has name'], kind: 'property', restriction: 'min', restrictionN: 1 })] };
     expect(owlFindings(n)).toMatchObject({ summary: { status: 'consistent', unsatisfiable: [] }, findings: [] });
+  });
+
+  it('names an import whose content is not here, as a warning, rather than passing over it', async () => {
+    const { m } = build();
+    const ref: ExternalRef = { id: 'x1', name: 'Organization Ontology', iri: 'http://example.org/org', namespace: 'http://example.org/org#', source: 'org.ttl', sourceKind: 'file', addedAt: 1, classes: 1, objectProperties: 0, dataProperties: 0, individuals: 0, imports: true };
+    const model = { ...m, externals: [ref] };
+    const report = await validate(model, MODEL_DATA, ['owl'], null, { withImports: model, missingImports: [ref] });
+    const finding = report.findings.find((f) => f.ruleId === 'missing-import')!;
+    expect(finding).toMatchObject({
+      category: 'owl',
+      severity: 'warning',
+      rule: 'Missing import',
+      entity: { kind: 'external', id: 'http://example.org/org', name: 'Organization Ontology', type: 'ontology', iri: 'http://example.org/org' },
+    });
+    expect(finding.message).toBe('“Organization Ontology” <http://example.org/org> is imported, but its content is not in this browser, so the ontology was reasoned over without it.');
+    expect(report.owl?.status).toBe('consistent');
+    // Nothing missing: nothing to say.
+    expect((await validate(model, MODEL_DATA, ['owl'], null, { withImports: model })).findings.some((f) => f.ruleId === 'missing-import')).toBe(false);
+    expect((await validate(m, MODEL_DATA, ['owl'], null)).findings.some((f) => f.ruleId === 'missing-import')).toBe(false);
   });
 
   it('says a concept scheme has no OWL consistency to check', () => {

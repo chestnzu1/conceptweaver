@@ -3,7 +3,6 @@ import { CATEGORIES, MODEL_DATA, ValidationError, type DataGraph, type Scope, ty
 import { createLocalValidationService } from '../../validation/local';
 import { isStale } from '../../validation/report';
 import { currentData, currentShapeSet, graphText } from '../dataGraphs';
-import { importsClosure } from '../external';
 import type { Model } from '../types';
 import { supports } from '../modelTypes';
 import { DEFAULT_REASONER_URL, type DlReasonerChoice, type EngineId, type ReasoningResult } from '../reasoning';
@@ -93,7 +92,7 @@ export const validationSlice: Slice<ValidationSlice> = (set, get) => {
   const ref = () => ({ ontologyId: get().doc.id ?? WORKING_COPY, revisionId: get().version.revision });
   const service = createLocalValidationService({
     current: () => ({ model: get().model, ...ref() }),
-    withImports: (model: Model) => (model.externals.some((e) => e.imports) ? importsClosure(model, new Map(Object.entries(get().ext.loaded))).model : undefined),
+    withImports: (model: Model) => (model.externals.some((e) => e.imports) ? get().alignmentService.closure(model, new Map(Object.entries(get().ext.loaded))) : undefined),
     askDl: async (signal) => {
       const stop = () => get().cancelReasoning('dl');
       signal.addEventListener('abort', stop, { once: true });

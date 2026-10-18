@@ -1,6 +1,6 @@
 import type { QuickFix } from '../model/quality';
 import type { DlReport } from '../reasoning/contracts';
-import type { Model } from '../model/types';
+import type { ExternalRef, Model } from '../model/types';
 import { qualityFindings, validate, type ValidateOptions } from '../model/validation';
 import { ValidationError, type CallOptions, type Category, type DataGraph, type Finding, type OntologyRef, type ValidationJob, type ValidationReport, type ValidationService } from './contracts';
 
@@ -22,6 +22,8 @@ export interface WorkerInput {
   categories: Category[];
   previous?: ValidationReport;
   withImports?: Model;
+  /** Imports whose content is not at hand, which the checks ran without. */
+  missingImports?: ExternalRef[];
   dl?: DlReport;
   ref: OntologyRef;
 }
@@ -38,6 +40,7 @@ export const plain = (report: ValidationReport): ValidationReport => ({ ...repor
 export const optionsOf = (input: WorkerInput, tick: (phase: string) => Promise<void>): ValidateOptions => ({
   tick,
   withImports: input.withImports,
+  ...(input.missingImports?.length ? { missingImports: input.missingImports } : {}),
   askDl: input.dl ? async () => input.dl! : undefined,
   ref: input.ref,
   ...(input.shapeSet !== undefined ? { shapeSet: input.shapeSet } : {}),
@@ -94,8 +97,8 @@ export const inAWorker: Runner = (input, signal, progress) => {
 export interface ValidationHost {
   /** The ontology being edited, as it is now. */
   current(): { model: Model; ontologyId: string; revisionId: string };
-  /** The ontology together with the ones it imports, as far as they are in this browser; nothing where it imports none. */
-  withImports(model: Model): Model | undefined;
+  /** The ontology together with the ones it imports, as far as they are in this browser, and those that are not; nothing where it imports none. */
+  withImports(model: Model): { model: Model; missing: ExternalRef[] } | undefined;
   /** Asks the OWL 2 DL reasoner about the model as it is, unless `signal` gives the question up: its report, or nothing when it was stopped. */
   askDl(signal: AbortSignal): Promise<DlReport | undefined>;
   /** Told of every change of a job: begun, how it goes, finished, failed, stopped. */
@@ -146,8 +149,13 @@ export function createLocalValidationService(host: ValidationHost, run: Runner =
           if (!dl || stop.signal.aborted) throw cancelled();
         }
         const input: WorkerInput = { model, data: query.data, categories: query.categories, ref, ...(query.shapeSet !== undefined ? { shapeSet: query.shapeSet } : {}), ...(query.previous ? { previous: query.previous } : {}), ...(dl ? { dl } : {}) };
-        const closure = query.imports && !dl ? host.withImports(model) : undefined;
-        if (closure) input.withImports = closure;
+        // What the ontology imports, and what of it is not here, is worked out for either reasoner:
+        // the app's own reads the closure, the DL service is sent the ontologies it imports.
+        const closure = query.imports ? host.withImports(model) : undefined;
+        if (closure) {
+          if (!dl) input.withImports = closure.model;
+          if (closure.missing.length) input.missingImports = closure.missing;
+        }
         return plain(await run(input, stop.signal, (phase) => update(h, { phase })));
       })().then(
         (report) => {

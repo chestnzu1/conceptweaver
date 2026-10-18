@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { addMapping, importMappings, listMappings, mappingIssues, mappingsToTurtle, removeMapping, setMappingMeta } from './alignment';
 import { addIsA } from './axioms';
-import { addExternal, collisions, copyEntities, externalUse, importsClosure, readExternal, removeExternal, reuseEntity } from './external';
+import { addExternal, collisions, copyEntities, externalUse, importsClosure, iriKey, readExternal, removeExternal, reuseEntity } from './external';
 import { withIris } from './iri';
 import { cachedOntology, cachedOntologyByIri, cacheOntology, loadModel, saveModel, uncacheOntology } from './library';
 import { suggestMappings } from './matcher';
@@ -28,6 +28,15 @@ org:Member a owl:Class ; rdfs:label "Member" ; skos:altLabel "Employee" ; skos:n
 org:memberOf a owl:ObjectProperty ; rdfs:label "member of" ; rdfs:domain org:Member ; rdfs:range org:Organization .
 org:name a owl:DatatypeProperty ; rdfs:label "name" ; rdfs:range xsd:string .
 org:acme a owl:NamedIndividual , org:Organization ; rdfs:label "Acme" .
+`;
+
+/** An ontology that imports the Organization ontology, and says something of its own that depends on it. */
+const MIDDLE = `@prefix mid: <http://example.org/mid#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<http://example.org/mid> a owl:Ontology ; rdfs:label "Middle Ontology" ; owl:imports <http://example.org/org> .
+mid:Team a owl:Class ; rdfs:label "Team" ; rdfs:subClassOf <http://example.org/org#Organization> .
 `;
 
 function build() {
@@ -403,6 +412,34 @@ describe('phase 4: suggestions, validation and provenance', () => {
     // Not imported: its axioms do not hold here, so nothing is concluded from them.
     const notImported = { ...n, externals: n.externals.map((e) => ({ ...e, imports: false })) };
     expect(owlFindings(importsClosure(notImported, loaded).model).summary.status).toBe('consistent');
+  });
+
+  it('follows an import of an import, and names the one it cannot reach', () => {
+    // The studio imports the middle ontology, which imports the Organization ontology.
+    const w = withOrg();
+    const middle = readExternal(MIDDLE, 'mid.ttl', 'file');
+    w.set(addExternal(w.get(), middle, true, 2000).model);
+    w.use('Person');
+    w.use('Organization');
+    const iri = (t: string) => w.get().terms.find((x) => x.iri === t)!.id;
+    w.set(ok(addIsA(ok(addIsA(w.get(), w.id.Freelancer, iri('http://example.org/org#Person'))), w.id.Freelancer, iri('http://example.org/org#Organization'))));
+    // The middle ontology's own class is here, and so is what the Organization ontology says.
+    const loaded = new Map([
+      [w.get().externals.find((e) => e.imports)!.id, middle.model],
+      [iriKey(w.ref.iri), w.org.model],
+    ]);
+    const closure = importsClosure(w.get(), loaded);
+    expect(closure.missing).toEqual([]);
+    expect(closure.model.terms.some((t) => t.iri === 'http://example.org/mid#Team')).toBe(true);
+    expect(owlFindings(closure.model).summary.unsatisfiable).toContain(w.id.Freelancer);
+    // Without the third, the fact that makes the Freelancer impossible does not hold, and the import is named.
+    const without = importsClosure(w.get(), new Map([[loaded.keys().next().value!, middle.model]]));
+    expect(without.missing.map((e) => e.name)).toEqual(['Organization Ontology']);
+    expect(owlFindings(without.model).summary.unsatisfiable).toEqual([]);
+    // The same ontology reached by two paths is read once.
+    const twice = importsClosure({ ...w.get(), externals: [...w.get().externals, { ...w.ref, imports: true }] }, new Map([...loaded, [w.ref.id, w.org.model]]));
+    expect(twice.missing).toEqual([]);
+    expect(twice.model.terms.filter((t) => t.iri === 'http://example.org/org#Person')).toHaveLength(1);
   });
 
   it('points out mapping patterns worth a second look', () => {

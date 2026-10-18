@@ -1,7 +1,8 @@
 import { ReasoningError, type DlReport, type EngineId, type ReasoningJob, type ReasoningService } from '../../reasoning/contracts';
 import { createLocalReasoningService } from '../../reasoning/local';
 import { WORKING_COPY } from '../../structure/local';
-import { cachedOntology } from '../library';
+import { cachedOntology, cachedOntologyByIri } from '../library';
+import { readExternal } from '../external';
 import { adopt, type Inference, type Reasoning } from '../reasoner';
 import { askReasoner, dlRequest, dlResult, type DlReasonerChoice, type ReasoningResult } from '../reasoning';
 import type { Slice, State } from './types';
@@ -47,13 +48,25 @@ export const currentReasoning = (s: Pick<State, 'version' | 'reasoning'>): Reaso
 
 export const NO_REASONING: ReasoningSlice['reasoning'] = { fast: null, dl: null, jobs: [], failed: null };
 
-/** The ontologies a model imports, as they were read (the Turtle kept in this browser): they go with it to the DL reasoner. */
+/** The ontologies a model imports, as they were read (the Turtle kept in this browser), and those they import in turn: they go with it to the DL reasoner. */
 export async function importsOf(model: Model): Promise<{ iri: string; text: string }[]> {
   const imports: { iri: string; text: string }[] = [];
-  for (const ref of model.externals) {
-    if (!ref.imports || !ref.iri) continue;
-    const hit = await cachedOntology(ref.id).catch(() => undefined);
-    if (hit) imports.push({ iri: ref.iri, text: hit.text });
+  const seen = new Set<string>();
+  const queue = model.externals.filter((e) => e.imports && e.iri);
+  while (queue.length) {
+    const ref = queue.shift()!;
+    if (!ref.iri || seen.has(ref.iri)) continue;
+    seen.add(ref.iri);
+    const hit = (await cachedOntology(ref.id).catch(() => undefined)) ?? (await cachedOntologyByIri(ref.iri).catch(() => undefined));
+    if (!hit) continue;
+    imports.push({ iri: ref.iri, text: hit.text });
+    try {
+      // What this one imports goes too, however deep the chain is; a cycle is read once.
+      const ext = readExternal(hit.text, ref.source || ref.name, ref.sourceKind).model;
+      for (const next of ext.externals) if (next.imports) queue.push(next);
+    } catch {
+      // What cannot be read here cannot be sent either.
+    }
   }
   return imports;
 }
