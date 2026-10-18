@@ -417,6 +417,21 @@ describe('typed strategies and the conversion they ask for', () => {
     expect(h.ldm(model).domains.some((d) => d.id === domain.id)).toBe(true);
   });
 
+  it('checks the preview’s sources against the ontology rather than trusting them, changing nothing', async () => {
+    const h = harness();
+    const { model, made, domain } = await withDomain(h);
+    const preview = await h.traceability.previewConversion({ model, mapping: made.mapping, to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' });
+    // A preview crosses the service boundary: a source that is not in the ontology must be refused.
+    preview.mappingAfter.sources = [{ iri: 'https://example.org/ontology/film#Nowhere', label: 'Nowhere', axioms: [] }];
+    const commits = h.commits();
+    const revision = h.ldm(model).revision;
+    await expect(h.traceability.applyConversion(preview)).rejects.toMatchObject({ code: 'invalid' });
+    expect(h.commits()).toBe(commits);
+    expect(h.ldm(model).revision).toBe(revision);
+    expect(h.ldm(model).domains.some((d) => d.id === domain.id)).toBe(true);
+    expect(h.ldm(model).mappings.find((m) => m.id === made.mapping)!.strategyId).toBe('OWL_ENUMERATION_TO_LDM_DOMAIN');
+  });
+
   it('saves a rationale and the same strategy as metadata only, leaving the element uncustomised', async () => {
     const h = harness();
     const { model, made, domain } = await withDomain(h);

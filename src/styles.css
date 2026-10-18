@@ -8774,6 +8774,11 @@ tbody tr.pinned td:first-child {
   color: var(--danger);
 }
 
+.trace-status.mismatched {
+  border-color: color-mix(in srgb, var(--info) 50%, var(--line));
+  color: var(--info);
+}
+
 .trace-status.customised {
   border-color: color-mix(in srgb, var(--info) 45%, var(--line));
   color: var(--info);
@@ -8797,6 +8802,45 @@ tbody tr.pinned td:first-child {
 
 .trace-dot.broken {
   background: var(--danger);
+}
+
+.trace-dot.mismatched {
+  background: var(--info);
+}
+
+.conversion-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.conversion-preview h3 {
+  margin: 0;
+}
+
+.conversion-preview h4 {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.conversion-preview .trace-facts {
+  margin: 0;
+}
+
+.conversion-conflicts h4 {
+  color: var(--danger);
+}
+
+.strategy-reasons summary {
+  cursor: pointer;
+  color: var(--ink-2);
 }
 
 .trace-mappings {

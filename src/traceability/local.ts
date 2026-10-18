@@ -491,7 +491,16 @@ export function createLocalTraceabilityService(host: TraceabilityHost, run: Impa
         throw new LogicalError('stale-revision', `The mapping has changed since the transformation was reviewed; review it again.`);
       }
       const decisions = Object.fromEntries(preview.decisions.map((d) => [d.name, d.chosen]));
-      const fresh = conversionPlan({ model: target, mapping, to: preview.to.strategyId, decisions, sources: preview.mappingAfter.sources, rationale: preview.mappingAfter.rationale });
+      // A preview crosses the service boundary: its sources are checked against the ontology as it
+      // is now, not taken on trust, and the axioms the mapping will record are made afresh.
+      const asked = preview.mappingAfter.sources;
+      if (!asked.length) throw new LogicalError('invalid', 'A mapping needs at least one source.', [{ code: 'invalid', message: 'A mapping needs at least one source.' }]);
+      const sources = madeSources(now.model, asked.map((s) => s.iri));
+      const missing = asked.find((s) => !sources.some((x) => x.iri === s.iri));
+      if (missing) throw new LogicalError('invalid', `The ontology has nothing at ${missing.iri}.`, [{ code: 'invalid', message: `The ontology has nothing at ${missing.iri}.` }]);
+      const entry = strategyById(preview.to.strategyId);
+      if (entry) sourcesChecked(now.model, entry, asked.map((s) => s.iri));
+      const fresh = conversionPlan({ model: target, mapping, to: preview.to.strategyId, decisions, sources, rationale: preview.mappingAfter.rationale });
       if (fresh.conflicts.length) {
         const message = fresh.conflicts.join(' ');
         throw new LogicalError('refused', message, fresh.conflicts.map((text) => ({ code: 'refused' as const, message: text })));

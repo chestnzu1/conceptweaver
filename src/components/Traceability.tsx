@@ -61,6 +61,9 @@ function targetable(m: LogicalModel): { ref: ElementRef; label: string }[] {
   for (const e of [...m.entities].sort((a, b) => a.name.localeCompare(b.name))) {
     out.push({ ref: { entity: e.id }, label: e.name });
     for (const a of e.attributes) out.push({ ref: { attribute: a.id }, label: `${e.name}.${a.name}` });
+    // A key is a mapping target of its own (owl:hasKey); the form must show it as it is rather
+    // than fall back to another element.
+    for (const k of e.keys) out.push({ ref: { key: k.id }, label: `${e.name}.${k.name}` });
   }
   for (const r of m.relationships) out.push({ ref: { relationship: r.id }, label: elementLabel(m, { relationship: r.id }) });
   for (const g of m.generalizations) out.push({ ref: { generalization: g.id }, label: elementLabel(m, { generalization: g.id }) });
@@ -428,11 +431,12 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
 
   /**
    * Why a strategy cannot be chosen here: it makes the wrong kind of element, or it does not read
-   * these sources. A strategy that converts the element (a domain into an entity) is offered
-   * too; its conflicts are the conversion's to report.
+   * these sources. An existing mapping may also choose a strategy that converts its element (a
+   * domain into an entity); its conflicts are the conversion's to report. A new mapping maps an
+   * element as it is: offering a conversion there would only fail on save.
    */
   const reasonFor = (entry: StrategyEntry): string | undefined => {
-    const reaches = entry.target === targetKind || convertibleFrom(targetKind).includes(entry.target);
+    const reaches = entry.target === targetKind || (!!existing && convertibleFrom(targetKind).includes(entry.target));
     if (!reaches) return reasonsNotApplicable(entry, { sourceKinds: [], targetKind });
     if (!sourcesKnown) return undefined;
     return reasonsNotApplicable(entry, { sourceKinds: knownSourceKinds, targetKind: entry.target });
