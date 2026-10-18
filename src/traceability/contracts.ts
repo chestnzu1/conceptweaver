@@ -1,5 +1,5 @@
 import type { Model } from '../model/types';
-import type { CallOptions, ElementRef, LogicalChange, LogicalModel, MappingSource, SemanticMapping, TransformationConfig } from '../logical/contracts';
+import type { CallOptions, ElementKind, ElementRef, LogicalChange, LogicalModel, MappingSource, SemanticMapping, StrategyId, TransformationConfig } from '../logical/contracts';
 
 /**
  * Deriving a logical data model from the ontology (roadmap LM-3; SYSTEM_ARCHITECTURE.md §13.4;
@@ -106,12 +106,13 @@ export const refKind = (ref: ElementRef): keyof ElementRef => Object.keys(ref)[0
 // ---------------------------------------------------------------- traceability and impact (stage LM-4)
 
 /**
- * Whether a mapping still holds against the ontology: *current* while the ontology still states
- * every source axiom as it was; *stale* when one is no longer stated or another has been added;
- * *broken* when a source entity or a target element is gone. Worked out, never stored
+ * Whether a mapping still holds: *current* while the ontology still states every source axiom as
+ * it was; *stale* when one is no longer stated or another has been added; *broken* when a source
+ * entity or a target element is gone; *mismatched* when the mapping's typed strategy makes a
+ * different kind of element than the one it targets. Worked out, never stored
  * (SYSTEM_ARCHITECTURE.md §13.7).
  */
-export type MappingStatus = 'current' | 'stale' | 'broken';
+export type MappingStatus = 'current' | 'stale' | 'broken' | 'mismatched';
 
 export interface MappingChange {
   kind: 'source-removed' | 'source-added' | 'source-changed' | 'target-removed';
@@ -305,7 +306,7 @@ export interface MappingInput {
   model: string;
   sources: { iri: string }[];
   targets: ElementRef[];
-  strategy: string;
+  strategyId: StrategyId;
   rationale: string;
 }
 
@@ -314,8 +315,60 @@ export interface MappingEdit {
   mapping: string;
   sources: { iri: string }[];
   targets: ElementRef[];
-  strategy: string;
+  /** The strategy the mapping follows now. One that makes a different kind of element needs a reviewed conversion. */
+  strategyId: StrategyId;
   rationale: string;
+}
+
+/** One choice a conversion has to take before it can be applied. */
+export interface ConversionDecision {
+  name: string;
+  label: string;
+  choices: { value: string; label: string }[];
+  chosen: string;
+}
+
+/**
+ * What changing a mapping's strategy would do to its target element, worked out before anything
+ * is written (roadmap LM-4). It carries the element changes alone; applying it adds the mapping's
+ * own update after them, as one change set. Nothing here is committed.
+ */
+export interface ConversionPreview {
+  model: string;
+  mapping: string;
+  /** The LDM's revision this was worked out against; an LDM that moved since refuses it. */
+  baseRevision: string;
+  /** The mapping's target element as it is now. */
+  from: { strategyId?: StrategyId; ref: ElementRef; kind: ElementKind; name: string };
+  /** What it would become. */
+  to: { strategyId: StrategyId; kind: ElementKind; name: string };
+  /** What the conversion makes, changes and takes away, in words. */
+  creates: string[];
+  modifies: string[];
+  removes: string[];
+  /** What happens to keys and constraints: the part of a conversion that is easy to miss. */
+  keys: string[];
+  constraints: string[];
+  decisions: ConversionDecision[];
+  warnings: string[];
+  /** Why the conversion cannot be made as it stands; nothing is ever applied with one. */
+  conflicts: string[];
+  /** The element changes, without the mapping's own update. */
+  changes: LogicalChange[];
+  /** The mapping as it would be, with the sources and rationale the form had when it was previewed. */
+  mappingAfter: { sources: MappingSource[]; targets: ElementRef[]; strategyId: StrategyId; strategy: string; baseline: Record<string, unknown>; rationale: string };
+  at: number;
+}
+
+/** What to convert, and the choices taken so far. */
+export interface ConversionQuery {
+  model: string;
+  mapping: string;
+  to: StrategyId;
+  decisions?: Record<string, string>;
+  /** The sources and rationale as the form has them: kept with the mapping if the conversion is applied. */
+  sources?: { iri: string }[];
+  rationale?: string;
 }
 
 /**
@@ -338,6 +391,10 @@ export interface TraceabilityService {
   addMapping(input: MappingInput, options?: CallOptions): Promise<{ model: string; revision: string; mapping: string }>;
   editMapping(input: MappingEdit, options?: CallOptions): Promise<{ model: string; revision: string }>;
   removeMapping(input: { model: string; mapping: string }, options?: CallOptions): Promise<{ model: string; revision: string }>;
+  /** What changing a mapping's strategy would make of its target element. Never changes anything. */
+  previewConversion(query: ConversionQuery, options?: CallOptions): Promise<ConversionPreview>;
+  /** Applies a reviewed preview as one logical change set, with the mapping's own update, or refuses it whole. */
+  applyConversion(preview: ConversionPreview, options?: CallOptions): Promise<{ model: string; revision: string }>;
 }
 
 /** The ontology and the LDM as the impact worker reads them. */

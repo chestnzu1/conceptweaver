@@ -106,6 +106,9 @@ export interface Generalization {
 }
 
 /** An element of an LDM, by kind and id. */
+export const ELEMENT_KINDS = ['entity', 'attribute', 'key', 'relationship', 'generalization', 'rule', 'domain', 'mapping', 'diagram'] as const;
+/** The kind of an element: `keyof ElementRef` is never, because ElementRef is a union of single-key shapes. */
+export type ElementKind = (typeof ELEMENT_KINDS)[number];
 export type ElementRef = { entity: string } | { attribute: string } | { key: string } | { relationship: string } | { generalization: string } | { rule: string } | { domain: string } | { mapping: string } | { diagram: string };
 
 export interface BusinessRule {
@@ -133,6 +136,41 @@ export interface MappingSource {
 }
 
 /**
+ * What a mapping does, as a stable id (roadmap LM-4). The catalogue in ./strategies.ts says which
+ * kind of LDM element each id makes and which ontology sources it reads; the free text in
+ * `SemanticMapping.strategy` stays as the words a reader sees.
+ */
+export const STRATEGY_IDS = [
+  'OWL_CLASS_TO_LDM_ENTITY',
+  'OWL_CLASS_TO_LDM_REFERENCE_ENTITY',
+  'OWL_CLASSES_TO_LDM_ENTITY',
+  'OWL_ENUMERATION_TO_LDM_DOMAIN',
+  'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY',
+  'OWL_ENUMERATED_DATATYPE_TO_LDM_DOMAIN',
+  'OWL_HIERARCHY_ROLLUP_TO_LDM_ENTITY',
+  'OWL_SUBCLASS_TO_LDM_SPECIALIZATION',
+  'OWL_SUBCLASS_TO_LDM_ROLLDOWN',
+  'OWL_DATA_PROPERTY_TO_LDM_ATTRIBUTE',
+  'OWL_OBJECT_PROPERTY_TO_LDM_RELATIONSHIP',
+  'OWL_OBJECT_PROPERTY_TO_LDM_INVERSE_PAIR',
+  'OWL_OBJECT_PROPERTY_TO_LDM_ASSOCIATION',
+  'OWL_OBJECT_PROPERTY_TO_LDM_DOMAIN_ATTRIBUTE',
+  'OWL_RESTRICTION_TO_LDM_MANDATORY_ATTRIBUTE',
+  'OWL_RESTRICTION_TO_LDM_RULE',
+  'OWL_RESTRICTION_TO_LDM_MANDATORY_END',
+  'OWL_RESTRICTION_TO_LDM_CARDINALITY_END',
+  'OWL_HAS_KEY_TO_LDM_KEY',
+] as const;
+export type StrategyId = (typeof STRATEGY_IDS)[number];
+
+/** A conversion a mapping went through: the strategy it followed before, the one it follows now, and when. */
+export interface MappingConversion {
+  from?: StrategyId;
+  to: StrategyId;
+  at: number;
+}
+
+/**
  * Where elements came from in the ontology (stage LM-4): sources by IRI and by the axioms used
  * (OWL functional syntax), targets by id, with the strategy, the rationale and the ontology
  * revision it was made from. Its status is worked out against the ontology, never stored.
@@ -142,11 +180,15 @@ export interface SemanticMapping {
   sources: MappingSource[];
   targets: ElementRef[];
   strategy: string;
+  /** What the mapping does, as a catalogue id; absent on a mapping made before ids existed, until it is classified. */
+  strategyId?: StrategyId;
   rationale: string;
   origin: { ontology: string; revision: string; version?: string };
   /** What the mapping last made of its targets: a target that differs from it was customised. */
   baseline: Record<string, unknown>;
   made: { by: 'transformation' | 'hand' | 'synchronization' | 'assistant'; at: number; author?: string };
+  /** The last reviewed conversion of the mapping's target element, where there was one. */
+  converted?: MappingConversion;
 }
 
 /** Where entities sit on a diagram of the LDM (stage LM-2): the picture, never the meaning. */
@@ -260,7 +302,7 @@ export interface LogicalChangeSet {
 
 // ---------------------------------------------------------------- refusals
 
-export type LogicalErrorCode = 'invalid' | 'refused' | 'stale-revision' | 'not-found' | 'aborted';
+export type LogicalErrorCode = 'invalid' | 'refused' | 'stale-revision' | 'not-found' | 'aborted' | 'conversion-required';
 
 /** Why a change cannot be made, in words, with the element it is about. */
 export interface LogicalRefusal {

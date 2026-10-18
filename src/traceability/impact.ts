@@ -1,6 +1,7 @@
 import type { Model } from '../model/types';
 import type { BaseType, ElementRef, LogicalChange, LogicalEntity, LogicalModel, LogicalType, MappingSource, Relationship, SemanticMapping, TransformationConfig } from '../logical/contracts';
 import { elementOf, newId, removalOf } from '../logical/rules';
+import { expectedKindOf } from '../logical/strategies';
 import type { Coverage, ImpactItem, ImpactKind, ImpactReport, MappingChange, MappingDescription, MappingStatus, ProposalSource, SynchronizationProposal, SynchronizationResult, TargetDescription, TraceResult } from './contracts';
 import { enumIriOf, hierarchyFor, nameFor, propIriOf, proposalsFor, scopeClasses, sourceAxiomsOf, sourceNow, termIri, typeForDataProperty } from './transform';
 
@@ -172,7 +173,7 @@ function readerFor(model: Model, config?: TransformationConfig): Reader {
         } else if (config && kind === 'generalization') {
           hierarchy ??= hierarchyFor(model, config);
           result = [`Declaration(Class(<${iri}>))`, ...(hierarchy.subs.get(iri) ?? []).map((s) => `SubClassOf(<${s}> <${iri}>)`)];
-        } else if (config && mapping.strategy === 'inherited attribute rolled down to the subtype') {
+        } else if (config && (mapping.strategyId === 'OWL_SUBCLASS_TO_LDM_ROLLDOWN' || mapping.strategy === 'inherited attribute rolled down to the subtype')) {
           hierarchy ??= hierarchyFor(model, config);
           result = (hierarchy.supers.get(iri) ?? []).map((s) => `SubClassOf(<${iri}> <${s}>)`);
         }
@@ -239,7 +240,12 @@ function statusOf(mapping: SemanticMapping, options: StateOptions, reader: Reade
       text: `What the ontology says of ${source.label || source.iri} has changed.`,
     });
   }
-  const status: MappingStatus = broken ? 'broken' : stale ? 'stale' : 'current';
+  // A typed strategy says what kind of element the mapping makes. Where its target is of another
+  // kind, the mapping contradicts the model it is in: the structure was changed without the
+  // strategy, or the strategy without the structure. Only an explicit conversion reconciles them.
+  const expected = expectedKindOf(mapping.strategyId);
+  const mismatched = !!expected && mapping.targets.some((ref) => refKind(ref) !== expected);
+  const status: MappingStatus = broken ? 'broken' : mismatched ? 'mismatched' : stale ? 'stale' : 'current';
   return { status, changes, targets, customised };
 }
 

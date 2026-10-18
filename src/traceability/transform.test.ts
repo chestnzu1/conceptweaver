@@ -5,6 +5,7 @@ import { newProp, newTerm, type Model } from '../model/types';
 import type { LogicalAttribute, LogicalModel, TransformationConfig } from '../logical/contracts';
 import { createLocalLogicalServices } from '../logical/local';
 import { applied, emptyLogicalModel, logicalModelFrom, transformationConfigFrom } from '../logical/rules';
+import { isStrategyId, strategyForText } from '../logical/strategies';
 import { createLocalTransformationService, onThePage } from './local';
 import type { TransformationProposal } from './contracts';
 import { chosenByDefault, defaultTransformationConfig, hasKeyStatements, proposalsFor } from './transform';
@@ -399,6 +400,51 @@ describe('the transformation proposals for the example ontology', () => {
     const raw = JSON.parse(JSON.stringify({ ...ldm(), derivation: config }));
     expect(logicalModelFrom(raw)?.derivation).toEqual(config);
     expect(transformationConfigFrom({ ...config, hierarchy: 'none' })).toBeUndefined();
+  });
+
+  it('gives every mapping it makes a catalogue strategy id, with the words it has always recorded', () => {
+    const configs: TransformationConfig[] = [
+      defaultTransformationConfig(),
+      { ...defaultTransformationConfig(), hierarchy: 'rollup' },
+      { ...defaultTransformationConfig(), hierarchy: 'rolldown' },
+      { ...defaultTransformationConfig(), objectProperties: 'associative' },
+    ];
+    for (const config of configs) {
+      const { result } = acceptStructure(ontology(), ldm(), config);
+      expect(result.mappings.length).toBeGreaterThan(0);
+      for (const m of result.mappings) {
+        expect(isStrategyId(m.strategyId)).toBe(true);
+        expect(strategyForText(m.strategy)?.id).toBe(m.strategyId);
+      }
+    }
+  });
+});
+
+describe('reading mappings saved before strategies had ids', () => {
+  const base = { sources: [{ iri: 'http://example.org/Genre', axioms: [] }], targets: [{ domain: 'd' }], rationale: '', origin, baseline: {}, made: { by: 'transformation', at: 1 } };
+  const read = (mappings: unknown[]) => logicalModelFrom(JSON.parse(JSON.stringify({ ...ldm(), mappings })))!;
+
+  it('keeps a stored id, reads the words it knows, and leaves words it does not know unclassified', () => {
+    const parsed = read([
+      { ...base, id: 'map-1', strategy: 'class → entity', strategyId: 'OWL_CLASSES_TO_LDM_ENTITY' },
+      { ...base, id: 'map-2', strategy: 'enumerated class → domain' },
+      { ...base, id: 'map-3', strategy: 'restriction → candidate mandatory on “Studio”' },
+      { ...base, id: 'map-4', strategy: 'made by hand, in another tool' },
+    ]);
+    expect(parsed.mappings.map((m) => m.strategyId ?? 'unclassified')).toEqual(['OWL_CLASSES_TO_LDM_ENTITY', 'OWL_ENUMERATION_TO_LDM_DOMAIN', 'OWL_RESTRICTION_TO_LDM_MANDATORY_END', 'unclassified']);
+    // The words are the mapping's own, whether or not the catalogue knows them.
+    expect(parsed.mappings.map((m) => m.strategy)).toEqual(['class → entity', 'enumerated class → domain', 'restriction → candidate mandatory on “Studio”', 'made by hand, in another tool']);
+  });
+
+  it('keeps a recorded conversion, and drops one it cannot read', () => {
+    const parsed = read([
+      { ...base, id: 'map-1', strategy: 'enumerated class → reference entity', converted: { from: 'OWL_ENUMERATION_TO_LDM_DOMAIN', to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY', at: 5 } },
+      { ...base, id: 'map-2', strategy: 'class → entity', converted: { from: 'OWL_NOPE', to: 'not-an-id', at: 5 } },
+      { ...base, id: 'map-3', strategy: 'class → entity', converted: 'yesterday' },
+    ]);
+    expect(parsed.mappings[0].converted).toEqual({ from: 'OWL_ENUMERATION_TO_LDM_DOMAIN', to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY', at: 5 });
+    expect(parsed.mappings[1].converted).toBeUndefined();
+    expect(parsed.mappings[2].converted).toBeUndefined();
   });
 });
 

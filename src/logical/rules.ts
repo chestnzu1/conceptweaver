@@ -1,4 +1,5 @@
-import { BASE_TYPES, HIERARCHY_STRATEGIES, NAMING_CASES, NAMING_SEPARATORS, NAMING_SOURCES, OBJECT_PROPERTY_STRATEGIES, type BaseType, type BusinessRule, type BaseTypeName, type ElementRef, type Generalization, type Key, type KeyMember, type LogicalChange, type LogicalDiagram, type LogicalDomain, type LogicalElement, type LogicalEntity, type LogicalModel, type LogicalRefusal, type LogicalType, type Relationship, type RelationshipEnd, type SemanticMapping, type TransformationConfig, type UpdateTarget } from './contracts';
+import { BASE_TYPES, HIERARCHY_STRATEGIES, NAMING_CASES, NAMING_SEPARATORS, NAMING_SOURCES, OBJECT_PROPERTY_STRATEGIES, type BaseType, type BusinessRule, type BaseTypeName, type ElementRef, type Generalization, type Key, type KeyMember, type LogicalChange, type LogicalDiagram, type LogicalDomain, type LogicalElement, type LogicalEntity, type LogicalModel, type LogicalRefusal, type LogicalType, type MappingConversion, type Relationship, type RelationshipEnd, type SemanticMapping, type TransformationConfig, type UpdateTarget } from './contracts';
+import { isStrategyId, strategyForText } from './strategies';
 
 /**
  * Logical data models as data: read safely from what was stored, changed by logical change sets,
@@ -143,15 +144,23 @@ export function logicalModelFrom(v: unknown): LogicalModel | undefined {
       const origin = obj(m.origin) ?? {};
       const madeBy = obj(m.made) ?? {};
       const by = str(madeBy.by);
+      // An id that reads wins; otherwise the recorded words say which strategy it is, where the
+      // catalogue knows them. Words it does not know are kept as they are, and the mapping is left
+      // without an id until someone classifies it: nothing is guessed.
+      const strategyId = isStrategyId(m.strategyId) ? m.strategyId : strategyForText(str(m.strategy))?.id;
+      const conversion = obj(m.converted);
+      const converted: MappingConversion | undefined = conversion && isStrategyId(conversion.to) && typeof conversion.at === 'number' && Number.isFinite(conversion.at) ? { ...(isStrategyId(conversion.from) ? { from: conversion.from } : {}), to: conversion.to, at: conversion.at } : undefined;
       return {
         id: str(m.id),
         sources: list(m.sources).map((s) => ({ iri: str(s.iri), axioms: (Array.isArray(s.axioms) ? s.axioms : []).map(str).filter(Boolean), ...(str(s.label) ? { label: str(s.label) } : {}) })).filter((s) => s.iri),
         targets: (Array.isArray(m.targets) ? m.targets : []).map(refFrom).filter((x): x is ElementRef => !!x),
         strategy: str(m.strategy),
+        ...(strategyId ? { strategyId } : {}),
         rationale: str(m.rationale),
         origin: { ontology: str(origin.ontology), revision: str(origin.revision), ...(str(origin.version) ? { version: str(origin.version) } : {}) },
         baseline: obj(m.baseline) ?? {},
         made: { by: by === 'transformation' || by === 'synchronization' || by === 'assistant' ? by : 'hand', at: typeof madeBy.at === 'number' ? madeBy.at : 0, ...(str(madeBy.author) ? { author: str(madeBy.author) } : {}) },
+        ...(converted ? { converted } : {}),
       };
     });
   const diagrams: LogicalDiagram[] = list(o.diagrams)
@@ -454,7 +463,7 @@ const UPDATABLE: Record<string, readonly string[]> = {
   generalization: ['supertype', 'subtypes', 'complete', 'exclusive', 'discriminator'],
   rule: ['name', 'statement', 'kind', 'appliesTo', 'expression', 'status'],
   domain: ['name', 'definition', 'base', 'constraints'],
-  mapping: ['sources', 'targets', 'strategy', 'rationale', 'origin', 'baseline', 'made'],
+  mapping: ['sources', 'targets', 'strategy', 'strategyId', 'rationale', 'origin', 'baseline', 'made', 'converted'],
   diagram: ['name', 'positions'],
 };
 

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ElementRef, LogicalModel } from '../logical/contracts';
+import type { ElementRef, ElementKind, LogicalModel, StrategyId } from '../logical/contracts';
+import { convertibleFrom, expectedKindOf, reasonsNotApplicable, STRATEGIES, strategyById, type StrategyEntry, type StrategySourceKind } from '../logical/strategies';
 import { nameIn } from '../model/labels';
 import { useStore } from '../model/store';
 import type { LdmViewState } from '../model/state/session';
-import type { MappingDescription, TraceabilityReport, TraceResult } from '../traceability/contracts';
+import type { ConversionPreview, MappingDescription, TraceabilityReport, TraceResult } from '../traceability/contracts';
 
 /**
  * Traceability of a logical model with the ontology (roadmap LM-4; FR-M18-8 to FR-M18-10): where
@@ -17,6 +18,7 @@ const STATUS: Record<MappingDescription['status'], string> = {
   current: 'current',
   stale: 'stale',
   broken: 'broken',
+  mismatched: 'mismatched',
 };
 
 const said = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -115,7 +117,7 @@ export function TraceabilityPanel({ m, focus, selected, set }: { m: LogicalModel
   }, [service, m.id, focus && refKey(focus), m.revision]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mapping = report?.mappings.find((x) => x.mapping.id === selected) ?? null;
-  const counts = report ? { current: 0, stale: 0, broken: 0 } : null;
+  const counts = report ? { current: 0, stale: 0, broken: 0, mismatched: 0 } : null;
   if (report && counts) for (const x of report.mappings) counts[x.status]++;
   const unrepresented = report?.coverage.unrepresented ?? [];
   const unsourced = report?.coverage.unsourced ?? [];
@@ -137,6 +139,9 @@ export function TraceabilityPanel({ m, focus, selected, set }: { m: LogicalModel
           <button className="btn small" onClick={() => useStore.getState().setDialog('impact')} title="Compare the ontology with this model’s mappings, and review synchronization">
             Impact…
           </button>
+          <button className="btn small" onClick={() => setEditing('new')} disabled={!targetable(m).length} title="Map an element to the ontology by hand">
+            Map an element by hand…
+          </button>
         </div>
         {error && <p className="ldm-note warn">{error}</p>}
         {!report && !error && <p className="muted pad">Reading the mappings…</p>}
@@ -145,6 +150,7 @@ export function TraceabilityPanel({ m, focus, selected, set }: { m: LogicalModel
             <span className={`trace-status current`}>{counts.current} current</span>
             <span className={`trace-status stale`}>{counts.stale} stale</span>
             <span className={`trace-status broken`}>{counts.broken} broken</span>
+            <span className={`trace-status mismatched`}>{counts.mismatched} mismatched</span>
             <p className="muted">
               {report.coverage.counts.sourced} of {report.coverage.counts.elements} elements have a source
               {report.coverage.scope !== null ? `; ${report.coverage.scope} classes are in the derivation’s scope` : ''}.
@@ -314,6 +320,16 @@ export function TraceabilityPanel({ m, focus, selected, set }: { m: LogicalModel
               <dl className="trace-facts">
                 <dt>Strategy</dt>
                 <dd>{mapping.mapping.strategy}</dd>
+                <dt>Strategy id</dt>
+                <dd>{mapping.mapping.strategyId ?? 'not classified yet'}</dd>
+                {mapping.mapping.converted && (
+                  <>
+                    <dt>Converted</dt>
+                    <dd>
+                      from {strategyById(mapping.mapping.converted.from)?.label ?? mapping.mapping.converted.from ?? 'a strategy without an id'} to {strategyById(mapping.mapping.converted.to)?.label ?? mapping.mapping.converted.to}, {new Date(mapping.mapping.converted.at).toLocaleString()}
+                    </dd>
+                  </>
+                )}
                 <dt>Why</dt>
                 <dd>{mapping.mapping.rationale}</dd>
                 <dt>Origin</dt>
@@ -348,15 +364,46 @@ export function TraceabilityPanel({ m, focus, selected, set }: { m: LogicalModel
         ) : (
           <>
             <p className="muted pad">Select a mapping to see where its elements came from, or map an element to the ontology by hand.</p>
-            <div className="row">
-              <button className="btn primary" onClick={() => setEditing('new')} disabled={!targetable(m).length}>
-                Map an element by hand…
-              </button>
-            </div>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+const KIND_WORD: Record<ElementKind, string> = {
+  entity: 'an entity',
+  attribute: 'an attribute',
+  key: 'a key',
+  relationship: 'a relationship',
+  generalization: 'a generalization',
+  rule: 'a business rule',
+  domain: 'a domain',
+  mapping: 'a mapping',
+  diagram: 'a diagram',
+};
+
+const refKindOf = (ref: ElementRef): ElementKind => Object.keys(ref)[0] as ElementKind;
+
+/** The kind of source a strategy catalogue entry is about, from the names the ontology choices use. */
+function sourceKindOf(kind: string): StrategySourceKind | undefined {
+  if (kind === 'concept' || kind === 'class') return 'class';
+  if (kind === 'property' || kind === 'data property') return 'data property';
+  if (kind === 'object property' || kind === 'datatype') return kind;
+  return undefined;
+}
+
+function PreviewList({ title, items }: { title: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <h4>{title}</h4>
+      <ul className="ldm-plain-list">
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -365,11 +412,79 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
   const [target, setTarget] = useState<string>(existing ? refKey(existing.targets[0]) : targets[0] ? refKey(targets[0].ref) : '');
   const [sources, setSources] = useState<string[]>(existing?.sources.map((s) => s.iri) ?? []);
   const [pick, setPick] = useState('');
-  const [strategy, setStrategy] = useState(existing?.strategy ?? '');
+  const [strategyId, setStrategyId] = useState<StrategyId | ''>(existing?.strategyId ?? '');
   const [rationale, setRationale] = useState(existing?.rationale ?? '');
+  const [preview, setPreview] = useState<ConversionPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const byIri = new Map(choices.map((c) => [c.iri, c]));
+
+  const targetKind: ElementKind = target ? refKindOf(keyRef(target)) : 'entity';
+  const selected = strategyById(strategyId || undefined);
+  const conversion = !!existing && !!selected && selected.target !== targetKind;
+  const knownSourceKinds = sources.map((iri) => sourceKindOf(byIri.get(iri)?.kind ?? '')).filter((k): k is StrategySourceKind => !!k);
+  const sourcesKnown = sources.length > 0 && knownSourceKinds.length === sources.length;
+
+  /**
+   * Why a strategy cannot be chosen here: it makes the wrong kind of element, or it does not read
+   * these sources. A strategy that converts the element (a domain into an entity) is offered
+   * too; its conflicts are the conversion's to report.
+   */
+  const reasonFor = (entry: StrategyEntry): string | undefined => {
+    const reaches = entry.target === targetKind || convertibleFrom(targetKind).includes(entry.target);
+    if (!reaches) return reasonsNotApplicable(entry, { sourceKinds: [], targetKind });
+    if (!sourcesKnown) return undefined;
+    return reasonsNotApplicable(entry, { sourceKinds: knownSourceKinds, targetKind: entry.target });
+  };
+  const offered = STRATEGIES.filter((entry) => reasonFor(entry) === undefined);
+  const keep = offered.filter((entry) => entry.target === targetKind);
+  const convert = offered.filter((entry) => entry.target !== targetKind);
+  const reasons = STRATEGIES.map((entry) => ({ entry, reason: reasonFor(entry) })).filter((x): x is { entry: StrategyEntry; reason: string } => !!x.reason);
+
+  const loadPreview = async (id: StrategyId, decisions: Record<string, string>) => {
+    if (!existing) return;
+    setPreviewing(true);
+    setError('');
+    try {
+      const next = await useStore.getState().traceabilityService.previewConversion({
+        model: m.id,
+        mapping: existing.id,
+        to: id,
+        ...(Object.keys(decisions).length ? { decisions } : {}),
+        sources: sources.map((iri) => ({ iri })),
+        rationale,
+      });
+      setPreview(next);
+    } catch (e) {
+      setPreview(null);
+      setError(said(e));
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const choose = (value: string) => {
+    const id = value as StrategyId | '';
+    setStrategyId(id);
+    setPreview(null);
+    const entry = strategyById(id || undefined);
+    if (existing && entry && entry.target !== targetKind) void loadPreview(entry.id, {});
+  };
+
+  const changeTarget = (value: string) => {
+    setTarget(value);
+    setPreview(null);
+    const kind = value ? refKindOf(keyRef(value)) : targetKind;
+    if (selected && selected.target !== kind && !convertibleFrom(kind).includes(selected.target)) setStrategyId('');
+  };
+
+  const changeSources = (next: string[]) => {
+    setSources(next);
+    // The sources are what a conversion reads (a reference entity takes its members from them):
+    // a review made from other sources is no longer the review of this mapping.
+    setPreview(null);
+  };
 
   const save = async () => {
     setError('');
@@ -378,12 +493,27 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
       const ref = target ? keyRef(target) : null;
       if (!ref) throw new Error('Choose the element to map.');
       if (!sources.length) throw new Error('Add at least one ontology entity.');
-      if (!strategy.trim()) throw new Error('Say what the mapping does.');
+      if (!strategyId) throw new Error('Choose what the mapping does.');
       if (!rationale.trim()) throw new Error('Say why the mapping holds.');
-      if (existing) await useStore.getState().traceabilityService.editMapping({ model: m.id, mapping: existing.id, sources: sources.map((iri) => ({ iri })), targets: [ref], strategy, rationale });
-      else await useStore.getState().traceabilityService.addMapping({ model: m.id, sources: sources.map((iri) => ({ iri })), targets: [ref], strategy, rationale });
+      if (existing) await useStore.getState().traceabilityService.editMapping({ model: m.id, mapping: existing.id, sources: sources.map((iri) => ({ iri })), targets: [ref], strategyId, rationale });
+      else await useStore.getState().traceabilityService.addMapping({ model: m.id, sources: sources.map((iri) => ({ iri })), targets: [ref], strategyId, rationale });
       onDone();
       useStore.getState().notify(existing ? 'Updated the mapping.' : 'Mapped the element by hand.');
+    } catch (e) {
+      setError(said(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const apply = async () => {
+    if (!preview) return;
+    setError('');
+    setBusy(true);
+    try {
+      await useStore.getState().traceabilityService.applyConversion(preview);
+      onDone();
+      useStore.getState().notify('Applied the transformation. Undo takes it back.');
     } catch (e) {
       setError(said(e));
     } finally {
@@ -396,9 +526,15 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
       <div className="ldm-title">
         <h2>{existing ? 'Edit the mapping' : 'Map an element by hand'}</h2>
       </div>
+      {existing && !existing.strategyId && <p className="ldm-note">This mapping predates typed strategies: its words “{existing.strategy}” are kept as they are. Choose the strategy it follows; it needs classification, and nothing is guessed.</p>}
+      {existing && existing.targets[0] && expectedKindOf(existing.strategyId) !== undefined && expectedKindOf(existing.strategyId) !== refKindOf(existing.targets[0]) && (
+        <p className="ldm-note warn mapping-mismatch">
+          This mapping says it makes {KIND_WORD[expectedKindOf(existing.strategyId)!]}, but “{elementLabel(m, existing.targets[0])}” is {KIND_WORD[refKindOf(existing.targets[0])]}. Choose a strategy that converts it, and apply the transformation.
+        </p>
+      )}
       <label className="field">
         <span>Element</span>
-        <select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Element to map">
+        <select value={target} onChange={(e) => changeTarget(e.target.value)} aria-label="Element to map">
           {targets.map((t) => (
             <option key={refKey(t.ref)} value={refKey(t.ref)}>
               {t.label}
@@ -421,7 +557,7 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
             className="btn small"
             onClick={() => {
               const direct = byIri.has(pick) ? pick : choices.find((c) => c.name === pick)?.iri;
-              if (direct && !sources.includes(direct)) setSources([...sources, direct]);
+              if (direct && !sources.includes(direct)) changeSources([...sources, direct]);
               setPick('');
             }}
           >
@@ -433,24 +569,131 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
         <ul className="ldm-plain-list">
           {sources.map((iri) => (
             <li key={iri} title={iri}>
-              {byIri.get(iri)?.name ?? iri} <button className="linklike" onClick={() => setSources(sources.filter((x) => x !== iri))}>remove</button>
+              {byIri.get(iri)?.name ?? iri} <button className="linklike" onClick={() => changeSources(sources.filter((x) => x !== iri))}>remove</button>
             </li>
           ))}
         </ul>
       )}
       <label className="field">
-        <span>What the mapping does</span>
-        <input value={strategy} placeholder="Two classes → one entity" onChange={(e) => setStrategy(e.target.value)} />
+        <span>Strategy</span>
+        <select value={strategyId} onChange={(e) => choose(e.target.value)} aria-label="Strategy">
+          <option value="">Choose a strategy</option>
+          {keep.length > 0 && (
+            <optgroup label="Saves the element as it is">
+              {keep.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {convert.length > 0 && (
+            <optgroup label="Converts the element">
+              {convert.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
       </label>
+      {selected && <p className="muted small">{selected.description}</p>}
+      {reasons.length > 0 && (
+        <details className="strategy-reasons">
+          <summary>The other strategies, and why they do not apply</summary>
+          <ul className="ldm-plain-list">
+            {reasons.map(({ entry, reason }) => (
+              <li key={entry.id}>
+                <strong>{entry.label}</strong> — {reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <label className="field">
         <span>Why it holds</span>
-        <textarea value={rationale} rows={3} placeholder="In words, for the people who read the model later." onChange={(e) => setRationale(e.target.value)} />
+        <textarea
+          value={rationale}
+          rows={3}
+          placeholder="In words, for the people who read the model later."
+          onChange={(e) => {
+            setRationale(e.target.value);
+            // The rationale is metadata: changing it never asks for a conversion. It travels with
+            // the review, so that applying it keeps what the form says.
+            setPreview((p) => (p ? { ...p, mappingAfter: { ...p.mappingAfter, rationale: e.target.value } } : p));
+          }}
+        />
       </label>
+      {previewing && <p className="muted">Working out what the change would make of the model…</p>}
+      {preview && (
+        <div className="conversion-preview">
+          <h3>Transformation preview</h3>
+          <dl className="trace-facts">
+            <dt>Now</dt>
+            <dd>
+              {preview.from.name} — {preview.from.strategyId ? (strategyById(preview.from.strategyId)?.label ?? preview.from.strategyId) : 'no typed strategy'} ({KIND_WORD[preview.from.kind]})
+            </dd>
+            <dt>After</dt>
+            <dd>
+              {preview.to.name} — {strategyById(preview.to.strategyId)?.label ?? preview.to.strategyId} ({KIND_WORD[preview.to.kind]})
+            </dd>
+          </dl>
+          <PreviewList title="Creates" items={preview.creates} />
+          <PreviewList title="Modifies" items={preview.modifies} />
+          <PreviewList title="Removes" items={preview.removes} />
+          <PreviewList title="Keys" items={preview.keys} />
+          <PreviewList title="Constraints" items={preview.constraints} />
+          {preview.decisions.map((d) => (
+            <label className="field" key={d.name}>
+              <span>{d.label}</span>
+              <select
+                value={d.chosen}
+                aria-label={d.label}
+                onChange={(e) => {
+                  const chosen = Object.fromEntries(preview.decisions.map((x) => [x.name, x.name === d.name ? e.target.value : x.chosen]));
+                  void loadPreview(preview.to.strategyId, chosen);
+                }}
+              >
+                {d.choices.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          {!!preview.warnings.length && (
+            <div className="ldm-note">
+              <ul className="ldm-plain-list">
+                {preview.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!preview.conflicts.length && (
+            <div className="conversion-conflicts">
+              <h4>Cannot be applied</h4>
+              <ul className="ldm-plain-list">
+                {preview.conflicts.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
       {error && <p className="ldm-note warn">{error}</p>}
       <div className="row">
-        <button className="btn primary" disabled={busy} onClick={() => void save()}>
+        <button className="btn primary" disabled={busy || previewing || conversion} onClick={() => void save()}>
           {existing ? 'Save the mapping' : 'Make the mapping'}
         </button>
+        {conversion && (
+          <button className="btn primary" disabled={busy || previewing || !preview || !preview.changes.length || preview.conflicts.length > 0} onClick={() => void apply()}>
+            Apply the Transformation
+          </button>
+        )}
         <button className="btn" onClick={onCancel}>
           Cancel
         </button>

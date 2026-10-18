@@ -15,8 +15,8 @@ const imports = (file: string) => [...readFileSync(here + file, 'utf8').matchAll
 
 describe('what the transformation depends on', () => {
   it('is its own files, the ontology read-only, and the logical models', () => {
-    expect(files.sort()).toEqual(['contracts.ts', 'impact.ts', 'impactWorker.ts', 'local.ts', 'transform.ts', 'worker.ts']);
-    const allowed = new Set(['../model/types', '../model/expressions', '../model/iri', '../model/unmapped', '../logical/contracts', '../logical/rules']);
+    expect(files.sort()).toEqual(['contracts.ts', 'conversions.ts', 'impact.ts', 'impactWorker.ts', 'local.ts', 'transform.ts', 'worker.ts']);
+    const allowed = new Set(['../model/types', '../model/expressions', '../model/iri', '../model/unmapped', '../logical/contracts', '../logical/rules', '../logical/edits', '../logical/strategies']);
     for (const file of files) {
       for (const from of imports(file)) {
         if (from.startsWith('./') || allowed.has(from)) continue;

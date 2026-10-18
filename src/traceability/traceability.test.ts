@@ -258,7 +258,7 @@ describe('hand-made mappings and tracing', () => {
       changes: [{ op: 'add', element: { kind: 'entity', entity: { id: 'e-hand', name: 'Production company', definition: 'Who makes a film.', attributes: [], keys: [] } } }],
       summary: 'Added an entity.',
     });
-    const made = await h.traceability.addMapping({ model, sources: [{ iri: filmIri }, { iri: studioIri }], targets: [{ entity: 'e-hand' }], strategy: 'two classes → one entity', rationale: 'A production company is both a studio and a film’s maker.' });
+    const made = await h.traceability.addMapping({ model, sources: [{ iri: filmIri }, { iri: studioIri }], targets: [{ entity: 'e-hand' }], strategyId: 'OWL_CLASSES_TO_LDM_ENTITY', rationale: 'A production company is both a studio and a film’s maker.' });
     expect(made.revision).not.toBe(added.revision);
     let report = await h.traceability.report({ model });
     let described = report.mappings.find((m) => m.mapping.id === made.mapping)!;
@@ -283,7 +283,7 @@ describe('hand-made mappings and tracing', () => {
     described = report.mappings.find((m) => m.mapping.id === made.mapping)!;
     expect(described.customised).toBe(true);
 
-    await h.traceability.editMapping({ model, mapping: made.mapping, sources: [{ iri: studioIri }], targets: [{ entity: 'e-hand' }], strategy: 'class → entity', rationale: 'A maker is a studio.' });
+    await h.traceability.editMapping({ model, mapping: made.mapping, sources: [{ iri: studioIri }], targets: [{ entity: 'e-hand' }], strategyId: 'OWL_CLASS_TO_LDM_ENTITY', rationale: 'A maker is a studio.' });
     report = await h.traceability.report({ model });
     described = report.mappings.find((m) => m.mapping.id === made.mapping)!;
     expect(described.sources.map((s) => s.iri)).toEqual([studioIri]);
@@ -298,7 +298,147 @@ describe('hand-made mappings and tracing', () => {
   it('refuses a mapping to an element that is not there, and a source the ontology does not have', async () => {
     const h = harness();
     const model = await h.derive('Film LDM');
-    await expect(h.traceability.addMapping({ model, sources: [{ iri: h.iri('Film') }], targets: [{ entity: 'nope' }], strategy: '', rationale: '' })).rejects.toMatchObject({ code: 'invalid' });
-    await expect(h.traceability.addMapping({ model, sources: [{ iri: 'http://example.org/nothing' }], targets: [{ entity: h.ldm(model).entities[0].id }], strategy: '', rationale: '' })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(h.traceability.addMapping({ model, sources: [{ iri: h.iri('Film') }], targets: [{ entity: 'nope' }], strategyId: 'OWL_CLASS_TO_LDM_ENTITY', rationale: '' })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(h.traceability.addMapping({ model, sources: [{ iri: 'http://example.org/nothing' }], targets: [{ entity: h.ldm(model).entities[0].id }], strategyId: 'OWL_CLASS_TO_LDM_ENTITY', rationale: '' })).rejects.toMatchObject({ code: 'invalid' });
+  });
+});
+
+describe('typed strategies and the conversion they ask for', () => {
+  /** A hand-added domain, an attribute typed by it, and a mapping from the class Genre to it. */
+  async function withDomain(h: ReturnType<typeof harness>) {
+    const model = await h.derive('Film LDM');
+    const film = h.ldm(model).entities.find((e) => e.name === 'Film')!;
+    const domain = { id: 'd-genre-list', name: 'Genre list', definition: 'A category of films.', base: { base: 'text' as const }, constraints: { values: [{ code: 'Drama', label: 'Drama' }, { code: 'Comedy', label: 'Comedy' }] } };
+    await h.edit.apply({
+      model,
+      baseRevision: h.ldm(model).revision,
+      changes: [
+        { op: 'add', element: { kind: 'domain', domain } },
+        { op: 'add', element: { kind: 'attribute', entity: film.id, attribute: { id: 'a-genre-code', name: 'Genre code', definition: '', type: { domain: domain.id }, optional: true } } },
+      ],
+      summary: 'Added a domain and an attribute typed by it.',
+    });
+    const made = await h.traceability.addMapping({ model, sources: [{ iri: h.iri('Genre') }], targets: [{ domain: domain.id }], strategyId: 'OWL_ENUMERATION_TO_LDM_DOMAIN', rationale: 'The categories are a list.' });
+    return { model, domain, made, film };
+  }
+
+  it('records the strategy as an id beside its words, and calls a mapping whose target is another kind mismatched', async () => {
+    const h = harness();
+    const { model, made } = await withDomain(h);
+    let report = await h.traceability.report({ model });
+    let described = report.mappings.find((m) => m.mapping.id === made.mapping)!;
+    expect(described.mapping.strategyId).toBe('OWL_ENUMERATION_TO_LDM_DOMAIN');
+    expect(described.mapping.strategy).toBe('enumerated class → domain');
+    expect(described.status).toBe('current');
+
+    // The strategy and the element it targets disagree: worked out, never stored.
+    h.ldm(model).mappings.find((m) => m.id === made.mapping)!.strategyId = 'OWL_CLASS_TO_LDM_ENTITY';
+    report = await h.traceability.report({ model });
+    described = report.mappings.find((m) => m.mapping.id === made.mapping)!;
+    expect(described.status).toBe('mismatched');
+    h.ldm(model).mappings.find((m) => m.id === made.mapping)!.strategyId = 'OWL_ENUMERATION_TO_LDM_DOMAIN';
+    report = await h.traceability.report({ model });
+    expect(report.mappings.find((m) => m.mapping.id === made.mapping)!.status).toBe('current');
+  });
+
+  it('refuses a kind-changing edit without a review, and commits nothing', async () => {
+    const h = harness();
+    const { model, made, domain } = await withDomain(h);
+    const revision = h.ldm(model).revision;
+    const commits = h.commits();
+    await expect(h.traceability.editMapping({ model, mapping: made.mapping, sources: [{ iri: h.iri('Genre') }], targets: [{ domain: domain.id }], strategyId: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY', rationale: 'Now rows.' })).rejects.toMatchObject({ code: 'conversion-required' });
+    expect(h.commits()).toBe(commits);
+    expect(h.ldm(model).revision).toBe(revision);
+    expect(h.ldm(model).domains.some((d) => d.id === domain.id)).toBe(true);
+  });
+
+  it('refuses an unknown strategy, a source of the wrong kind, and a target of the wrong kind', async () => {
+    const h = harness();
+    const { model, domain, film } = await withDomain(h);
+    await expect(h.traceability.addMapping({ model, sources: [{ iri: h.iri('Genre') }], targets: [{ domain: domain.id }], strategyId: 'OWL_NOPE' as never, rationale: '' })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(h.traceability.addMapping({ model, sources: [{ iri: h.iri('Release date') }], targets: [{ domain: domain.id }], strategyId: 'OWL_ENUMERATION_TO_LDM_DOMAIN', rationale: '' })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(h.traceability.addMapping({ model, sources: [{ iri: h.iri('Genre') }], targets: [{ entity: film.id }], strategyId: 'OWL_ENUMERATION_TO_LDM_DOMAIN', rationale: '' })).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  it('previews without changing anything, then applies the element changes and the mapping update as one commit', async () => {
+    const h = harness();
+    const { model, made, domain, film } = await withDomain(h);
+    const commits = h.commits();
+    const revision = h.ldm(model).revision;
+    const ontologyBefore = { terms: structuredClone(h.current().terms), props: structuredClone(h.current().props), relations: structuredClone(h.current().relations) };
+
+    const preview = await h.traceability.previewConversion({ model, mapping: made.mapping, to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' });
+    expect(h.commits()).toBe(commits);
+    expect(h.ldm(model).revision).toBe(revision);
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.changes.length).toBeGreaterThan(0);
+    expect(preview.from).toMatchObject({ strategyId: 'OWL_ENUMERATION_TO_LDM_DOMAIN', kind: 'domain', name: 'Genre list' });
+    expect(preview.to).toMatchObject({ kind: 'entity', name: 'Genre list' });
+    expect(preview.mappingAfter.strategy).toBe('enumerated class → reference entity');
+
+    const applied = await h.traceability.applyConversion(preview);
+    expect(applied.revision).not.toBe(revision);
+    expect(h.commits()).toBe(commits + 1);
+    const after = h.ldm(model);
+    expect(after.domains.some((d) => d.id === domain.id)).toBe(false);
+    const entity = after.entities.find((e) => e.name === preview.to.name)!;
+    expect(entity).toBeDefined();
+    expect(entity.attributes.map((a) => [a.name, a.optional])).toEqual([
+      ['code', false],
+      ['label', true],
+    ]);
+    expect(entity.keys[0].members).toEqual([{ attribute: entity.attributes[0].id }]);
+    // The attribute that was typed by the domain is typed by its base type now, keeping its id.
+    expect(after.entities.find((e) => e.id === film.id)!.attributes.find((a) => a.id === 'a-genre-code')!.type).toEqual({ base: 'text' });
+    const mappingAfter = after.mappings.find((m) => m.id === made.mapping)!;
+    expect(mappingAfter.targets).toEqual([{ entity: entity.id }]);
+    expect(mappingAfter.strategyId).toBe('OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY');
+    expect(mappingAfter.strategy).toBe('enumerated class → reference entity');
+    expect(mappingAfter.converted).toMatchObject({ from: 'OWL_ENUMERATION_TO_LDM_DOMAIN', to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' });
+    expect(mappingAfter.made.by).toBe('hand');
+    expect(mappingAfter.baseline).toEqual({ entity: { id: entity.id, name: entity.name, definition: entity.definition } });
+    // The mapping is current, and its new element was not instantly "customised".
+    const report = await h.traceability.report({ model });
+    const described = report.mappings.find((m) => m.mapping.id === made.mapping)!;
+    expect(described.status).toBe('current');
+    expect(described.customised).toBe(false);
+    // The ontology is untouched.
+    expect({ terms: h.current().terms, props: h.current().props, relations: h.current().relations }).toEqual(ontologyBefore);
+  });
+
+  it('refuses a preview the model has moved on from, changing nothing', async () => {
+    const h = harness();
+    const { model, made, domain } = await withDomain(h);
+    const preview = await h.traceability.previewConversion({ model, mapping: made.mapping, to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' });
+    await h.edit.apply({ model, baseRevision: h.ldm(model).revision, changes: [{ op: 'add', element: { kind: 'entity', entity: { id: 'e-unrelated', name: 'Unrelated', definition: '', attributes: [], keys: [] } } }], summary: 'Added an unrelated entity.' });
+    const commits = h.commits();
+    await expect(h.traceability.applyConversion(preview)).rejects.toMatchObject({ code: 'stale-revision' });
+    expect(h.commits()).toBe(commits);
+    expect(h.ldm(model).domains.some((d) => d.id === domain.id)).toBe(true);
+  });
+
+  it('saves a rationale and the same strategy as metadata only, leaving the element uncustomised', async () => {
+    const h = harness();
+    const { model, made, domain } = await withDomain(h);
+    const commits = h.commits();
+    const before = structuredClone(h.ldm(model).domains.find((d) => d.id === domain.id)!);
+    await h.traceability.editMapping({ model, mapping: made.mapping, sources: [{ iri: h.iri('Genre') }], targets: [{ domain: domain.id }], strategyId: 'OWL_ENUMERATION_TO_LDM_DOMAIN', rationale: 'The categories are a list, for a reader.' });
+    expect(h.commits()).toBe(commits + 1);
+    const after = h.ldm(model);
+    expect(after.domains.find((d) => d.id === domain.id)).toEqual(before);
+    const described = (await h.traceability.report({ model })).mappings.find((m) => m.mapping.id === made.mapping)!;
+    expect(described.mapping.rationale).toBe('The categories are a list, for a reader.');
+    expect(described.customised).toBe(false);
+    expect(described.status).toBe('current');
+  });
+
+  it('converts one LDM and leaves another one alone', async () => {
+    const h = harness();
+    const { model, made } = await withDomain(h);
+    const other = await h.derive('Cinema LDM', lower);
+    const untouched = structuredClone(h.ldm(other));
+    const preview = await h.traceability.previewConversion({ model, mapping: made.mapping, to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' });
+    await h.traceability.applyConversion(preview);
+    expect(h.ldm(other)).toEqual(untouched);
   });
 });

@@ -1358,16 +1358,44 @@ someone who knows what the application must require.
 ```ts
 interface SemanticMapping {
   id: string;
-  sources: { iri: string; axioms: string[] }[];   // ontology entities, and the axioms used, in functional syntax
+  sources: { iri: string; label?: string; axioms: string[] }[];   // ontology entities, and the axioms used, in functional syntax
   targets: ElementRef[];                           // LDM elements
-  strategy: string;                                // 'class-to-entity', 'roll-up', 'property-to-associative-entity', 'by-hand', …
+  strategyId?: StrategyId;                         // a catalogue id; absent for mappings written before ids
+  strategy: string;                                // the catalogue's words, 'class → entity', 'roll-up', …, or older free text
   rationale: string;                               // in words
   origin: { ontology: string; revision: string; version?: string }; // the ontology's IRI, its content hash, a named version
   baseline: Record<string, unknown>;               // what this mapping last made of its targets
-  status: 'current' | 'stale' | 'broken';          // worked out against the ontology as it is
+  converted?: { from?: StrategyId; to: StrategyId; at: number };    // the last structural conversion
+  status: 'current' | 'stale' | 'broken' | 'mismatched';            // worked out against the ontology as it is
   made: { by: 'transformation' | 'hand' | 'synchronization' | 'assistant'; at: number; author?: string };
 }
 ```
+
+- **Strategies by id.** One catalogue (`src/logical/strategies.ts`) names each strategy once: its
+  id, its words, the kinds of source it reads and the kind of element it makes. Every mapping the
+  transformation engine writes carries the id beside the words, so the words are no longer the
+  only record. Older mappings are read against the catalogue by their words (fixed labels exactly,
+  the two restriction-end labels by prefix); words the catalogue does not know are kept and shown
+  as needing classification, never guessed at. The id is what the editor filters by and what a
+  conversion is planned from; the words stay for people and for the screens that already show them.
+- **Mismatched.** A mapping is *mismatched* when its strategy's expected kind is not the kind of
+  the element it targets — a class mapped "→ domain" whose target is an entity. Broken outranks
+  it, and it outranks stale. It is computed, never stored.
+- **Conversions.** Changing a mapping's strategy to one that makes a different kind of element is
+  offered as a conversion, not saved as metadata. A pure planner (`src/traceability/conversions.ts`)
+  derives the change operations the LDM already has: a domain to a reference entity makes the
+  entity with its code, label, primary key and a note of the values, retypes every attribute typed
+  by the domain to its base type, retargets the rules about it and removes the domain as itself;
+  an entity that is exactly a value list to a domain reads the members the mapping recorded
+  (`ObjectOneOf` axioms) and removes the entity through the ordinary cascade; a many-to-many
+  relationship to an associative entity is the workspace's own `resolveManyToMany`. Where it cannot
+  convert exactly it refuses with the conflict in words — another mapping still on the element,
+  several targets, an element that no longer matches — and changes nothing. The preview names what
+  is created, changed and removed, the keys and constraints, the decisions taken (how the members
+  are kept) and any warning. Applying is one `LogicalModelEditService` change set with the
+  mapping's own update last, so it is one history step and one undo; the ontology is never
+  touched, and another LDM is left exactly as it was. A preview made against an older revision is
+  refused as stale, to be reviewed again.
 
 - **Sources by axiom**, in OWL functional syntax with full IRIs, as SH-3 keeps a shape's origin
   (`cw:fromAxiom`): exact, independent of how the editor draws it, and followed through a change

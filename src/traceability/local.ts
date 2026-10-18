@@ -1,9 +1,11 @@
-import { LogicalError, type CallOptions, type ElementRef, type LogicalChange, type LogicalModel, type LogicalModelEditService } from '../logical/contracts';
+import { LogicalError, type CallOptions, type ElementKind, type ElementRef, type LogicalChange, type LogicalModel, type LogicalModelEditService, type SemanticMapping } from '../logical/contracts';
 import type { Model } from '../model/types';
 import { elementOf, newId, removalOf } from '../logical/rules';
-import type { AcceptRequest, ApplySynchronizationRequest, ImpactAnswer, ImpactJob, ImpactReport, ImpactRequest, MappingEdit, MappingInput, ProposeRequest, ProposalJob, SynchronizeRequest, SynchronizationResult, TraceQuery, TraceResult, TraceabilityReport, TraceabilityService, TransformationResult, TransformationService } from './contracts';
+import { strategyById, strategyText, type StrategyEntry } from '../logical/strategies';
+import type { AcceptRequest, ApplySynchronizationRequest, ConversionPreview, ConversionQuery, ImpactAnswer, ImpactJob, ImpactReport, ImpactRequest, MappingEdit, MappingInput, ProposeRequest, ProposalJob, SynchronizeRequest, SynchronizationResult, TraceQuery, TraceResult, TraceabilityReport, TraceabilityService, TransformationResult, TransformationService } from './contracts';
+import { conversionPlan, elementNameIn } from './conversions';
 import { baselineFor, impactFor, madeSources, reportFor, synchronizeFor, traceIn } from './impact';
-import { proposalsFor } from './transform';
+import { proposalsFor, sourceNow } from './transform';
 
 /**
  * The transformation service of the editor (roadmap LM-3): proposals from the ontology in the
@@ -207,6 +209,59 @@ export interface TraceabilityHost {
   edit: LogicalModelEditService;
 }
 
+const refKind = (ref: ElementRef): ElementKind => Object.keys(ref)[0] as ElementKind;
+const refKey = (ref: ElementRef): string => `${refKind(ref)}:${Object.values(ref)[0]}`;
+
+const KIND_WORDS: Record<ElementKind, string> = {
+  entity: 'an entity',
+  attribute: 'an attribute',
+  key: 'a key',
+  relationship: 'a relationship',
+  generalization: 'a generalization',
+  rule: 'a business rule',
+  domain: 'a domain',
+  mapping: 'a mapping',
+  diagram: 'a diagram',
+};
+
+const unknownStrategy = (id: string) => new LogicalError('invalid', `“${id}” is not a mapping strategy this editor knows.`, [{ code: 'invalid', message: `“${id}” is not a mapping strategy this editor knows.` }]);
+
+/** Holds a mapping's sources to what its strategy reads. */
+function sourcesChecked(now: Model, entry: StrategyEntry, iris: string[]): void {
+  const min = entry.sources?.min ?? 1;
+  const max = entry.sources?.max;
+  if (iris.length < min) {
+    const message = min === 1 ? 'A mapping needs at least one source.' : `The strategy “${entry.label}” needs at least ${min} sources.`;
+    throw new LogicalError('invalid', message, [{ code: 'invalid', message }]);
+  }
+  if (max !== undefined && iris.length > max) {
+    const message = max === 1 ? `The strategy “${entry.label}” reads one source.` : `The strategy “${entry.label}” reads at most ${max} sources.`;
+    throw new LogicalError('invalid', message, [{ code: 'invalid', message }]);
+  }
+  for (const iri of iris) {
+    const found = sourceNow(now, iri);
+    if (!found || entry.sourceKinds.includes(found.kind)) continue;
+    const message = `The strategy “${entry.label}” reads ${entry.sourceKinds.join(' and ')}, but “${found.name || iri}” is ${found.kind === 'class' ? 'a class' : `a ${found.kind}`}.`;
+    throw new LogicalError('invalid', message, [{ code: 'invalid', message }]);
+  }
+}
+
+/**
+ * Holds a mapping's targets to what its strategy makes. Changing the strategy of an element that
+ * is already mapped to the other kind is not a metadata edit: it has to go through a reviewed
+ * conversion, so the element and the mapping change together.
+ */
+function targetsChecked(target: LogicalModel, entry: StrategyEntry, refs: ElementRef[], before?: SemanticMapping): void {
+  const wrong = refs.find((ref) => refKind(ref) !== entry.target);
+  if (!wrong) return;
+  const name = elementNameIn(target, wrong);
+  const message = `The strategy “${entry.label}” makes ${KIND_WORDS[entry.target]}, but “${name}” is ${KIND_WORDS[refKind(wrong)]}.`;
+  if (before?.targets.some((ref) => refKey(ref) === refKey(wrong))) {
+    throw new LogicalError('conversion-required', `${message} Review the transformation, so the element and the mapping change together.`, [{ code: 'refused', message }]);
+  }
+  throw new LogicalError('invalid', `${message} Choose a strategy that makes ${KIND_WORDS[refKind(wrong)]}.`, [{ code: 'invalid', message }]);
+}
+
 export function createLocalTraceabilityService(host: TraceabilityHost, run: ImpactRunner = impactInAWorker): TraceabilityService {
   const given = (options?: CallOptions) => {
     if (options?.signal?.aborted) throw cancelled();
@@ -336,14 +391,19 @@ export function createLocalTraceabilityService(host: TraceabilityHost, run: Impa
       const { now, target } = modelIn(input.model);
       bound(input.targets, target);
       if (!input.sources.length) throw new LogicalError('invalid', 'A mapping needs at least one source.', [{ code: 'invalid', message: 'A mapping needs at least one source.' }]);
+      const entry = strategyById(input.strategyId);
+      if (!entry) throw unknownStrategy(input.strategyId);
       const sources = madeSources(now.model, input.sources.map((s) => s.iri));
       const missing = input.sources.find((s) => !sources.some((x) => x.iri === s.iri));
       if (missing) throw new LogicalError('invalid', `The ontology has nothing at ${missing.iri}.`, [{ code: 'invalid', message: `The ontology has nothing at ${missing.iri}.` }]);
+      sourcesChecked(now.model, entry, input.sources.map((s) => s.iri));
+      targetsChecked(target, entry, input.targets);
       const mapping = {
         id: newId('map'),
         sources,
         targets: input.targets,
-        strategy: input.strategy,
+        strategy: strategyText(entry, input.targets.length === 1 ? elementNameIn(target, input.targets[0]) : undefined),
+        strategyId: entry.id,
         rationale: input.rationale,
         origin: originOf(now),
         baseline: baselineFor(target, input.targets),
@@ -363,12 +423,25 @@ export function createLocalTraceabilityService(host: TraceabilityHost, run: Impa
       if (!before) throw new LogicalError('not-found', `There is no mapping ${input.mapping} in “${target.name}”.`);
       bound(input.targets, target);
       if (!input.sources.length) throw new LogicalError('invalid', 'A mapping needs at least one source.', [{ code: 'invalid', message: 'A mapping needs at least one source.' }]);
+      const entry = strategyById(input.strategyId);
+      if (!entry) throw unknownStrategy(input.strategyId);
       const sources = madeSources(now.model, input.sources.map((s) => s.iri));
       const missing = input.sources.find((s) => !sources.some((x) => x.iri === s.iri));
       if (missing) throw new LogicalError('invalid', `The ontology has nothing at ${missing.iri}.`, [{ code: 'invalid', message: `The ontology has nothing at ${missing.iri}.` }]);
-      const after = { sources, targets: input.targets, strategy: input.strategy, rationale: input.rationale, origin: originOf(now), baseline: baselineFor(target, input.targets), made: { by: 'hand' as const, at: Date.now() } };
+      sourcesChecked(now.model, entry, input.sources.map((s) => s.iri));
+      targetsChecked(target, entry, input.targets, before);
+      const after = {
+        sources,
+        targets: input.targets,
+        strategy: strategyText(entry, input.targets.length === 1 ? elementNameIn(target, input.targets[0]) : undefined),
+        strategyId: entry.id,
+        rationale: input.rationale,
+        origin: originOf(now),
+        baseline: baselineFor(target, input.targets),
+        made: { by: 'hand' as const, at: Date.now() },
+      };
       const applied = await host.edit.apply(
-        { model: target.id, baseRevision: target.revision, changes: [{ op: 'update', target: { mapping: before.id }, before: { sources: before.sources, targets: before.targets, strategy: before.strategy, rationale: before.rationale, origin: before.origin, baseline: before.baseline, made: before.made }, after }], summary: `Edited the mapping of ${input.targets.length === 1 ? 'an element' : `${input.targets.length} elements`} by hand.` },
+        { model: target.id, baseRevision: target.revision, changes: [{ op: 'update', target: { mapping: before.id }, before: { sources: before.sources, targets: before.targets, strategy: before.strategy, strategyId: before.strategyId, rationale: before.rationale, origin: before.origin, baseline: before.baseline, made: before.made }, after }], summary: `Edited the mapping of ${input.targets.length === 1 ? 'an element' : `${input.targets.length} elements`} by hand.` },
         options,
       );
       return { model: applied.model, revision: applied.revision };
@@ -381,6 +454,70 @@ export function createLocalTraceabilityService(host: TraceabilityHost, run: Impa
       if (!mapping) throw new LogicalError('not-found', `There is no mapping ${input.mapping} in “${target.name}”.`);
       const applied = await host.edit.apply(
         { model: target.id, baseRevision: target.revision, changes: removalOf(target, { mapping: mapping.id }), summary: 'Removed a mapping by hand. The elements it mapped stay.' },
+        options,
+      );
+      return { model: applied.model, revision: applied.revision };
+    },
+
+    async previewConversion(query: ConversionQuery, options): Promise<ConversionPreview> {
+      given(options);
+      const { now, target } = modelIn(query.model);
+      const mapping = target.mappings.find((m) => m.id === query.mapping);
+      if (!mapping) throw new LogicalError('not-found', `There is no mapping ${query.mapping} in “${target.name}”.`);
+      const entry = strategyById(query.to);
+      if (!entry) throw unknownStrategy(query.to);
+      let sources = mapping.sources;
+      if (query.sources !== undefined) {
+        if (!query.sources.length) throw new LogicalError('invalid', 'A mapping needs at least one source.', [{ code: 'invalid', message: 'A mapping needs at least one source.' }]);
+        const made = madeSources(now.model, query.sources.map((s) => s.iri));
+        const missing = query.sources.find((s) => !made.some((x) => x.iri === s.iri));
+        if (missing) throw new LogicalError('invalid', `The ontology has nothing at ${missing.iri}.`, [{ code: 'invalid', message: `The ontology has nothing at ${missing.iri}.` }]);
+        sourcesChecked(now.model, entry, query.sources.map((s) => s.iri));
+        sources = made;
+      }
+      return conversionPlan({ model: target, mapping, to: query.to, ...(query.decisions ? { decisions: query.decisions } : {}), sources, ...(query.rationale !== undefined ? { rationale: query.rationale } : {}) });
+    },
+
+    async applyConversion(preview: ConversionPreview, options): Promise<{ model: string; revision: string }> {
+      given(options);
+      const { now, target } = modelIn(preview.model);
+      if (target.revision !== preview.baseRevision) {
+        throw new LogicalError('stale-revision', `The logical model “${target.name}” has moved on from revision ${preview.baseRevision}; review the transformation again.`);
+      }
+      const mapping = target.mappings.find((m) => m.id === preview.mapping);
+      if (!mapping) throw new LogicalError('not-found', `There is no mapping ${preview.mapping} in “${target.name}”.`);
+      const ref = mapping.targets.length === 1 ? mapping.targets[0] : undefined;
+      if ((mapping.strategyId ?? null) !== (preview.from.strategyId ?? null) || !ref || refKey(ref) !== refKey(preview.from.ref)) {
+        throw new LogicalError('stale-revision', `The mapping has changed since the transformation was reviewed; review it again.`);
+      }
+      const decisions = Object.fromEntries(preview.decisions.map((d) => [d.name, d.chosen]));
+      const fresh = conversionPlan({ model: target, mapping, to: preview.to.strategyId, decisions, sources: preview.mappingAfter.sources, rationale: preview.mappingAfter.rationale });
+      if (fresh.conflicts.length) {
+        const message = fresh.conflicts.join(' ');
+        throw new LogicalError('refused', message, fresh.conflicts.map((text) => ({ code: 'refused' as const, message: text })));
+      }
+      if (!fresh.changes.length) throw new LogicalError('refused', 'The transformation would not change the model; save the mapping instead.', [{ code: 'refused', message: 'The transformation would not change the model; save the mapping instead.' }]);
+      const at = Date.now();
+      const before: Record<string, unknown> = { sources: mapping.sources, targets: mapping.targets, strategy: mapping.strategy, strategyId: mapping.strategyId, rationale: mapping.rationale, origin: mapping.origin, baseline: mapping.baseline, made: mapping.made };
+      if (mapping.converted) before.converted = mapping.converted;
+      const after = {
+        sources: fresh.mappingAfter.sources,
+        targets: fresh.mappingAfter.targets,
+        strategy: fresh.mappingAfter.strategy,
+        strategyId: fresh.mappingAfter.strategyId,
+        rationale: fresh.mappingAfter.rationale,
+        origin: originOf(now),
+        baseline: fresh.mappingAfter.baseline,
+        made: { by: 'hand' as const, at },
+        converted: { ...(mapping.strategyId ? { from: mapping.strategyId } : {}), to: preview.to.strategyId, at },
+      };
+      const applied = await host.edit.apply(
+        {
+          model: target.id,
+          baseRevision: target.revision,
+          changes: [...fresh.changes, { op: 'update', target: { mapping: mapping.id }, before, after }],
+          summary: `Converted “${preview.from.name}” from ${KIND_WORDS[preview.from.kind]} into ${KIND_WORDS[preview.to.kind]} by changing the mapping’s strategy.`,
+        },
         options,
       );
       return { model: applied.model, revision: applied.revision };

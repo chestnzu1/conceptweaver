@@ -1,7 +1,7 @@
 import { functionalSyntax, namedProperty, type ClassAxiom, type ClassExpression, type ClassExpressionAxiom, type DataRange, type DataRangeAxiom } from '../model/expressions';
 import { baseIriOf, localName } from '../model/iri';
 import type { EnumDatatype, Model, ObjProp, Term } from '../model/types';
-import type { BaseType, BaseTypeName, ElementRef, Key, LogicalAttribute, LogicalChange, LogicalDomain, LogicalElement, LogicalEntity, LogicalModel, LogicalType, Relationship, RelationshipEnd, SemanticMapping, TransformationConfig } from '../logical/contracts';
+import type { BaseType, BaseTypeName, ElementRef, Key, LogicalAttribute, LogicalChange, LogicalDomain, LogicalElement, LogicalEntity, LogicalModel, LogicalType, Relationship, RelationshipEnd, SemanticMapping, StrategyId, TransformationConfig } from '../logical/contracts';
 import { newId } from '../logical/rules';
 import type { ProposalSource, SkippedSource, TransformationProposal, TransformationResult } from './contracts';
 
@@ -272,9 +272,9 @@ function propose(ctx: Context, p: Omit<TransformationProposal, 'id'>): Transform
   return proposal;
 }
 
-function mapping(ctx: Context, sources: ProposalSource[], targets: ElementRef[], strategy: string, rationale: string, baseline: Record<string, unknown>): SemanticMapping {
+function mapping(ctx: Context, sources: ProposalSource[], targets: ElementRef[], strategyId: StrategyId, strategy: string, rationale: string, baseline: Record<string, unknown>): SemanticMapping {
   // A copy, not the element itself: the mapping remembers what it made, and the element moves on.
-  return { id: newId('m'), sources, targets, strategy, rationale, origin: ctx.origin, baseline: JSON.parse(JSON.stringify(baseline)), made: { by: 'transformation', at: ctx.at } };
+  return { id: newId('m'), sources, targets, strategy, strategyId, rationale, origin: ctx.origin, baseline: JSON.parse(JSON.stringify(baseline)), made: { by: 'transformation', at: ctx.at } };
 }
 
 // ---------------------------------------------------------------- reading the ontology
@@ -693,7 +693,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     const strategy = 'enumerated datatype → domain';
     const rationale = `The ontology defines ${d.name || iri} by listing its values; an LDM domain holds that list for every attribute typed by it.`;
     const difference = 'A datatype in OWL is a set of literals; an LDM domain is a named, reusable type for attributes. The values are proposed as the domain’s list, which the user may change.';
-    const m = mapping(ctx, sources, [{ domain: domain.id }], strategy, rationale, { domain });
+    const m = mapping(ctx, sources, [{ domain: domain.id }], 'OWL_ENUMERATED_DATATYPE_TO_LDM_DOMAIN', strategy, rationale, { domain });
     const proposal = propose(ctx, { kind: 'domain', title: `Domain from the enumerated datatype ${d.name || localPart(iri)}`, sources, elements: [`Domain ${domain.name}`], changes: [{ op: 'add', element: { kind: 'domain', domain } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires: [], candidate: false });
     ctx.domainProposal.set(domain.id, proposal.id);
     ctx.domainByEnum.set('id:' + d.id, domain.id);
@@ -724,7 +724,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     const strategy = 'enumerated class → domain';
     const rationale = `The ontology defines ${t.name || iri} by listing its members; the LDM keeps the list as a domain of values.`;
     const difference = 'Members of an OWL class are individuals, each with an identity; the values of an LDM domain are codes. The members become codes, which the user may rename.';
-    const m = mapping(ctx, sources, [{ domain: domain.id }], strategy, rationale, { domain });
+    const m = mapping(ctx, sources, [{ domain: domain.id }], 'OWL_ENUMERATION_TO_LDM_DOMAIN', strategy, rationale, { domain });
     const proposal = propose(ctx, { kind: 'domain', title: `Domain from the enumerated class ${t.name || localPart(iri)}`, sources, elements: [`Domain ${domain.name}`], changes: [{ op: 'add', element: { kind: 'domain', domain } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires: [], candidate: false });
     ctx.domainProposal.set(domain.id, proposal.id);
     ctx.domainByEnum.set(iri, domain.id);
@@ -765,6 +765,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       sources.push({ iri: memberIri, label: t.name, axioms: [`Declaration(Class(<${memberIri}>))`, ...(t.classAxioms ?? []).map((a) => classAxiomText(ctx, memberIri, a))] });
     }
     const strategy = config.hierarchy === 'rollup' && members.length > 1 ? 'subclass hierarchy rolled up into one entity' : 'class → entity';
+    const strategyId: StrategyId = members.length > 1 ? 'OWL_HIERARCHY_ROLLUP_TO_LDM_ENTITY' : 'OWL_CLASS_TO_LDM_ENTITY';
     const rationale = members.length > 1 ? `${members.map((m) => classByIri.get(m)?.name || localPart(m)).join(', ')} are all kinds of ${lead.name || localPart(top)}; rolling them up keeps one entity, as the configuration asks.` : `The class ${lead.name || localPart(top)} is in scope and no entity in this LDM was made from it.`;
     const difference = 'An OWL class is a set of individuals under the open world, and may overlap others; an LDM entity is a table of rows with an identity of its own. Making one entity does not say that no other entity may hold the same things.';
     const changes: LogicalChange[] = [];
@@ -775,7 +776,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       entity.attributes.push(discriminator);
     }
     changes.push({ op: 'add', element: { kind: 'entity', entity } });
-    const m = mapping(ctx, sources, [{ entity: entity.id }], strategy, rationale, { entity });
+    const m = mapping(ctx, sources, [{ entity: entity.id }], strategyId, strategy, rationale, { entity });
     changes.push({ op: 'add', element: { kind: 'mapping', mapping: m } });
     const proposal = propose(ctx, { kind: 'entity', title: members.length > 1 ? `Entity from the rolled-up hierarchy of ${lead.name || localPart(top)}` : `Entity from the class ${lead.name || localPart(top)}`, sources, elements: [`Entity ${entity.name}`], changes, strategy, rationale, difference, requires: [], candidate: false });
     for (const member of members) {
@@ -829,7 +830,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       const strategy = 'data property → attribute';
       const rationale = `The ontology gives ${classByIri.get(domainIri)?.name || localPart(domainIri)} the data property ${t.name || localPart(iri)}${note ? `; ${note}` : ''}.`;
       const difference = 'A datatype property may have no value, or several, in OWL; an LDM attribute holds one value and is optional until the user makes it mandatory (NFR-18).';
-      const m = mapping(ctx, sources, [{ attribute: attribute.id }], strategy, rationale, { attribute });
+      const m = mapping(ctx, sources, [{ attribute: attribute.id }], 'OWL_DATA_PROPERTY_TO_LDM_ATTRIBUTE', strategy, rationale, { attribute });
       const proposal = propose(ctx, {
         kind: 'attribute',
         title: `Attribute ${attribute.name} on ${entity.name}`,
@@ -946,7 +947,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
         ? `The ontology gives ${entity.name} the object property ${target.prop.name || localPart(targetIri)}, whose range is the enumerated class ${enumName}; the LDM keeps that class as the domain ${domain.name}, and the link as an attribute typed by it.${target.prop.chars.includes('functional') ? ' It is functional, so one value fits.' : ''}`
         : `The ontology gives the enumerated class ${enumName} the object property ${target.prop.name || localPart(targetIri)}, whose range is ${entity.name}; read from ${entity.name}, it is a reference to a member of ${enumName}, which the LDM keeps as the domain ${domain.name}.${target.prop.chars.includes('functional') ? ' It is functional, so one value fits.' : ''}`;
       const difference = `In OWL the value is an individual of ${enumName}, and the property may have several; an LDM attribute holds one value of the domain and is optional until the user makes it mandatory (NFR-18). The LDM is logical, so the reference is the attribute’s domain rather than a physical foreign key (ADR-026).`;
-      const m = mapping(ctx, sources, [{ attribute: attribute.id }], strategy, rationale, { attribute });
+      const m = mapping(ctx, sources, [{ attribute: attribute.id }], 'OWL_OBJECT_PROPERTY_TO_LDM_DOMAIN_ATTRIBUTE', strategy, rationale, { attribute });
       const requires = [target.entityIri].filter((x) => ctx.entityProposal.has(x)).map((x) => ctx.entityProposal.get(x)!);
       if (ctx.domainProposal.has(target.domain)) requires.push(ctx.domainProposal.get(target.domain)!);
       const proposal = propose(ctx, {
@@ -996,7 +997,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
         const strategy = 'object property → associative entity (many at both ends)';
         const rationale = `${verb} may relate many ${domainName} to many ${rangeName}; the configuration resolves that with an entity of its own.`;
         const difference = 'OWL says nothing that forbids many-to-many; an associative entity is an LDM decision, and its identifying relationships require both ends, which an ontology assertion does not.';
-        const m = mapping(ctx, sources, [{ entity: entityId }], strategy, rationale, { entity });
+        const m = mapping(ctx, sources, [{ entity: entityId }], 'OWL_OBJECT_PROPERTY_TO_LDM_ASSOCIATION', strategy, rationale, { entity });
         const proposal = propose(ctx, {
           kind: 'relationship',
           title: `Associative entity ${entityName} from ${verb}`,
@@ -1022,9 +1023,10 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       const relationship: Relationship = { id: newId('r'), name: freeName(inverse ? `${p.name} / ${inverse.name}` : p.name, relationshipNames(ctx)), definition: config.definitions ? p.description : '', ends: endsMade, identifying: false };
       const functionalNote = functional ? ' It is functional, so at most one value is proposed at its end.' : inverseFunctional ? ' Its inverse is functional, so at most one is proposed at the other end.' : '';
       const strategy = inverse ? 'inverse property pair → one relationship with two roles' : 'object property → relationship';
+      const strategyId: StrategyId = inverse ? 'OWL_OBJECT_PROPERTY_TO_LDM_INVERSE_PAIR' : 'OWL_OBJECT_PROPERTY_TO_LDM_RELATIONSHIP';
       const rationale = `${verb} relates ${domainName} and ${rangeName}.${functionalNote}`;
       const difference = 'An object property asserts a link under the open world, with no unique names and no required end; an LDM relationship states what rows may be linked, with both ends optional until the user chooses otherwise (NFR-18).';
-      const m = mapping(ctx, sources, [{ relationship: relationship.id }], strategy, rationale, { relationship });
+      const m = mapping(ctx, sources, [{ relationship: relationship.id }], strategyId, strategy, rationale, { relationship });
       const proposal = propose(ctx, {
         kind: 'relationship',
         title: `Relationship ${relationship.name} between ${domainName} and ${rangeName}`,
@@ -1078,7 +1080,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       const difference = flags.length
         ? 'OWL subsumption is open and may have several superclasses; the completeness and exclusivity come from the disjointness the ontology states, and the specialization is an LDM decision.'
         : 'OWL subsumption is open and may have several superclasses; an LDM specialization is a structural choice, and the flags for complete and exclusive are left off because the ontology does not say either.';
-      const m = mapping(ctx, sources, [{ generalization: generalization.id }], strategy, rationale, { generalization });
+      const m = mapping(ctx, sources, [{ generalization: generalization.id }], 'OWL_SUBCLASS_TO_LDM_SPECIALIZATION', strategy, rationale, { generalization });
       const requires = [superIri, ...subs].filter((x) => ctx.entityProposal.has(x)).map((x) => ctx.entityProposal.get(x)!);
       propose(ctx, { kind: 'specialization', title: `Specialization of ${superName}: ${subNames.join(', ')}`, sources, elements: [`Generalization of ${superName}`], changes: [{ op: 'add', element: { kind: 'generalization', generalization } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires, candidate: false });
     }
@@ -1100,7 +1102,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
           const strategy = 'inherited attribute rolled down to the subtype';
           const rationale = `The configuration keeps every class an entity of its own, so what ${parent.name} has is copied into ${entity.name} rather than inherited.`;
           const difference = 'In OWL the subtype would have the property by inference; rolling down copies it, so the two attributes are separate and may drift apart.';
-          const m = mapping(ctx, sources, [{ attribute: attribute.id }], strategy, rationale, { attribute });
+          const m = mapping(ctx, sources, [{ attribute: attribute.id }], 'OWL_SUBCLASS_TO_LDM_ROLLDOWN', strategy, rationale, { attribute });
           propose(ctx, { kind: 'attribute', title: `Attribute ${attribute.name} rolled down to ${entity.name}`, sources, elements: [`Attribute ${entity.name}.${attribute.name}`], changes: [{ op: 'add', element: { kind: 'attribute', entity: entityId, attribute } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires: ctx.entityProposal.has(subIri) ? [ctx.entityProposal.get(subIri)!] : [], candidate: false });
           // The copy is not the source property's own attribute, so it is not remembered for data restrictions.
         }
@@ -1166,7 +1168,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
           const strategy = 'restriction → candidate rule';
           const rationale = 'The LDM has one value per attribute, so the count is stated as a rule for the application to enforce.';
           const difference = 'The count in OWL constrains every interpretation; a business rule in an LDM is a statement for people and the application, not something the model enforces.';
-          const m = mapping(ctx, sources, [{ rule: rule.id }], strategy, rationale, { rule });
+          const m = mapping(ctx, sources, [{ rule: rule.id }], 'OWL_RESTRICTION_TO_LDM_RULE', strategy, rationale, { rule });
           constraint(`rule:${attributeId}:${r.axiom}`, { title: `Rule: exactly ${r.n} values of ${localPart(r.propIri)} on ${entity!.name}`, sources, elements: [`Rule ${rule.name}`], changes: [{ op: 'add', element: { kind: 'rule', rule } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires });
         }
         continue;
@@ -1176,7 +1178,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       const strategy = 'restriction → candidate rule';
       const rationale = `The ontology restricts ${localPart(r.propIri)} in a way an attribute cannot express on its own.`;
       const difference = 'OWL restricts every interpretation; an LDM business rule states the restriction in words for the application to enforce, and is not checked by the model.';
-      const m = mapping(ctx, sources, [{ rule: rule.id }], strategy, rationale, { rule });
+      const m = mapping(ctx, sources, [{ rule: rule.id }], 'OWL_RESTRICTION_TO_LDM_RULE', strategy, rationale, { rule });
       constraint(`rule:${attributeId}:${r.axiom}`, { title: `Rule from a restriction on ${localPart(r.propIri)}`, sources, elements: [`Rule ${rule.name}`], changes: [{ op: 'add', element: { kind: 'rule', rule } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires });
       continue;
     }
@@ -1205,7 +1207,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       const strategy = 'restriction → candidate rule';
       const rationale = `The ontology allows only ${otherName} at the other end of ${relName}.`;
       const difference = 'OWL restricts what may be inferred, not what rows a store may hold; the rule states it for the application and the model does not enforce it.';
-      const m = mapping(ctx, sources, [{ rule: rule.id }], strategy, rationale, { rule });
+      const m = mapping(ctx, sources, [{ rule: rule.id }], 'OWL_RESTRICTION_TO_LDM_RULE', strategy, rationale, { rule });
       constraint(`rule:${relationship.id}:${r.axiom}`, { title: `Rule: ${relName} only ${otherName}`, sources, elements: [`Rule ${rule.name}`], changes: [{ op: 'add', element: { kind: 'rule', rule } }, { op: 'add', element: { kind: 'mapping', mapping: m } }], strategy, rationale, difference, requires });
       continue;
     }

@@ -1286,7 +1286,7 @@ candidates for the designer to choose.
 | FR-M18-5 | A configuration saved with each LDM: naming (from labels or local names, case, separators, singular), the datatype table, the default hierarchy and object-property strategies, the scope, definitions from annotations or not. | Implemented (LM-3, 2026-10-17) | P1 |
 | FR-M18-6 | Many to many: a class may become several entities and several classes one; a property several attributes; elements may be mapped by hand where no rule applies, and may have no semantic source at all. | Implemented (LM-3 and LM-4, 2026-10-17: roll-up and associative entities; mappings by hand) | P1 |
 | FR-M18-7 | A shape set may be chosen as a further input: its constraints are offered as candidate constraints naming the shape, never imposed. | Recommended | P2 |
-| FR-M18-8 | Semantic mappings: each relates ontology sources (entity IRIs and the axioms used, in functional syntax) to LDM targets (element ids), with its strategy, rationale, origin (ontology, revision, named version), what it last made of its targets, and how and when it was made (transformation, by hand, synchronization, assistant). | Implemented (LM-4, 2026-10-17) | P1 |
+| FR-M18-8 | Semantic mappings: each relates ontology sources (entity IRIs and the axioms used, in functional syntax) to LDM targets (element ids), with its strategy from a fixed catalogue (an id beside the words), rationale, origin (ontology, revision, named version), what it last made of its targets, the conversion it last went through, and how and when it was made (transformation, by hand, synchronization, assistant). A mapping whose strategy's expected kind is not its target's kind is marked mismatched. Changing the strategy to one that makes a different kind of element is a reviewed structural conversion, applied as one undoable change set; any reason it cannot be is a conflict that changes nothing; the ontology is never changed. A mapping written before strategies had ids keeps its words, shown as needing classification until someone chooses. | Implemented (LM-4, 2026-10-17; typed strategies and reviewed conversions 2026-10-18) | P1 |
 | FR-M18-9 | Traceability both ways: from an LDM element to its sources, from an ontology entity to every element made from it in every LDM; coverage of each LDM: ontology entities in scope not represented, elements with no semantic source. | Implemented (LM-4, 2026-10-17) | P1 |
 | FR-M18-10 | Stale detection: a mapping whose source axiom changed is stale, one whose source entity or target element is gone is broken, each with what changed; worked out against the ontology as it is. | Implemented (LM-4, 2026-10-17) | P1 |
 | FR-M18-11 | Change impact report, per LDM, for the ontology now against each mapping's origin or between two versions: the affected elements and mappings, each with the kind of change (not represented, source removed, type changed, cardinality axiom changed, hierarchy changed, renamed). | Implemented (LM-4, 2026-10-17) | P1 |
@@ -1322,6 +1322,14 @@ ADR-025.
   removed*, and their mappings are broken.
 - FR-M18-12: synchronization proposes removing them; a customised one is proposed, never changed
   silently; accepting is one undoable change of the LDM, and the ontology's revision does not move.
+- FR-M18-8: a domain mapped by hand from an enumerated class is *current*; choosing the
+  reference-entity representation in its mapping shows the entity, its code, label and primary
+  key, the attributes that would be retyped and the values that would be kept, before anything is
+  written; applying is one undoable change set after which the domain is gone, the entity is in
+  its place and the mapping is current, and one undo brings both back. While another mapping still
+  targets the domain, the conversion is refused with that conflict and nothing is written. A
+  mapping saved with older free text shows the words as needing classification, and choosing a
+  strategy that makes the same kind of element changes no element.
 - Proposals for Pizza are worked out in a worker without blocking the page; for a 10,000-class
   generated ontology within 30 seconds (NFR-19).
 
