@@ -551,7 +551,7 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
                   transform={`translate(${box.x},${box.y})`}
                   role="button"
                   tabIndex={0}
-                  aria-label={`${e.name}${e.abstract ? ', abstract' : ''}. ${e.attributes.length} attributes.`}
+                  aria-label={`${e.name}${e.reference === true ? ', reference entity' : ''}${e.abstract ? ', abstract' : ''}. ${e.attributes.length} attributes.`}
                   onPointerDown={(ev) => pointerDown(ev, e.id)}
                   onPointerMove={(ev) => pointerMove(ev, e.id)}
                   onPointerUp={(ev) => pointerUp(ev, e.id)}
@@ -567,6 +567,11 @@ export function LdmDiagram({ m, selected, onSelect, onPositions, onNewEntity, on
                   <text className="ldm-node-name" x={12} y={20}>
                     {e.name}
                   </text>
+                  {e.reference === true && (
+                    <text className="ldm-node-kind" x={box.w - 10} y={20} textAnchor="end">
+                      Reference
+                    </text>
+                  )}
                   {lines.map((k, i) => (
                     <text key={k.id} className="ldm-node-attr ldm-node-key" x={12} y={HEAD + 13 + i * ROW}>
                       <tspan className={k.kind === 'primary' ? 'ldm-pk' : 'ldm-ak'}>{k.kind === 'primary' ? 'PK ' : 'AK '}</tspan>

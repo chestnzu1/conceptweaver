@@ -560,6 +560,14 @@ followed.
 - It has no tests of its own; it is exercised through TypeScript tests that skip when Java is
   missing.
 
+**Progress — 3.2 (2026-10-20).** The endpoints now exist in the Spring Boot companion with the
+same requests, responses and statuses (`companion/`; `/health`, `/reason`, `/convert` and
+`/compare`), and 16 Java tests cover what the frontend suites do not; `reasoner/run.mjs` starts
+the companion in place of the single file when `CONCEPTWEAVER_COMPANION_JAR` is set. The
+single-file service is still the default until 3.7 packages the companion and the frontend
+detects it. Jobs and the bounded executor are 3.3; `robot.jar` and its pinned line remain in the
+default path until 3.7.
+
 **What is good and should be kept.** The request and response shapes, the honest status
 (*complete*, *partial*, *failed*), the justifications and the refusal to fetch anything from the
 network.
@@ -614,7 +622,8 @@ sound base for the row-to-entity step.
 **Status, 2026-10-16: done (roadmap task 2.4)**, beside *Bulk add*, which stays for pasted text.
 *Import a table* reads CSV, TSV and Excel files (`src/import/`), maps columns on a screen, previews
 row by row with reasons, imports as one edit and keeps templates, over a mapping core that does
-not assume a file (`src/mapping/`, ADR-019). Left: updating entities from a table (FR-M7-6).
+not assume a file (`src/mapping/`, ADR-019). Update mode followed in task 2.12 (2026-10-18,
+FR-M7-6). Left: files too large for the browser (FR-M7-7), the older .xls format.
 
 ### TD-18 Two identity schemes for entities — Medium
 
@@ -719,14 +728,24 @@ block editing on a reasoner. See [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md
 
 ### AR-03 JVM dependency alignment
 
-The working combination is the one inside `robot.jar` (OWL API 4.5.29, HermiT 1.4.5.456, ELK,
+The working combination was the one inside `robot.jar` (OWL API 4.5.29, HermiT 1.4.5.456, ELK,
 Jena 3.17.0 with TDB1). The target adds Spring Boot and Jena TDB2. Jena 5 requires Java 17 and
 Jena 6 is announced with Java 21 as its minimum; Spring Boot 4 requires Java 17 or later; ELK
-0.6.0 supports OWL API 5. Which HermiT build works with which OWL API major version must be
+0.6.0 supports OWL API 5. Which HermiT build works with which OWL API major version had to be
 confirmed by building, not assumed.
 
-*Mitigation.* A one-day spike at the start of Phase 3: a Gradle or Maven build with declared
-versions, the service's existing tests green, before any feature work.
+*Status, 2026-10-20.* The Phase 3 spike built `companion/` with Spring Boot 4.1.1 on JDK 21 and
+ran 10 tests reproducing the service's behaviour under both OWL API lines: 5.5.1 with HermiT
+1.4.5.519 and owlexplanation 5.0.1, and 4.5.29 with HermiT 1.4.5.456 and owlexplanation 2.0.0.
+Both passed. The build takes the 5 line: it is current, and every reasoner build is made for it;
+on the 4 line, ELK 0.6.0 is compiled against OWL API 5 and owlexplanation 2.0.0 against 4.1.3.
+ELK's transitive OWL API is excluded, so each build has exactly one line on its classpath. The
+Jena half is still unbuilt: TDB2 joins in Phase 4, and this risk stays open for it.
+[companion/README.md](../companion/README.md) records the versions and commands.
+
+*Mitigation.* A spike at the start of Phase 3 (done): a Maven build with declared versions, the
+service's behaviour green in tests, before any feature work. A second alignment test comes with
+Jena in Phase 4.
 
 ### AR-04 A local copy and a server copy of the same project conflict
 
@@ -930,8 +949,8 @@ edits, transformation and synchronization.
 
 ### AR-21 A second editor, with its diagram, outruns one developer
 
-An LDM workspace with an ER diagram is an editor the size of the ontology's, on top of the
-remaining Phase 2 tasks (AR-05).
+An LDM workspace with an ER diagram is an editor the size of the ontology's, on top of Phase 2's
+tasks (AR-05).
 
 *Mitigation.* One notation; the existing layouts, geometry and culling; no free drawing; forms
 first, the diagram as a view of the same operations; the proposal and difference machinery of

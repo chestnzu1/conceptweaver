@@ -89,7 +89,7 @@ const [download] = await Promise.all([page.waitForEvent('download'), rows.first(
 const file = tmp + '/' + download.suggestedFilename();
 await download.saveAs(file);
 const exported = JSON.parse(fs.readFileSync(file, 'utf8'));
-ok(download.suggestedFilename() === 'films.ldm.json' && exported.format === 'conceptweaver-ldm' && exported.version === 1 && exported.model.name === 'Films', 'it is exported to a file of its own: ' + download.suggestedFilename());
+ok(download.suggestedFilename() === 'films.ldm.json' && exported.format === 'conceptweaver-ldm' && exported.version === 2 && exported.model.name === 'Films', 'it is exported to a file of its own: ' + download.suggestedFilename());
 await rows.nth(1).getByRole('button', { name: 'Delete…' }).click();
 await rowsAre(1);
 ok((await names()).join() === 'Films', 'the copy is deleted, once the deletion is confirmed');

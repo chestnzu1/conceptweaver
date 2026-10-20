@@ -5,6 +5,7 @@ import { stable } from '../model/stable';
 import { useStore, type GraphScope } from '../model/store';
 import type { Direction } from '../model/subgraph';
 import { ontologyRef } from '../structure/local';
+import { DiagramBar, DiagramOptions } from './Diagrams';
 import { LayoutBar, LayoutOptions } from './LayoutControls';
 import { TYPING_PAUSE, useSettled } from './useSettled';
 
@@ -23,7 +24,7 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
   const selected = useStore((s) => s.sel.terms);
   const st = useStore.getState;
   // One set of settings is open at a time: the bar is over the graph, and should cover little of it.
-  const [panel, setPanel] = useState<'subgraph' | 'layout' | null>(null);
+  const [panel, setPanel] = useState<'subgraph' | 'layout' | 'diagrams' | null>(null);
   const open = panel === 'subgraph';
   const setOpen = (on: boolean) => setPanel(on ? 'subgraph' : null);
   const [query, setQuery] = useState('');
@@ -64,7 +65,7 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
   const shown = sub.active && sub.result ? sub.result : null;
 
   return (
-    <div className={'subgraph' + (panel === 'layout' ? ' narrow' : '')} onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+    <div className={'subgraph' + (panel === 'layout' || panel === 'diagrams' ? ' narrow' : '')} onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
       <div className="row">
         <div className="tabs" role="group" aria-label="Visualization mode">
           <button className={sub.active ? '' : 'on'} aria-pressed={!sub.active} onClick={() => st().showFullGraph()}>
@@ -98,6 +99,7 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
         <button className="btn small" aria-pressed={stylePanel} title="How terms and relationships are drawn: shapes, colours, lines, themes" onClick={() => st().setStylePanel(!stylePanel)}>
           Style
         </button>
+        <DiagramBar open={panel === 'diagrams'} onToggle={() => setPanel(panel === 'diagrams' ? null : 'diagrams')} />
         <LayoutBar open={panel === 'layout'} onToggle={() => setPanel(panel === 'layout' ? null : 'layout')} />
         {tools}
         {shown && (
@@ -108,6 +110,7 @@ export function SubgraphPanel({ tools }: { tools?: ReactNode }) {
       </div>
 
       {panel === 'layout' && <LayoutOptions />}
+      {panel === 'diagrams' && <DiagramOptions />}
       {open && (
         <div className="subgraph-body">
           <label className="field">

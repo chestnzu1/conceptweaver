@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { useStore } from '../store';
+import { diagramsSlice } from './diagrams';
 import { documentSlice } from './document';
 import { editsSlice } from './edits';
 import { externalsSlice } from './externals';
@@ -18,6 +19,7 @@ import { validationSlice } from './validation';
 const SLICES: Record<string, Slice<object>> = {
   document: documentSlice,
   edits: editsSlice,
+  diagrams: diagramsSlice,
   session: sessionSlice,
   subgraph: subgraphSlice,
   validation: validationSlice,

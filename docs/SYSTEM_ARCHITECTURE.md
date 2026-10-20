@@ -152,8 +152,10 @@ flowchart TB
     HttpImpl["HTTP implementations"]
     IDB[("IndexedDB<br/>local projects, cache, drafts")]
   end
+  McpClient["External MCP clients<br/>Claude Desktop, Cursor, agents"]
   subgraph Server["One Spring Boot application (optional)"]
     Api["REST API and job endpoints"]
+    Mcp["MCP adapter<br/>read-only tool catalog"]
     Onto["Ontology module<br/>OWL API: load, edit, diff, serialize"]
     Reason["Reasoning module<br/>profile check, ELK, HermiT, job queue"]
     Valid["Validation module<br/>SHACL, quality rules, mapping checks"]
@@ -185,18 +187,29 @@ flowchart TB
   Logical --> PG
   Trace --> Logical
   Trace --> Query
+  McpClient -->|"read-only tools"| Mcp
+  Mcp --> Query
+  Mcp --> Meta
+  Mcp --> Logical
+  Mcp --> Trace
 ```
 
 The data-integration modules of §12 (data sources, schema, mapping, virtual graph, and the Ontop
 endpoint and external databases they reach) are deferred and left out of this picture; §12.3
 draws them.
 
+The MCP adapter is a second inbound adapter beside the REST API and is read-only (§3.4, ADR-028):
+it has no edge to the ontology's edit path, to reasoning or validation jobs, or to any module of
+§12. In Stage A, before the server's Query module exists, its structure and entity tools call the
+same service interfaces against the held-ontology sessions of 3.4; the diagram shows their Phase 4
+home.
+
 ### 3.2 Three deployment profiles from one codebase
 
 | Profile | What runs | Storage | For | Status |
 | --- | --- | --- | --- | --- |
 | **Local** | The static web app | IndexedDB | Trying it, small and medium ontologies, offline work. | **Existing** (with `localStorage`; see TD-11) |
-| **Local with companion** | The web app and the Java application on the same machine, started with one command | IndexedDB; TDB2 in a local folder once Phase 4 lands | One person with large ontologies or a need for HermiT, ELK and every OWL syntax. | **Partially Implemented** (`pnpm reasoner`: reasoning and conversion only) |
+| **Local with companion** | The web app and the Java application on the same machine, started with one command | IndexedDB; TDB2 in a local folder once Phase 4 lands | One person with large ontologies or a need for HermiT, ELK and every OWL syntax. | **Partially Implemented** (`pnpm reasoner`: reasoning, conversion and comparison only) |
 | **Server** | The same Java application behind HTTPS, with PostgreSQL | TDB2 and PostgreSQL on the server; IndexedDB as cache and offline drafts | A team; shared projects, versions, review. | **Future** (Phase 4 storage, Phase 5 accounts) |
 
 The companion and the server are the same artefact with different configuration. That is the
@@ -228,6 +241,7 @@ must not be in it (ADR-014); it belongs to the deferred data-integration track (
 | Module | Responsibility | Built on |
 | --- | --- | --- |
 | API | HTTP, authentication, authorisation, request limits, job endpoints. | Spring Web |
+| MCP adapter | A Model Context Protocol server exposing a fixed, read-only tool catalog to external clients. Authenticates each connection, authorises every call against a project, scopes it to a project and revision, bounds and pages answers. Holds no ontology or LDM rule of its own. | Spring Web with a JSON-RPC transport, or a Java MCP SDK compatible with this Spring line (§3.4, ADR-028) |
 | Ontology | Load and save ontologies, apply change sets, compute diffs, serialize in every OWL syntax, imports closure. | OWL API |
 | Reasoning | Profile detection, reasoner choice, bounded job execution, materialising results. | OWL API profiles, ELK, HermiT |
 | Validation | SHACL validation, quality rules. | Jena SHACL |
@@ -242,6 +256,67 @@ must not be in it (ADR-014); it belongs to the deferred data-integration track (
 
 Module boundaries inside the monolith are enforced by a test, as `boundaries.test.ts` does in the
 frontend today (ArchUnit or Spring Modulith's verification serves the same purpose in Java).
+
+### 3.4 The MCP adapter (Recommended, roadmap 5.8a and 5.8b)
+
+The Model Context Protocol lets an external AI client — Claude Desktop, Cursor, a compatible
+agent — discover the tools a server offers and call them. The companion offers a **read-only**
+tool catalog over the same semantic services the browser uses. It is not a second backend: the
+adapter translates protocol calls into calls on the existing service interfaces and translates
+their answers back. It contains no ontology inference, no LDM rule and no transformation logic
+(ADR-028).
+
+```mermaid
+flowchart LR
+  Client["External MCP client"] -->|"discovery and tool calls"| Mcp["MCP adapter"]
+  Mcp --> Auth["Authentication and project authorisation"]
+  Auth --> Tools["Tool handlers<br/>fixed allow-list"]
+  Tools --> Structure["StructureService"]
+  Tools --> Entities["EntityQueryService"]
+  Tools --> Graph["GraphService (5.8b)"]
+  Tools --> Ldm["LogicalModelQueryService (5.8b)"]
+  Tools --> Trace["TraceabilityService, read-only (5.8b)"]
+  Tools --> Meta["Project and revision metadata"]
+```
+
+A call: the adapter authenticates the client (Stage A: the per-start bearer token and the
+loopback binding; Stage B: the application's OIDC identity), resolves the project named in the
+tool's arguments, and checks the caller's access to it before any service is called. It validates
+the arguments against the tool's JSON schema, calls one service method, and shapes a bounded
+answer naming the project and the revision read.
+
+**Stages.** Stage A (5.8a) runs in the Local-with-companion profile after 3.4 and exposes only
+what the companion answers there. Stage B (5.8b) runs in the Server profile and adds a tool only
+when its service has a stable server implementation: graph neighbourhood after 4.4; LDM elements,
+mappings and impact after LM-5. A tool whose service is not in the running build is absent from
+discovery; it is never answered by page-side logic in the adapter.
+
+**Read-only by construction.** The adapter depends on read interfaces only. The module graph and a
+boundary test refuse a dependency from the MCP module to `OntologyEditService`,
+`LogicalModelEditService`, the applying side of `TransformationService` or `TraceabilityService`,
+the project write side, the AI provider configuration or a data-source module. The tool allow-list
+is fixed in code, not read from configuration, and a call naming a tool not on it is refused. The
+protocol's `readOnlyHint` annotation is sent to clients as a hint; it is not the enforcement.
+
+**Its relation to the assistant.** The browser assistant (roadmap 5.7) keeps the user's provider
+and key, may propose typed changes for review, and operates inside the application. The MCP
+adapter has no provider, no key and no proposal tool; an external client supplies its own model.
+Both read through the same service semantics, and neither calls the other (FR-M12-12).
+
+**Protocol state is not project state.** The adapter holds no state that identifies a project: the
+project is named in every call and authorised on every call. Cursors are opaque, bound to the
+project, revision and query that issued them, and refused outside them. The MCP revision named by
+the requirement (2026-07-28) is reported to be a stateless contract with no handshake and no
+session id; 5.8a verifies that against the chosen SDK and the target clients. If an older,
+session-bearing revision is chosen instead, its protocol session lives in the adapter, ends with
+the connection, is not resumed after a restart, and is never treated as an ontology session held
+by content hash (3.4).
+
+**Answers.** Every answer is plain JSON with stable identifiers (ontology IRIs, and LDM element
+ids as §13.3 defines them) and says which project, ontology revision or LDM revision it was read
+at. Inferred conclusions are marked as inferred, asserted facts as asserted. Lists are paged and
+bounded as the service bounds them (§4.5), and a refusal is a typed error with one of the codes of
+§4.2.
 
 ## 4. API boundaries (Recommended)
 
@@ -264,12 +339,16 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `LogicalModelQueryService` | models, summary, entities (searched, paged), describe an element, relationships of an entity, keys, generalizations | `src/logical/local.ts` over the project document (§13.4): the models with their counts, a model, entities, an element described (keys and generalizations among them), an entity's relationships | **Existing** (2026-10-17, LM-1) |
 | `LogicalModelEditService` | create, duplicate, delete an LDM; `validate(changeSet)`, `apply(changeSet)` of a logical change set | `src/logical/local.ts`, over the rules of `rules.ts`; each change one step of the document's history | **Existing** (2026-10-17, LM-1) |
 | `TransformationService` | propose (job): proposals for a scope of the ontology under a configuration; apply a selection as a logical change set with its mappings | In a worker, over the ontology's statements and the LDM | **Existing** (2026-10-17, LM-3) |
-| `TraceabilityService` | mappings of an element or an IRI, coverage, staleness, impact (job), synchronization proposals; mappings made and edited by hand | Over the LDMs' mappings and `changesBetween` | **Existing** (2026-10-17, LM-4) |
+| `TraceabilityService` | mappings of an element or an IRI, coverage, staleness, impact (job), synchronization proposals; mappings made and edited by hand; an element's possible types and a reviewed change of its type, with its mappings moved or kept for review | Over the LDMs' mappings and `changesBetween`; `elementTypePlan` over the LDM | **Existing** (2026-10-17, LM-4; element types 2026-10-20) |
 | `DataSourceService` | list, create, update, remove, test; never answers with a secret | None: backend only | **Deferred** (§12) |
 | `SchemaService` | refresh (job), snapshot, objects (paged search), table detail, relationships, sample rows, difference of two snapshots | A cached snapshot, read-only | **Deferred** (§12) |
 | `MappingService` | get, apply a mapping change, coverage, validate (job), import and export R2RML, revisions | Editing and static checks over a cached snapshot | **Deferred** (§12) |
 | `RdfGenerationService` | preview a mapping rule on a bounded number of rows; materialise (job) | None: backend only | **Deferred** (§12) |
 | `VirtualGraphService` | deploy a mapping revision, status, query, explain | None: backend only | **Deferred** (§12) |
+
+The MCP tool catalog (§4.5) is not a service interface: it is a protocol view over these
+interfaces, and every tool names the service method it calls. A capability with no service method
+has no tool, however useful it would be.
 
 ### 4.2 Conventions, taken from the existing contracts
 
@@ -377,6 +456,62 @@ placed under a versioned, project-scoped prefix.
 | `POST /api/v1/projects/{id}/mappings/{set}/materialisations` | (Deferred.) Materialise as a job. |
 | `POST /api/v1/projects/{id}/virtual-graphs/{graph}/sparql`; `…/explain` | (Deferred.) Query through the ontology; see the SQL it became. |
 
+### 4.5 MCP tool catalog (Recommended, roadmap 5.8)
+
+The catalog is fixed in the adapter (ADR-028). Each tool has a stable name, a description, a JSON
+input schema, an output schema where the protocol revision supports one, and a service method
+behind it. Tool names are `snake_case`; identifiers in arguments and answers are ontology IRIs and
+LDM element ids, never labels.
+
+**Stage A — over what the companion answers after 3.4.**
+
+| Tool | What it answers | Service it adapts | Bounds |
+| --- | --- | --- | --- |
+| `get_project_summary` | The project's identity and current ontology revision, what it is called, its counts by entity kind, its declared imports, and which tools this build offers. Counts are each kind's `total`; imports come from the session descriptor and are not fetched. | Project metadata, the held ontology's session descriptor and `EntityQueryService.query` totals (3.4) | One answer; counts only. |
+| `search_entities` | The entities of one kind (class, object property, data property, individual, another kind the service describes) matching text, with label, IRI, key and match positions, paged. | `EntityQueryService.query` (3.4) | Page ≤ 50; reports `total`, `matched` and whether another page exists. |
+| `get_entity` | One class: asserted and inferred superclasses, equivalents, unsatisfiability and position in the hierarchy. | `StructureService.summary` (3.4) | One entity; no whole-model answer. |
+| `get_class_hierarchy` | The ancestors, descendants or children of a class, in the stated or the inferred hierarchy, depth-bounded. | `StructureService.paths` / `children` (3.4) | Depth ≤ 3, nodes ≤ 200; `more` when cut. |
+| `get_property` | One property: its direct superproperties, subproperty and descendant counts, cycle flag, and whether values are individuals or literals. | `StructureService.propertySummary` (3.4) | One property. |
+| `get_property_hierarchy` | The parents, children or descendants of a property in the stated hierarchy. | `StructureService.propertyChildren` / `propertyPaths` (3.4) | Depth ≤ 3, nodes ≤ 200; `more` when cut. |
+
+The contract does not yet carry an individual's details, a property's domain, range or
+characteristics, or axioms grouped by property. There is no tool for them until it does: the
+assistant's `getEntityDetails` and `getPropertyAxioms` (`src/ai/tools.ts`) read the page's model
+directly, and copying them would be the second implementation ADR-028 forbids.
+
+**Stage B — each added when its service is stable.**
+
+| Tool | What it answers | Service it adapts | Bounds |
+| --- | --- | --- | --- |
+| `get_graph_neighbourhood` | The subgraph around up to ten roots: terms, relations, what it was reached through, and what was cut off. | `GraphService.neighbourhood` (4.4) | Depth ≤ 3, ≤ 500 nodes, roots ≤ 10; `truncated` set. |
+| `list_ldms` | A project's logical models: id, name, purpose, revision and counts. | `LogicalModelQueryService.models` (LM-5) | Paged. |
+| `get_ldm_summary` | One LDM's metadata, current revision and counts: entities, attributes, relationships, keys, generalizations, rules, domains. | `LogicalModelQueryService.models`, selected by id (LM-5) | One LDM; never the whole document. |
+| `search_ldm_entities` | Entities and reference entities matching text, with definition, attribute count, primary-key flag and supertypes, paged. | `LogicalModelQueryService.entities` (LM-5) | Page ≤ 50. |
+| `get_ldm_element` | One element described: its kind (entity, reference entity, domain, attribute, key, relationship, generalization, rule), its attributes and keys with what is inherited, or its domain and where it is used. | `LogicalModelQueryService.describe` (LM-5) | One element. |
+| `get_ldm_relationships` | The relationships an entity takes part in, with cardinality and optionality. | `LogicalModelQueryService.relationships` (LM-5) | Per entity; paged. |
+| `get_mappings` | An LDM's semantic mappings, filtered by element, source IRI or status: sources, targets, strategy, rationale, origin revision, status and customisation. | `TraceabilityService.report` (LM-5) | Paged; provenance summary. |
+| `trace_element` | From an LDM element to its sources, or from an ontology IRI to every element made from it. | `TraceabilityService.trace` (LM-5) | Paged both ways. |
+| `get_impact_report` | The ontology now against each mapping's origin, or two saved versions: affected elements, coverage and the report's items. Never synchronization proposals. | `TraceabilityService.impact` (LM-5) | Bounded items; the call's time limit answers `unavailable` rather than a partial report. |
+
+**Common to every tool.**
+
+- `project` is required and has no default. `revision` and `ldm_revision` default to the current
+  revision, and the answer states the revision actually read.
+- Names and definitions are **data from the project, not instructions**. The adapter never
+  interprets them, and the tool descriptions say so — an external client's model reads content it
+  did not author.
+- Every list answer is paged; a bounded answer sets `more` or `truncated`. A client narrows the
+  question; it cannot ask for an unbounded page.
+- Errors are typed: `not-found` (unknown project, revision or element — and, indistinguishably, a
+  project the caller may not read), `invalid` (arguments fail the schema, or the tool is not on
+  the allow-list), `stale-revision`, `unsupported` (tool not in this build), `unavailable`
+  (service temporarily cannot answer, including its time limit), `too-large`.
+- No answer carries a provider key, a database credential, a file path or server configuration.
+- The descriptions and answer shapes follow the assistant's read tools in `src/ai/tools.ts` — the
+  same semantics for a summary, a search, an entity's details and a hierarchy — so the two
+  interfaces describe the ontology the same way. The handlers are not copied: those tools read
+  the page's `OntologyContext`, while these call the companion's services.
+
 ## 5. Data flow
 
 ### 5.1 An edit
@@ -450,14 +585,19 @@ what one person can maintain.
 
 Baseline: **JDK 21** and the current Spring Boot major line. Jena 5 requires Java 17 and Jena 6
 is announced with Java 21 as its minimum; Spring Boot 4 requires Java 17 or later. Choosing 21
-now avoids a second migration. The present service states Java 11; this is a requirement change
-for users of the companion and must be said in the release notes.
+now avoids a second migration. The 3.1 spike (2026-10-20) built the companion on JDK 21 with
+Spring Boot 4.1.1 and OWL API 5.5.1; the 4.5.29 line passed the same tests, and 5 was chosen.
+Task 3.2 (2026-10-20) then answered `/health`, `/reason`, `/convert` and `/compare` from that
+build with the single-file service's requests and responses; the frontend's four suites pass
+against it unchanged, built on the 4.5.29 profile because they assert that line's versions.
+The present service states Java 11; this is a requirement change for users of the companion and
+must be said in the release notes.
 
 ### 6.3 Ontology processing
 
 | Choice | Verdict | For | Against |
 | --- | --- | --- | --- |
-| **OWL API** | **Adopt as the server's canonical model** (ADR-004). Already in use: 4.5.29. | Complete OWL 2 structural model, every syntax, profile checkers, diff by structural equality, the interface every Java reasoner implements. | A large API. Version 4 and 5 differ; reasoner builds are tied to one or the other (AR-03). |
+| **OWL API** | **Adopt as the server's canonical model** (ADR-004). The companion builds on 5.5.1 (roadmap 3.1, 2026-10-20); the single-file service still runs the 4.5.29 in `robot.jar`. | Complete OWL 2 structural model, every syntax, profile checkers, diff by structural equality, the interface every Java reasoner implements. | A large API. Version 4 and 5 differ; reasoner builds are tied to one line, so 5.5.1 comes with HermiT 1.4.5.519 and owlexplanation 5.0.1 (AR-03). |
 | **HermiT** | **Keep** (Existing) | Complete for OWL 2 DL; justifications through the explanation library already wired in. | Worst-case behaviour (AR-02). Its last published Maven build dates from 2020, so fixes should not be counted on. |
 | **ELK** | **Adopt early** | Polynomial for OWL 2 EL; classifies ontologies of hundreds of thousands of classes in seconds to minutes on ordinary hardware according to its authors' published results. It is already inside `robot.jar`, so offering it in the companion needs no new dependency. | Incomplete outside OWL 2 EL: results must be labelled, as the in-page reasoner's are. |
 | In-page rule reasoner | **Keep for the Local profile** (Existing) | Instant, no install, explains each inference from stated facts. | A subset of OWL 2 RL; must never be presented as complete. |
@@ -611,8 +751,9 @@ hundred terms.
 
 ## 9. Security
 
-Nothing here is needed for the Local profile, which has no server. All of it is needed before
-the Server profile is exposed.
+Nothing here is needed for the Local profile, which has no server. The Local-with-companion
+profile needs the companion's origin allow-list, its secret handling and, once 5.8a lands, the
+local MCP row and §9.1. All of it is needed before the Server profile is exposed.
 
 | Concern | Measure |
 | --- | --- |
@@ -626,7 +767,26 @@ the Server profile is exposed.
 | Auditing | Every change set records who and when (it is the history). |
 | AI providers | Off unless configured (AR-10). The key is held in the page's memory, or in the local service's memory behind a 256-bit handle (`/ai/key`), sent only to the endpoint it was given for, never stored on disk or logged; the local service's `/ai/forward` forwards only to the providers' addresses and to public `https` endpoints, connects to the address it checked (no DNS rebinding) with TLS verified for the host's name, follows no redirect, and answers only allowed origins. A key kept between sessions of the service needs the server's encrypted per-user store. |
 | Logical models | No secret and no data rows: an LDM holds structure only. On a server, permission on an LDM is permission on its project. |
+| MCP server, local (5.8a) | Off unless explicitly enabled; listens on loopback only; a bearer token generated per start and shown to the user; `Host` and `Origin` checked; a project allow-list; no unauthenticated remote listener. |
+| MCP server, remote (5.8b) | The application's OIDC identity; the caller's project role checked on every tool call; the same access boundaries as the UI and the public API; per-call time limit, result caps, paging and rate limiting; no cross-project data; protocol state kept apart from ontology sessions. |
+| MCP tools | A fixed allow-list in code: read services only, enforced by module dependencies. No tool applies an ontology or LDM change, applies or synchronizes a mapping, deletes a project, or reaches AI provider keys, database credentials, internal configuration or files. The `readOnlyHint` annotation is a client hint, never the enforcement. |
+| MCP logs | Tool name, project, principal, revision and outcome may be logged; arguments and answer payloads are not, and neither is any credential. |
 | External databases | (Deferred.) Credentials, read-only access, user-written SQL and row data: §12.9. |
+
+### 9.1 The MCP boundary
+
+MCP is a second way into the same content, and it inherits the same boundary rather than a weaker
+one.
+
+| Threat | Control |
+| --- | --- |
+| A local client, or a page on the same machine, reaches a companion the user did not open to it. | Disabled by default; loopback binding; a per-start bearer token; `Host` and `Origin` checks; the project allow-list. |
+| A client calls a mutating operation by naming it. | There is no such tool. The allow-list is fixed in code; an unknown name is refused with `invalid`, not routed; the MCP module cannot see an edit service (boundary test). |
+| A client reads another project by changing an argument. | The project is named and authorised on every call; cursors are bound to their project, revision and query; there is no server-side "current project"; an unauthorised project answers `not-found`, never a partial answer. |
+| The protocol's read-only annotation is taken as the control. | The server enforces the allow-list and the module graph; annotations are advertised to clients as hints, and a test checks that they agree with the catalog. |
+| Ontology content carries instructions aimed at the external client's model. | Labels, definitions and comments are data; the tool descriptions say so and the adapter never treats them as instructions. The boundary limits what content is reachable (read-only, bounded, project-scoped); the client's own model and provider are outside this application's control. |
+| Sensitive content in logs or errors. | Tool name, project, principal and outcome only; no arguments, payloads or credentials; errors carry a code and a message, not a stack trace. |
+| A slow or huge request exhausts the server. | Per-call time limit, result caps and paging, per-client rate limit, and bounded graph depth and node count. |
 
 ## 10. Deployment
 
@@ -657,7 +817,7 @@ Short form. Each is revisited when its "revisit if" becomes true.
 | **ADR-008** | Keep the SVG canvas. Add culling, level of detail and subgraph-first loading before considering another renderer. | Preserves working routing, styling and exports; addresses the actual limit (TD-10). | Culling and subgraphs are in place and the Graph view is still the bottleneck. |
 | **ADR-009** | Versions are immutable revisions, each a change set on its predecessor; full snapshots for tagged releases. | TD-12, AR-06. | — |
 | **ADR-010** | AI features are optional suggestion services behind existing interfaces, deferred to Phase 5, with no Python runtime until one is unavoidable. | Cost of a third runtime; AR-10. | A required capability has no hosted or JVM option. |
-| **ADR-011** | JDK 21 and the current Spring Boot major line as the server baseline. | Jena's and Spring's stated minimums; avoids a second migration. | — |
+| **ADR-011** | JDK 21 and the current Spring Boot major line as the server baseline; Spring Boot 4.1.1 was the line at the 3.1 spike. | Jena's and Spring's stated minimums; avoids a second migration. | — |
 | **ADR-012** | Entities are identified by IRI in every contract; internal ids are private to the local model. | TD-03, TD-18. | — |
 | **ADR-020** | No OWL axiom becomes a SHACL constraint, and no shape an axiom, without the user's review. Shapes drawn from the ontology are proposals, each stating what the axiom means, what the shape would check and where they differ, accepted one by one with their origin kept. | An axiom licenses inferences under the open world and no unique names; a shape checks the data a graph holds. `p exactly 1 C` is not `sh:minCount 1 ; sh:maxCount 1`, and a domain or range infers a type rather than requiring a value. The same rule as ADR-017, from the ontology's side. | — |
 | **ADR-021** | Shapes are SHACL 1.0 Core (the W3C Recommendation of 2017) first, validated by `rdf-validate-shacl` in the page and Jena SHACL on the server; SHACL-SPARQL on the server only; SHACL 1.2 is built on once it is a Recommendation. | A stable standard with a test suite both engines can be held to. | SHACL 1.2 becomes a Recommendation. |
@@ -668,9 +828,11 @@ Short form. Each is revisited when its "revisit if" becomes true.
 | **ADR-025** | Ontology and LDMs are related by explicit semantic mappings, many to many, each with its sources (IRIs and axioms), targets, strategy, rationale, origin version and status. An ontology change marks mappings stale and produces an impact report and proposals; it never changes an LDM by itself, and never an element the user customised without the user accepting it. | Traceability without coupling: each LDM lives on its own schedule, and what the user decided is not undone by a change elsewhere. | — |
 | **ADR-026** | The LDM is logical: technology-neutral data types and named domains; no physical data model, database-specific type, index, storage parameter, DDL or deployment in the metamodel or on the roadmap. | The product's scope (PRODUCT_REQUIREMENTS.md §2.8). A physical layer can be added later as an artifact of its own without changing the logical one. | A physical model is put in scope. |
 | **ADR-027** | The data-integration track (DI-1 to DI-5, §12) is deferred. Its decisions ADR-013 to ADR-018 stand as the design of record for when it is resumed; ADR-019 holds now for tabular import. | The product's objective is designing logical models from the ontology, not reading or querying existing databases. | The product owner resumes the track. |
+| **ADR-028** | A read-only MCP server is an inbound protocol adapter over the companion's existing read services, in the same deployable — not a microservice and not a second query implementation. It is disabled by default; loopback-only with a per-start token in the Local profile, OIDC with project roles in the Server profile. It may depend only on read service interfaces; no tool mutates, no tool reaches provider keys or credentials, and the allow-list is fixed in code. MCP protocol state is separate from ontology sessions, and no state a client sends identifies a project. The protocol revision and SDK are chosen in 5.8a — against the clients it must serve — and recorded here. | The service contracts already answer every question the tools expose (ADR-002); a second implementation would drift, and a second deployable would contradict ADR-003. External clients bring their own model, so the server needs no provider and no key, and ADR-010's boundary holds. | An MCP SDK or protocol revision cannot be supported on the companion's Spring line without a separate runtime; or a required tool needs a mutation, which is out of scope for this release. |
 
-ADR-022 to ADR-027 were made on 2026-10-17 with the realignment of the roadmap; §13.13 lists the
-questions they leave open. ADR-013 to ADR-019, on data integration, are in §12.11.
+ADR-022 to ADR-027 were made on 2026-10-17 with the realignment of the roadmap; ADR-028 on
+2026-10-20 with the scheduling of the MCP server. §13.13 lists the questions ADR-022 to ADR-027
+leave open. ADR-013 to ADR-019, on data integration, are in §12.11.
 
 ## 12. Ontology-to-relational data integration (Deferred)
 
@@ -1202,7 +1364,7 @@ by command.
 | `LogicalModelQueryService` | models; summary; entities (searched, paged); describe an element; relationships of an entity; keys; generalizations | LDMs | Nothing | LM-1 |
 | `LogicalModelEditService` | create, duplicate, delete an LDM; `validate`, `apply` a `LogicalChangeSet` | LDMs | LDMs only | LM-1 |
 | `TransformationService` | `propose(scope, config, target?)` (a job); `apply(proposals, choices)` as one logical change set with its mappings | The ontology, through the existing services and its statements, read-only; the target LDM | Through `LogicalModelEditService` only | **Existing** (2026-10-17, LM-3) |
-| `TraceabilityService` | mappings of an element or an IRI; coverage; staleness; `impact(ldm, from?, to?)` (a job); synchronization proposals; mappings made and edited by hand | The ontology now and in versions (`changesBetween`, `ProjectService`); LDMs | Through `LogicalModelEditService` only | **Existing** (2026-10-17, LM-4) |
+| `TraceabilityService` | mappings of an element or an IRI; coverage; staleness; `impact(ldm, from?, to?)` (a job); synchronization proposals; mappings made and edited by hand; `elementTypes(element)`, `previewElementTypeChange(element, to, decisions?)`, `applyElementTypeChange(preview)` | The ontology now and in versions (`changesBetween`, `ProjectService`); LDMs; `elementTypePlan` for what a type change would make | Through `LogicalModelEditService` only | **Existing** (2026-10-17, LM-4; element types 2026-10-20) |
 
 LDM validation is not a `ValidationService` job. `src/logical/findings.ts` computes the findings
 from `model.logicalModels` whenever the Validation view shows them, so there is nothing to start
@@ -1396,6 +1558,22 @@ interface SemanticMapping {
   mapping's own update last, so it is one history step and one undo; the ontology is never
   touched, and another LDM is left exactly as it was. A preview made against an older revision is
   refused as stale, to be reviewed again.
+- **Element types.** An element in the Entities workspace is an entity, a reference entity or a
+  domain (roadmap 2.13). Between an entity and a reference entity the type is `reference` on the
+  entity and the structure stays as it is, with a warning when it is abstract or has no primary
+  key. Between a domain and an entity either way it is a structural transformation of the same
+  kind the mapping form plans, and it uses the same pure planner: a domain becomes an entity with
+  its code, label, primary key and values; an entity that is exactly one value attribute becomes
+  a domain, with a decision on what happens to its values. The Entities workspace's *Element
+  type* field and the mapping form share `elementTypePlan` and the domain/entity conversion cores
+  in `src/traceability/conversions.ts`; there is no second transformation engine. A mapping to
+  the element follows when the catalogue has a strategy that makes the same element for the new
+  type; otherwise it is kept with its targets and baseline moved, and Traceability computes it
+  as *mismatched*, never silently compatible. Choosing a type only previews it; applying is one
+  `LogicalModelEditService` change set holding the model change and every mapping change, so it
+  is one history step and one undo, and the ontology is never written. A preview made against a
+  moved revision, or with conflicts, is refused and changes nothing; an element with no mapping
+  at all changes type the same way.
 
 - **Sources by axiom**, in OWL functional syntax with full IRIs, as SH-3 keeps a shape's origin
   (`cw:fromAxiom`): exact, independent of how the editor draws it, and followed through a change
@@ -1525,6 +1703,27 @@ and requirement facts about third-party software were checked on 2026-10-13 agai
   [Maven Central](https://central.sonatype.com/artifact/net.sourceforge.owlapi/org.semanticweb.hermit).
 - What `robot.jar` contains (OWL API 4.5.29, HermiT, ELK, JFact, Whelk, Jena 3.17.0 with TDB1,
   no TDB2): read from the file in `reasoner/lib/`.
+
+The Phase 3 build's versions and behaviour were checked on 2026-10-20 by building `companion/`:
+Spring Boot 4.1.1, OWL API 5.5.1 and 4.5.29, HermiT 1.4.5.519 and 1.4.5.456, ELK 0.6.0,
+owlexplanation 5.0.1 and 2.0.0, from the POM and `mvn dependency:tree`; 16 tests pass on JDK 21
+under both OWL API profiles, and the four frontend suites named in roadmap 3.2 pass unchanged
+against the 4.5.29 build. [companion/README.md](../companion/README.md) has the commands.
+
+The MCP revision named by the requirement (2026-07-28) and the Java SDK landscape were surveyed
+by search on 2026-10-20; the specification itself was not fetched. The revision is reported to
+replace the handshake and session id with a stateless contract, and Java server SDKs report
+different levels of support for it. 5.8a confirms the revision, the SDK and the target clients
+before relying on any of this.
+  [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28),
+  [Evolving a Java MCP Server During MCP Specification Upgrades](https://inside.java/2026/08/12/java-mcp-migration/).
+
+The MCP design was informed by reading OpenBKN's BKN Foundry at commit
+`6a6a120c3b4c091b63bd40a7dbff33ce2835c1ec` (2026-10-20): its Context Loader exposes five
+retrieval tools through an MCP server, and its ontology-query service filters resources before
+pagination. No code was copied. Its licences are per file: Apache-2.0 for upstream-derived files,
+the OpenBKN License for net-new ones.
+  [BKN Foundry](https://github.com/openbkn-ai/bkn-foundry).
 
 - Ontop: version 5.5.0 (February 2026), Apache 2.0, R2RML and OWL 2 QL support, the roles of
   its command line, the recommendation of the HTTP endpoint over the Java API, and federation

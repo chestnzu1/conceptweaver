@@ -51,7 +51,7 @@ export function ImportTableDialog() {
   const [mapping, setMapping] = useState<TabularMapping | null>(null);
   const [templates, setTemplates] = useState(loadTemplates);
   const [templateName, setTemplateName] = useState('');
-  const [show, setShow] = useState<'all' | 'skip' | 'notes'>('all');
+  const [show, setShow] = useState<'all' | 'skip' | 'notes' | 'changes'>('all');
   const [limit, setLimit] = useState(SHOWN);
   const skos = model.mode === 'skos';
 
@@ -98,15 +98,17 @@ export function ImportTableDialog() {
   }, [columnsKey]);
 
   const deferred = useDeferredValue(mapping);
-  const planned = useMemo((): { plan: Plan } | { error: string } | null => {
+  const planned = useMemo((): { plan: Plan; mapping: TabularMapping } | { error: string } | null => {
     if (!table || !deferred) return null;
     try {
-      return { plan: planImport(model, table, deferred) };
+      return { plan: planImport(model, table, deferred), mapping: deferred };
     } catch (e) {
       return { error: e instanceof Error ? e.message : 'The mapping does not read.' };
     }
   }, [model, table, deferred]);
   const plan = planned && 'plan' in planned ? planned.plan : null;
+  // What the preview was made from, which may be a moment behind what is being typed.
+  const planMapping = planned && 'plan' in planned ? planned.mapping : null;
 
   const set = (patch: Partial<TabularMapping>) => setMapping((m) => (m ? { ...m, ...patch } : m));
   const setUse = (column: string, use: ColumnUse | undefined) =>
@@ -136,7 +138,7 @@ export function ImportTableDialog() {
   }, [table, mapping]);
   const iriFrom = mapping ? templateColumns(mapping.iri)[0] : undefined;
   const iriStyle = mapping && iriFrom && mapping.iri.includes(`{${iriFrom}:name}`) ? 'name' : 'encoded';
-  const shownRows = (plan?.rows ?? []).filter((r) => show === 'all' || (show === 'skip' ? r.status === 'skip' : r.notes.length > 0));
+  const shownRows = (plan?.rows ?? []).filter((r) => show === 'all' || (show === 'skip' ? r.status === 'skip' : show === 'changes' ? r.status === 'update' : r.notes.length > 0));
 
   const applyTemplate = (name: string) => {
     const t = templates.find((x) => x.name === name);
@@ -153,10 +155,12 @@ export function ImportTableDialog() {
     st().notify(kept ? `The mapping is kept as the template “${templateName.trim()}”.` : 'This browser keeps nothing for the site, so the template could not be kept.');
   };
   const run = () => {
-    if (!plan?.counts.create) return;
-    const { added } = st().importPlan(plan);
+    if (!plan || (!plan.counts.create && !plan.counts.update)) return;
+    const { added, updated } = st().importPlan(plan);
     close();
-    st().notify(`Imported ${added} ${mapping?.rows === 'individual' ? 'individuals' : skos ? 'concepts' : 'classes'} from ${source?.name}${plan.counts.skip ? `; ${plan.counts.skip} row${plan.counts.skip === 1 ? '' : 's'} skipped` : ''}${plan.counts.exists ? `; ${plan.counts.exists} already in the model` : ''}. One undo takes the import back.`);
+    const many = planMapping?.rows === 'individual' ? 'individuals' : skos ? 'concepts' : 'classes';
+    const what = added && updated ? `Imported ${added} and updated ${updated} ${many}` : added ? `Imported ${added} ${many}` : `Updated ${updated} ${many}`;
+    st().notify(`${what} from ${source?.name}${plan.counts.skip ? `; ${plan.counts.skip} row${plan.counts.skip === 1 ? '' : 's'} skipped` : ''}${plan.counts.exists ? `; ${plan.counts.exists} already in the model` : ''}${plan.counts.unchanged ? `; ${plan.counts.unchanged} unchanged` : ''}. One undo takes the import back.`);
   };
 
   return (
@@ -241,6 +245,10 @@ export function ImportTableDialog() {
                   ))}
                 </select>
               )}
+              <label className="check" title="A row whose IRI the model has changes that entity to what its columns say; every change is shown before it is applied. A row the model does not have is made.">
+                <input type="checkbox" checked={!!mapping.update} onChange={(e) => set({ update: e.target.checked ? true : undefined })} />
+                <span>Update what the model has</span>
+              </label>
               {templates.length > 0 && (
                 <select aria-label="Use a template" value="" onChange={(e) => applyTemplate(e.target.value)}>
                   <option value="">Use a template…</option>
@@ -279,6 +287,7 @@ export function ImportTableDialog() {
               <span className="muted sample-iri" title="The IRI of the first row">
                 {firstIri}
               </span>
+              {mapping.update && <span className="muted">Rows are matched by IRI: keep the key column in it, so a renamed row is the same entity.</span>}
             </div>
             <div className="row wrap">
               <label className="field">
@@ -403,14 +412,26 @@ export function ImportTableDialog() {
         {plan && (
           <section className="import-preview" aria-label="Preview">
             <p className="counts" role="status">
-              <strong>{plan.counts.create}</strong> to make · {plan.counts.exists} already in the model · <strong>{plan.counts.skip}</strong> skipped
-              {plan.counts.notes ? ` · ${plan.counts.notes} value${plan.counts.notes === 1 ? '' : 's'} left out` : ''}
+              {planMapping?.update ? (
+                <>
+                  <strong>{plan.counts.create}</strong> to make · <strong>{plan.counts.update}</strong> to update · {plan.counts.unchanged} unchanged · <strong>{plan.counts.skip}</strong> skipped
+                  {plan.counts.exists ? ` · ${plan.counts.exists} left as it is` : ''}
+                  {plan.counts.notes ? ` · ${plan.counts.notes} value${plan.counts.notes === 1 ? '' : 's'} left out` : ''}
+                  {plan.rows.length > 0 && !plan.counts.create && !plan.counts.update ? '. Nothing to change: the model already says what the file says' : ''}
+                </>
+              ) : (
+                <>
+                  <strong>{plan.counts.create}</strong> to make · {plan.counts.exists} already in the model · <strong>{plan.counts.skip}</strong> skipped
+                  {plan.counts.notes ? ` · ${plan.counts.notes} value${plan.counts.notes === 1 ? '' : 's'} left out` : ''}
+                </>
+              )}
             </p>
             {mapping?.rows === 'class' && plan.entities.some((e) => e.parents.some((p) => 'row' in p)) && <Hierarchy plan={plan} />}
             <div className="row wrap">
               {(
                 [
                   ['all', `Every row (${plan.rows.length})`],
+                  ...(planMapping?.update ? ([['changes', `Changed (${plan.counts.update})`]] as const) : []),
                   ['skip', `Skipped (${plan.counts.skip})`],
                   ['notes', `With values left out (${plan.rows.filter((r) => r.notes.length).length})`],
                 ] as const
@@ -449,8 +470,8 @@ export function ImportTableDialog() {
           <button className="btn" onClick={close}>
             Cancel
           </button>
-          <button className="btn primary" disabled={!plan?.counts.create} onClick={run}>
-            {plan?.counts.create ? `Import ${plan.counts.create}` : 'Import'}
+          <button className="btn primary" disabled={!plan || (!plan.counts.create && !plan.counts.update)} onClick={run}>
+            {planMapping?.update ? `Apply ${(plan?.counts.create ?? 0) + (plan?.counts.update ?? 0)}` : plan?.counts.create ? `Import ${plan.counts.create}` : 'Import'}
           </button>
         </div>
         <input
@@ -478,8 +499,16 @@ function RowLine({ r }: { r: RowOutcome }) {
         {r.iri && <code className="iri"> {r.iri}</code>}
       </td>
       <td>
-        <span className={'tag ' + r.status}>{r.status === 'create' ? 'made' : r.status === 'exists' ? 'in the model' : 'skipped'}</span>
+        <span className={'tag ' + r.status}>
+          {r.status === 'create' ? 'made' : r.status === 'update' ? 'changed' : r.status === 'unchanged' ? 'unchanged' : r.status === 'exists' ? 'in the model' : 'skipped'}
+        </span>
         {r.reason && <span className="reason"> {r.reason[0].toUpperCase() + r.reason.slice(1)}.</span>}
+        {r.changes?.map((c) => (
+          <span key={c.what} className="change">
+            {' '}
+            {c.what}: {c.from} → {c.to}.
+          </span>
+        ))}
         {r.notes.map((n) => (
           <span key={n} className="note">
             {' '}

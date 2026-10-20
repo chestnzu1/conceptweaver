@@ -156,6 +156,8 @@ export interface LdmViewState {
   /** The element another view asked to open, resolved by the LDM view to one of the above. */
   element: ElementRef | null;
   search: string;
+  /** Which element types the entity list shows: all, ordinary entities, or reference entities. */
+  typeFilter: 'all' | 'entity' | 'reference';
 }
 
 export interface SessionSlice {
@@ -411,14 +413,14 @@ export const sessionSlice: Slice<SessionSlice> = (set, get) => ({
   setEntityView: (kind, patch) => set((s) => ({ entityViews: { ...s.entityViews, [kind]: { ...s.entityViews[kind], ...patch } } })),
   entityFiltersOpen: false,
   setEntityFiltersOpen: (entityFiltersOpen) => set({ entityFiltersOpen }),
-  ldmView: { model: null, section: 'entities', entity: null, relationship: null, domain: null, rule: null, element: null, search: '' },
+  ldmView: { model: null, section: 'entities', entity: null, relationship: null, domain: null, rule: null, element: null, search: '', typeFilter: 'all' },
   setLdmView: (patch) => set((s) => ({ ldmView: { ...s.ldmView, ...patch } })),
   openLogical: (model, element) => {
     const kind = element ? Object.keys(element)[0] : undefined;
     const section: LdmSection = kind === 'relationship' ? 'relationships' : kind === 'domain' ? 'domains' : kind === 'rule' ? 'rules' : kind === 'diagram' ? 'diagram' : kind === 'mapping' ? 'traceability' : 'entities';
     set((s) => ({
       view: 'ldm',
-      ldmView: { ...s.ldmView, model, section, element: element ?? null, entity: null, relationship: null, domain: null, rule: null, search: '' },
+      ldmView: { ...s.ldmView, model, section, element: element ?? null, entity: null, relationship: null, domain: null, rule: null, search: '', typeFilter: 'all' },
     }));
   },
   dialog: null,

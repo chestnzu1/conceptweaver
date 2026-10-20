@@ -5,7 +5,8 @@ import { compactIri, ontologyIriOf } from './prefixes';
 import { nameKey } from './identity';
 import { objectProperties, restrictionsOf, type Restriction } from './props';
 import { QUALITY_RULES, qualityDiagnostics, ruleById, ruleEnabled, type QuickFix } from './quality';
-import { termIris, toTurtle } from './rdf';
+import { termIris, entityIris, toTurtle } from './rdf';
+import { runSparql, type SparqlResult } from './sparql';
 import { reason, type Reasoning } from './reasoner';
 import { coverageOf, dlResult, entityLinks, readable, type DlReport, type EntityLink, type ReasoningResult } from './reasoning';
 import { describedData, MODEL_DATA, sameData, type Category, type DataGraph, type EntityRef, type EntityType, type Finding, type JustifiedEntity, type Level, type OntologyRef, type OwlSummary, type QualitySummary, type Scope, type ShaclSummary, type ValidationReport } from '../validation/contracts';
@@ -329,10 +330,14 @@ export function dlFindings(model: Model, report: DlReport): { summary: OwlSummar
 /** A finding as the checks give it where they run: a quick fix can be applied there, to the model it was found in. */
 export type FixableFinding = Finding & { fix?: QuickFix };
 
-export function qualityFindings(model: Model): { summary: QualitySummary; findings: FixableFinding[] } {
-  const t0 = performance.now();
+/**
+ * The findings of the built-in quality rules alone. Kept apart from `qualityFindings`, and
+ * synchronous, so that a quick fix found in a run can be looked up again without running the
+ * user's own SPARQL rules.
+ */
+export function builtInQualityFindings(model: Model): FixableFinding[] {
   const ix = entityIndex(model);
-  const findings = qualityDiagnostics(model).map((d, n): FixableFinding => {
+  return qualityDiagnostics(model).map((d, n): FixableFinding => {
     const rule = ruleById(d.rule)!;
     const entity = (d.shape ? ix.shape(d.shape) : undefined) ?? d.terms.map(ix.term).find(Boolean) ?? (d.prop ? ix.prop(d.prop) : undefined) ?? d.rels.map(ix.rel).find(Boolean) ?? (d.model ? ix.ontology : undefined);
     return {
@@ -351,9 +356,79 @@ export function qualityFindings(model: Model): { summary: QualitySummary; findin
       fix: d.fix,
     };
   });
+}
+
+/**
+ * The findings of the quality rules the user wrote as SPARQL (FR-M4-7): a SELECT query returning
+ * ?entity and ?message, one finding per row, with the rule's own severity. A rule that cannot run
+ * is reported by name rather than passed over, so a query mistake is never silence.
+ */
+async function customQualityFindings(model: Model): Promise<FixableFinding[]> {
+  const rules = model.quality.rules.filter((r) => r.enabled);
+  if (!rules.length) return [];
+  const { terms: iriToTerm, props: iriToProp } = entityIris(model);
+  const ix = entityIndex(model);
+  const out: FixableFinding[] = [];
+  for (const rule of rules) {
+    const ruleId = `custom:${rule.id}`;
+    const name = rule.name.trim() || 'A rule of your own';
+    const about = `A rule of your own, written as SPARQL over this ontology: ${rule.query}`;
+    const failed = (message: string) => out.push({ id: `${ruleId}:failed`, category: 'quality', severity: rule.severity, rule: name, ruleId, message, explanation: about, terms: [], rels: [] });
+    let result: SparqlResult;
+    try {
+      result = await runSparql(model, rule.query);
+    } catch (e) {
+      failed(`The rule could not be run: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+    if (result.type !== 'select') {
+      failed('The rule must be a SELECT query returning ?entity and ?message.');
+      continue;
+    }
+    const entityAt = result.vars.indexOf('entity');
+    const messageAt = result.vars.indexOf('message');
+    if (entityAt < 0 || messageAt < 0) {
+      failed(`The rule must return ?entity and ?message; it returns ${result.vars.length ? result.vars.map((v) => '?' + v).join(', ') : 'no variables'}.`);
+      continue;
+    }
+    result.rows.forEach((row, n) => {
+      const at = row[entityAt];
+      const said = row[messageAt];
+      const iri = at?.kind === 'iri' ? at.value : undefined;
+      const termId = iri ? iriToTerm.get(iri) : undefined;
+      const propId = iri ? iriToProp.get(iri) : undefined;
+      out.push({
+        id: `${ruleId}:${n}`,
+        category: 'quality',
+        severity: rule.severity,
+        rule: name,
+        ruleId,
+        message: said ? (said.kind === 'literal' ? said.value : said.text) : `The rule matched ${at ? at.text : 'the ontology'}.`,
+        explanation: about,
+        entity: termId ? ix.term(termId) : propId ? ix.prop(propId) : at ? { kind: 'external', id: iri ?? at.value, name: at.text, type: 'data', ...(iri ? { iri } : {}) } : undefined,
+        terms: termId ? [termId] : [],
+        rels: [],
+      });
+    });
+  }
+  return out;
+}
+
+export async function qualityFindings(model: Model): Promise<{ summary: QualitySummary; findings: FixableFinding[] }> {
+  const t0 = performance.now();
+  const findings = builtInQualityFindings(model);
+  findings.push(...(await customQualityFindings(model)));
   const count = (s: Level) => findings.filter((f) => f.severity === s).length;
+  const custom = model.quality.rules;
   return {
-    summary: { errors: count('error'), warnings: count('warning'), suggestions: count('info'), rulesOn: QUALITY_RULES.filter((r) => ruleEnabled(model.quality, r)).length, rulesTotal: QUALITY_RULES.length, ms: Math.round(performance.now() - t0) },
+    summary: {
+      errors: count('error'),
+      warnings: count('warning'),
+      suggestions: count('info'),
+      rulesOn: QUALITY_RULES.filter((r) => ruleEnabled(model.quality, r)).length + custom.filter((r) => r.enabled).length,
+      rulesTotal: QUALITY_RULES.length + custom.length,
+      ms: Math.round(performance.now() - t0),
+    },
     findings,
   };
 }
@@ -573,7 +648,7 @@ export async function validate(model: Model, data: DataGraph, scope: Scope | Cat
   }
   if (wants('quality')) {
     await tick('Checking quality rules…');
-    const r = qualityFindings(model);
+    const r = await qualityFindings(model);
     run.quality = r.summary;
     run.findings.push(...r.findings);
   }

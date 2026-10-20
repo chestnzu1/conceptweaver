@@ -102,8 +102,8 @@ export interface EditsSlice {
   bulkAddRelations: (items: BulkRelation[], createMissing: boolean) => { added: number; created: number; skipped: number };
   /** Adds an indented hierarchy: its terms (reusing existing ones by name) and the links between them. */
   bulkAddOutline: (outline: Outline) => { terms: number; rels: number };
-  /** Makes what an import of a table plans (src/mapping/plan.ts), as one edit that one undo takes back. */
-  importPlan: (plan: Plan) => { added: number };
+  /** Makes and changes what an import of a table plans (src/mapping/plan.ts), as one edit that one undo takes back. */
+  importPlan: (plan: Plan) => { added: number; updated: number };
   /** Turns the model into the other type, translating what its relations mean. */
   convertTo: (mode: ModelMode) => void;
   /** Declares a new object property and opens it. */
@@ -411,13 +411,14 @@ export const editsSlice: Slice<EditsSlice> = (set, get) => ({
     return { added: rels.length, created: created.length, skipped };
   },
   importPlan: (plan) => {
-    const { model, terms } = applyPlan(get().model, plan);
-    if (!terms.length) return { added: 0 };
+    const { model, terms, updated } = applyPlan(get().model, plan);
+    if (!terms.length && !updated.length) return { added: 0, updated: 0 };
     get().apply(() => model);
-    // What was made is selected, unless there is too much of it to show as a selection.
-    set({ sel: { terms: terms.length <= 500 ? terms : [], rels: [] }, highlight: [] });
+    // What was made and changed is selected, unless there is too much of it to show as a selection.
+    const shown = [...terms, ...updated];
+    set({ sel: { terms: shown.length <= 500 ? shown : [], rels: [] }, highlight: [] });
     get().fit();
-    return { added: terms.length };
+    return { added: terms.length, updated: updated.length };
   },
   bulkAddOutline: (outline) => {
     const { model } = get();

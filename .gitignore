@@ -6,6 +6,9 @@ e2e/shots
 reasoner/lib/
 reasoner/build/
 
+# The companion's Maven build output (companion/, Phase 3)
+companion/target/
+
 # What pnpm bench measures (scripts/bench.mjs)
 bench-results/
 

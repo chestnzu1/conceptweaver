@@ -226,6 +226,8 @@ export function stepChangeSet(d: DocumentState, index: number, ontologyId: strin
 const PARTS: Partial<Record<keyof Model, string>> = {
   style: 'how the graph is drawn',
   layout: 'the layout',
+  diagrams: 'the diagrams',
+  diagram: 'the diagrams',
   shapeSets: 'the SHACL shapes',
   dataGraphs: 'the data graphs',
   quality: 'the quality rules',
@@ -443,6 +445,12 @@ function carriedOver(old: Model, read: Model): Model {
 
   const termSet = new Set(terms.map((t) => t.id));
   const relSet = new Set(relations.map((r) => r.id));
+  // The diagrams are the ones the model had, without the terms the statements no longer have.
+  const diagrams = old.diagrams.map((d) => {
+    const hidden = d.hidden.filter((id) => termSet.has(id));
+    const positions = Object.fromEntries(Object.entries(d.positions).filter(([id]) => termSet.has(id)));
+    return hidden.length === d.hidden.length && Object.keys(positions).length === Object.keys(d.positions).length ? d : { ...d, hidden, positions };
+  });
   const imported = new Set(read.externals.filter((e) => e.imports).map((e) => e.iri));
   const externals: ExternalRef[] = [...old.externals.map((e) => (e.imports === imported.has(e.iri) ? e : { ...e, imports: imported.has(e.iri) })), ...read.externals.filter((e) => !old.externals.some((o) => o.iri === e.iri))];
   return {
@@ -458,6 +466,8 @@ function carriedOver(old: Model, read: Model): Model {
     vocab: read.vocab.enabled && !old.vocab.enabled ? { ...old.vocab, enabled: true } : old.vocab,
     style: { ...old.style, nodes: pick(old.style.nodes, termSet), edges: pick(old.style.edges, relSet), anchors: pick(old.style.anchors, relSet) },
     layout: old.layout,
+    diagrams,
+    diagram: old.diagram,
     shapeSets: old.shapeSets,
     dataGraphs: old.dataGraphs,
     quality: old.quality,

@@ -56,6 +56,16 @@ describe('versions of a project', () => {
     expect(d.axioms).toEqual({ added: 0, removed: 0 });
   });
 
+  it('says the drawing changed when a diagram leaves a term out, and no statement did', async () => {
+    const m = withIris(sampleModel());
+    const ed = editor(m);
+    const v = await ed.service.saveVersion('p', 'Before leaving one out', '');
+    ed.set({ ...m, diagrams: [{ ...m.diagrams[0], hidden: [m.terms[0].id] }] });
+    const d = await ed.service.diff('p', { version: v.id }, 'current');
+    expect(nothingChanged(d)).toBe(true);
+    expect(d.drawing).toBe(true);
+  });
+
   it('shows one superclass added and one restriction removed as exactly two changes, under the class', async () => {
     const m = withIris(fromTurtle(T));
     const ed = editor(m);

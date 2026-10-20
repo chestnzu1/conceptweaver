@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ElementRef, ElementKind, LogicalModel, StrategyId } from '../logical/contracts';
-import { convertibleFrom, expectedKindOf, reasonsNotApplicable, STRATEGIES, strategyById, type StrategyEntry, type StrategySourceKind } from '../logical/strategies';
+import type { ElementRef, ElementKind, ElementType, LogicalModel, StrategyId } from '../logical/contracts';
+import { elementTypeWords } from '../logical/contracts';
+import { convertibleFrom, expectedElementTypeOf, expectedKindOf, reasonsNotApplicable, STRATEGIES, strategyById, type StrategyEntry, type StrategySourceKind } from '../logical/strategies';
 import { nameIn } from '../model/labels';
 import { useStore } from '../model/store';
 import type { LdmViewState } from '../model/state/session';
@@ -388,6 +389,22 @@ const KIND_WORD: Record<ElementKind, string> = {
 
 const refKindOf = (ref: ElementRef): ElementKind => Object.keys(ref)[0] as ElementKind;
 
+/** What an entity or domain is in the model: an entity, a reference entity or a domain. */
+function elementTypeIn(m: LogicalModel, ref: ElementRef): ElementType | undefined {
+  if ('entity' in ref) {
+    const entity = m.entities.find((e) => e.id === ref.entity);
+    return entity ? (entity.reference === true ? 'reference' : 'entity') : undefined;
+  }
+  if ('domain' in ref) return m.domains.some((d) => d.id === ref.domain) ? 'domain' : undefined;
+  return undefined;
+}
+
+/** Whether a strategy makes the other of the two entity types than the one it targets. */
+function changesEntityType(entry: StrategyEntry, actual: ElementType | undefined): boolean {
+  const makes = expectedElementTypeOf(entry.id);
+  return entry.target === 'entity' && (makes === 'entity' || makes === 'reference') && !!actual && makes !== actual;
+}
+
 /** The kind of source a strategy catalogue entry is about, from the names the ontology choices use. */
 function sourceKindOf(kind: string): StrategySourceKind | undefined {
   if (kind === 'concept' || kind === 'class') return 'class';
@@ -396,7 +413,7 @@ function sourceKindOf(kind: string): StrategySourceKind | undefined {
   return undefined;
 }
 
-function PreviewList({ title, items }: { title: string; items: string[] }) {
+export function PreviewList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
   return (
     <>
@@ -424,8 +441,17 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
   const byIri = new Map(choices.map((c) => [c.iri, c]));
 
   const targetKind: ElementKind = target ? refKindOf(keyRef(target)) : 'entity';
+  const targetType = target ? elementTypeIn(m, keyRef(target)) : undefined;
   const selected = strategyById(strategyId || undefined);
+  // An entity and a reference entity are one kind: changing between them is done in the Entities
+  // workspace, so only a change of kind is a conversion here.
   const conversion = !!existing && !!selected && selected.target !== targetKind;
+  const expectedType = expectedElementTypeOf(existing?.strategyId);
+  const existingType = existing?.targets[0] ? elementTypeIn(m, existing.targets[0]) : undefined;
+  const existingMismatched = !!existing && !!existing.targets[0] && (
+    (expectedKindOf(existing.strategyId) !== undefined && expectedKindOf(existing.strategyId) !== refKindOf(existing.targets[0])) ||
+    ((expectedType === 'entity' || expectedType === 'reference') && !!existingType && expectedType !== existingType)
+  );
   const knownSourceKinds = sources.map((iri) => sourceKindOf(byIri.get(iri)?.kind ?? '')).filter((k): k is StrategySourceKind => !!k);
   const sourcesKnown = sources.length > 0 && knownSourceKinds.length === sources.length;
 
@@ -438,6 +464,11 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
   const reasonFor = (entry: StrategyEntry): string | undefined => {
     const reaches = entry.target === targetKind || (!!existing && convertibleFrom(targetKind).includes(entry.target));
     if (!reaches) return reasonsNotApplicable(entry, { sourceKinds: [], targetKind });
+    // A new mapping maps the element as it is. Between an entity and a reference entity the
+    // element's type is changed in the Entities workspace, never by choosing a strategy here.
+    if (!existing && changesEntityType(entry, targetType)) {
+      return `It makes ${elementTypeWords(expectedElementTypeOf(entry.id)!)}; this mapping’s element is ${elementTypeWords(targetType!)}. Change the element’s type in the Entities workspace first.`;
+    }
     if (!sourcesKnown) return undefined;
     return reasonsNotApplicable(entry, { sourceKinds: knownSourceKinds, targetKind: entry.target });
   };
@@ -531,9 +562,12 @@ function MappingForm({ m, existing, choices, onDone, onCancel }: { m: LogicalMod
         <h2>{existing ? 'Edit the mapping' : 'Map an element by hand'}</h2>
       </div>
       {existing && !existing.strategyId && <p className="ldm-note">This mapping predates typed strategies: its words “{existing.strategy}” are kept as they are. Choose the strategy it follows; it needs classification, and nothing is guessed.</p>}
-      {existing && existing.targets[0] && expectedKindOf(existing.strategyId) !== undefined && expectedKindOf(existing.strategyId) !== refKindOf(existing.targets[0]) && (
+      {existingMismatched && (
         <p className="ldm-note warn mapping-mismatch">
-          This mapping says it makes {KIND_WORD[expectedKindOf(existing.strategyId)!]}, but “{elementLabel(m, existing.targets[0])}” is {KIND_WORD[refKindOf(existing.targets[0])]}. Choose a strategy that converts it, and apply the transformation.
+          This mapping says it makes {expectedType === 'entity' || expectedType === 'reference' ? elementTypeWords(expectedType) : KIND_WORD[expectedKindOf(existing.strategyId)!]}, but “{elementLabel(m, existing.targets[0])}” is {existingType ? elementTypeWords(existingType) : KIND_WORD[refKindOf(existing.targets[0])]}.
+          {expectedKindOf(existing.strategyId) !== refKindOf(existing.targets[0])
+            ? ' Choose a strategy that converts it, and apply the transformation.'
+            : ' Choose a strategy that makes the element as it is, or change the element’s type in the Entities workspace.'}
         </p>
       )}
       <label className="field">

@@ -97,13 +97,14 @@ the migration map.
 | `relations[].fromCard`, `.toCard` and plain relationships (SKOS mode) | Diagram cardinalities and non-OWL lines | In a vocabulary: SKOS statements in the graph. Cardinality text: diagram metadata |
 | `vocab` | Which labels stand for which standard property | `project.settings` (an authoring convenience) |
 | `shapes` | SHACL shapes (form-edited nodes and extra Turtle); from SH-1 (model format 5) several named shape sets | One shapes graph for each set |
-| `quality` | Quality rules switched on or off | `project.settings` |
+| `quality` | Quality rules switched on or off, and rules of one's own written as SPARQL (model format 10, since 2026-10-18, roadmap 2.12) | `project.settings` |
 | `externals` | References to added ontologies | `external_ontology`, `ontology_import`; content in external graphs |
 | `mappings`, `rejected` | Mapping metadata: method, score, status, author, comment; suggestions turned down | `alignment_mapping`, `rejected_suggestion`. The mapping *statement* itself (`owl:equivalentClass`, `skos:exactMatch`) is an axiom in the asserted graph |
 | `governance` | How metadata fields are configured | `project.settings`. The metadata *values* are annotations in the graph |
 | `style`, `layout` | Graph style, layout choice, line ends | `diagram.style`, `diagram.layout` |
+| `diagrams`, `diagram` (model format 9, since 2026-10-18, roadmap 2.12) | Several named diagrams of the ontology, each with the terms it leaves out, where its terms sit, its style and its layout; `diagram` names the one on the canvas, whose positions, style and layout are `terms[].x/y`, `style` and `layout` | One `diagram` row for each diagram, with its positions and style as JSON documents. No part of the ontology |
 | `datatypes` | Enumerated datatypes | Datatype definitions in the asserted graph |
-| `logicalModels` (model format 6, since 2026-10-17, roadmap LM-1) | The project's logical data models, each with its entities, relationships, keys, generalizations, rules, domains, semantic mappings, transformation configuration and diagrams | `logical_model` and its revisions (§11.7). Never in a graph: an LDM is not ontology content (ADR-022) |
+| `logicalModels` (model format 6, since 2026-10-17, roadmap LM-1; reference entities from model format 11, since 2026-10-20) | The project's logical data models, each with its entities (an entity may be a reference entity, `LogicalEntity.reference`), relationships, keys, generalizations, rules, domains, semantic mappings, transformation configuration and diagrams | `logical_model` and its revisions (§11.7). Never in a graph: an LDM is not ontology content (ADR-022) |
 
 Two consequences worth stating:
 
@@ -545,6 +546,26 @@ different entities replay without conflict.
 Selection, viewport, which panels are open, the theme, and unsaved text in a field. A server
 never needs them and they make no sense on another machine.
 
+### 8.5 MCP clients (Recommended, roadmap 5.8)
+
+An external MCP client keeps nothing of the project: it asks for what it shows and holds at most a
+protocol session for the length of a connection. The server adds no store for MCP.
+
+- **No new store.** The tool catalog and the allow-list are code, not data. No table, no object
+  store and no file is added for MCP.
+- **Protocol state is transient and separate.** Whatever the chosen MCP revision keeps per
+  connection lives in the adapter, ends with the connection, is not resumed after a restart, and
+  is never the identity of a project, an ontology session or a revision. The revision named by
+  the requirement is reported to keep no session at all (SYSTEM_ARCHITECTURE.md §3.4).
+- **Cursors** are opaque and bound to the project, revision and query that issued them. A cursor
+  presented to another project or revision is refused, not reinterpreted.
+- **Caches** are the services' own, keyed by project and revision as §8.1's server-answer cache
+  is; the adapter adds none that outlives a call.
+- **No browser storage is involved**, in either direction.
+- **Audit** (Recommended, with 5.4): one event per tool call with the tool name, project,
+  principal, revision read and outcome — no arguments and no payload. It is an event beside the
+  change history, not a change entry: a read is not a revision.
+
 ## 9. Backup and retention
 
 - **Backup unit**: the TDB2 directory and the relational database together, taken while no
@@ -881,7 +902,7 @@ An LDM is a JSON document, in the project file as in the exchange format of one 
 ```json
 {
   "format": "conceptweaver-ldm",
-  "version": 1,
+  "version": 2,
   "model": {
     "id": "ldm-7f3c",
     "name": "Film catalogue",
@@ -905,7 +926,8 @@ An LDM is a JSON document, in the project file as in the exchange format of one 
       "id": "m1",
       "sources": [{ "iri": "http://example.org/film-knowledge-graph#Film", "axioms": ["Declaration(Class(<http://example.org/film-knowledge-graph#Film>))"] }],
       "targets": [{ "entity": "e1" }],
-      "strategy": "class-to-entity",
+      "strategy": "class → entity",
+      "strategyId": "OWL_CLASS_TO_LDM_ENTITY",
       "rationale": "Film is a class in the chosen scope.",
       "origin": { "ontology": "http://example.org/film-knowledge-graph", "revision": "sha256:…", "version": "Version 3" },
       "baseline": { "name": "film" },
@@ -919,7 +941,10 @@ An LDM is a JSON document, in the project file as in the exchange format of one 
 
 `status` of a mapping is not stored: it is worked out against the ontology as it is (§11.5).
 `revision` is stored, so that a reopened project knows the revision its proposals and caches
-were for.
+were for. An entity that is a reference entity carries `"reference": true`; an ordinary entity
+has no `reference` field. A domain is still a separate collection, never an entity with a flag:
+an element type is not inferred from a name or an ontology label, and a model of format 10 or
+earlier opens with every entity an ordinary entity (model format 11, roadmap 2.13).
 
 ### 11.4 Logical change sets and revisions
 
@@ -1034,6 +1059,17 @@ tables with the rest (§9).
 
 ### 11.8 Compatibility
 
+- Model format 11 adds `LogicalEntity.reference`, absent on an ordinary entity, for a reference
+  entity whose rows are the codes the rest of the model points at rather than a list of values
+  held in a domain (roadmap 2.13). A model of format 10 or earlier opens with every entity an
+  ordinary entity and is otherwise unchanged; a domain stays a domain.
+- Model format 10 adds `QualityConfig.rules`, an empty list by default, for quality rules of the
+  user's own written as SPARQL (roadmap 2.12, FR-M4-7). A model of format 9 or earlier opens with
+  none and is otherwise unchanged; the rules it has switched off or on are read as before.
+- Model format 9 adds `Model.diagrams` and `Model.diagram`, one diagram drawn as the model was,
+  for several named diagrams of the ontology (roadmap 2.12, FR-M5-7). A model of format 8 or
+  earlier opens with one diagram that shows every term, drawn as it was, and is otherwise
+  unchanged.
 - Model format 8 adds `ObjProp.chains`, `Term.keys`, `.disjointUnions` and
   `.negativeAssertions`, and `Model.axiomAnnotations`, for the axioms OWL states with a list or
   a blank node (roadmap 2.8). A model of format 7 or earlier opens with none of them and is
@@ -1045,7 +1081,8 @@ tables with the rest (§9).
 - Model format 6 adds `logicalModels`, an empty list by default. A model of format 5 or earlier
   opens with none and is otherwise unchanged; a fixture written by the format-5 code is frozen in
   CI before the change, as for every earlier format (NFR-9).
-- The LDM exchange format is versioned on its own (`conceptweaver-ldm`, version 1); a later
-  version reads every earlier one.
+- The LDM exchange format is versioned on its own (`conceptweaver-ldm`, version 2); a later
+  version reads every earlier one. Version 2 adds reference entities; a version-1 file opens with
+  every entity an ordinary entity and is otherwise unchanged.
 - A project published to a server keeps its LDMs: each becomes a `logical_model` whose first
   revision is the document as it was.

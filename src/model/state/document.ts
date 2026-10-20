@@ -48,6 +48,17 @@ export const prepared = (m: Model, before?: Model): Model => {
   if (shrunk) {
     const enums = new Set(next.datatypes.map((d) => d.id));
     next = withoutEntities(next, gone, new Set(before.datatypes.filter((d) => !enums.has(d.id)).map((d) => d.id)));
+    // A diagram names the terms it leaves out and where the others sit: what is gone leaves both.
+    const ids = new Set(next.terms.map((t) => t.id));
+    let changed = false;
+    const diagrams = next.diagrams.map((d) => {
+      const hidden = d.hidden.filter((id) => ids.has(id));
+      const positions = Object.fromEntries(Object.entries(d.positions).filter(([id]) => ids.has(id)));
+      if (hidden.length === d.hidden.length && Object.keys(positions).length === Object.keys(d.positions).length) return d;
+      changed = true;
+      return { ...d, hidden, positions };
+    });
+    if (changed) next = { ...next, diagrams };
   }
   if (!gone.size || !next.unmapped) return next;
   const unmapped = withoutIris(next.unmapped, gone);
@@ -196,7 +207,7 @@ export const documentSlice: Slice<DocumentSlice> = (set, get) => ({
     const d = opened(model);
     // A model too large to draw whole opens on the Structure Explorer, where the graph around a class is a click away.
     const view = viewFor(model, get().view);
-    set({ view: view === 'graph' && !drawnWhole(model) ? viewFor(model, 'structure') : view, showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, running: false, phase: '', job: null, checks: {}, data: MODEL_DATA, shapeSet: null, tab: 'results' }, shapesView: { set: null, shape: null }, ldmView: { model: null, section: 'entities', entity: null, relationship: null, domain: null, rule: null, element: null, search: '' }, reasoning: NO_REASONING });
+    set({ view: view === 'graph' && !drawnWhole(model) ? viewFor(model, 'structure') : view, showInferred: get().showInferred && supports(model, 'reasoning'), ...held(d), doc: { id: docId, saved: d.version.state }, docSeq: get().docSeq + 1, sel: { terms: [], rels: [] }, selProp: null, editing: null, highlight: [], filter: '', subgraph: NO_SUBGRAPH, entityViews: noEntityViews(), graphScope: 'all', structure: { ...get().structure, focus: null, search: '', compare: { a: null, b: null } }, ext: { ...get().ext, loaded: {}, missing: [], selected: null, preview: null }, validation: { ...get().validation, run: null, running: false, phase: '', job: null, checks: {}, data: MODEL_DATA, shapeSet: null, tab: 'results' }, shapesView: { set: null, shape: null }, ldmView: { model: null, section: 'entities', entity: null, relationship: null, domain: null, rule: null, element: null, search: '', typeFilter: 'all' }, reasoning: NO_REASONING });
     void get().loadExternals();
     get().fit();
   },

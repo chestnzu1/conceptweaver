@@ -161,7 +161,7 @@ describe('governance metadata', () => {
     expect(missing).toHaveLength(5);
     m = set(m, 'customer', 'owner', [{ value: 'Jane Doe' }]);
     expect(qualityDiagnostics(m).filter((d) => d.rule === 'required-metadata')).toHaveLength(4);
-    expect(qualityDiagnostics({ ...m, quality: { off: ['required-metadata'], on: [] } }).filter((d) => d.rule === 'required-metadata')).toEqual([]);
+    expect(qualityDiagnostics({ ...m, quality: { off: ['required-metadata'], on: [], rules: [] } }).filter((d) => d.rule === 'required-metadata')).toEqual([]);
     // A value typed into the annotations that is not a date.
     m = { ...m, terms: m.terms.map((t) => (t.id === 'customer' ? { ...t, fields: [...t.fields, { key: 'dcterms:created', value: 'sometime in 2020' }] } : t)) };
     const bad = qualityDiagnostics(m).filter((d) => d.rule === 'metadata-value');

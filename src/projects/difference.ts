@@ -96,7 +96,7 @@ export function difference(before: Model, after: Model): Difference {
     .filter(([k]) => !same(before[k], after[k]))
     .map(([, label]) => label);
   const logical = logicalDifference(before.logicalModels, after.logicalModels);
-  const drawing = !same(before.style, after.style) || !same(before.layout, after.layout) || !same(positions(before), positions(after)) || logical.diagrams;
+  const drawing = !same(before.style, after.style) || !same(before.layout, after.layout) || !same(before.diagrams, after.diagrams) || before.diagram !== after.diagram || !same(positions(before), positions(after)) || logical.diagrams;
   return { entities, shapeSets, dataGraphs, logicalModels: logical.models, settings, drawing, axioms: { added: changes.filter((c) => c.op === 'add').length, removed: changes.filter((c) => c.op === 'remove').length } };
 }
 

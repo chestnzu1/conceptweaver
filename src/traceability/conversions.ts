@@ -1,8 +1,8 @@
-import type { BaseType, ElementKind, ElementRef, LogicalChange, LogicalDomain, LogicalEntity, LogicalModel, LogicalType, MappingSource, SemanticMapping, StrategyId } from '../logical/contracts';
+import { elementTypeWords, type BaseType, type ElementKind, type ElementRef, type ElementType, type LogicalChange, type LogicalDomain, type LogicalEntity, type LogicalModel, type LogicalType, type MappingSource, type SemanticMapping, type StrategyId } from '../logical/contracts';
 import { freeName, resolveManyToMany, updatedChange } from '../logical/edits';
 import { elementOf, newId, removalOf } from '../logical/rules';
-import { strategyById, strategyText, type StrategyEntry } from '../logical/strategies';
-import type { ConversionDecision, ConversionPreview } from './contracts';
+import { strategyById, strategyForElementType, strategyText, type StrategyEntry } from '../logical/strategies';
+import type { ConversionDecision, ConversionPreview, ElementTypeMappingChange, ElementTypePreview } from './contracts';
 
 /**
  * Conversions of an LDM element when a mapping's strategy changes (roadmap LM-4;
@@ -129,27 +129,44 @@ function domainConstraints(domain: LogicalDomain): string[] {
 
 // ---------------------------------------------------------------- domain → entity
 
-function domainToEntity(model: LogicalModel, mapping: SemanticMapping, domain: LogicalDomain, entry: StrategyEntry, decisions: Record<string, string>, sources: MappingSource[]): Built {
+interface DomainToEntityOptions {
+  /** The entity is a reference entity: code and label, the codes the rest of the model points at. */
+  reference: boolean;
+  decisions: Record<string, string>;
+  /** The mapping sources recorded members, where the domain has no value list of its own. */
+  sources: MappingSource[];
+  /**
+   * For a plain entity: a decision confirming that the domain's values and constraints stay in
+   * the ontology. A reference entity keeps them as rows instead (the `values` decision).
+   */
+  valuesDecision?: boolean;
+}
+
+/** A domain made into an entity, structurally: one entity, its code, the attributes and rules that followed. */
+function domainToEntityCore(model: LogicalModel, domain: LogicalDomain, options: DomainToEntityOptions): Built {
   const name = freeName(model.entities.map((e) => e.name), domain.name);
-  const target: ElementRef = { entity: '' };
-  const built = empty(target, 'entity', name, {});
-  const references = entry.id === 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' || entry.id === 'OWL_CLASS_TO_LDM_REFERENCE_ENTITY';
+  const built = empty({ entity: '' }, 'entity', name, {});
   const values = domain.constraints.values?.map((v) => v.code).filter(Boolean) ?? [];
-  const codes = values.length ? values : recordedMembers(sources);
-  if (references) {
+  const codes = values.length ? values : recordedMembers(options.sources);
+  const losses = domainConstraints(domain);
+  if (options.reference) {
     built.decisions.push({
       name: 'values',
       label: 'How the members are kept',
       choices: [{ value: 'labels as codes', label: 'Each member becomes a row, its name the code' }],
-      chosen: decisions.values ?? 'labels as codes',
+      chosen: options.decisions.values ?? 'labels as codes',
     });
     if (!codes.length) built.warnings.push(`Neither the domain nor the mapping records its members; the entity starts with no value to judge against. The values, if there are any, stay in the ontology.`);
     else built.constraints.push(`The value list stays in the ontology; ${codes.length === 1 ? 'the member' : 'the members'} ${list(codes)} ${codes.length === 1 ? 'becomes' : 'become'} ${codes.length === 1 ? 'a row' : 'rows'} of the entity, one each.`);
+  } else if (options.valuesDecision && losses.length) {
+    built.decisions.push({
+      name: 'values',
+      label: 'What happens to the values',
+      choices: [{ value: 'left behind', label: 'The values stay in the ontology; the entity starts with none' }],
+      chosen: options.decisions.values ?? 'left behind',
+    });
+    built.warnings.push('A plain entity does not keep the domain’s values or constraints: they stay in the ontology, and the entity starts with none to judge against.');
   }
-
-  const other = model.mappings.find((x) => x.id !== mapping.id && x.targets.some((t) => 'domain' in t && t.domain === domain.id));
-  if (other) built.conflicts.push(`Another mapping (${other.strategy || other.id}) still targets the domain “${domain.name}”. Change or remove that mapping first.`);
-  const losses = domainConstraints(domain);
   if (losses.length) built.constraints.push(`The domain’s constraints (${losses.join(', ')}) have no place on an entity attribute and are not carried over.`);
   if (built.conflicts.length) return built;
 
@@ -157,16 +174,16 @@ function domainToEntity(model: LogicalModel, mapping: SemanticMapping, domain: L
   const code: LogicalEntity['attributes'][number] = { id: newId('a'), name: 'code', definition: `The code that identifies one value of ${domain.name}.`, type: baseOf(domain.base), optional: false };
   const attributes = [code];
   const creates = [`Entity “${name}”`, `Attribute “${name}.code”, mandatory, of the domain’s base type`];
-  if (references) {
+  if (options.reference) {
     attributes.push({ id: newId('a'), name: 'label', definition: `What the value is called, for a reader.`, type: { base: 'text' }, optional: true });
     creates.push(`Attribute “${name}.label”`);
   }
   const key: LogicalEntity['keys'][number] = { id: newId('k'), kind: 'primary', name: 'Primary key', members: [{ attribute: code.id }] };
-  const entity: LogicalEntity = { id: entityId, name, definition: domain.definition, attributes, keys: [key] };
+  const entity: LogicalEntity = { id: entityId, name, definition: domain.definition, attributes, keys: [key], ...(options.reference ? { reference: true } : {}) };
   creates.push(`Primary key on “${name}.code”`);
   built.target = { entity: entityId };
   built.targetName = name;
-  built.baseline = { entity: { id: entityId, name, definition: domain.definition } };
+  built.baseline = { entity: { id: entityId, name, definition: domain.definition, ...(options.reference ? { reference: true } : {}) } };
   built.creates = creates;
   built.keys = [`The entity gets a primary key on “code”: one row for each value.`];
 
@@ -190,11 +207,24 @@ function domainToEntity(model: LogicalModel, mapping: SemanticMapping, domain: L
   return built;
 }
 
+function domainToEntity(model: LogicalModel, mapping: SemanticMapping, domain: LogicalDomain, entry: StrategyEntry, decisions: Record<string, string>, sources: MappingSource[]): Built {
+  const references = entry.id === 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' || entry.id === 'OWL_CLASS_TO_LDM_REFERENCE_ENTITY';
+  const built = domainToEntityCore(model, domain, { reference: references, decisions, sources });
+  const other = model.mappings.find((x) => x.id !== mapping.id && x.targets.some((t) => 'domain' in t && t.domain === domain.id));
+  if (other) {
+    const refused = empty(built.target, built.targetKind, built.targetName, {});
+    refused.conflicts.push(`Another mapping (${other.strategy || other.id}) still targets the domain “${domain.name}”. Change or remove that mapping first.`);
+    return refused;
+  }
+  return built;
+}
+
 // ---------------------------------------------------------------- entity → domain
 
 const ONE_ATTRIBUTE = 'It has attributes besides its one value: a domain holds a list of values, not rows.';
 
-function entityToDomain(model: LogicalModel, mapping: SemanticMapping, entity: LogicalEntity, sources: MappingSource[]): Built {
+/** An entity made into a domain, structurally: its one value becomes the domain's base type and its values. */
+function entityToDomainCore(model: LogicalModel, entity: LogicalEntity, sources: MappingSource[]): Built {
   const name = freeName(model.domains.map((d) => d.name), entity.name);
   const built = empty({ domain: '' }, 'domain', name, {});
   built.target = { domain: newId('d') };
@@ -213,8 +243,6 @@ function entityToDomain(model: LogicalModel, mapping: SemanticMapping, entity: L
   const named = (ref: ElementRef): boolean => refId(ref) === entity.id || (attribute !== undefined && refId(ref) === attribute.id) || (key !== undefined && refId(ref) === key.id);
   const decidedByRule = model.rules.find((r) => r.appliesTo.some(named));
   if (decidedByRule) conflicts.push(`The rule “${decidedByRule.name}” applies to it.`);
-  const other = model.mappings.find((x) => x.id !== mapping.id && x.targets.some(named));
-  if (other) conflicts.push(`Another mapping (${other.strategy || other.id}) still targets it or its attribute.`);
   if (conflicts.length || !attribute || !key || !('base' in attribute.type)) {
     built.changes = [];
     built.keys = [];
@@ -232,11 +260,23 @@ function entityToDomain(model: LogicalModel, mapping: SemanticMapping, entity: L
   built.keys = ['The primary key is not carried into the domain: a domain’s values are their own identity.'];
   if (values.length) built.constraints.push(`The domain holds the values the mapping records: ${list(members)}.`);
   else built.warnings.push('The mapping records no list of members; the domain starts with no values, and the ontology still has them.');
-  // The mapping's own retarget is the service's, appended last; every other change removalOf
+  // Each mapping's own retarget is added by whoever planned it; every other change removalOf
   // makes is part of this conversion.
-  built.changes = removalOf(model, { entity: entity.id }).filter((c) => !(c.op === 'update' && 'mapping' in c.target && c.target.mapping === mapping.id));
+  built.changes = removalOf(model, { entity: entity.id }).filter((c) => !(c.op === 'update' && 'mapping' in c.target));
   built.changes.push({ op: 'add', element: { kind: 'domain', domain } });
   return built;
+}
+
+function entityToDomain(model: LogicalModel, mapping: SemanticMapping, entity: LogicalEntity, sources: MappingSource[]): Built {
+  const built = entityToDomainCore(model, entity, sources);
+  const attribute = entity.attributes.length === 1 ? entity.attributes[0] : undefined;
+  const key = entity.keys.length === 1 ? entity.keys[0] : undefined;
+  const named = (ref: ElementRef): boolean => refId(ref) === entity.id || (attribute !== undefined && refId(ref) === attribute.id) || (key !== undefined && refId(ref) === key.id);
+  const other = model.mappings.find((x) => x.id !== mapping.id && x.targets.some(named));
+  if (!other) return built;
+  const refused = empty(built.target, built.targetKind, built.targetName, {});
+  refused.conflicts.push(`Another mapping (${other.strategy || other.id}) still targets it or its attribute.`);
+  return refused;
 }
 
 // ---------------------------------------------------------------- relationship → associative entity
@@ -372,5 +412,226 @@ export function conversionPlan(input: ConversionPlanInput): ConversionPreview {
   if (targetKind === 'relationship' && entry.target === 'entity' && element.kind === 'relationship') return finish(relationshipToEntity(model, mapping, element.relationship.id));
   const built = empty(target, targetKind, targetName, mapping.baseline);
   built.conflicts.push(`${KIND_WORDS[targetKind][0].toUpperCase()}${KIND_WORDS[targetKind].slice(1)} cannot become ${KIND_WORDS[entry.target]} by changing a mapping’s strategy.`);
+  return finish(built);
+}
+
+// ---------------------------------------------------------------- element types (the Entities workspace)
+
+const typeOfEntity = (entity: LogicalEntity): ElementType => (entity.reference === true ? 'reference' : 'entity');
+
+const isRecord = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
+
+/** The element's own object, by reference: an entity without its attributes and keys, as mappings remember it. */
+function plainOf(model: LogicalModel, ref: ElementRef): Record<string, unknown> | undefined {
+  const element = elementOf(model, ref);
+  if (!element) return undefined;
+  if (element.kind === 'entity') {
+    const { attributes: _a, keys: _k, ...own } = element.entity;
+    return own;
+  }
+  return (element as unknown as Record<string, Record<string, unknown>>)[element.kind];
+}
+
+/** A baseline without what a mapping remembered of an element that moves. */
+function baselineWithout(baseline: Record<string, unknown>, ref: ElementRef): Record<string, unknown> {
+  const id = refId(ref);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(baseline)) {
+    if (isRecord(value) && value.id === id) continue;
+    if (Array.isArray(value)) {
+      const left = value.filter((x) => !(isRecord(x) && x.id === id));
+      if (left.length !== value.length) {
+        if (left.length) out[key] = left;
+        continue;
+      }
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+/** A baseline with what the element became, leaving every other target as it was. */
+function baselineWith(baseline: Record<string, unknown>, ref: ElementRef, made: Record<string, unknown>): Record<string, unknown> {
+  const id = refId(ref);
+  const kind = refKind(ref);
+  const copy = clone(made);
+  if (isRecord(baseline[kind]) && baseline[kind].id === id) return { ...baseline, [kind]: copy };
+  if (Array.isArray(baseline.elements)) return { ...baseline, elements: baseline.elements.map((x) => (isRecord(x) && x.id === id ? copy : x)) };
+  return { ...baseline, elements: [...(Array.isArray(baseline.elements) ? baseline.elements : []), copy] };
+}
+
+/** The mapping as it would be after its element changes type, its target and baseline following it. */
+function mappingMoved(mapping: SemanticMapping, from: ElementRef, to: ElementRef, toType: ElementType, made: Record<string, unknown>, name: string, at: number): { change: LogicalChange; word: ElementTypeMappingChange } {
+  const targets = mapping.targets.map((ref) => (refKind(ref) === refKind(from) && refId(ref) === refId(from) ? to : ref));
+  const baseline = baselineWith(baselineWithout(mapping.baseline, from), to, made);
+  // One target at a time: a strategy that makes one element cannot be moved wholesale for several.
+  const nextId = mapping.strategyId && mapping.targets.length === 1 ? strategyForElementType(mapping.strategyId, toType) : undefined;
+  const next = nextId ? strategyById(nextId) : undefined;
+  const before: Record<string, unknown> = {
+    sources: mapping.sources,
+    targets: mapping.targets,
+    strategy: mapping.strategy,
+    strategyId: mapping.strategyId,
+    rationale: mapping.rationale,
+    origin: mapping.origin,
+    baseline: mapping.baseline,
+    made: mapping.made,
+  };
+  if (mapping.converted) before.converted = mapping.converted;
+  const after: Record<string, unknown> = {
+    sources: mapping.sources,
+    targets,
+    strategy: next ? strategyText(next, name) : mapping.strategy,
+    strategyId: next ? next.id : mapping.strategyId,
+    rationale: mapping.rationale,
+    origin: mapping.origin,
+    baseline,
+    made: mapping.made,
+  };
+  if (next && next.id !== mapping.strategyId) after.converted = { ...(mapping.strategyId ? { from: mapping.strategyId } : {}), to: next.id, at };
+  else if (mapping.converted) after.converted = mapping.converted;
+  const change: LogicalChange = { op: 'update', target: { mapping: mapping.id }, before, after };
+  const label = mapping.strategy || mapping.id;
+  if (next) {
+    return {
+      change,
+      word: {
+        mapping: mapping.id,
+        label,
+        ...(mapping.strategyId ? { from: mapping.strategyId } : {}),
+        to: next.id,
+        action: 'follows',
+        note: next.id === mapping.strategyId ? `Its strategy already makes ${elementTypeWords(toType)}; it follows the element.` : `It follows the element with “${next.label}”.`,
+      },
+    };
+  }
+  return {
+    change,
+    word: {
+      mapping: mapping.id,
+      label,
+      ...(mapping.strategyId ? { from: mapping.strategyId } : {}),
+      action: 'review',
+      note: `No strategy in the catalogue does the same for ${elementTypeWords(toType)}; the mapping is kept, and Traceability marks it for review.`,
+    },
+  };
+}
+
+export interface ElementTypePlanInput {
+  model: LogicalModel;
+  /** An entity or a domain. */
+  element: ElementRef;
+  to: ElementType;
+  decisions?: Record<string, string>;
+}
+
+/**
+ * What changing an element's type would do: an entity between an ordinary and a reference entity
+ * (its structure kept), or a domain and an entity either way (a reviewed structural
+ * transformation). The mappings of the element move with it, or are kept for review where no
+ * strategy does the same for the new type. Pure: it reads the LDM and writes nothing.
+ */
+export function elementTypePlan(input: ElementTypePlanInput): ElementTypePreview {
+  const { model, element, to } = input;
+  const at = Date.now();
+  const kind = refKind(element);
+  const entity = kind === 'entity' ? model.entities.find((e) => e.id === refId(element)) : undefined;
+  const domain = kind === 'domain' ? model.domains.find((d) => d.id === refId(element)) : undefined;
+  const fromType: ElementType = kind === 'domain' ? 'domain' : entity ? typeOfEntity(entity) : 'entity';
+  const fromKind: 'entity' | 'domain' = kind === 'domain' ? 'domain' : 'entity';
+  const fromName = elementNameIn(model, element);
+  const words: ElementTypeMappingChange[] = [];
+  const decisions = input.decisions ?? {};
+
+  const finish = (built: Built): ElementTypePreview => ({
+    model: model.id,
+    baseRevision: model.revision,
+    element,
+    from: { type: fromType, kind: fromKind, name: fromName },
+    to: { type: to, kind: built.targetKind === 'domain' ? 'domain' : 'entity', name: built.targetName, ref: built.target },
+    creates: built.creates,
+    modifies: built.modifies,
+    removes: built.removes,
+    keys: built.keys,
+    constraints: built.constraints,
+    decisions: built.decisions,
+    warnings: built.warnings,
+    conflicts: built.conflicts,
+    changes: built.conflicts.length ? [] : built.changes,
+    mappings: words,
+    at,
+  });
+
+  if (!entity && !domain) {
+    const built = empty(element, fromKind, fromName, {});
+    built.conflicts.push(`“${fromName}” is no longer in the logical model.`);
+    return finish(built);
+  }
+  if (to === fromType) {
+    const built = empty(element, fromKind, fromName, {});
+    built.warnings.push(`“${fromName}” already is ${elementTypeWords(to)}: nothing would change.`);
+    return finish(built);
+  }
+
+  if (entity && fromKind === 'entity') {
+    const direct = model.mappings.filter((m) => m.targets.some((ref) => 'entity' in ref && ref.entity === entity.id));
+    if (to === 'domain') {
+      const sources = direct.flatMap((m) => m.sources);
+      const built = entityToDomainCore(model, entity, sources);
+      const part = model.mappings.find((m) => m.targets.some((ref) => ('attribute' in ref && entity.attributes.some((a) => a.id === ref.attribute)) || ('key' in ref && entity.keys.some((k) => k.id === ref.key))));
+      if (part) {
+        const ref = part.targets.find((r) => ('attribute' in r && entity.attributes.some((a) => a.id === r.attribute)) || ('key' in r && entity.keys.some((k) => k.id === r.key)))!;
+        built.conflicts.push(`The mapping “${part.strategy || part.id}” targets “${elementNameIn(model, ref)}”, which a domain does not keep. Change or remove that mapping first.`);
+      }
+      if (!built.conflicts.length) {
+        const added = built.changes.find((c) => c.op === 'add' && c.element.kind === 'domain');
+        const made = added && added.op === 'add' && added.element.kind === 'domain' ? clone(added.element.domain) : {};
+        for (const mapping of direct) {
+          const moved = mappingMoved(mapping, element, built.target, to, made, built.targetName, at);
+          built.changes.push(moved.change);
+          words.push(moved.word);
+        }
+      }
+      return finish(built);
+    }
+    const built = empty(element, 'entity', entity.name, {});
+    const change: LogicalChange = { op: 'update', target: { entity: entity.id }, before: { reference: entity.reference }, after: { reference: to === 'reference' ? true : undefined } };
+    built.changes = [change];
+    built.modifies = [to === 'reference' ? `Entity “${entity.name}” is a reference entity now: its rows are the codes the rest of the model points at.` : `Entity “${entity.name}” is an ordinary entity now, with a key of its own.`];
+    if (to === 'reference') {
+      if (entity.abstract) built.warnings.push(`“${entity.name}” is abstract; a reference entity is a concrete list of codes. Consider removing abstract, or keeping it an entity.`);
+      if (!entity.keys.some((k) => k.kind === 'primary')) built.warnings.push(`“${entity.name}” has no primary key of its own: a reference entity’s code identifies one row.`);
+    }
+    const own = plainOf(model, element) ?? {};
+    const made = { ...own };
+    if (to === 'reference') made.reference = true;
+    else delete made.reference;
+    for (const mapping of direct) {
+      const moved = mappingMoved(mapping, element, element, to, made, entity.name, at);
+      built.changes.push(moved.change);
+      words.push(moved.word);
+    }
+    return finish(built);
+  }
+
+  if (domain) {
+    const direct = model.mappings.filter((m) => m.targets.some((ref) => 'domain' in ref && ref.domain === domain.id));
+    const sources = direct.flatMap((m) => m.sources);
+    const built = domainToEntityCore(model, domain, { reference: to === 'reference', decisions, sources, valuesDecision: to === 'entity' });
+    if (!built.conflicts.length) {
+      const added = built.changes.find((c) => c.op === 'add' && c.element.kind === 'entity');
+      const trimmed = added && added.op === 'add' && added.element.kind === 'entity' ? added.element.entity : undefined;
+      const { attributes: _a, keys: _k, ...made } = trimmed ?? ({} as LogicalEntity);
+      for (const mapping of direct) {
+        const moved = mappingMoved(mapping, element, built.target, to, made, built.targetName, at);
+        built.changes.push(moved.change);
+        words.push(moved.word);
+      }
+    }
+    return finish(built);
+  }
+
+  const built = empty(element, fromKind, fromName, {});
+  built.conflicts.push(`A ${fromKind} can become an entity, a reference entity or a domain.`);
   return finish(built);
 }

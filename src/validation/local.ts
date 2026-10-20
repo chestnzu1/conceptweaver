@@ -1,7 +1,7 @@
 import type { QuickFix } from '../model/quality';
 import type { DlReport } from '../reasoning/contracts';
 import type { ExternalRef, Model } from '../model/types';
-import { qualityFindings, validate, type ValidateOptions } from '../model/validation';
+import { builtInQualityFindings, validate, type ValidateOptions } from '../model/validation';
 import { ValidationError, type CallOptions, type Category, type DataGraph, type Finding, type OntologyRef, type ValidationJob, type ValidationReport, type ValidationService } from './contracts';
 
 /**
@@ -213,6 +213,6 @@ export function createLocalValidationService(host: ValidationHost, run: Runner =
  */
 export function fixOf(model: Model, finding: Finding): QuickFix | undefined {
   if (finding.category !== 'quality' || !finding.fix) return undefined;
-  const again = qualityFindings(model).findings.find((f) => f.id === finding.id);
+  const again = builtInQualityFindings(model).find((f) => f.id === finding.id);
   return again?.fix && again.fix.label === finding.fix.label ? again.fix : undefined;
 }

@@ -20,7 +20,7 @@ const started = performance.now();
 const steps = [
   ['type-check', 'tsc', ['--noEmit']],
   ['lint', 'oxlint', ['--deny-warnings']],
-  ['unit tests', 'vitest', ['run']],
+  ['unit tests', 'vitest', ['run', '--maxWorkers=4']],
   ['build', 'vite', ['build', '--logLevel', 'warn']],
 ];
 for (const [label, name, args] of steps) {

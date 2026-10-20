@@ -1,9 +1,9 @@
-import { LogicalError, type CallOptions, type ElementKind, type ElementRef, type LogicalChange, type LogicalModel, type LogicalModelEditService, type SemanticMapping } from '../logical/contracts';
+import { ELEMENT_TYPES, ELEMENT_TYPE_DESCRIPTIONS, ELEMENT_TYPE_LABELS, LogicalError, elementTypeWords, type CallOptions, type ElementKind, type ElementRef, type ElementType, type LogicalChange, type LogicalModel, type LogicalModelEditService, type SemanticMapping } from '../logical/contracts';
 import type { Model } from '../model/types';
 import { elementOf, newId, removalOf } from '../logical/rules';
-import { strategyById, strategyText, type StrategyEntry } from '../logical/strategies';
-import type { AcceptRequest, ApplySynchronizationRequest, ConversionPreview, ConversionQuery, ImpactAnswer, ImpactJob, ImpactReport, ImpactRequest, MappingEdit, MappingInput, ProposeRequest, ProposalJob, SynchronizeRequest, SynchronizationResult, TraceQuery, TraceResult, TraceabilityReport, TraceabilityService, TransformationResult, TransformationService } from './contracts';
-import { conversionPlan, elementNameIn } from './conversions';
+import { expectedElementTypeOf, strategyById, strategyText, type StrategyEntry } from '../logical/strategies';
+import type { AcceptRequest, ApplySynchronizationRequest, ConversionPreview, ConversionQuery, ElementTypeChangeQuery, ElementTypeChoice, ElementTypePreview, ElementTypeQuery, ImpactAnswer, ImpactJob, ImpactReport, ImpactRequest, MappingEdit, MappingInput, ProposeRequest, ProposalJob, SynchronizeRequest, SynchronizationResult, TraceQuery, TraceResult, TraceabilityReport, TraceabilityService, TransformationResult, TransformationService } from './contracts';
+import { conversionPlan, elementNameIn, elementTypePlan } from './conversions';
 import { baselineFor, impactFor, madeSources, reportFor, synchronizeFor, traceIn } from './impact';
 import { proposalsFor, sourceNow } from './transform';
 
@@ -212,6 +212,16 @@ export interface TraceabilityHost {
 const refKind = (ref: ElementRef): ElementKind => Object.keys(ref)[0] as ElementKind;
 const refKey = (ref: ElementRef): string => `${refKind(ref)}:${Object.values(ref)[0]}`;
 
+/** What an element is, where the Entities workspace edits it: an entity, a reference entity or a domain. */
+const elementTypeOf = (target: LogicalModel, ref: ElementRef): ElementType | undefined => {
+  if ('entity' in ref) {
+    const entity = target.entities.find((e) => e.id === ref.entity);
+    return entity ? (entity.reference === true ? 'reference' : 'entity') : undefined;
+  }
+  if ('domain' in ref && target.domains.some((d) => d.id === ref.domain)) return 'domain';
+  return undefined;
+};
+
 const KIND_WORDS: Record<ElementKind, string> = {
   entity: 'an entity',
   attribute: 'an attribute',
@@ -253,13 +263,31 @@ function sourcesChecked(now: Model, entry: StrategyEntry, iris: string[]): void 
  */
 function targetsChecked(target: LogicalModel, entry: StrategyEntry, refs: ElementRef[], before?: SemanticMapping): void {
   const wrong = refs.find((ref) => refKind(ref) !== entry.target);
-  if (!wrong) return;
-  const name = elementNameIn(target, wrong);
-  const message = `The strategy “${entry.label}” makes ${KIND_WORDS[entry.target]}, but “${name}” is ${KIND_WORDS[refKind(wrong)]}.`;
-  if (before?.targets.some((ref) => refKey(ref) === refKey(wrong))) {
-    throw new LogicalError('conversion-required', `${message} Review the transformation, so the element and the mapping change together.`, [{ code: 'refused', message }]);
+  if (wrong) {
+    const name = elementNameIn(target, wrong);
+    const message = `The strategy “${entry.label}” makes ${KIND_WORDS[entry.target]}, but “${name}” is ${KIND_WORDS[refKind(wrong)]}.`;
+    if (before?.targets.some((ref) => refKey(ref) === refKey(wrong))) {
+      throw new LogicalError('conversion-required', `${message} Review the transformation, so the element and the mapping change together.`, [{ code: 'refused', message }]);
+    }
+    throw new LogicalError('invalid', `${message} Choose a strategy that makes ${KIND_WORDS[refKind(wrong)]}.`, [{ code: 'invalid', message }]);
   }
-  throw new LogicalError('invalid', `${message} Choose a strategy that makes ${KIND_WORDS[refKind(wrong)]}.`, [{ code: 'invalid', message }]);
+  // An entity and a reference entity are the same kind but not the same element type: a strategy
+  // that makes one does not, as it stands, make the other.
+  const expected = expectedElementTypeOf(entry.id);
+  if (!expected || expected === 'domain') return;
+  const mistyped = refs.find((ref) => {
+    if (!('entity' in ref)) return false;
+    const entity = target.entities.find((e) => e.id === ref.entity);
+    return !!entity && (entity.reference === true ? 'reference' : 'entity') !== expected;
+  });
+  if (!mistyped || !('entity' in mistyped)) return;
+  const entity = target.entities.find((e) => e.id === mistyped.entity)!;
+  const actual: ElementType = entity.reference === true ? 'reference' : 'entity';
+  const message = `The strategy “${entry.label}” makes ${elementTypeWords(expected)}, but “${entity.name}” is ${elementTypeWords(actual)}.`;
+  if (before?.targets.some((ref) => refKey(ref) === refKey(mistyped))) {
+    throw new LogicalError('conversion-required', `${message} Choose a strategy that makes ${elementTypeWords(actual)}, or change the element’s type in the Entities workspace.`, [{ code: 'refused', message }]);
+  }
+  throw new LogicalError('invalid', `${message} Choose a strategy that makes ${elementTypeWords(actual)}.`, [{ code: 'invalid', message }]);
 }
 
 export function createLocalTraceabilityService(host: TraceabilityHost, run: ImpactRunner = impactInAWorker): TraceabilityService {
@@ -530,6 +558,58 @@ export function createLocalTraceabilityService(host: TraceabilityHost, run: Impa
         options,
       );
       return { model: applied.model, revision: applied.revision };
+    },
+
+    async elementTypes(query: ElementTypeChangeQuery, options): Promise<ElementTypeChoice[]> {
+      given(options);
+      const { target } = modelIn(query.model);
+      const current = elementTypeOf(target, query.element);
+      if (!current) throw new LogicalError('not-found', 'The logical model has no such entity or domain.');
+      return ELEMENT_TYPES.map((type): ElementTypeChoice => {
+        const words = { type, label: ELEMENT_TYPE_LABELS[type], description: ELEMENT_TYPE_DESCRIPTIONS[type] };
+        if (type === current) return { ...words, available: true };
+        const plan = elementTypePlan({ model: target, element: query.element, to: type });
+        return plan.conflicts.length ? { ...words, available: false, reason: plan.conflicts[0] } : { ...words, available: true };
+      });
+    },
+
+    async previewElementTypeChange(query: ElementTypeQuery, options): Promise<ElementTypePreview> {
+      given(options);
+      const { target } = modelIn(query.model);
+      if (!elementTypeOf(target, query.element)) throw new LogicalError('not-found', 'The logical model has no such entity or domain.');
+      if (!(ELEMENT_TYPES as readonly string[]).includes(query.to)) {
+        throw new LogicalError('invalid', `“${query.to}” is not an element type this editor knows.`, [{ code: 'invalid', message: `“${query.to}” is not an element type this editor knows.` }]);
+      }
+      return elementTypePlan({ model: target, element: query.element, to: query.to, ...(query.decisions ? { decisions: query.decisions } : {}) });
+    },
+
+    async applyElementTypeChange(preview: ElementTypePreview, options): Promise<{ model: string; revision: string; element: ElementRef }> {
+      given(options);
+      const { target } = modelIn(preview.model);
+      if (target.revision !== preview.baseRevision) {
+        throw new LogicalError('stale-revision', `The logical model “${target.name}” has moved on from revision ${preview.baseRevision}; review the change of type again.`);
+      }
+      const current = elementTypeOf(target, preview.element);
+      if (!current) throw new LogicalError('not-found', 'The logical model has no such entity or domain.');
+      if (current !== preview.from.type) {
+        throw new LogicalError('stale-revision', `“${preview.from.name}” has changed type since the change was reviewed; review it again.`);
+      }
+      if (!(ELEMENT_TYPES as readonly string[]).includes(preview.to.type)) {
+        throw new LogicalError('invalid', `“${preview.to.type}” is not an element type this editor knows.`, [{ code: 'invalid', message: `“${preview.to.type}” is not an element type this editor knows.` }]);
+      }
+      const decisions = Object.fromEntries(preview.decisions.map((d) => [d.name, d.chosen]));
+      const fresh = elementTypePlan({ model: target, element: preview.element, to: preview.to.type, decisions });
+      if (fresh.conflicts.length) {
+        throw new LogicalError('refused', fresh.conflicts.join(' '), fresh.conflicts.map((text) => ({ code: 'refused' as const, message: text })));
+      }
+      if (!fresh.changes.length) {
+        throw new LogicalError('refused', 'The change of type would not change the model.', [{ code: 'refused', message: 'The change of type would not change the model.' }]);
+      }
+      const applied = await host.edit.apply(
+        { model: target.id, baseRevision: target.revision, changes: fresh.changes, summary: `Changed “${preview.from.name}” from ${elementTypeWords(preview.from.type)} into ${elementTypeWords(fresh.to.type)}.` },
+        options,
+      );
+      return { model: applied.model, revision: applied.revision, element: fresh.to.ref };
     },
   };
 }

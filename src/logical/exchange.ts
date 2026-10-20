@@ -8,7 +8,8 @@ import { logicalModelFrom } from './rules';
  */
 
 export const LDM_FORMAT = 'conceptweaver-ldm';
-export const LDM_FORMAT_VERSION = 1;
+/** 2: an entity may be a reference entity (LogicalEntity.reference). A reader accepts every earlier version too. */
+export const LDM_FORMAT_VERSION = 2;
 
 /** An LDM written out, readable by people and by any later version of the app. */
 export function exportLogicalModel(m: LogicalModel): string {

@@ -99,6 +99,7 @@ export function logicalModelFrom(v: unknown): LogicalModel | undefined {
       name: str(e.name),
       definition: str(e.definition),
       ...(e.abstract === true ? { abstract: true } : {}),
+      ...(e.reference === true ? { reference: true } : {}),
       attributes: list(e.attributes)
         .filter((a) => str(a.id) && typeFrom(a.type))
         .map((a) => ({ id: str(a.id), name: str(a.name), definition: str(a.definition), type: typeFrom(a.type)!, optional: a.optional !== false, ...(a.derived === true ? { derived: true } : {}) })),
@@ -456,7 +457,7 @@ export function problemsOf(m: LogicalModel): LogicalRefusal[] {
 /** The fields an update may change, for each kind of target: never an id, never what belongs to other elements. */
 const UPDATABLE: Record<string, readonly string[]> = {
   model: ['name', 'description', 'purpose', 'derivation'],
-  entity: ['name', 'definition', 'abstract'],
+  entity: ['name', 'definition', 'abstract', 'reference'],
   attribute: ['name', 'definition', 'type', 'optional', 'derived'],
   key: ['kind', 'name', 'members'],
   relationship: ['name', 'definition', 'ends', 'identifying'],

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, type InputHTMLAttributes } from 'react';
-import { BASE_TYPES, LogicalError, type BaseType, type BusinessRule, type ElementRef, type Generalization, type Key, type KeyMember, type LogicalAttribute, type LogicalChange, type LogicalDomain, type LogicalEntity, type LogicalModel, type LogicalType, type Relationship, type RelationshipEnd } from '../logical/contracts';
+import { BASE_TYPES, ELEMENT_TYPES, ELEMENT_TYPE_DESCRIPTIONS, ELEMENT_TYPE_LABELS, LogicalError, elementTypeWords, type BaseType, type BusinessRule, type ElementRef, type ElementType, type Generalization, type Key, type KeyMember, type LogicalAttribute, type LogicalChange, type LogicalDomain, type LogicalEntity, type LogicalModel, type LogicalType, type Relationship, type RelationshipEnd } from '../logical/contracts';
 import { attributeAdded, attributesOfEntity, diagramChange, domainAdded, endChanged, entityAdded, freeName, generalizationAdded, hasPrimaryKey, inheritedKeysOf, keyAdded, refOfTarget, relationshipAdded, resolveManyToMany, ruleAdded, ruleTargets, typeFromSetting, typeSetting, updatedChange, wouldCycle } from '../logical/edits';
 import { removalOf } from '../logical/rules';
 import { baseText, cardinalityText, memberText, typeText } from '../logical/text';
 import { useStore } from '../model/store';
 import type { LdmViewState } from '../model/state/session';
+import type { ElementTypeChoice, ElementTypePreview } from '../traceability/contracts';
 import { CommitInput, CommitTextarea } from './fields';
 import { LdmDiagram } from './LdmDiagram';
-import { TraceabilityPanel } from './Traceability';
+import { PreviewList, TraceabilityPanel } from './Traceability';
 
 /**
  * The LDM workspace (roadmap LM-2, FR-M17-11 and FR-M17-12): the project's logical data models,
@@ -22,6 +23,20 @@ import { TraceabilityPanel } from './Traceability';
 const isTyping = (el: EventTarget | null) => el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 const said = (e: unknown) => (e instanceof LogicalError || e instanceof Error ? e.message : String(e));
 const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+
+/** What an entity's row says it is: the type is part of how the lists search and filter. */
+const typeWordOf = (e: LogicalEntity) => (e.reference === true ? 'reference entity' : 'entity');
+
+/** Whether the entity list shows an entity, given its search and its type filter. */
+function listedEntity(e: LogicalEntity, search: string, typeFilter: LdmViewState['typeFilter']): boolean {
+  if (typeFilter === 'reference' && e.reference !== true) return false;
+  if (typeFilter === 'entity' && e.reference === true) return false;
+  const text = search.trim().toLowerCase();
+  return !text || `${e.name}\n${e.definition ?? ''}\n${typeWordOf(e)}`.toLowerCase().includes(text);
+}
+
+/** The ref of the entity or domain a type change returns. */
+const refKeyOf = (ref: ElementRef) => `${Object.keys(ref)[0]}:${Object.values(ref)[0]}`;
 
 const SECTIONS: { id: LdmViewState['section']; label: string }[] = [
   { id: 'entities', label: 'Entities' },
@@ -85,8 +100,7 @@ export function LdmView() {
       const m = s.model.logicalModels.find((x) => x.id === s.ldmView.model) ?? s.model.logicalModels[0];
       if (s.view !== 'ldm' || s.dialog || !m || isTyping(e.target)) return;
       if (s.ldmView.section !== 'entities') return;
-      const search = s.ldmView.search.trim().toLowerCase();
-      const listed = m.entities.filter((x) => !search || `${x.name}\n${x.definition}`.toLowerCase().includes(search)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      const listed = m.entities.filter((x) => listedEntity(x, s.ldmView.search, s.ldmView.typeFilter)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       const at = listed.findIndex((x) => x.id === (s.ldmView.entity ?? listed[0]?.id));
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         if (!listed.length) return;
@@ -96,7 +110,7 @@ export function LdmView() {
       } else if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         const made = entityAdded(m);
-        appliedTo(m, [made.change], 'Made an entity', () => s.setLdmView({ section: 'entities', entity: made.id, element: null }));
+        appliedTo(m, [made.change], 'Made an entity', () => s.setLdmView({ section: 'entities', entity: made.id, element: null, typeFilter: 'all' }));
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && at >= 0) {
         e.preventDefault();
         const target = listed[at];
@@ -164,7 +178,7 @@ export function LdmView() {
       </div>
       {view.section === 'entities' && (
         <div className="ldm-body">
-          <EntityList m={model} search={view.search} selected={entity?.id ?? null} set={set} apply={apply} />
+          <EntityList m={model} search={view.search} typeFilter={view.typeFilter} selected={entity?.id ?? null} set={set} apply={apply} />
           {entity ? <EntityEditor m={model} entity={entity} apply={apply} set={set} /> : <p className="muted pad">No entity yet. Make one to begin.</p>}
         </div>
       )}
@@ -177,7 +191,7 @@ export function LdmView() {
       {view.section === 'domains' && (
         <div className="ldm-body">
           <DomainList m={model} selected={domain?.id ?? null} set={set} apply={apply} />
-          {domain ? <DomainEditor m={model} domain={domain} apply={apply} /> : <p className="muted pad">No domain yet. A domain is a base type narrowed by a length, a range, a pattern or a list of values; an enumeration is a domain with its values.</p>}
+          {domain ? <DomainEditor m={model} domain={domain} apply={apply} set={set} /> : <p className="muted pad">No domain yet. A domain is a base type narrowed by a length, a range, a pattern or a list of values; an enumeration is a domain with its values.</p>}
         </div>
       )}
       {view.section === 'rules' && (
@@ -211,16 +225,21 @@ export function LdmView() {
 
 // ---------------------------------------------------------------- entities
 
-function EntityList({ m, search, selected, set, apply }: { m: LogicalModel; search: string; selected: string | null; set: (p: Partial<LdmViewState>) => void; apply: Apply }) {
-  const found = m.entities.filter((e) => !search.trim() || `${e.name}\n${e.definition}`.toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+function EntityList({ m, search, typeFilter, selected, set, apply }: { m: LogicalModel; search: string; typeFilter: LdmViewState['typeFilter']; selected: string | null; set: (p: Partial<LdmViewState>) => void; apply: Apply }) {
+  const found = m.entities.filter((e) => listedEntity(e, search, typeFilter)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const add = () => {
     const made = entityAdded(m);
-    apply([made.change], 'Made an entity', () => set({ section: 'entities', entity: made.id, element: null, search: '' }));
+    apply([made.change], 'Made an entity', () => set({ section: 'entities', entity: made.id, element: null, search: '', typeFilter: 'all' }));
   };
   return (
     <aside className="ldm-list" aria-label="Entities">
       <div className="ldm-list-tools">
         <input type="search" aria-label="Search entities" placeholder="Search entities" value={search} onChange={(e) => set({ search: e.target.value })} onKeyDown={(e) => e.key === 'Escape' && set({ search: '' })} />
+        <select aria-label="Filter entities by element type" title="Show every entity, ordinary entities only, or reference entities only" value={typeFilter} onChange={(e) => set({ typeFilter: e.target.value as LdmViewState['typeFilter'] })}>
+          <option value="all">All element types</option>
+          <option value="entity">Entities</option>
+          <option value="reference">Reference entities</option>
+        </select>
         <button className="btn small primary" title="Make an entity (n)" onClick={add}>
           New entity
         </button>
@@ -232,6 +251,7 @@ function EntityList({ m, search, selected, set, apply }: { m: LogicalModel; sear
             <button className={selected === e.id ? 'on' : ''} onClick={() => set({ entity: e.id, element: null })}>
               <span>{e.name || 'Unnamed entity'}</span>
               <small className="muted">
+                {e.reference === true ? 'Reference entity · ' : ''}
                 {plural(e.attributes.length, 'attribute')} · {hasPrimaryKey(m, e.id) ? 'primary key' : 'no primary key'}
               </small>
             </button>
@@ -239,6 +259,188 @@ function EntityList({ m, search, selected, set, apply }: { m: LogicalModel; sear
         ))}
       </ul>
     </aside>
+  );
+}
+
+/**
+ * The Element Type field of an entity or domain (roadmap 2.12): choosing another type opens a
+ * reviewed preview, and nothing is written until Apply. Between an entity and a reference entity
+ * the structure stays as it is; between an entity and a domain it is a structural transformation,
+ * with the element's mappings moved or kept for review. Choosing a type never saves by itself, and
+ * the ontology is never touched.
+ */
+function ElementTypeField({ m, element, type, onChanged }: { m: LogicalModel; element: ElementRef; type: ElementType; onChanged: (ref: ElementRef) => void }) {
+  const service = () => useStore.getState().traceabilityService;
+  const [choices, setChoices] = useState<ElementTypeChoice[] | null>(null);
+  const [chosen, setChosen] = useState<ElementType>(type);
+  const [preview, setPreview] = useState<ElementTypePreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const at = refKeyOf(element);
+
+  useEffect(() => {
+    let live = true;
+    setChosen(type);
+    setPreview(null);
+    setError('');
+    setChoices(null);
+    void service()
+      .elementTypes({ model: m.id, element })
+      .then((next) => live && setChoices(next))
+      .catch((e) => live && setError(said(e)));
+    return () => {
+      live = false;
+    };
+    // The model's revision decides what is possible as it stands; a preview made before an edit is
+    // no longer the preview of this model.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m.id, m.revision, at, type]);
+
+  const review = async (to: ElementType, decisions: Record<string, string> = {}) => {
+    setPreviewing(true);
+    setError('');
+    try {
+      const next = await service().previewElementTypeChange({ model: m.id, element, to, ...(Object.keys(decisions).length ? { decisions } : {}) });
+      setPreview(next);
+    } catch (e) {
+      setPreview(null);
+      setError(said(e));
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const choose = (value: string) => {
+    const to = value as ElementType;
+    setChosen(to);
+    setPreview(null);
+    setError('');
+    if (to !== type) void review(to);
+  };
+
+  const cancel = () => {
+    setChosen(type);
+    setPreview(null);
+    setError('');
+  };
+
+  const applyChange = async () => {
+    if (!preview) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await service().applyElementTypeChange(preview);
+      useStore.getState().notify(`Changed “${preview.from.name}” into ${elementTypeWords(preview.to.type)}. Undo takes it back.`);
+      setPreview(null);
+      setChosen(preview.to.type);
+      onChanged(result.element);
+    } catch (e) {
+      setError(said(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const choice = choices?.find((c) => c.type === chosen);
+  return (
+    <div className="element-type">
+      <div className="ldm-block-row">
+        <span className="ldm-label">Element type</span>
+        <select aria-label="Element type" value={chosen} onChange={(e) => choose(e.target.value)}>
+          {ELEMENT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {ELEMENT_TYPE_LABELS[t]}
+              {choices?.find((c) => c.type === t)?.available === false ? ' — not as it stands' : ''}
+            </option>
+          ))}
+        </select>
+        <span className="muted small">{ELEMENT_TYPE_DESCRIPTIONS[chosen]}</span>
+      </div>
+      {choice && !choice.available && choice.reason && <p className="ldm-note warn">{choice.reason}</p>}
+      {chosen !== type && !preview && !previewing && <p className="muted small">Nothing is saved until the change is applied below.</p>}
+      {previewing && <p className="muted">Working out what the change would make of the model…</p>}
+      {preview && (
+        <div className="conversion-preview element-type-preview">
+          <h3>Change of element type</h3>
+          <dl className="trace-facts">
+            <dt>Now</dt>
+            <dd>
+              {preview.from.name} — {ELEMENT_TYPE_LABELS[preview.from.type]}
+            </dd>
+            <dt>After</dt>
+            <dd>
+              {preview.to.name} — {ELEMENT_TYPE_LABELS[preview.to.type]}
+            </dd>
+          </dl>
+          <p className="muted small">{ELEMENT_TYPE_DESCRIPTIONS[preview.to.type]}</p>
+          <PreviewList title="Creates" items={preview.creates} />
+          <PreviewList title="Modifies" items={preview.modifies} />
+          <PreviewList title="Removes" items={preview.removes} />
+          <PreviewList title="Keys" items={preview.keys} />
+          <PreviewList title="Constraints" items={preview.constraints} />
+          {preview.decisions.map((d) => (
+            <label className="field" key={d.name}>
+              <span>{d.label}</span>
+              <select
+                value={d.chosen}
+                aria-label={d.label}
+                onChange={(e) => {
+                  const decisions = Object.fromEntries(preview.decisions.map((x) => [x.name, x.name === d.name ? e.target.value : x.chosen]));
+                  void review(preview.to.type, decisions);
+                }}
+              >
+                {d.choices.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          {!!preview.mappings.length && (
+            <>
+              <h4>Mappings</h4>
+              <ul className="ldm-plain-list mapping-follows">
+                {preview.mappings.map((x) => (
+                  <li key={x.mapping}>
+                    <strong>{x.label}</strong> — {x.action === 'follows' ? 'follows' : 'kept, for review'}: {x.note}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!!preview.warnings.length && (
+            <div className="ldm-note">
+              <ul className="ldm-plain-list">
+                {preview.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!preview.conflicts.length && (
+            <div className="conversion-conflicts">
+              <h4>Cannot be applied</h4>
+              <ul className="ldm-plain-list">
+                {preview.conflicts.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="row">
+            <button className="btn primary" disabled={busy || previewing || !preview.changes.length || preview.conflicts.length > 0} onClick={() => void applyChange()}>
+              Apply the change
+            </button>
+            <button className="btn" onClick={cancel}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="ldm-note warn">{error}</p>}
+    </div>
   );
 }
 
@@ -265,6 +467,15 @@ function EntityEditor({ m, entity, apply, set }: { m: LogicalModel; entity: Logi
           Delete entity…
         </button>
       </div>
+      <ElementTypeField
+        m={m}
+        element={{ entity: entity.id }}
+        type={entity.reference === true ? 'reference' : 'entity'}
+        onChanged={(ref) => {
+          if ('entity' in ref) set({ section: 'entities', entity: ref.entity, element: null });
+          else if ('domain' in ref) set({ section: 'domains', domain: ref.domain, entity: null, element: null });
+        }}
+      />
       <label className="field">
         <span>Definition</span>
         <CommitTextarea aria-label="Entity definition" rows={2} value={entity.definition} onCommit={(definition) => update({ definition }, 'Changed an entity’s definition')} />
@@ -745,7 +956,7 @@ function DomainList({ m, selected, set, apply }: { m: LogicalModel; selected: st
   );
 }
 
-function DomainEditor({ m, domain, apply }: { m: LogicalModel; domain: LogicalDomain; apply: Apply }) {
+function DomainEditor({ m, domain, apply, set }: { m: LogicalModel; domain: LogicalDomain; apply: Apply; set: (p: Partial<LdmViewState>) => void }) {
   const update = (after: Record<string, unknown>, summary = 'Changed a domain') => apply([updatedChange({ domain: domain.id }, domain, after)], summary);
   const used = m.entities.flatMap((e) => e.attributes.filter((a) => 'domain' in a.type && a.type.domain === domain.id).map((a) => `${e.name}.${a.name}`));
   return (
@@ -759,6 +970,15 @@ function DomainEditor({ m, domain, apply }: { m: LogicalModel; domain: LogicalDo
           Delete domain…
         </button>
       </div>
+      <ElementTypeField
+        m={m}
+        element={{ domain: domain.id }}
+        type="domain"
+        onChanged={(ref) => {
+          if ('entity' in ref) set({ section: 'entities', entity: ref.entity, element: null });
+          else if ('domain' in ref) set({ section: 'domains', domain: ref.domain, entity: null, element: null });
+        }}
+      />
       <label className="field">
         <span>Definition</span>
         <CommitTextarea aria-label="Domain definition" rows={2} value={domain.definition} onCommit={(definition) => update({ definition })} />

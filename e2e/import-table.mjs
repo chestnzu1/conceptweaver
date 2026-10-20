@@ -1,9 +1,11 @@
 // Drives the built app in a headless browser to check importing a table (roadmap task 2.4,
-// FR-M7-2 to FR-M7-5): a 2,000-row CSV with parent references becomes the hierarchy it says, the
+// FR-M7-2 to FR-M7-6): a 2,000-row CSV with parent references becomes the hierarchy it says, the
 // row whose parent is missing reported with its row number and nothing made of it; the preview
 // before anything is made; one undo for the whole import; an Excel sheet as individuals of a
 // class, with values converted and what cannot be said; a mapping kept as a template and used
-// again; and the same file imported again making nothing, and saying so.
+// again; the same file imported again making nothing, and saying so; and update mode, where the
+// changes to entities the model has are shown before they are applied, and a row that says
+// nothing new is unchanged.
 // Needs the preview server:  pnpm build && pnpm exec vite preview --port 5181
 import { chromium } from 'playwright-core';
 import fs, { globSync } from 'node:fs';
@@ -102,6 +104,36 @@ await page.waitForFunction(() => /already in the model/.test(document.querySelec
 ok((await dialog.getByLabel('What Minutes becomes').inputValue()).endsWith('#runningTime') && (await dialog.getByLabel('What Genre becomes').inputValue()).endsWith('#belongsTo'), 'a template gives the mapping back for the next file');
 ok((await counts()).startsWith('0 to make · 3 already in the model') && (await dialog.getByRole('button', { name: 'Import', exact: true }).isDisabled()), 'and the same file again makes nothing, and says so: ' + (await counts()));
 await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+// ---------------------------------------------------------------- update mode: the same rows, one changed
+fs.writeFileSync(`${tmp}/films-changed.csv`, 'Code,Title,Minutes\nF1,Parasite (2019),130\nF2,Amélie & co,122');
+await open(`${tmp}/films-changed.csv`);
+await dialog.locator('input[type=radio]').nth(1).check();
+await dialog.getByLabel('Class of the individuals').selectOption({ label: 'Film' });
+await dialog.getByLabel('Update what the model has').check();
+await dialog.getByLabel('What Minutes becomes').selectOption({ label: 'Running time' });
+await page.waitForFunction(() => /2 to update/.test(document.querySelector('.import-preview .counts')?.textContent ?? ''));
+ok((await counts()) === '0 to make · 2 to update · 0 unchanged · 0 skipped', 'rows the model has are matched by the IRI their key makes, and the preview says they would change it: ' + (await counts()));
+await dialog.getByRole('button', { name: /^Changed/ }).click();
+const changes = (await dialog.locator('.import-rows tr.import-row').allInnerTexts()).map(flat);
+ok(changes.length === 2 && changes[0].startsWith('2 Parasite (2019)') && changes[0].includes('Name: “Parasite” → “Parasite (2019)”.') && changes[0].includes('Value of “Running time”: “132” → “130”.'), 'every change is shown before it is applied: ' + changes[0]);
+await dialog.getByRole('button', { name: 'Apply 2' }).click();
+await dialog.waitFor({ state: 'detached' });
+const updated = block(await rdf(), ':F1');
+ok(updated.includes('rdfs:label "Parasite (2019)"') && updated.includes(':runningTime "130"^^xsd:integer'), 'the entities the model has are changed, where they are: ' + flat(updated));
+
+// The same file again changes nothing, and says so.
+await open(`${tmp}/films-changed.csv`);
+await dialog.locator('input[type=radio]').nth(1).check();
+await dialog.getByLabel('Class of the individuals').selectOption({ label: 'Film' });
+await dialog.getByLabel('Update what the model has').check();
+await dialog.getByLabel('What Minutes becomes').selectOption({ label: 'Running time' });
+await page.waitForFunction(() => /2 unchanged/.test(document.querySelector('.import-preview .counts')?.textContent ?? ''));
+ok((await counts()) === '0 to make · 0 to update · 2 unchanged · 0 skipped. Nothing to change: the model already says what the file says' && (await dialog.getByRole('button', { name: 'Apply 0' }).isDisabled()), 'the same file again changes nothing, and says so: ' + (await counts()));
+await dialog.getByRole('button', { name: 'Cancel' }).click();
+await page.getByRole('button', { name: 'Undo' }).click();
+const back = block(await rdf(), ':F1');
+ok(back.includes('rdfs:label "Parasite"') && back.includes(':runningTime "132"^^xsd:integer'), 'one undo takes the update back');
 
 console.log('console errors:', errors.length ? errors.slice(0, 3) : 'none');
 await browser.close();

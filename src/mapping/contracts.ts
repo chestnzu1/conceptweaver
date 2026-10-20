@@ -48,34 +48,76 @@ export interface TabularMapping {
   key?: string;
   /** What separates several values in one cell, for the columns that may have several ("; "). None: one value a cell. */
   split?: string;
+  /**
+   * Update mode (FR-M7-6): a row whose IRI the model has already is matched to that entity, and
+   * what its columns say replaces what the entity said about those fields. A row whose IRI the
+   * model does not have is made, as in an ordinary import. Off: such rows are left as they are.
+   */
+  update?: true;
   /** What each column becomes, by its name. */
   columns: Record<string, ColumnUse>;
+}
+
+/** One thing an update would change about an entity, as it was and as the row would leave it. */
+export interface RowChange {
+  /** What is changed: the name, the description, a superclass, an annotation, a value, a link. */
+  what: string;
+  from: string;
+  to: string;
 }
 
 /** What becomes of one row. */
 export interface RowOutcome {
   /** The number its source knows it by. */
   row: number;
-  /** create: it is made. exists: the model has its IRI already, and it is left as it is. skip: nothing is made of it. */
-  status: 'create' | 'exists' | 'skip';
+  /**
+   * create: it is made. update: the model has it, and the row changes it. unchanged: the model has
+   * it and already says what the row says. exists: the model has its IRI, and it is left as it is
+   * (an import that does not update). skip: nothing is made of it.
+   */
+  status: 'create' | 'update' | 'unchanged' | 'exists' | 'skip';
   iri?: string;
   name?: string;
   /** Why it is skipped, or what it is in the model already. */
   reason?: string;
-  /** Values of a row that is made but that are left out, each with why. */
+  /** For an update: each change, in the order they are applied. */
+  changes?: RowChange[];
+  /** Values of a row that is made or changed but that are left out, each with why. */
   notes: string[];
 }
 
 /** Something a row refers to: another row of the table, by its index, or an entity, by its IRI. */
 export type Reference = { row: number } | { iri: string };
 
-/** An entity a row makes, with what it says, ready to be added. */
+/** What an update replaces with what the columns say. The rest of the entity is left alone. */
+export interface Replaced {
+  /** The description, with its language. */
+  description?: true;
+  /** The synonyms in the column's language (the model's own, or the language given). */
+  synonyms?: true;
+  /** Annotation properties: every field of each is replaced by what the file says. */
+  annotations: string[];
+  /** Data properties, by IRI: every value of each is replaced. */
+  values: string[];
+  /** Object properties, by IRI: every link by each is replaced. */
+  links: string[];
+  /** Superclasses (for a class) or classes (for an individual). */
+  parents?: true;
+}
+
+/** An entity a row makes, with what it says, ready to be added; or the entity it updates. */
 export interface PlannedEntity {
   /** Index of its row in the table. */
   index: number;
   iri: string;
   name: string;
   kind: RowKind;
+  /** For an update: the id of the term it changes. Absent: the entity is made. */
+  target?: string;
+  /** For an update: set the name to the row's. Absent or true for an entity that is made. */
+  setName?: boolean;
+  /** For an update: what the row replaces; what it does not say stays as it was. */
+  replace?: Replaced;
   /** Superclasses (for a class) or classes (for an individual). */
   parents: Reference[];
   description?: { value: string; lang?: string };
@@ -86,9 +128,9 @@ export interface PlannedEntity {
   links: { property: string; to: Reference }[];
 }
 
-/** What an import would do: row by row, and the entities it would make. */
+/** What an import would do: row by row, and the entities it would make and change. */
 export interface Plan {
   rows: RowOutcome[];
   entities: PlannedEntity[];
-  counts: { create: number; exists: number; skip: number; notes: number };
+  counts: { create: number; update: number; unchanged: number; exists: number; skip: number; notes: number };
 }

@@ -1,7 +1,7 @@
 import type { Model } from '../model/types';
 import type { BaseType, ElementRef, LogicalChange, LogicalEntity, LogicalModel, LogicalType, MappingSource, Relationship, SemanticMapping, TransformationConfig } from '../logical/contracts';
 import { elementOf, newId, removalOf } from '../logical/rules';
-import { expectedKindOf } from '../logical/strategies';
+import { expectedElementTypeOf, expectedKindOf } from '../logical/strategies';
 import type { Coverage, ImpactItem, ImpactKind, ImpactReport, MappingChange, MappingDescription, MappingStatus, ProposalSource, SynchronizationProposal, SynchronizationResult, TargetDescription, TraceResult } from './contracts';
 import { enumIriOf, hierarchyFor, nameFor, propIriOf, proposalsFor, scopeClasses, sourceAxiomsOf, sourceNow, termIri, typeForDataProperty } from './transform';
 
@@ -135,7 +135,7 @@ function baselineWith(baseline: Record<string, unknown>, ref: ElementRef, made: 
  */
 function customisedAgainst(baseline: Record<string, unknown>, plain: Record<string, unknown>, ref: ElementRef): boolean {
   if (refKind(ref) !== 'entity') return stable(baseline) !== stable(plain);
-  return ['id', 'name', 'definition', 'abstract'].some((field) => stable(baseline[field] ?? null) !== stable(plain[field] ?? null));
+  return ['id', 'name', 'definition', 'abstract', 'reference'].some((field) => stable(baseline[field] ?? null) !== stable(plain[field] ?? null));
 }
 
 // ---------------------------------------------------------------- the ontology as it is
@@ -244,7 +244,14 @@ function statusOf(mapping: SemanticMapping, options: StateOptions, reader: Reade
   // kind, the mapping contradicts the model it is in: the structure was changed without the
   // strategy, or the strategy without the structure. Only an explicit conversion reconciles them.
   const expected = expectedKindOf(mapping.strategyId);
-  const mismatched = !!expected && mapping.targets.some((ref) => refKind(ref) !== expected);
+  const expectedType = expectedElementTypeOf(mapping.strategyId);
+  const mismatched = !!expected && mapping.targets.some((ref) => {
+    if (refKind(ref) !== expected) return true;
+    // An entity and a reference entity share a kind: the strategy still says which of the two it makes.
+    if (expectedType !== 'entity' && expectedType !== 'reference') return false;
+    const entity = 'entity' in ref ? options.target.entities.find((e) => e.id === ref.entity) : undefined;
+    return !!entity && (entity.reference === true ? 'reference' : 'entity') !== expectedType;
+  });
   const status: MappingStatus = broken ? 'broken' : mismatched ? 'mismatched' : stale ? 'stale' : 'current';
   return { status, changes, targets, customised };
 }

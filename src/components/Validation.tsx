@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { download } from '../model/files';
 import { objectProperties } from '../model/props';
-import { QUALITY_RULES, ruleEnabled, setRule, type RuleGroup } from '../model/quality';
+import { QUALITY_RULES, removeCustomRule, ruleEnabled, setCustomRule, setRule, type RuleGroup } from '../model/quality';
 import { currentData, currentShapeSet, dataOf, graphsHere, keepGraphText, readDataGraph } from '../model/dataGraphs';
 import { fileText, FORMAT_LABEL, ONTOLOGY_FILES, type DocumentFormat } from '../model/rdfFormats';
 import { useReasoning, WORKING } from './reasoning';
@@ -11,6 +11,7 @@ import { creditOf, DL_REASONERS, ENGINES, reasonerHealth, type DlReasonerChoice,
 import { MODEL_DATA, type Category, type EntityType, type Finding, type JustifiedEntity, type Level, type Scope } from '../validation/contracts';
 import { ldmProblems, type LdmProblem } from '../logical/findings';
 import { fixOf } from '../validation/local';
+import { uid, type CustomRule } from '../model/types';
 import { categoryLabel, DL_LIMITS, REASONER_LIMITS, reportJson, reportTurtle, SHACL_ENGINE } from '../validation/report';
 import { CommitInput } from './fields';
 import { Disclosure } from './Icon';
@@ -1036,11 +1037,31 @@ function DataGraphs({ chooseFile }: { chooseFile: (id: string | null) => void })
 
 const GROUPS: RuleGroup[] = ['Documentation', 'Structure', 'IRIs and namespaces', 'Modelling practice', 'Enumerations', 'Governance', 'SKOS integrity'];
 
+/** A query to start a rule of one's own with: every class that has no definition. */
+const EXAMPLE_RULE = `SELECT ?entity ?message
+WHERE {
+  ?entity a owl:Class .
+  FILTER NOT EXISTS { ?entity skos:definition ?definition }
+  BIND(CONCAT("The class ", STR(?entity), " has no definition.") AS ?message)
+}`;
+
 function Rules() {
   const quality = useStore((s) => s.model.quality);
   const st = useStore.getState;
+  const [draft, setDraft] = useState<CustomRule | null>(null);
   const set = (id: string, on: boolean) => st().apply((m) => ({ ...m, quality: setRule(m.quality, id, on) }));
   const changed = quality.off.length + quality.on.length;
+  const editing = draft ? quality.rules.some((r) => r.id === draft.id) : false;
+  const save = () => {
+    if (!draft || !draft.query.trim()) return;
+    const rule: CustomRule = { ...draft, name: draft.name.trim() || 'A rule of your own', query: draft.query.trim() };
+    st().apply((m) => ({ ...m, quality: setCustomRule(m.quality, rule) }));
+    setDraft(null);
+  };
+  const remove = (rule: CustomRule) => {
+    st().apply((m) => ({ ...m, quality: removeCustomRule(m.quality, rule.id) }));
+    if (draft?.id === rule.id) setDraft(null);
+  };
   return (
     <div className="rules">
       <p className="muted">
@@ -1048,7 +1069,7 @@ function Rules() {
         {changed > 0 && (
           <>
             {' '}
-            <button className="link" onClick={() => st().apply((m) => ({ ...m, quality: { off: [], on: [] } }))}>
+            <button className="link" onClick={() => st().apply((m) => ({ ...m, quality: { off: [], on: [], rules: m.quality.rules } }))}>
               Back to the defaults
             </button>
           </>
@@ -1069,6 +1090,71 @@ function Rules() {
           ))}
         </fieldset>
       ))}
+      <fieldset className="custom-rules">
+        <legend>Your own rules</legend>
+        <p className="muted">
+          A rule is a SPARQL <code>SELECT</code> query over the ontology’s RDF. Each row it returns is a result: <code>?entity</code> is the IRI of the entity it is about, and <code>?message</code> what to say about it. The rule appears in the results with the severity you give it, and is switched on and off like the built-in rules.
+        </p>
+        {quality.rules.map((r) => (
+          <div className="custom-rule" key={r.id}>
+            <label className="check rule">
+              <input type="checkbox" checked={r.enabled} onChange={(e) => set(`custom:${r.id}`, e.target.checked)} />
+              <span>
+                <strong>{r.name}</strong> <span className={'sev ' + r.severity}>{SEVERITY_LABEL[r.severity].toLowerCase()}</span>
+                {!r.enabled && <span className="tag auto">off</span>}
+                <small>
+                  <code>{r.query}</code>
+                </small>
+              </span>
+            </label>
+            <div className="row">
+              <button className="link" onClick={() => setDraft(r)}>
+                Edit
+              </button>
+              <button className="link" onClick={() => remove(r)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+        {!quality.rules.length && !draft && <p className="muted">No rules of your own yet.</p>}
+        {draft ? (
+          <div className="custom-rule-editor">
+            <div className="row wrap">
+              <label className="field">
+                <span>Name</span>
+                <input aria-label="Name of the rule" autoFocus value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+              </label>
+              <label className="field">
+                <span>Severity</span>
+                <select aria-label="Severity of the rule" value={draft.severity} onChange={(e) => setDraft({ ...draft, severity: e.target.value as CustomRule['severity'] })}>
+                  {(Object.keys(SEVERITY_LABEL) as Level[]).map((s) => (
+                    <option key={s} value={s}>
+                      {SEVERITY_LABEL[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="field">
+              <span>Query</span>
+              <textarea aria-label="SPARQL query of the rule" value={draft.query} onChange={(e) => setDraft({ ...draft, query: e.target.value })} spellCheck={false} rows={8} />
+            </label>
+            <div className="row">
+              <button className="btn small primary" disabled={!draft.query.trim()} onClick={save}>
+                {editing ? 'Save the rule' : 'Add the rule'}
+              </button>
+              <button className="btn small" onClick={() => setDraft(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn small" onClick={() => setDraft({ id: `rule-${uid()}`, name: '', query: EXAMPLE_RULE, severity: 'warning', enabled: true })}>
+            Add a rule
+          </button>
+        )}
+      </fieldset>
     </div>
   );
 }

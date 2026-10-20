@@ -58,7 +58,7 @@ describe('the plan of an import', () => {
     const table = csv(lines.join('\n'));
     const mapping: TabularMapping = { rows: 'class', iri: 'http://example.org/f#{Code}', columns: { Label: { as: 'name' }, Parent: { as: 'parent' } } };
     const plan = planImport(base(), table, mapping);
-    expect(plan.counts).toEqual({ create: 2000, exists: 0, skip: 1, notes: 0 });
+    expect(plan.counts).toEqual({ create: 2000, update: 0, unchanged: 0, exists: 0, skip: 1, notes: 0 });
     expect(plan.rows[2000]).toMatchObject({ row: 2002, status: 'skip', reason: 'its Parent, “C9999”, is neither a row of the table nor a class of the model' });
     const { model } = applyPlan(base(), plan);
     expect(model.terms).toHaveLength(2000);
@@ -139,5 +139,86 @@ describe('the plan of an import', () => {
     const ms = performance.now() - t0;
     expect(plan.counts.create).toBe(20000);
     expect(ms).toBeLessThan(1000);
+  });
+});
+
+describe('update mode', () => {
+  it('changes only what a matched row says differently, shows every change, and makes a row the model does not have', () => {
+    const m = withIris(sampleModel());
+    const film = m.terms.find((t) => t.name === 'Film')!;
+    const release = m.terms.find((t) => t.name === 'Release date')!;
+    const running = m.terms.find((t) => t.name === 'Running time')!;
+    const wins = m.props.find((p) => p.name === 'wins')!;
+    const mapping: TabularMapping = {
+      rows: 'individual',
+      classIri: film.iri,
+      // The key column makes the IRI, so a row whose title changes is still the same entity.
+      iri: 'http://example.org/film-knowledge-graph#{ID}',
+      key: 'ID',
+      update: true,
+      columns: {
+        Title: { as: 'name' },
+        Released: { as: 'value', property: release.iri! },
+        Minutes: { as: 'value', property: running.iri! },
+        Won: { as: 'link', property: wins.iri! },
+        Note: { as: 'annotation', property: 'skos:note', lang: 'en' },
+      },
+    };
+    const first = csv('ID;Title;Released;Minutes;Won;Note\nf9;Alien;1979-05-25;117;;Sci-fi horror\nf10;Heat;1995-12-13;170;;Crime');
+    const once = applyPlan(m, planImport(m, first, mapping)).model;
+    const alien = once.terms.find((t) => t.name === 'Alien')!;
+    const at = { x: alien.x, y: alien.y };
+
+    // The same rows, with one name, one date and one number changed, a link added, and a row the model does not have.
+    const next = csv('ID;Title;Released;Minutes;Won;Note\nf9;Alien 3;;116;f10;Sci-fi horror\nf10;Heat;1995-12-13;170;;Crime\nf11;Up;2009-05-29;96;;Animated');
+    const plan = planImport(once, next, mapping);
+    expect(plan.counts).toMatchObject({ create: 1, update: 1, unchanged: 1, exists: 0, skip: 0 });
+    expect(plan.rows[0]).toMatchObject({
+      status: 'update',
+      changes: [
+        { what: 'Name', from: '“Alien”', to: '“Alien 3”' },
+        { what: 'Value of “Release date”', from: '“1979-05-25”', to: 'none' },
+        { what: 'Value of “Running time”', from: '“117”', to: '“116”' },
+        { what: 'Link by “wins”', from: 'none', to: '“Heat”' },
+      ],
+    });
+    expect(plan.rows[1]).toMatchObject({ status: 'unchanged' });
+    expect(plan.rows[2]).toMatchObject({ status: 'create' });
+
+    const applied = applyPlan(once, plan);
+    expect(applied.updated).toEqual([alien.id]);
+    expect(applied.terms).toHaveLength(1);
+    const after = applied.model;
+    const renamed = after.terms.find((t) => t.id === alien.id)!;
+    expect(renamed.name).toBe('Alien 3');
+    expect(renamed).toMatchObject(at);
+    expect(renamed.values).toEqual([{ prop: running.id, value: '116' }]);
+    expect(renamed.fields).toEqual([{ key: 'skos:note', value: 'Sci-fi horror', lang: 'en' }]);
+    const heat = after.terms.find((t) => t.name === 'Heat')!;
+    expect(after.relations.some((r) => r.from === alien.id && r.to === heat.id && r.prop === wins.id)).toBe(true);
+    // What no column speaks for is left as it was.
+    expect(after.terms.find((t) => t.name === 'Heat')).toBe(once.terms.find((t) => t.name === 'Heat'));
+
+    // The same file again changes nothing, and says so.
+    const again = planImport(after, next, mapping);
+    expect(again.counts).toMatchObject({ create: 0, update: 0, unchanged: 3, skip: 0 });
+    expect(again.rows.every((r) => r.status === 'unchanged')).toBe(true);
+    expect(applyPlan(after, again).model).toBe(after);
+  });
+
+  it('matches by the IRI a column gives, leaves the name when the name column is empty, and keeps what no column speaks for', () => {
+    const m: Model = withIris({ ...base(), terms: [newTerm({ name: 'Thing', iri: 'http://example.org/f/thing/T1', description: 'Old' })] });
+    const table = csv('IRI;Label;Note\nhttp://example.org/f/thing/T1;;New note\nhttp://example.org/f/thing/T2;Other;Other note');
+    const mapping: TabularMapping = { rows: 'class', iri: '{IRI}', update: true, columns: { Label: { as: 'name' }, Note: { as: 'annotation', property: 'skos:note' } } };
+    const plan = planImport(m, table, mapping);
+    expect(plan.rows[0]).toMatchObject({ status: 'update', name: 'Thing', changes: [{ what: 'Annotation skos:note', from: 'none', to: '“New note”' }] });
+    expect(plan.rows[0].notes).toEqual(['it has no Label: its name is left as it is']);
+    expect(plan.rows[1]).toMatchObject({ status: 'create', name: 'Other' });
+    const { model } = applyPlan(m, plan);
+    const thing = model.terms.find((t) => t.iri === 'http://example.org/f/thing/T1')!;
+    expect(thing.name).toBe('Thing');
+    expect(thing.description).toBe('Old');
+    expect(thing.fields).toEqual([{ key: 'skos:note', value: 'New note' }]);
+    expect(model.terms.find((t) => t.iri === 'http://example.org/f/thing/T2')!.name).toBe('Other');
   });
 });

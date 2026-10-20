@@ -5,6 +5,9 @@
 // It needs Java 11 or later, with its compiler (a JDK). The first start fetches the libraries
 // (the OWL API, HermiT and the explanation library, as the one file the ROBOT project publishes
 // them in) and compiles ReasonerService.java; after that it starts at once.
+//
+// Set CONCEPTWEAVER_COMPANION_JAR to the jar built in companion/ to start the Spring Boot
+// companion instead, with the same arguments; that build needs Java 21 and fetches nothing.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -23,6 +26,17 @@ export const LIBRARY = {
 };
 export const DEFAULT_PORT = 5190;
 
+/**
+ * When set, the Spring Boot companion built in `companion/` is started in place of the single-file
+ * service: the same endpoints, the same arguments. This is how roadmap task 3.2's parity is
+ * checked: the existing suites run unchanged against the companion, built with the profile that
+ * carries the same library versions they expect.
+ */
+const companionJar = () => process.env.CONCEPTWEAVER_COMPANION_JAR && path.resolve(process.env.CONCEPTWEAVER_COMPANION_JAR);
+
+/** The java to run: the one in JAVA_HOME when it is set, as the companion needs a JDK 21, and PATH otherwise. */
+const javaBin = () => (process.env.JAVA_HOME && fs.existsSync(path.join(process.env.JAVA_HOME, 'bin', 'java')) ? path.join(process.env.JAVA_HOME, 'bin', 'java') : 'java');
+
 const sha256 = (file) => new Promise((resolve, reject) => {
   const hash = createHash('sha256');
   fs.createReadStream(file).on('data', (d) => hash.update(d)).on('end', () => resolve(hash.digest('hex'))).on('error', reject);
@@ -30,9 +44,15 @@ const sha256 = (file) => new Promise((resolve, reject) => {
 
 /** What stands in the way of running the service on this machine, in words; nothing when it can run. */
 export function javaProblem() {
-  const java = spawnSync('java', ['-version'], { encoding: 'utf8' });
+  const java = spawnSync(javaBin(), ['-version'], { encoding: 'utf8' });
   if (java.error || java.status !== 0) return 'Java was not found. The OWL 2 DL reasoner (HermiT) is a Java program: install a JDK, version 11 or later.';
   const major = Number(/version "(\d+)/.exec(java.stderr + java.stdout)?.[1] ?? 0);
+  if (companionJar()) {
+    // The companion is built for Java 21; its jar does not run on the older java that may be on PATH.
+    if (!major || major < 21) return `Java ${major || 'of an unknown version'} was found; the companion reasoning service needs Java 21 or later. Point JAVA_HOME at a JDK 21.`;
+    if (!fs.existsSync(companionJar())) return `The companion service is not built: ${path.relative(process.cwd(), companionJar())} is not there. Build it with “./mvnw package” in companion/, or unset CONCEPTWEAVER_COMPANION_JAR to use the single-file service.`;
+    return undefined;
+  }
   if (major && major < 11) return `Java ${major} was found; the reasoning service needs Java 11 or later.`;
   const compiled = fs.existsSync(path.join(BUILD, 'ReasonerService.class')) && fs.statSync(path.join(BUILD, 'ReasonerService.class')).mtimeMs >= fs.statSync(SOURCE).mtimeMs;
   if (!compiled && spawnSync('javac', ['-version'], { encoding: 'utf8' }).error) return 'The Java compiler (javac) was not found. Install a JDK, not only a Java runtime: the service is compiled on its first start.';
@@ -41,6 +61,7 @@ export function javaProblem() {
 
 /** Why the service cannot be started here without fetching anything, in words; nothing when it can. For tests, which do not go to the network. */
 export function unavailable() {
+  if (companionJar()) return javaProblem();
   return javaProblem() ?? (fs.existsSync(LIBRARY.file) ? undefined : `The reasoner's libraries are not there yet (${path.relative(process.cwd(), LIBRARY.file)}). Start the service once with “pnpm reasoner” to fetch them.`);
 }
 
@@ -48,6 +69,7 @@ export function unavailable() {
 export async function prepare(log = console.log) {
   const problem = javaProblem();
   if (problem) throw new Error(problem);
+  if (companionJar()) return; // The jar is already built; there is nothing to fetch or compile.
   if (!fs.existsSync(LIBRARY.file)) {
     log(`Fetching the reasoner's libraries (about 90 MB, once): ${LIBRARY.url}`);
     fs.mkdirSync(path.dirname(LIBRARY.file), { recursive: true });
@@ -77,7 +99,10 @@ export async function startReasoner({ port = DEFAULT_PORT, host = '127.0.0.1', a
   // Something already at that address would answer in place of the service started here, and never be stopped by it.
   const there = await fetch(`http://${host}:${port}/health`).then((r) => r.json()).catch(() => undefined);
   if (there) throw new Error(there.service === 'conceptweaver-reasoner' ? `The reasoning service is already running at http://${host}:${port}.` : `Port ${port} is in use by something else. Start the service on another: --port=<number>.`);
-  const child = spawn('java', ['-Xmx2g', '-Djava.net.preferIPv4Stack=true', ...javaOptions, '-cp', [BUILD, LIBRARY.file].join(path.delimiter), 'ReasonerService', `--port=${port}`, `--host=${host}`, ...allowOrigins.map((o) => `--allow-origin=${o}`), ...(allowLocalAi ? ['--allow-local-ai'] : [])], { stdio: ['ignore', quiet ? 'ignore' : 'inherit', quiet ? 'ignore' : 'inherit'] });
+  const jar = companionJar();
+  const child = jar
+    ? spawn(javaBin(), ['-Xmx2g', '-Djava.net.preferIPv4Stack=true', ...javaOptions, '-jar', jar, `--port=${port}`, `--host=${host}`, ...allowOrigins.map((o) => `--allow-origin=${o}`)], { stdio: ['ignore', quiet ? 'ignore' : 'inherit', quiet ? 'ignore' : 'inherit'] })
+    : spawn('java', ['-Xmx2g', '-Djava.net.preferIPv4Stack=true', ...javaOptions, '-cp', [BUILD, LIBRARY.file].join(path.delimiter), 'ReasonerService', `--port=${port}`, `--host=${host}`, ...allowOrigins.map((o) => `--allow-origin=${o}`), ...(allowLocalAi ? ['--allow-local-ai'] : [])], { stdio: ['ignore', quiet ? 'ignore' : 'inherit', quiet ? 'ignore' : 'inherit'] });
   const url = `http://${host}:${port}`;
   let exited;
   child.on('exit', (code) => (exited = code ?? 1));

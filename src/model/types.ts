@@ -1,4 +1,4 @@
-import { noLayout, normalizeLayout, type GraphLayout } from '../layout/types';
+import { noLayout, normalizeLayout, type GraphLayout, type Places } from '../layout/types';
 import { noStyle, normalizeGraphStyle, type GraphStyle } from './graphStyle';
 import { classExpressionAxiomFrom, classExpressionFrom, dataRangeFrom, expressionOfTurtle, rangeOfKey, WELL_KNOWN, type ClassAxiom, type ClassAxiomKind, type ClassExpression, type ClassExpressionAxiom, type DataRangeAxiom } from './expressions';
 import { statementsOf } from './unmapped';
@@ -459,9 +459,38 @@ export interface Prefix {
  * declared. 8 (from 2026-10-17): property chains (`ObjProp.chains`), keys, disjoint unions and
  * negative assertions (`Term.keys`, `Term.disjointUnions`, `Term.negativeAssertions`), and
  * annotations on axioms (`axiomAnnotations`), where they were kept as Turtle text in `unmapped`.
+ * 9 (from 2026-10-18): several diagrams of the ontology (`diagrams`, `diagram`), each with its own
+ * contents, positions, style and layout; an earlier model has one diagram, drawn as it was.
+ * 10 (from 2026-10-18): quality rules of the user's own, written as SPARQL (`QualityConfig.rules`),
+ * where there were only the built-in ones; an earlier model has none.
+ * 11 (from 2026-10-20): a logical model's entities may be reference entities (`LogicalEntity.reference`),
+ * whose rows are the codes other elements point at; an entity of an earlier LDM is an ordinary entity.
  * A model of an earlier version is read and brought up to date by normalizeModel.
  */
-export const MODEL_VERSION = 8;
+export const MODEL_VERSION = 11;
+
+/**
+ * One diagram of an ontology: a picture of some of its terms, with where they sit and how they
+ * are drawn (FR-M5-7). Which terms it leaves out is `hidden`: every term is in every diagram
+ * until a diagram leaves it out, so a term made later is in each of them, and a term left out of
+ * one is still in the ontology and in the others.
+ */
+export interface Diagram {
+  id: string;
+  name: string;
+  /** The terms this diagram leaves out, by id. Empty: it shows every term of the model. */
+  hidden: string[];
+  /** Where its terms sit, by id. The diagram on the canvas keeps them on the terms themselves (Term.x/y); the others here. */
+  positions: Places;
+  style: GraphStyle;
+  layout: GraphLayout;
+}
+
+/** The id of the one diagram a model of an earlier format is given. */
+export const FIRST_DIAGRAM = 'diagram-1';
+
+/** The diagram a model starts with: everything in it, arranged as emptyModel arranges it. */
+export const firstDiagram = (): Diagram => ({ id: FIRST_DIAGRAM, name: 'Diagram 1', hidden: [], positions: {}, style: noStyle(), layout: noLayout() });
 
 export interface Model {
   format: 'conceptweaver';
@@ -517,6 +546,15 @@ export interface Model {
   style: GraphStyle;
   /** How the graph is arranged: which layout and its settings. Like the style, no part of the ontology and never written to RDF. */
   layout: GraphLayout;
+  /**
+   * The diagrams of the ontology: pictures of it, each with its own contents, arrangement and
+   * style (FR-M5-7). One is always there. `diagram` names the one on the canvas, whose positions,
+   * style and layout are the model's own (Term.x/y, `style`, `layout`); the snapshots here are
+   * brought up to date when the canvas switches to another diagram.
+   */
+  diagrams: Diagram[];
+  /** The id of the diagram on the canvas: the one drawn, and the one its edits change. */
+  diagram: string;
   /** The enumerated datatypes of the model: datatypes defined by listing their values. */
   datatypes: EnumDatatype[];
   /**
@@ -578,6 +616,8 @@ export const MODEL_PARTS: Record<keyof Model, 'revision' | 'picture' | 'logical'
   unmapped: 'revision',
   style: 'picture',
   layout: 'picture',
+  diagrams: 'picture',
+  diagram: 'picture',
   logicalModels: 'logical',
 };
 
@@ -687,10 +727,26 @@ export interface MappingMeta {
   status: (typeof MAPPING_STATUS)[number];
 }
 
-/** Which quality rules the user switched off, and which of the ones that are off by default they switched on. */
+/**
+ * A quality rule of the user's own, written as SPARQL (FR-M4-7): a SELECT query over the model's
+ * RDF that returns one row per problem, with `?entity` the IRI of the entity it is about and
+ * `?message` what to say about it. It is one of the quality rules, with its own severity, and is
+ * switched on and off like the built-in ones.
+ */
+export interface CustomRule {
+  id: string;
+  /** What the rule is called in the results table. */
+  name: string;
+  query: string;
+  severity: 'error' | 'warning' | 'info';
+  enabled: boolean;
+}
+
+/** Which quality rules the user switched off, which of the ones that are off by default they switched on, and their own SPARQL rules. */
 export interface QualityConfig {
   off: string[];
   on: string[];
+  rules: CustomRule[];
 }
 
 /**
@@ -706,7 +762,7 @@ export function uid(): string {
 }
 
 export function emptyModel(name = 'Untitled model'): Model {
-  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], annProps: [], terms: [], relations: [], shapeSets: [], dataGraphs: [], quality: { off: [], on: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), datatypes: [], logicalModels: [] };
+  return { format: 'conceptweaver', version: MODEL_VERSION, name, description: '', baseIri: '', ontologyIri: '', prefixes: [], mode: 'ontology', lang: '', vocab: { enabled: false, map: {} }, props: [], annProps: [], terms: [], relations: [], shapeSets: [], dataGraphs: [], quality: { off: [], on: [], rules: [] }, externals: [], mappings: [], rejected: [], governance: { custom: [], overrides: {} }, style: noStyle(), layout: noLayout(), diagrams: [firstDiagram()], diagram: FIRST_DIAGRAM, datatypes: [], logicalModels: [] };
 }
 
 export function newTerm(p: Partial<Term> = {}): Term {
@@ -823,6 +879,76 @@ const langs = (x: Record<string, unknown>): { nameLang?: string; descriptionLang
   ...(typeof x.descriptionLang === 'string' && (x.descriptionLang === '' || LANG.test(x.descriptionLang)) ? { descriptionLang: x.descriptionLang.toLowerCase() } : {}),
 });
 const describedBy = (v: unknown): { describedBy?: DescriptionProperty } => ((DESCRIPTION_PROPERTIES as readonly string[]).includes(v as string) ? { describedBy: v as DescriptionProperty } : {});
+
+/**
+ * The diagrams of a model from untrusted JSON: each with the terms that still exist. A model of
+ * an earlier format gets one diagram, drawn as the model was. The diagram on the canvas is drawn
+ * by the model's own fields (Term.x/y, `style`, `layout`), whatever its snapshot here says: its
+ * snapshot is brought up to date when the canvas switches to another diagram, not here.
+ */
+function normalizeDiagrams(
+  raw: unknown,
+  wanted: unknown,
+  terms: Term[],
+  relIds: Set<string>,
+  style: GraphStyle,
+  layout: GraphLayout,
+): { diagrams: Diagram[]; diagram: string } {
+  const termIds = new Set(terms.map((t) => t.id));
+  const diagrams: Diagram[] = [];
+  for (const d of (Array.isArray(raw) ? raw : []) as Record<string, unknown>[]) {
+    if (!d || typeof d !== 'object') continue;
+    const id = str(d.id);
+    if (!id || diagrams.some((x) => x.id === id)) continue;
+    const positions: Places = {};
+    if (d.positions && typeof d.positions === 'object') {
+      for (const [term, p] of Object.entries(d.positions as Record<string, { x?: unknown; y?: unknown } | null>)) {
+        if (termIds.has(term) && p && typeof p === 'object' && typeof p.x === 'number' && Number.isFinite(p.x) && typeof p.y === 'number' && Number.isFinite(p.y)) positions[term] = { x: p.x, y: p.y };
+      }
+    }
+    diagrams.push({
+      id,
+      name: str(d.name).trim() || `Diagram ${diagrams.length + 1}`,
+      hidden: [...new Set((Array.isArray(d.hidden) ? d.hidden : []).map((x) => str(x)).filter((x) => termIds.has(x)))],
+      positions,
+      style: normalizeGraphStyle(d.style, termIds, relIds),
+      layout: normalizeLayout(d.layout, termIds),
+    });
+  }
+  if (!diagrams.length) diagrams.push({ id: FIRST_DIAGRAM, name: 'Diagram 1', hidden: [], positions: {}, style, layout });
+  const active = diagrams.find((d) => d.id === str(wanted)) ?? diagrams[0];
+  return { diagrams, diagram: active.id };
+}
+
+/**
+ * The quality settings: the built-in rules switched off or on, and the rules of the user's own.
+ * A rule without a query is not one and is left out; one without an id is given one from its
+ * place in the list, so that the same file always reads the same way.
+ */
+function normalizeQuality(raw: unknown): QualityConfig {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Partial<QualityConfig>;
+  const off = Array.isArray(o.off) ? [...new Set(o.off.map((x) => str(x)).filter(Boolean))] : [];
+  const on = Array.isArray(o.on) ? [...new Set(o.on.map((x) => str(x)).filter(Boolean))] : [];
+  const seen = new Set<string>();
+  const rules: CustomRule[] = [];
+  for (const [i, x] of (Array.isArray(o.rules) ? o.rules : []).entries()) {
+    if (!x || typeof x !== 'object') continue;
+    const r = x as Partial<CustomRule>;
+    const query = str(r.query).trim();
+    if (!query) continue;
+    let id = str(r.id).trim() || `rule-${i + 1}`;
+    while (seen.has(id)) id += '-again';
+    seen.add(id);
+    rules.push({
+      id,
+      name: str(r.name).trim() || `Rule ${rules.length + 1}`,
+      query,
+      severity: r.severity === 'error' || r.severity === 'info' ? r.severity : 'warning',
+      enabled: r.enabled !== false,
+    });
+  }
+  return { off, on, rules };
+}
 
 export function normalizeModel(raw: unknown): Model {
   if (!raw || typeof raw !== 'object') throw new Error('Not a model file.');
@@ -1130,6 +1256,10 @@ export function normalizeModel(raw: unknown): Model {
     const stated = str(a.id);
     axiomAnnotations.push({ id: stated && !axiomAnnotations.some((x) => x.id === stated) ? stated : uid(), subject: str(a.subject), property: str(a.property), target: str(a.target), fields });
   }
+  const termIds = new Set(terms.map((t) => t.id));
+  const style = normalizeGraphStyle(o.style, termIds, relIds);
+  const layout = normalizeLayout(o.layout, termIds);
+  const { diagrams, diagram } = normalizeDiagrams(o.diagrams, o.diagram, terms, relIds, style, layout);
   const model: Model = {
     format: 'conceptweaver',
     version: MODEL_VERSION,
@@ -1189,8 +1319,10 @@ export function normalizeModel(raw: unknown): Model {
       })),
     rejected: Array.isArray(o.rejected) ? [...new Set(o.rejected.map((x) => str(x)).filter(Boolean))] : [],
     governance: normalizeGovernance(o.governance),
-    style: normalizeGraphStyle(o.style, new Set(terms.map((t) => t.id)), new Set(relations.map((r) => r.id))),
-    layout: normalizeLayout(o.layout, new Set(terms.map((t) => t.id))),
+    style,
+    layout,
+    diagrams,
+    diagram,
     datatypes,
     dataGraphs: (Array.isArray(o.dataGraphs) ? (o.dataGraphs as Record<string, unknown>[]) : [])
       .filter((g) => g && typeof g === 'object' && str(g.id))
@@ -1199,10 +1331,7 @@ export function normalizeModel(raw: unknown): Model {
     logicalModels: logicalModelsFrom(o.logicalModels),
     ...(axiomAnnotations.length ? { axiomAnnotations } : {}),
     ...(typeof o.unmapped === 'string' && o.unmapped.trim() ? { unmapped: o.unmapped } : {}),
-    quality: {
-      off: Array.isArray((o.quality as QualityConfig | undefined)?.off) ? [...new Set((o.quality as QualityConfig).off.map((x) => str(x)).filter(Boolean))] : [],
-      on: Array.isArray((o.quality as QualityConfig | undefined)?.on) ? [...new Set((o.quality as QualityConfig).on.map((x) => str(x)).filter(Boolean))] : [],
-    },
+    quality: normalizeQuality(o.quality),
   };
   return version < 4 ? withClassLists(model, legacy) : model;
 }

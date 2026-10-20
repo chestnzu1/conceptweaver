@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { diagramsSlice } from './state/diagrams';
 import { documentSlice, isDirty } from './state/document';
 import { editsSlice } from './state/edits';
 import { externalsSlice } from './state/externals';
@@ -31,6 +32,7 @@ export { SIDEBAR_WIDTH, type Editing, type EntityViewState, type StructureKind, 
 export type { SubgraphState } from './state/subgraph';
 export { layoutOf, viewOf, type GraphScope } from './state/view';
 export type { Tween } from './state/layout';
+export { activeDiagramOf } from './state/diagrams';
 export { isDirty, type Doc } from './state/document';
 export { currentDl, problemCount, runIsStale, type CheckKind } from './state/validation';
 export { currentReasoning, type Inference, type Reasoning } from './state/reasoning';
@@ -38,6 +40,7 @@ export { currentReasoning, type Inference, type Reasoning } from './state/reason
 export const useStore = create<State>()((...a) => ({
   ...documentSlice(...a),
   ...editsSlice(...a),
+  ...diagramsSlice(...a),
   ...sessionSlice(...a),
   ...subgraphSlice(...a),
   ...validationSlice(...a),

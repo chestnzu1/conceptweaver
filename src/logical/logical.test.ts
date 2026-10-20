@@ -151,7 +151,7 @@ describe('an LDM with every kind of element', () => {
     const { p, id } = await filled();
     const m = await p.query.model({ model: id });
     const text = exportLogicalModel(m);
-    expect(JSON.parse(text)).toMatchObject({ format: 'conceptweaver-ldm', version: 1, model: { id } });
+    expect(JSON.parse(text)).toMatchObject({ format: 'conceptweaver-ldm', version: 2, model: { id } });
     expect(importLogicalModel(text)).toEqual(m);
     // Into another project: the same, under the same id, at a revision of its own there.
     const q = project();
@@ -164,6 +164,26 @@ describe('an LDM with every kind of element', () => {
     expect(again.name).toBe('Film catalogue (2)');
     expect(importLogicalModel('{"format":"something else"}')).toMatchObject({ error: expect.stringMatching(/not a logical data model/) });
     await expect(q.edit.import({ document: '{"format":"conceptweaver-ldm","version":9,"model":{}}' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/version 9/) });
+  });
+
+  it('writes a reference entity and reads it back, and still reads a file of the format before it', async () => {
+    const { p, id } = await filled();
+    const m = await p.query.model({ model: id });
+    const entities = m.entities.map((e, i) => (i === 0 ? { ...e, reference: true } : e));
+    const withReference = { ...m, entities };
+    const text = exportLogicalModel(withReference);
+    const file = JSON.parse(text) as { version: number; model: { entities: Array<Record<string, unknown>> } };
+    expect(file.version).toBe(2);
+    const read = importLogicalModel(text);
+    if ('error' in read) throw new Error(read.error);
+    expect(read.entities[0].reference).toBe(true);
+    expect(read).toEqual(withReference);
+    // A reader accepts version 1, where no entity was a reference entity.
+    file.version = 1;
+    delete file.model.entities[0].reference;
+    const older = importLogicalModel(JSON.stringify(file));
+    if ('error' in older) throw new Error(older.error);
+    expect(older.entities[0].reference).toBeUndefined();
   });
 
   it('is kept in the project’s own file, in My Models and in its versions, and comes back the same', async () => {

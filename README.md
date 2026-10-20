@@ -126,6 +126,13 @@ More on what the advanced reasoner does and does not cover is under
 - **Canvas** – double-click to add a term, drag a term's ⊕ handle onto another term to relate
   them (or onto empty space to create the other term), right-click anything for its menu.
   Pan by dragging, zoom with the wheel, Ctrl+drag to box-select. Full undo/redo.
+- **Diagrams** (since 2026-10-18, roadmap task 2.12; `src/model/state/diagrams.ts`,
+  `Diagrams.tsx`) – an ontology keeps several named diagrams, each with its own contents,
+  arrangement and style. The *Diagram* button in the graph's bar says which one is drawn and
+  opens the list: choose another, rename it, make a *New diagram* (starting as the one on the
+  canvas) or delete it. *Remove … from this diagram* leaves terms out of one diagram only; a
+  term left out is still in the ontology, in the other diagrams and in the RDF, and *Put back
+  …* returns it. A model always keeps one diagram (FR-M5-7).
 - **The ends of a line** – a selected relationship shows a handle at each end. Dragged along
   its term, an end moves where the line meets the term: any side, anywhere along it. That is
   how the graph is drawn and nothing the ontology says: it is kept with the graph style, never
@@ -171,8 +178,18 @@ More on what the advanced reasoner does and does not cover is under
   entities, attributes, relationships, domains, keys, specializations and rules, every action by
   keyboard; or on the ER diagram, in Information Engineering (crow's-foot) notation, where
   choosing an entity opens its editor and moving one changes only where the picture puts it, as
-  one undoable step. The Validation view reports what is worth saying about them, and each
-  finding opens its element there.
+  one undoable step. An element's type is first-class: *Entity*, *Reference Entity* (whose rows
+  are the codes the rest of the model points at) or *Domain*, shown with what it means in the
+  editor. Choosing another type opens a review of the change — what is created, changed and
+  removed, the keys, constraints and decisions, the warnings, and the mappings that would follow
+  the element — and nothing is written until it is applied, as one undoable step. An entity and a
+  reference entity keep their structure; a domain and an entity either way is a structural
+  transformation that relocates the element, never a flag flipped in place, and an unsafe
+  conversion is refused with its reasons and leaves everything as it was. The type shows in the
+  entity list, the editor, the ER diagram and search, and is kept across reload, export and
+  import; it is never guessed from a name or an ontology label, and changing it never writes the
+  ontology. The Validation view reports what is worth saying about them, and each finding opens
+  its element there.
 - **Logical models from the ontology** (since 2026-10-17; `src/traceability/`) – *Derive from the
   ontology…* in the LDM view proposes entities from classes, attributes from datatype properties,
   relationships, or associative entities, from object properties, specializations (or a roll-up or
@@ -190,7 +207,10 @@ More on what the advanced reasoner does and does not cover is under
   derivation's coverage both ways (classes in scope with no element, elements with no source);
   traces from the chosen element to the axioms it came from, and from an ontology IRI to every
   element made from it in every logical model; and mappings made, edited and removed by hand.
-  *Impact…* works out, in a worker, what the ontology means for this model: against each mapping's
+  A change of an element's type in the Entities workspace either moves its mapping to the
+  strategy that makes the same element for the new type, or keeps the mapping and marks it for
+  review — it is never silently called compatible — and the element and its mappings change in
+  one undoable step. *Impact…* works out, in a worker, what the ontology means for this model: against each mapping's
   origin, or between two saved versions — not represented, source gone, element deleted, type,
   cardinality, hierarchy or restriction changed, renamed, another axiom changed. Synchronization
   offers additions, updates, removals and records for review for the ontology as it is: nothing
@@ -660,7 +680,12 @@ More on what the advanced reasoner does and does not cover is under
   row nor in the model, or is a row that is skipped), and which values of a row that is made are
   left out, and why; for classes, the hierarchy they will be. The import is one edit, which one
   undo takes back. A mapping can be kept as a template, by name, for the next file laid out the
-  same way. 20,000 rows are planned in well under a second.
+  same way. 20,000 rows are planned in well under a second. Since 2026-10-18 (roadmap task
+  2.12), *Update what the model has* makes a re-import match each row to the entity whose IRI it
+  makes: the preview counts what will be made, changed and left unchanged, a *Changed* filter
+  shows the updates row by row, and applying changes those entities instead of skipping them.
+  The key column should stay in the IRI template, so a renamed row is still the same entity.
+  Importing the same file again changes nothing and says so (FR-M7-6).
 - **RDFS & OWL (optional)** – switch it on in the Vocabulary view to use standard properties
   (`rdfs:subClassOf`, `owl:equivalentClass`, `owl:sameAs`, …): pick one per relation, or map a
   relationship label to one so every relation with that label exports as it.
@@ -701,10 +726,15 @@ More on what the advanced reasoner does and does not cover is under
     constraint* opens the very property shape it is of, in its set, with the constraint that
     failed marked and what failed it said there. A run is stale once the model, the data graph's
     content or the choice of shapes changes.
-  - *Quality*: 34 modelling rules (missing definitions, redundant superclasses, naming, IRIs
-    and namespaces, enumerations without members or with something on the list that does not
-    belong there, …), each of which can be switched off per model. They are suggestions,
-    not errors.
+  - *Quality*: 34 built-in modelling rules (missing definitions, redundant superclasses, naming,
+    IRIs and namespaces, enumerations without members or with something on the list that does
+    not belong there, …), each of which can be switched off per model. They are suggestions,
+    not errors. Since 2026-10-18 (roadmap task 2.12), *Your own rules* under Quality rules lets a
+    rule be written as a SPARQL `SELECT` returning `?entity` (an entity's IRI) and `?message`,
+    with its own severity. It appears in the results table like a built-in rule, with the query
+    shown in the finding, and is switched off and on there or in the list; a rule that cannot
+    run, or does not return both variables, is reported as a finding instead of being passed
+    over (FR-M4-7).
   - *Logical data models*: an entity with no primary key, a many-to-many a relationship leaves
     unresolved, and what an imported or older logical model breaks of its rules. Each finding
     names its model and element, and *Open in the LDM* opens it where it is edited.
@@ -884,7 +914,10 @@ that *Layered* says so and uses the built-in hierarchical layout.
   shape sets of a model is `shapes.ts`, and the format-4 shapes are read by `shapesLegacy.ts`.
   The data graphs SHACL validates are `dataGraphs.ts` (their content in IndexedDB, `library.ts`),
   and where in a file a node is, `dataLines.ts`. Shapes proposed from the ontology's axioms, and
-  whether an accepted one is stale, are `proposals.ts`. What an ontology says that the model has no place
+  whether an accepted one is stale, are `proposals.ts`. The quality rules are `quality.ts`, the
+  built-in ones beside rules of one's own written as SPARQL, which `validation.ts` runs; the
+  diagrams a model keeps, each with its contents, arrangement and style, are `state/diagrams.ts`.
+  What an ontology says that the model has no place
   for is kept whole by `unmapped.ts`, which the reader (`fromTurtle` in
   `rdf.ts`) tells what it took. Class expressions and data ranges are one structure,
   `expressions.ts` (read from RDF, written in OWL functional syntax as the OWL API has them,
@@ -975,6 +1008,12 @@ that *Layered* says so and uses the built-in hierarchical layout.
   argument.
 - `scripts` – `verify.mjs` (every check, as CI runs it), `bench.mjs` (the benchmarks and their
   report) and `main-thread.mjs` (the longest main-thread task in the browser, for `bench.mjs`).
+- `companion` – the Java semantic backend of Phase 3: Spring Boot with the OWL API 5.5.1,
+  HermiT, ELK and the explanation library, built with the Maven wrapper. Tasks 3.1 and 3.2 are
+  done: it answers `/health`, `/reason`, `/convert` and `/compare` with the single-file service's
+  requests and responses, and the frontend's reasoning and OWL-syntax suites pass unchanged
+  against it. It is not wired into `pnpm` yet; `reasoner/` is still the service the app asks
+  unless `CONCEPTWEAVER_COMPANION_JAR` is set. See `companion/README.md`.
 - `corpus` – the round-trip corpus: `corpus.mjs` lists the ontologies, each by a fixed version
   and its checksum, and fetches them into `files/` (not committed); `expected/` holds what a
   round trip through the app loses of each today (see *Reading ontologies*). `shacl.mjs` fetches
@@ -1233,6 +1272,11 @@ same machine, and is asked over HTTP.
 pnpm reasoner          # http://localhost:5190; Ctrl+C stops it
 ```
 
+The same service can be started from the Spring Boot companion instead, once it is built
+(`./mvnw package` in `companion/`): set `CONCEPTWEAVER_COMPANION_JAR` to the jar when starting
+`pnpm reasoner`. It answers the same endpoints and needs JDK 21. It is not the default until
+task 3.7 packages it.
+
 - **What it needs**: Java 11 or later, as a JDK (the service is one source file,
   `reasoner/ReasonerService.java`, compiled on the first start). The first start also fetches
   the libraries, once, about 90 MB: the OWL API 4.5.29, HermiT 1.4.5.456, ELK 0.6.0 and the OWL
@@ -1342,7 +1386,8 @@ together in `src/model/inferred.ts`.
   RDF/XML, JSON-LD or another syntax that is converted to Turtle: the Turtle is not the file.
 - Importing a table: the older Excel format (.xls) is not read (save it as .xlsx or CSV); a
   formula gives the value Excel last calculated. A row whose IRI the model has already is left
-  as it is: updating entities from a table is not done yet (FR-M7-6). An individual's values are
+  as it is unless update mode is chosen, which matches rows by IRI or a key column and shows the
+  changes before they are applied (FR-M7-6). An individual's values are
   values of data properties; a class's column of values is an annotation. More than 3,000 new
   terms are laid out row by row rather than as a hierarchy. Templates are kept in this browser.
 - Shapes proposed from the ontology: a proposal dismissed is shown again the next time

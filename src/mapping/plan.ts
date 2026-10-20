@@ -4,7 +4,7 @@ import { hierarchyOf } from '../layout/graph';
 import { expandIri } from '../model/prefixes';
 import { newRelation, newTerm, type ExtraField, type Model, type Relation, type Term } from '../model/types';
 import { quoted } from '../model/words';
-import type { PlannedEntity, Plan, Reference, RowOutcome, Table, TabularMapping } from './contracts';
+import type { PlannedEntity, Plan, Reference, Replaced, RowChange, RowOutcome, Table, TabularMapping } from './contracts';
 import { fillTemplate, parseTemplate, templateColumns } from './template';
 import { convert } from './values';
 
@@ -15,6 +15,12 @@ import { convert } from './values';
  * under (a parent, a class) is neither a row of the table nor in the model. A row under a row
  * that is skipped is skipped too, so that nothing is made half. A value that cannot be what its
  * column says (a price that is no number, a link to nothing) is left out, and the row says so.
+ *
+ * In update mode (FR-M7-6, roadmap task 2.12), a row whose IRI the model has is matched to that
+ * entity: what its columns say replaces what the entity said about those fields, every change is
+ * listed before anything is applied, and a row that says nothing new is unchanged. Matching is by
+ * IRI, which the IRI template may make from the key column or from any other, so a key column
+ * matches too. A row the model does not have is made, as in an ordinary import.
  */
 
 /** The references of a mapping a value is looked for among, in order: a row's key, a row's name, the model. */
@@ -26,9 +32,22 @@ export function planImport(model: Model, table: Table, mapping: TabularMapping):
   const nameCol = uses.find(([, u]) => u.as === 'name')?.[0];
   const keyCol = mapping.key && col.has(mapping.key) ? mapping.key : (templateColumns(mapping.iri)[0] ?? nameCol);
   const many = (v: string) => (mapping.split ? v.split(mapping.split) : [v]).map((x) => x.trim()).filter(Boolean);
+  const unique = <T,>(xs: T[]): T[] => [...new Set(xs)];
+
+  /** What the mapped columns say an existing entity is to be, and so what an update replaces. */
+  const replaced: Replaced = {
+    ...(uses.some(([, u]) => u.as === 'description') ? { description: true as const } : {}),
+    ...(uses.some(([, u]) => u.as === 'synonyms') ? { synonyms: true as const } : {}),
+    annotations: unique(uses.flatMap(([, u]) => (u.as === 'annotation' ? [u.property] : []))),
+    values: unique(uses.flatMap(([, u]) => (u.as === 'value' ? [u.property] : []))),
+    links: unique(uses.flatMap(([, u]) => (u.as === 'link' ? [u.property] : []))),
+    ...((mapping.rows === 'individual' && mapping.classIri) || uses.some(([, u]) => u.as === 'parent' || u.as === 'type') ? { parents: true as const } : {}),
+  };
 
   // ------------------------------------------------------------ each row's IRI and name
   const outcomes: RowOutcome[] = table.rows.map((_r, i) => ({ row: table.rowNumbers[i] ?? i + 1, status: 'create', notes: [] }));
+  /** For a row update mode matches to an entity of the model: that entity. */
+  const matched: (Term | undefined)[] = table.rows.map(() => undefined);
   const byIri = new Map<string, number>();
   const terms = new Map(model.terms.filter((t) => t.iri).map((t) => [t.iri!, t]));
   const props = new Map(model.props.filter((p) => p.iri).map((p) => [p.iri!, p]));
@@ -43,7 +62,6 @@ export function planImport(model: Model, table: Table, mapping: TabularMapping):
     o.iri = made.iri;
     const named = nameCol ? cell(row, nameCol)?.trim() : '';
     o.name = named || decodeURIComponent(made.iri.replace(/^.*[#/:]/, '')) || made.iri;
-    if (nameCol && !named) o.notes.push(`it has no ${nameCol}: it is named after its IRI`);
     const before = byIri.get(made.iri);
     if (before !== undefined) {
       o.status = 'skip';
@@ -51,10 +69,22 @@ export function planImport(model: Model, table: Table, mapping: TabularMapping):
       return;
     }
     byIri.set(made.iri, i);
-    const there = terms.get(made.iri) ?? props.get(made.iri);
-    if (there) {
+    const there = terms.get(made.iri);
+    if (there && mapping.update) {
+      // Matched: the row changes the entity the model has, and says which fields it speaks for.
+      matched[i] = there;
+      if (!named) {
+        o.name = there.name || o.name;
+        if (nameCol) o.notes.push(`it has no ${nameCol}: its name is left as it is`);
+      }
+      return;
+    }
+    const inModel = there ?? props.get(made.iri);
+    if (inModel) {
       o.status = 'exists';
-      o.reason = `it is in the model already, as ${quoted(there.name || 'Unnamed')}, and is left as it is`;
+      o.reason = `it is in the model already, as ${quoted(inModel.name || 'Unnamed')}, and is left as it is`;
+    } else if (nameCol && !named) {
+      o.notes.push(`it has no ${nameCol}: it is named after its IRI`);
     }
   });
 
@@ -88,6 +118,12 @@ export function planImport(model: Model, table: Table, mapping: TabularMapping):
     const o = outcomes[i];
     if (o.status !== 'create') return undefined;
     const e: PlannedEntity = { index: i, iri: o.iri!, name: o.name!, kind: mapping.rows, parents: [], annotations: [], values: [], links: [] };
+    const match = matched[i];
+    if (match) {
+      e.target = match.id;
+      e.setName = !!nameCol && !!cell(row, nameCol)?.trim();
+      e.replace = replaced;
+    }
     if (mapping.rows === 'individual' && mapping.classIri) e.parents.push({ iri: mapping.classIri });
     for (const [c, use] of uses) {
       const raw = cell(row, c)!.trim();
@@ -169,10 +205,11 @@ export function planImport(model: Model, table: Table, mapping: TabularMapping):
       changed = true;
     });
   }
-  // Links to rows that are skipped are left out; links and parents to rows that exist go to the entity in the model.
+  // Links to rows that are skipped are left out; links and parents to rows the model has go to the entity in the model.
+  const inModelRow = (i: number) => !!matched[i] || outcomes[i].status === 'exists';
   const kept = entities.filter((e): e is PlannedEntity => !!e);
   for (const e of kept) {
-    const at = (r: Reference): Reference => ('row' in r && outcomes[r.row].status === 'exists' ? { iri: outcomes[r.row].iri! } : r);
+    const at = (r: Reference): Reference => ('row' in r && inModelRow(r.row) ? { iri: outcomes[r.row].iri! } : r);
     e.parents = e.parents.map(at);
     e.links = e.links
       .filter((l) => {
@@ -182,68 +219,234 @@ export function planImport(model: Model, table: Table, mapping: TabularMapping):
       })
       .map((l) => ({ ...l, to: at(l.to) }));
   }
+
+  // ------------------------------------------------------------ update mode: which rows change what
+  // What a row under it is to be called: a row that is made has no entity of the model yet.
+  const rowName = new Map(outcomes.filter((o) => o.iri).map((o) => [o.iri!, o.name ?? o.iri!]));
+  const byId = new Map(model.terms.map((t) => [t.id, t]));
+  const nameOfIri = (iri: string) => terms.get(iri)?.name || rowName.get(iri) || iri;
+  const iriOfRef = (r: Reference) => ('row' in r ? outcomes[r.row].iri! : r.iri);
+  const parentName = mapping.rows === 'class' ? (model.mode === 'skos' ? 'Broader concept' : 'Superclass') : 'Class';
+  const changesOf = (t: Term, e: PlannedEntity): RowChange[] => {
+    const changes: RowChange[] = [];
+    const rep = e.replace;
+    if (e.setName !== false && e.name !== t.name) changes.push({ what: 'Name', from: quoted(t.name || 'Unnamed'), to: quoted(e.name) });
+    if (rep?.description) {
+      const lang = e.description?.lang && e.description.lang !== model.lang ? e.description.lang : undefined;
+      const value = e.description?.value ?? '';
+      if (t.description !== value || (t.descriptionLang || undefined) !== lang) {
+        changes.push({ what: 'Description', from: quoted(t.description ? `${t.description}${t.descriptionLang ? ` (${t.descriptionLang})` : ''}` : 'none'), to: quoted(value ? `${value}${lang ? ` (${lang})` : ''}` : 'none') });
+      }
+    }
+    if (rep?.synonyms) {
+      const lang = e.synonyms?.lang && e.synonyms.lang !== model.lang ? e.synonyms.lang : undefined;
+      if (lang) {
+        const was = t.fields.filter((f) => f.key === 'skos:altLabel' && f.lang === lang).map((f) => f.value);
+        const now = e.synonyms ? e.synonyms.value.split(', ').filter(Boolean) : [];
+        if (shown(was) !== shown(now)) changes.push({ what: `Synonyms (${lang})`, from: shown(was), to: shown(now) });
+      } else if (t.synonyms !== (e.synonyms?.value ?? '')) {
+        changes.push({ what: 'Synonyms', from: shown(t.synonyms ? t.synonyms.split(', ') : []), to: shown(e.synonyms ? e.synonyms.value.split(', ') : []) });
+      }
+    }
+    for (const key of repo(rep?.annotations)) {
+      const was = t.fields.filter((f) => f.key === key).map((f) => f.value + (f.lang ? ` (${f.lang})` : ''));
+      const now = e.annotations.filter((a) => a.property === key).map((a) => a.value + (a.lang ? ` (${a.lang})` : ''));
+      if (shown(was) !== shown(now)) changes.push({ what: `Annotation ${key}`, from: shown(was), to: shown(now) });
+    }
+    for (const property of repo(rep?.values)) {
+      const p = terms.get(property);
+      if (p?.type !== 'property') continue;
+      const was = (t.values ?? []).filter((v) => v.prop === p.id).map((v) => v.value);
+      const now = e.values.filter((v) => v.property === property).map((v) => v.value);
+      if (shown(was) !== shown(now)) changes.push({ what: `Value of ${quoted(p.name)}`, from: shown(was), to: shown(now) });
+    }
+    for (const property of repo(rep?.links)) {
+      const p = props.get(property);
+      if (!p) continue;
+      const was = unique(model.relations.filter((r) => r.from === t.id && r.prop === p.id).map((r) => byId.get(r.to)?.iri ?? '').filter(Boolean));
+      const now = unique(e.links.filter((l) => l.property === property).map((l) => iriOfRef(l.to)));
+      if (shown(was) !== shown(now)) changes.push({ what: `Link by ${quoted(p.name)}`, from: shown(was.map(nameOfIri)), to: shown(now.map(nameOfIri)) });
+    }
+    if (rep?.parents) {
+      const was = unique(model.relations.filter((r) => r.from === t.id && r.kind === 'generalization').map((r) => byId.get(r.to)?.iri ?? '').filter(Boolean));
+      const now = unique(e.parents.map(iriOfRef));
+      if (shown(was) !== shown(now)) changes.push({ what: parentName, from: shown(was.map(nameOfIri)), to: shown(now.map(nameOfIri)) });
+    }
+    return changes;
+  };
+  const applied: PlannedEntity[] = [];
+  for (const e of kept) {
+    if (!e.target) {
+      applied.push(e);
+      continue;
+    }
+    const t = terms.get(e.iri)!;
+    const changes = changesOf(t, e);
+    const o = outcomes[e.index];
+    if (changes.length) {
+      o.status = 'update';
+      o.changes = changes;
+      applied.push(e);
+    } else o.status = 'unchanged';
+  }
+
   const count = (s: RowOutcome['status']) => outcomes.filter((o) => o.status === s).length;
-  return { rows: outcomes, entities: kept, counts: { create: count('create'), exists: count('exists'), skip: count('skip'), notes: outcomes.reduce((n, o) => n + (o.status === 'create' ? o.notes.length : 0), 0) } };
+  return {
+    rows: outcomes,
+    entities: applied,
+    counts: {
+      create: count('create'),
+      update: count('update'),
+      unchanged: count('unchanged'),
+      exists: count('exists'),
+      skip: count('skip'),
+      notes: outcomes.reduce((n, o) => n + (o.status === 'create' || o.status === 'update' ? o.notes.length : 0), 0),
+    },
+  };
 }
+
+/** Two lists of values as one text, in some order, or "none": what an unchanged list looks like. */
+const shown = (values: string[]): string => (values.length ? [...values].sort().map((v) => quoted(v)).join(', ') : 'none');
+/** A list of properties of a replacement, once each. */
+const repo = (values: string[] | undefined): string[] => [...new Set(values ?? [])];
 
 /** Above this many new terms, they are laid out row by row rather than as a hierarchy, which would take too long. */
 const TREE_UP_TO = 3000;
 
 /**
- * The model with what a plan makes: the entities, their superclasses or classes, their values
- * and links, laid out below what is on the canvas. One model, for one edit of the document.
+ * The model with what a plan makes and changes: the entities made, their superclasses or classes,
+ * their values and links, laid out below what is on the canvas; the entities matched in update
+ * mode changed where they are, with what the file no longer says removed. One model, for one edit
+ * of the document.
  */
-export function applyPlan(model: Model, plan: Plan): { model: Model; terms: string[] } {
-  if (!plan.entities.length) return { model, terms: [] };
-  const ids = new Map<number, string>();
-  const byIri = new Map(model.terms.filter((t) => t.iri).map((t) => [t.iri!, t.id]));
+export function applyPlan(model: Model, plan: Plan): { model: Model; terms: string[]; updated: string[] } {
+  if (!plan.entities.length) return { model, terms: [], updated: [] };
+  const termsByIri = new Map(model.terms.filter((t) => t.iri).map((t) => [t.iri!, t]));
+  const byId = new Map(model.terms.map((t) => [t.id, t]));
   const props = new Map(model.props.filter((p) => p.iri).map((p) => [p.iri!, p]));
-  const terms: Term[] = plan.entities.map((e) => {
-    const fields: ExtraField[] = e.annotations.map((a) => ({ key: a.property, value: a.value, ...(a.lang ? { lang: a.lang } : {}) }));
-    // Synonyms in another language than the model's are labels of their own, in that language.
-    const synonymsElsewhere = e.synonyms?.lang && e.synonyms.lang !== model.lang;
-    if (synonymsElsewhere) for (const s of e.synonyms!.value.split(', ')) fields.push({ key: 'skos:altLabel', value: s, lang: e.synonyms!.lang });
+  const made: Term[] = [];
+  const ids = new Map<number, string>();
+  const changed: PlannedEntity[] = [];
+  const patches = new Map<string, Term>();
+  for (const e of plan.entities) {
+    if (e.target) {
+      const t = byId.get(e.target);
+      if (!t) continue;
+      changed.push(e);
+      patches.set(t.id, updatedTerm(model, t, e, termsByIri));
+      continue;
+    }
     const t = newTerm({
       name: e.name,
       iri: e.iri,
       type: e.kind === 'class' ? 'concept' : 'instance',
       description: e.description?.value ?? '',
       ...(e.description?.lang && e.description.lang !== model.lang ? { descriptionLang: e.description.lang } : {}),
-      synonyms: e.synonyms && !synonymsElsewhere ? e.synonyms.value : '',
-      fields,
-      ...(e.values.length ? { values: e.values.map((v) => ({ prop: byIri.get(v.property)!, value: v.value })) } : {}),
+      synonyms: synonymsOf(model, e).own,
+      fields: fieldsOf(model, e),
+      ...(e.values.length ? { values: e.values.map((v) => ({ prop: termsByIri.get(v.property)!.id, value: v.value })) } : {}),
     });
     ids.set(e.index, t.id);
-    return t;
-  });
-  const idOf = (r: Reference) => ('row' in r ? ids.get(r.row) : byIri.get(r.iri));
-  const relations: Relation[] = [];
-  plan.entities.forEach((e, n) => {
-    const from = terms[n].id;
+    made.push(t);
+  }
+  const nextTerms = patches.size ? model.terms.map((t) => patches.get(t.id) ?? t) : model.terms;
+
+  // What an update replaces is taken away; what is added is added once, however many rows said it.
+  const removed = new Set<string>();
+  for (const e of changed) {
+    for (const r of model.relations) {
+      if (r.from !== e.target) continue;
+      if (e.replace?.parents && r.kind === 'generalization') removed.add(r.id);
+      else if (r.prop && e.replace?.links.some((iri) => props.get(iri)?.id === r.prop)) removed.add(r.id);
+    }
+  }
+  const relations = removed.size ? model.relations.filter((r) => !removed.has(r.id)) : [...model.relations];
+  const keyOf = (r: Relation) => (r.kind === 'generalization' ? `g|${r.from}|${r.to}` : `p|${r.from}|${r.to}|${r.prop ?? r.label}`);
+  const have = new Set(relations.map(keyOf));
+  const add = (r: Relation) => {
+    const key = keyOf(r);
+    if (have.has(key)) return;
+    have.add(key);
+    relations.push(r);
+  };
+  const idOf = (r: Reference) => ('row' in r ? ids.get(r.row) : termsByIri.get(r.iri)?.id);
+  for (const e of plan.entities) {
+    const from = e.target ?? ids.get(e.index)!;
     for (const p of e.parents) {
       const to = idOf(p);
-      if (to && to !== from) relations.push(newRelation({ from, to, kind: 'generalization' }));
+      if (to && to !== from) add(newRelation({ from, to, kind: 'generalization' }));
     }
     for (const l of e.links) {
       const to = idOf(l.to);
       const p = props.get(l.property);
-      if (to && p) relations.push(newRelation({ from, to, label: p.name, prop: p.id }));
+      if (to && p) add(newRelation({ from, to, label: p.name, prop: p.id }));
     }
-  });
+  }
 
   // Laid out below what is on the canvas: as a hierarchy of their own, or row by row when there are many.
   const b = bounds(model.terms);
   const top = b ? b.y1 + 130 : 0;
   const left = b ? b.x0 : 0;
-  if (terms.length <= TREE_UP_TO) {
-    const fresh = new Set(terms.map((t) => t.id));
-    const pos = hierarchyOf({ ...model, terms, relations: relations.filter((r) => fresh.has(r.from) && fresh.has(r.to)) });
+  if (made.length <= TREE_UP_TO) {
+    const fresh = new Set(made.map((t) => t.id));
+    const pos = hierarchyOf({ ...model, terms: made, relations: relations.filter((r) => fresh.has(r.from) && fresh.has(r.to)) });
     const xs = [...pos.values()].map((p) => p.x);
     const dx = left - Math.min(...xs);
-    for (const t of terms) Object.assign(t, { x: (pos.get(t.id)?.x ?? 0) + dx, y: (pos.get(t.id)?.y ?? 0) + top });
+    for (const t of made) Object.assign(t, { x: (pos.get(t.id)?.x ?? 0) + dx, y: (pos.get(t.id)?.y ?? 0) + top });
   } else {
-    const across = Math.ceil(Math.sqrt(terms.length));
-    terms.forEach((t, i) => Object.assign(t, { x: left + (i % across) * 190, y: top + Math.floor(i / across) * 70 }));
+    const across = Math.ceil(Math.sqrt(made.length));
+    made.forEach((t, i) => Object.assign(t, { x: left + (i % across) * 190, y: top + Math.floor(i / across) * 70 }));
   }
-  return { model: { ...model, terms: [...model.terms, ...terms], relations: [...model.relations, ...relations] }, terms: terms.map((t) => t.id) };
+  return {
+    model: { ...model, terms: [...nextTerms, ...made], relations },
+    terms: made.map((t) => t.id),
+    updated: changed.map((e) => e.target!),
+  };
+}
+
+/** Synonyms in the model's own language: its one string; those in another language are labels of their own. */
+function synonymsOf(model: Model, e: PlannedEntity): { own: string; elsewhere?: { value: string; lang: string } } {
+  if (!e.synonyms) return { own: '' };
+  if (e.synonyms.lang && e.synonyms.lang !== model.lang) return { own: '', elsewhere: { value: e.synonyms.value, lang: e.synonyms.lang } };
+  return { own: e.synonyms.value };
+}
+
+/** The fields an entity's annotations and synonyms in another language make. */
+function fieldsOf(model: Model, e: PlannedEntity): ExtraField[] {
+  const fields: ExtraField[] = e.annotations.map((a) => ({ key: a.property, value: a.value, ...(a.lang ? { lang: a.lang } : {}) }));
+  const elsewhere = synonymsOf(model, e).elsewhere;
+  if (elsewhere) for (const s of elsewhere.value.split(', ')) fields.push({ key: 'skos:altLabel', value: s, lang: elsewhere.lang });
+  return fields;
+}
+
+/** The term as an update leaves it: the named fields replaced, the rest as it was, and its place kept. */
+function updatedTerm(model: Model, t: Term, e: PlannedEntity, termsByIri: Map<string, Term>): Term {
+  const rep = e.replace;
+  const next: Term = { ...t };
+  if (e.setName !== false) {
+    next.name = e.name;
+    delete next.nameLang;
+  }
+  if (rep?.description) {
+    next.description = e.description?.value ?? '';
+    if (e.description?.lang && e.description.lang !== model.lang) next.descriptionLang = e.description.lang;
+    else delete next.descriptionLang;
+    delete next.describedBy;
+  }
+  const alt = synonymsOf(model, e).elsewhere;
+  let fields = t.fields;
+  if (rep) {
+    const annotation = new Set(rep.annotations);
+    fields = fields.filter((f) => !annotation.has(f.key) && !(rep.synonyms && alt && f.key === 'skos:altLabel' && f.lang === alt.lang));
+  }
+  if (rep?.synonyms) next.synonyms = synonymsOf(model, e).own;
+  const added = fieldsOf(model, e);
+  next.fields = added.length ? [...fields, ...added] : fields;
+  if (rep?.values.length) {
+    const replaced = new Set(rep.values.map((p) => termsByIri.get(p)?.id).filter((id): id is string => !!id));
+    const values = [...(t.values ?? []).filter((v) => !replaced.has(v.prop)), ...e.values.filter((v) => replaced.has(termsByIri.get(v.property)?.id ?? '')).map((v) => ({ prop: termsByIri.get(v.property)!.id, value: v.value }))];
+    if (values.length) next.values = values;
+    else delete next.values;
+  }
+  return next;
 }

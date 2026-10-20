@@ -49,7 +49,7 @@ all run by one command (`pnpm verify`) and in CI.
 | Import and export | **Good.** CSV, TSV and Excel through a mapping screen; every OWL syntax written. |
 | AI assistance | **Partial.** An assistant with the user's own key, answering from the ontology through read-only lookups and proposing changes applied only on acceptance. |
 | Collaboration, server storage | **Missing.** |
-| Logical data modelling | **Good, in the browser.** Logical models are authored by hand in a workspace of their own, with an ER diagram and findings in the Validation view (LM-1, LM-2), derived from the ontology through reviewed proposals applied as one change set (LM-3), and traced to it: mappings with status, coverage and traces both ways, impact reports and reviewed synchronization (LM-4), all 2026-10-17. Server-side LDMs are missing (LM-5). |
+| Logical data modelling | **Good, in the browser.** Logical models are authored by hand in a workspace of their own, with an ER diagram and findings in the Validation view (LM-1, LM-2), derived from the ontology through reviewed proposals applied as one change set (LM-3), and traced to it: mappings with status, coverage and traces both ways, impact reports and reviewed synchronization (LM-4), all 2026-10-17. Element types — entity, reference entity and domain — are first-class, changed only through a reviewed structural preview that takes the mappings with them (2026-10-20; FR-M17-18, FR-M18-16). Server-side LDMs are missing (LM-5). |
 | Connecting to relational databases | **Missing, and deferred.** |
 
 ## 2. Major architectural weaknesses
@@ -104,8 +104,10 @@ The first five, the MVP path, are done (2026-10-16). In order from here:
 | 5 | ~~Semantic traceability and change impact (LM-4)~~ | Done 2026-10-17: every element traced, every ontology change reported per model. |
 | 6 | ~~Annotation properties as entities, with labels in several languages and a display language (task 2.7)~~ | Done 2026-10-17. |
 | 7 | ~~Further axioms: property chains, keys, disjoint unions, negative assertions and annotations on axioms (task 2.8)~~ | Done 2026-10-17. |
-| 8 | The remaining Phase 2 tasks, then the Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
-| 9 | Collaboration, publishing, assistance with LDM tools | The platform. |
+| 8 | ~~Imports, structure and the remaining service interfaces (tasks 2.9 to 2.11)~~ | Done 2026-10-18. |
+| 9 | ~~Update mode for import, several diagrams, custom SPARQL quality rules (task 2.12); element types in the LDM Entities workspace (task 2.13)~~ | Done 2026-10-20; Phase 2 complete. |
+| 10 | The Java backend and the triple store, with LDMs on the server (LM-5) | Scale beyond the browser, and persistent history. |
+| 11 | Collaboration, publishing, assistance with LDM tools, integration (a public API and a read-only MCP server) | The platform. |
 
 ## 5. MVPs
 
@@ -123,9 +125,16 @@ assistance, server-side LDMs.
 
 ## 6. Suggested next development milestone
 
-**MS-15, traceable and impact-aware**, is reached (2026-10-17) with LM-4. The next milestone is
-MS-16, server-side logical models, through LM-5 in Phase 4, after the remaining Phase 2 tasks;
-2.8 is done (2026-10-17), and the next task is 2.9
+**MS-15, traceable and impact-aware**, is reached (2026-10-17) with LM-4. Phase 2 is complete
+(task 2.13 done 2026-10-20), and task 3.1, the companion's dependency spike, is done too:
+Spring Boot 4.1.1 with OWL API 5.5.1, HermiT 1.4.5.519 and ELK 0.6.0 on JDK 21 passes the same
+tests as the OWL API 4.5.29 line. Task 3.2, parity of the OWL service in Spring Boot, is done as
+well (2026-10-20): the four frontend suites named for it pass unchanged against the companion.
+The next milestone is **MS-5, the companion**, which replaces
+the single-file service, and the next task is 3.3, reasoning jobs. MS-16, server-side logical
+models through LM-5, follows in Phase 4. MS-17, the
+read-only MCP server, is scheduled in Phase 5: its local stage (5.8a) can follow 3.4, and its
+production stage (5.8b) follows 5.8a, 5.1, 4.4 and LM-5
 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §10).
 
 ## 7. Logical data modelling in brief

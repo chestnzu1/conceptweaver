@@ -27,6 +27,32 @@ export type BaseType =
 /** An attribute's type: a base type, or a named domain of the LDM by its id. */
 export type LogicalType = BaseType | { domain: string };
 
+/**
+ * The kinds of element the Entities workspace edits (roadmap LM-2, extended after LM-4): an
+ * entity, a reference entity (whose rows are the codes other elements point at), or a domain (a
+ * reusable list of values, held apart from the entities). Changing one into another is a reviewed
+ * structural transformation, never a field flipped in place.
+ */
+export const ELEMENT_TYPES = ['entity', 'reference', 'domain'] as const;
+export type ElementType = (typeof ELEMENT_TYPES)[number];
+
+/** What an element type is called, for a reader. */
+export const ELEMENT_TYPE_LABELS: Record<ElementType, string> = {
+  entity: 'Entity',
+  reference: 'Reference Entity',
+  domain: 'Domain',
+};
+
+/** What each element type is, in a line, for the field that changes it. */
+export const ELEMENT_TYPE_DESCRIPTIONS: Record<ElementType, string> = {
+  entity: 'A thing the application keeps rows about, with attributes and a key of its own.',
+  reference: 'An entity whose rows are the codes the rest of the model points at, rather than a list of values held in a domain.',
+  domain: 'A reusable list of permitted values of one base type, shared by attributes; an enumeration is a domain with values.',
+};
+
+/** An element type in words, as a sentence uses it. */
+export const elementTypeWords = (type: ElementType): string => (type === 'entity' ? 'an entity' : type === 'reference' ? 'a reference entity' : 'a domain');
+
 /** A named, reusable type: a base type narrowed by length, range, pattern or a list of values. */
 export interface LogicalDomain {
   id: string;
@@ -67,6 +93,11 @@ export interface LogicalEntity {
   definition: string;
   /** A supertype with no instances of its own. */
   abstract?: boolean;
+  /**
+   * True when the entity is a reference entity: its rows are the codes the rest of the model
+   * points at, not a list of values held in a domain. Absent on an ordinary entity.
+   */
+  reference?: boolean;
   attributes: LogicalAttribute[];
   /** At most one primary. */
   keys: Key[];
@@ -349,6 +380,8 @@ export interface EntityRow {
   id: string;
   name: string;
   definition: string;
+  /** True for a reference entity. */
+  reference: boolean;
   attributes: number;
   hasPrimaryKey: boolean;
   supertypes: string[];

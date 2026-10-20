@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The ConceptWeaver companion: the Java semantic backend of Phase 3.
+
+  The dependency spike of roadmap task 3.1 chose the versions declared here, and task 3.2 ported
+  the single-file service's endpoints with the same requests and responses. The default profile
+  is the chosen combination; `-Powlapi4` builds the same code against the older line, which is
+  what `reasoner/lib/robot.jar` carries today and what the frontend's parity suites assert.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.1</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>org.conceptweaver</groupId>
+  <artifactId>companion</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <name>ConceptWeaver companion</name>
+  <description>The Java semantic backend of ConceptWeaver (roadmap Phase 3).</description>
+
+  <properties>
+    <java.version>21</java.version>
+    <owlapi.version>5.5.1</owlapi.version>
+    <hermit.version>1.4.5.519</hermit.version>
+    <owlexplanation.version>5.0.1</owlexplanation.version>
+    <elk.version>0.6.0</elk.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+    </dependency>
+
+    <!-- The OWL API is the server's canonical model (ADR-004). -->
+    <dependency>
+      <groupId>net.sourceforge.owlapi</groupId>
+      <artifactId>owlapi-distribution</artifactId>
+      <version>${owlapi.version}</version>
+    </dependency>
+    <!-- HermiT covers OWL 2 DL, as it does in the single-file service. -->
+    <dependency>
+      <groupId>net.sourceforge.owlapi</groupId>
+      <artifactId>org.semanticweb.hermit</artifactId>
+      <version>${hermit.version}</version>
+    </dependency>
+    <!-- ELK covers OWL 2 EL and is the fast path the service already chooses automatically. -->
+    <dependency>
+      <groupId>io.github.liveontologies</groupId>
+      <artifactId>elk-owlapi</artifactId>
+      <version>${elk.version}</version>
+      <exclusions>
+        <!-- ELK is built against OWL API 5.1.20; the distribution above is the line under test,
+             and two OWL API copies on one classpath would let either answer. -->
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <!-- Justifications for what is wrong, as /reason already offers. -->
+    <dependency>
+      <groupId>net.sourceforge.owlapi</groupId>
+      <artifactId>owlexplanation</artifactId>
+      <version>${owlexplanation.version}</version>
+      <exclusions>
+        <!-- 2.0.0's own OSGi bundle of an older OWL API; the distribution above is the one used. -->
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-osgidistribution</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <profiles>
+    <!-- The line robot.jar carries today: OWL API 4.5.29, HermiT for 4.5, explanation for 4.1. -->
+    <profile>
+      <id>owlapi4</id>
+      <properties>
+        <owlapi.version>4.5.29</owlapi.version>
+        <hermit.version>1.4.5.456</hermit.version>
+        <owlexplanation.version>2.0.0</owlexplanation.version>
+      </properties>
+    </profile>
+    <!-- The default: OWL API 5.5.1, with HermiT and the explanation generator built for it. -->
+    <profile>
+      <id>owlapi5</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <properties>
+        <owlapi.version>5.5.1</owlapi.version>
+        <hermit.version>1.4.5.519</hermit.version>
+        <owlexplanation.version>5.0.1</owlexplanation.version>
+      </properties>
+    </profile>
+  </profiles>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <!-- The test checks that the dependencies it runs against are the profile's. -->
+            <expected.owlapi.version>${owlapi.version}</expected.owlapi.version>
+            <expected.hermit.version>${hermit.version}</expected.hermit.version>
+            <expected.elk.version>${elk.version}</expected.elk.version>
+            <expected.owlexplanation.version>${owlexplanation.version}</expected.owlexplanation.version>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

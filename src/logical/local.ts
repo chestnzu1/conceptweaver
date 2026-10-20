@@ -62,7 +62,7 @@ export function createLocalLogicalServices(host: LogicalHost): { query: LogicalM
       const found = m.entities.filter((e) => !words || norm(e.name).includes(words) || norm(e.definition).includes(words)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       const offset = Math.max(0, Math.floor(q.offset ?? 0));
       const limit = Math.min(MAX_PAGE, Math.max(1, Math.floor(q.limit ?? PAGE)));
-      const items = found.slice(offset, offset + limit).map((e): EntityRow => ({ id: e.id, name: e.name, definition: e.definition, attributes: e.attributes.length, hasPrimaryKey: hasPrimaryKey(m, e.id), supertypes: supers.get(e.id) ?? [] }));
+      const items = found.slice(offset, offset + limit).map((e): EntityRow => ({ id: e.id, name: e.name, definition: e.definition, reference: e.reference === true, attributes: e.attributes.length, hasPrimaryKey: hasPrimaryKey(m, e.id), supertypes: supers.get(e.id) ?? [] }));
       return { revision: m.revision, total: found.length, offset, items };
     },
     async describe(q, options) {

@@ -12,7 +12,7 @@ import { classText, namingFor } from './manchester';
 
 /** How each kind of class axiom is written in Manchester syntax, before its expression. */
 const CLASS_AXIOM_WORDS: Record<ClassAxiomKind, string> = { SubClassOf: 'SubClassOf:', EquivalentClasses: 'EquivalentTo:', DisjointClasses: 'DisjointWith:' };
-import { DATATYPES, PROP_LINKS, isLang, type Model, type QualityConfig, type Term } from './types';
+import { DATATYPES, PROP_LINKS, isLang, type CustomRule, type Model, type QualityConfig, type Term } from './types';
 import { resolveModel } from './vocab';
 import { quoted } from './words';
 
@@ -82,16 +82,29 @@ export const ruleById = (id: string) => BY_ID.get(id);
 
 export const ruleEnabled = (config: QualityConfig, rule: QualityRule) => (rule.default ? !config.off.includes(rule.id) : config.on.includes(rule.id));
 
-/** Switches one rule on or off, keeping only what differs from its default. */
+/** Switches one rule on or off, keeping only what differs from its default. A rule of the user's own is switched by its id too, as the results give it ("custom:<id>") or as the rule is listed. */
 export function setRule(config: QualityConfig, id: string, on: boolean): QualityConfig {
   const rule = BY_ID.get(id);
-  if (!rule) return config;
+  if (!rule) {
+    const custom = id.startsWith('custom:') ? id.slice('custom:'.length) : id;
+    if (!config.rules.some((r) => r.id === custom)) return config;
+    return { ...config, rules: config.rules.map((r) => (r.id === custom ? { ...r, enabled: on } : r)) };
+  }
   const off = config.off.filter((x) => x !== id);
   const onList = config.on.filter((x) => x !== id);
   if (rule.default && !on) off.push(id);
   if (!rule.default && on) onList.push(id);
-  return { off, on: onList };
+  return { ...config, off, on: onList };
 }
+
+/** Adds a rule of the user's own, or replaces the one with its id. */
+export const setCustomRule = (config: QualityConfig, rule: CustomRule): QualityConfig => ({
+  ...config,
+  rules: config.rules.some((r) => r.id === rule.id) ? config.rules.map((r) => (r.id === rule.id ? rule : r)) : [...config.rules, rule],
+});
+
+/** Takes a rule of the user's own out. Its findings stay until the checks are run again. */
+export const removeCustomRule = (config: QualityConfig, id: string): QualityConfig => ({ ...config, rules: config.rules.filter((r) => r.id !== id) });
 
 /** The earlier model checks, by the rule each now belongs to. */
 const LEGACY: Record<string, string> = {

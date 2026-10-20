@@ -8,6 +8,8 @@ foundation for designing relational logical data models (LDMs): OWL ontology →
 transformation → editable logical data model → semantic traceability and change impact analysis.
 Modules M17 and M18, journeys J13 to J15, NFR-17 to NFR-20 and FR-M12-8 to FR-M12-11 were added for
 it. Physical data models, database schema generation, SQL DDL and deployment are out of scope.
+On 2026-10-20 a read-only MCP server (FR-M9-8, FR-M12-12, NFR-21) was added beside them: an
+integration capability over the same services, not a change of direction.
 
 The data-integration scope (modules M14 to M16, journeys J10 to J12, NFR-12 to NFR-16, and the
 requirements of other modules that serve it), added on 2026-10-13, is **deferred**: kept with its
@@ -216,9 +218,9 @@ link".** After the first MVP (reached 2026-10-16), in the browser, with no serve
 | In the LDM MVP | Why |
 | --- | --- |
 | Logical data models as an artifact of their own, several per project, saved and versioned with it (FR-M17-1 to FR-M17-8, FR-M17-14) | The thing designed has to exist on its own before it can be derived or traced. |
-| The LDM workspace and an ER diagram (FR-M17-10 to FR-M17-12) | A logical model is read and reviewed as a diagram. |
+| The LDM workspace and an ER diagram (FR-M17-10 to FR-M17-12, FR-M17-18) | A logical model is read and reviewed as a diagram, and its elements say what kind of thing they are. |
 | Proposals from the ontology, reviewed, with no constraint imposed (FR-M18-1 to FR-M18-6, NFR-18) | The product's objective, and its main risk if done carelessly. |
-| Semantic mappings, stale detection and impact reports with reviewed synchronization (FR-M18-8 to FR-M18-14) | What makes the derivation last beyond the first day. |
+| Semantic mappings, stale detection and impact reports with reviewed synchronization (FR-M18-8 to FR-M18-14, FR-M18-16) | What makes the derivation last beyond the first day. |
 
 **Not in it, deliberately:** physical models and DDL (out of scope altogether), several
 diagrams per LDM, formal rule expressions, shape sets as transformation input, LDM assistance,
@@ -260,8 +262,8 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | M14 Database connectivity and schema exploration | **Deferred**; not implemented | Free-text `database`, `schema`, `table`, `column` fields in `src/model/governance.ts` | Everything; needs the backend |
 | M15 Ontology-to-relational semantic mapping | **Deferred**; not implemented | Reusable parts only (entity lists, validation, matcher, IRI handling) | Everything |
 | M16 Relational data access: materialisation and virtual knowledge graph | **Deferred**; not implemented | SPARQL view over the ontology (`src/model/sparql.ts`) | Everything |
-| M17 Logical data model authoring | **Partially Implemented** | `src/logical/` (the metamodel, its query and edit services, rules, findings; 2026-10-17), the LDM workspace and ER diagram (`src/components/LogicalData.tsx`, `LdmDiagram.tsx`) | Formal rule expressions (FR-M17-9), several diagrams (FR-M17-13), LDMs on a server (roadmap LM-5) |
-| M18 Ontology-to-LDM transformation and semantic traceability | **Partially Implemented** | `src/traceability/` (proposals from the ontology under a saved configuration; mappings, traceability, impact and reviewed synchronization; 2026-10-17), the *Derive from the ontology…* dialog (`src/components/TransformationDialog.tsx`), the LDM view's *Traceability* part (`src/components/Traceability.tsx`) and its *Impact…* dialog (`src/components/ImpactDialog.tsx`) | Shape sets as a further input (FR-M18-7); mappings exported as RDF with PROV-O (FR-M18-15) |
+| M17 Logical data model authoring | **Partially Implemented** | `src/logical/` (the metamodel, its query and edit services, rules, findings; 2026-10-17), the LDM workspace and ER diagram (`src/components/LogicalData.tsx`, `LdmDiagram.tsx`), element types (2026-10-20) | Formal rule expressions (FR-M17-9), several diagrams (FR-M17-13), LDMs on a server (roadmap LM-5) |
+| M18 Ontology-to-LDM transformation and semantic traceability | **Partially Implemented** | `src/traceability/` (proposals from the ontology under a saved configuration; mappings, traceability, impact and reviewed synchronization; 2026-10-17; element types and their mappings 2026-10-20), the *Derive from the ontology…* dialog (`src/components/TransformationDialog.tsx`), the LDM view's *Traceability* part (`src/components/Traceability.tsx`) and its *Impact…* dialog (`src/components/ImpactDialog.tsx`) | Shape sets as a further input (FR-M18-7); mappings exported as RDF with PROV-O (FR-M18-15) |
 
 ## 4. Non-functional requirements (apply to every module)
 
@@ -288,6 +290,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | NFR-18 | **No silent constraints.** No mandatory attribute or relationship end, no bound taken from a cardinality restriction, no key and no business rule is created in an LDM from an OWL axiom or a SHACL shape without the user choosing it. A property's functionality may shape a proposed relationship, stated as the reason. | A transformation of an ontology full of restrictions, keys and functional properties, accepted as offered, yields only optional attributes and ends, no key and no rule; with nothing accepted, the LDM's revision is unchanged. |
 | NFR-19 | **Scale, logical models.** An LDM of 2,000 entities and 30,000 attributes: an edit blocks the page under 100 ms; search within 200 ms; the ER diagram pans at 30 frames per second with 300 entities in view. Transformation and impact over a 10,000-class ontology run off the main thread and can be cancelled. | Benchmarks in CI on generated LDMs and ontologies ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) §8). |
 | NFR-20 | **LDM fidelity.** An LDM saved and reopened, exported and imported in its JSON format, or restored from a version, is identical element for element, ids included. | Round-trip tests on fixture LDMs covering every kind of element. |
+| NFR-21 | **The MCP read boundary holds.** An external MCP client reads a project it is authorised for and nothing else. The tool catalog contains no mutating operation; every call names its project and the revision read; answers are bounded and paged; no answer or log carries an AI provider key, a database credential, internal configuration or a file path. | Tool-discovery, authorisation, pagination, concurrency and no-credential tests against a running companion (roadmap 5.8), and a boundary test of the adapter's module dependencies. |
 
 ## 5. Functional modules
 
@@ -506,7 +509,7 @@ SH-5, delivers FR-M4-12 to FR-M4-16 ([DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMA
 | FR-M4-4 | Validation is a cancellable background job with progress. | Implemented 2026-10-15 (`ValidationService`, in a worker; *Stop*; the phase shown as it goes) | P0 |
 | FR-M4-5 | Results state the revision they are of and are marked stale after an edit. | Existing | P0 |
 | FR-M4-6 | Reports as JSON and RDF; additionally as CSV and a printable page. | Partially Implemented (JSON, RDF) | P2 |
-| FR-M4-7 | Custom quality rules written as SPARQL queries. | Recommended | P2 |
+| FR-M4-7 | Custom quality rules written as SPARQL queries. | Implemented 2026-10-18 (`CustomRule` and `QualityConfig.rules` in `src/model/types.ts`; run through `qualityFindings` in `src/model/validation.ts`; the editor in `src/components/Validation.tsx`; `e2e/custom-rules.mjs`) | P2 |
 | FR-M4-8 | The same checks run from a command line, for continuous integration of an ontology repository. | Recommended | P2 |
 | FR-M4-9 | SHACL-SPARQL and validation against the inferred graph, with a server engine. | Recommended (SH-5) | P2 |
 | FR-M4-10 | The workbench has a fourth kind of check, *Mapping*, beside OWL, SHACL and quality: same results table, same links to what a finding is about, stale when the mapping, the ontology or the schema changes. The checks themselves are FR-M15-9. | **Deferred** (data integration); was: Recommended | P1 |
@@ -561,7 +564,7 @@ an interactive HTML page.
 | FR-M5-4 | Only what is in view is drawn; detail is reduced when zoomed out. | Implemented 2026-10-15 (`src/model/culling.ts`: the area around the view, lines cut to it, a layer moved by a pan; no words below 30 % and 20 %, lines batched far out) | P0 |
 | FR-M5-5 | Above a size threshold the graph opens on a subgraph; the full graph is never instantiated. | Implemented 2026-10-15 (above 12,000 terms: opens on the Structure Explorer, the graph drawn around a chosen class) | P0 |
 | FR-M5-6 | Styling by kind and by element, themes, saved styles. | Existing | P1 |
-| FR-M5-7 | Several named diagrams per ontology, each with its own contents, layout and style. | Recommended | P1 |
+| FR-M5-7 | Several named diagrams per ontology, each with its own contents, layout and style. | Implemented 2026-10-18 (`src/model/state/diagrams.ts`, `src/components/Diagrams.tsx`; `e2e/diagrams.mjs`) | P1 |
 | FR-M5-8 | Export the picture as SVG, PNG and an interactive page. | Existing | P1 |
 | FR-M5-9 | Overview map and jump-to-entity. | Recommended | P2 |
 | FR-M5-10 | Neighbourhoods are fetched from a server on demand. | Recommended | P1 |
@@ -628,10 +631,11 @@ table* (since 2026-10-16, roadmap task 2.4) reads CSV, TSV and Excel files, in a
 a sheet and header row chosen; maps each column to a use on a mapping screen, with IRIs made by
 templates; previews what each row becomes or why it is skipped; imports as one undoable edit;
 and keeps mappings as templates. It is built on a mapping core that does not assume a file
-(`src/mapping/`, ADR-019).
+(`src/mapping/`, ADR-019). Since 2026-10-18 (roadmap task 2.12), a re-import can also update the
+entities already there: rows are matched by IRI or a key column, the changes are shown before
+they are applied, and importing the same file again changes nothing and says so (FR-M7-6).
 
-**Gaps.** No updating of existing entities from a table (FR-M7-6): a row the model has is left as
-it is. No server job for files too large for the browser. No RML.
+**Gaps.** No server job for files too large for the browser. No RML.
 
 **User stories.**
 
@@ -648,7 +652,7 @@ it is. No server job for files too large for the browser. No RML.
 | FR-M7-3 | A mapping screen: each column becomes a name, an IRI or part of one, a type, a parent, an annotation (with language), a data property value, or a link to another entity by a chosen property. | Implemented 2026-10-16 (`ImportTable.tsx`, over `src/mapping/`) | P0 |
 | FR-M7-4 | Preview before commit: what will be created, what will be skipped and why, row by row; the import is one undoable change. | Implemented 2026-10-16 (`src/mapping/plan.ts`) | P0 |
 | FR-M7-5 | Mappings are saved as named templates and reused. | Implemented 2026-10-16 (`src/import/templates.ts`, in this browser) | P1 |
-| FR-M7-6 | Update mode: rows are matched to existing entities by IRI or a key column; changes are shown before they are applied. | Recommended | P1 |
+| FR-M7-6 | Update mode: rows are matched to existing entities by IRI or a key column; changes are shown before they are applied. | Implemented 2026-10-18 (update mode in `src/components/ImportTable.tsx` and `src/mapping/plan.ts`; `e2e/import-table.mjs`) | P1 |
 | FR-M7-7 | Files too large for the browser are imported as a server job. | Future | P2 |
 | FR-M7-8 | A mapping can be exported in a standard mapping language (RML). | Future | P3 |
 
@@ -726,13 +730,23 @@ through a service that can run in the page or at a backend (`src/sparql/`, FR-M9
 | FR-M9-5 | Named, saved queries per project. | Recommended | P2 |
 | FR-M9-6 | One search box across entities, annotations and axioms, with results grouped by kind. | Recommended | P2 |
 | FR-M9-7 | A read-only SPARQL endpoint for a published ontology. | Future | P3 |
+| FR-M9-8 | A read-only MCP server over the same semantic services, so external AI clients (Claude Desktop, Cursor) can read a project's ontology and — once their services exist — its logical models, mappings and impact: a fixed tool catalog, project and revision named in every call, bounded answers, no mutation and no credential. Local prototype off by default on loopback; production behind project roles. | Future (roadmap 5.8a, 5.8b) | P2 |
 
 **Dependencies.** FR-M9-4 needs inferred results kept per revision (M3) and, at scale, Phase 4.
+FR-M9-8's local stage needs the companion's ontology sessions (roadmap 3.4); its graph tool needs
+4.4 and its LDM, mapping and impact tools LM-5. It needs no AI provider, provider key or roadmap
+5.7: an external client brings its own model.
 
 **Acceptance criteria.**
 
 - FR-M9-4: the same query for instances of a class returns the asserted instances in one mode
   and the asserted and inferred ones in the other, and the result header says which.
+- FR-M9-8: an external MCP client lists the catalog, finds no tool that changes anything, reads a
+  project summary, a search and an entity's details matching the companion's own answers, gets a
+  bounded page for a large ontology with `more` set, is refused `not-found` for a project it may
+  not read, and receives no provider key or credential in any answer. The local stage is off
+  until enabled, listens on loopback only, and refuses a call without its bearer token or from a
+  foreign `Host` or `Origin`.
 
 ### M10 Ontology versioning and change tracking
 
@@ -841,13 +855,16 @@ service (`/ai/forward`), which refuses private addresses and connects to the add
 | FR-M12-9 | Explanations in words of a semantic mapping (why this element came from those axioms) and of an impact report, grounded in the tools. | Future | P2 |
 | FR-M12-10 | Typed LDM changes proposed through the assistant, compiled to logical change sets and reviewed, edited and accepted as ontology proposals are; never applied without acceptance. | Future | P2 |
 | FR-M12-11 | Transformation suggestions (a strategy for a hierarchy or an object property, a candidate key) offered as transformation proposals with their rationale, under NFR-18. | Future | P2 |
+| FR-M12-12 | The boundary between the in-app assistant and external MCP clients: both read through the same service semantics, but the assistant has the user's provider and key and may propose changes for review, while the MCP server has no provider, no key, no proposal tool and no mutation. An external client supplies its own model and treats the project's labels and definitions as data, not instructions. | Future (roadmap 5.8) | P2 |
 
 **Module non-functional points.** NFR-10 and AR-10. A proposed axiom is validated by the same
 rule service as a typed one (FR-M2-7) and can be checked by a reasoner before acceptance.
 
 **Dependencies.** M10 (provenance of accepted suggestions), M2 (structured expressions to
 propose into). FR-M12-8 to FR-M12-11 need M17 and M18's services; they extend the existing
-assistant, never a second one. Architecture: ADR-010.
+assistant, never a second one. Architecture: ADR-010. FR-M12-12 is the boundary with the MCP
+server (FR-M9-8, ADR-028): the MCP adapter never calls the assistant's provider path, and the
+assistant never calls the MCP adapter.
 
 **Acceptance criteria.** For any AI feature: with no provider configured there is no network
 request; an accepted suggestion appears in the history as a change with its origin; a rejected
@@ -879,7 +896,8 @@ construction.
 | FR-M13-10 | Permission on a data source is separate from permission on a project; mapping changes can be put through review like ontology changes. | **Deferred** (data integration); was: Future | P2 |
 
 **Dependencies.** M10 (a proposal is a change set; the audit trail is the revision history),
-the Server profile, authentication.
+the Server profile, authentication. Project roles are the only permission model: the MCP server
+(FR-M9-8) checks the same role on every tool call and adds no permission model of its own.
 
 **Acceptance criteria.** Deferred to the Phase 5 specification. One criterion is fixed now:
 adding collaboration must not remove the ability to work alone with no server (ADR-001).
@@ -1185,8 +1203,9 @@ kept on a server. Logical only: no physical model, database type or DDL.
 
 **Status: Partially implemented** (added 2026-10-17; roadmap LM-1, LM-2, LM-5). The metamodel and
 its services (`src/logical/`), the LDM workspace and its ER diagram (`src/components/LogicalData.tsx`,
-`LdmDiagram.tsx`) and LDM findings in the Validation view exist (2026-10-17). What remains is
-FR-M17-9, FR-M17-13 and the server's LDMs (LM-5). The design is
+`LdmDiagram.tsx`) and LDM findings in the Validation view exist (2026-10-17). An element's type
+(entity, reference entity or domain) is first-class since 2026-10-20 (FR-M17-18, roadmap 2.13).
+What remains is FR-M17-9, FR-M17-13 and the server's LDMs (LM-5). The design is
 [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) §13.3 to §13.5 and
 [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) §11.
 
@@ -1201,6 +1220,9 @@ FR-M17-9, FR-M17-13 and the server's LDMs (LM-5). The design is
   `film_credit` with a `role` attribute.
 - As a reviewer I compare two versions of the project and see that a key was added and a
   relationship's cardinality changed, and nothing in the ontology.
+- As a data architect I see that `genre_code` is a reference entity and `film` an ordinary
+  entity, and I change a hand-made domain into a reference entity only after seeing the entity,
+  its code, label, primary key and the mapping that will follow it.
 
 | Id | Requirement | Status | Priority |
 | --- | --- | --- | --- |
@@ -1221,6 +1243,7 @@ FR-M17-9, FR-M17-13 and the server's LDMs (LM-5). The design is
 | FR-M17-15 | An LDM is exported to and imported from a documented, versioned JSON format, losslessly; the project's own file carries its LDMs. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-16 | `LogicalModelQueryService` and `LogicalModelEditService`: questions by element id of a named LDM revision, paged, cancellable, refusals typed, plain data only, as the existing services. | **Existing** (2026-10-17, roadmap LM-1) | P1 |
 | FR-M17-17 | On a server, LDMs are kept with revisions of their own, queried a page at a time and edited through the same contracts; a change made against a moved revision is refused. | Recommended (LM-5) | P1 |
+| FR-M17-18 | An element's type is first-class and visible in the Entities workspace: Entity, Reference Entity or Domain, each described in a line, with the fields that type needs. Changing it is a reviewed preview, never a save on selection: it names the current and proposed type, what is created, changed and removed, the attributes, relationships, keys and domain values affected, the decisions to take, the warnings, and the mappings affected. A conversion that is unsafe lists its conflicts, cannot be applied, and leaves the element exactly as it was; applying is one undoable change set, kept across reload, export and import. An entity between ordinary and reference keeps its structure; a domain and an entity either way is a reviewed structural transformation that relocates the element, not a flag flipped in place. Labels in the entity list, the editor, the ER diagram and search filters say what an element is. No element type is ever inferred from a name or an ontology label, and no type change writes the ontology. | **Existing** (2026-10-20, roadmap 2.13; model format 11, LDM format 2) | P1 |
 
 **Module non-functional points.** NFR-17 (an LDM edit changes nothing of the ontology), NFR-19
 (scale), NFR-20 (fidelity), NFR-9 (a project saved before LDMs existed opens unchanged), NFR-7
@@ -1255,7 +1278,7 @@ and decisions the user reviews; and keeping each LDM traceable to the ontology t
 semantic mappings, with stale detection, change impact reports and reviewed synchronization.
 
 **Status: In part — implemented 2026-10-17** (LM-3 and LM-4: FR-M18-1 to FR-M18-6 and FR-M18-8
-to FR-M18-14; FR-M18-7 and FR-M18-15 remain). Patterns it builds on exist: shapes proposed from the ontology, each
+to FR-M18-14, and FR-M18-16 from 2026-10-20; FR-M18-7 and FR-M18-15 remain). Patterns it builds on exist: shapes proposed from the ontology, each
 with what the axiom means and where it differs, none chosen by default, origin kept as the axiom in
 functional syntax and marked stale when it goes (`src/model/proposals.ts`, FR-M4-15); the
 axiom-level difference between two states of the ontology (`changesBetween`, M10); structured class
@@ -1300,6 +1323,7 @@ candidates for the designer to choose.
 | FR-M18-13 | Several LDMs derived from one ontology, each with its own configuration, mappings and impact report. | Implemented (LM-4, 2026-10-17) | P1 |
 | FR-M18-14 | Mappings are kept with their LDM, in the project's versions and differences; deleting an LDM element breaks the mappings to it and changes nothing in the ontology. | Implemented (LM-4, 2026-10-17) | P1 |
 | FR-M18-15 | Mappings exported as RDF with PROV-O provenance, for other tools. | Future | P3 |
+| FR-M18-16 | A change of an element's type (FR-M17-18) moves the mappings that target it, or keeps them and says they need review. A mapping follows when its strategy has a counterpart for the new type that makes the same element; otherwise it keeps its words and targets, its baseline moves, and Traceability computes it as mismatched — it is never silently called compatible, and a strategy is never chosen for the user when several are semantically different. When more than one mapping targets the element, or a mapping targets an attribute or key a domain would not keep, the change is refused and nothing is written. The model change and every mapping change are one logical change set, stale-checked and applied atomically; undo restores the type, the dependent structure and the mappings together. | Implemented (2026-10-20, roadmap 2.13) | P1 |
 
 **Module non-functional points.** NFR-18 above all: no constraint without the user's choice.
 NFR-17: transformation and synchronization never change the ontology. NFR-3 and NFR-19:
@@ -1336,6 +1360,16 @@ ADR-025.
   targets the domain, the conversion is refused with that conflict and nothing is written. A
   mapping saved with older free text shows the words as needing classification, and choosing a
   strategy that makes the same kind of element changes no element.
+- FR-M17-18, FR-M18-16: an entity mapped from `:Film` is changed to *Reference Entity* in the
+  Entities workspace by choosing the type and applying the preview; its attributes, key and
+  relationships stay, its mapping is current with the reference-entity strategy, one undo makes
+  it an ordinary entity with its mapping back, and the ontology's Turtle is unchanged. A mapped
+  entity changed to *Domain* has its mapping kept for review and shown *mismatched*, never
+  compatible. An entity with several attributes, relationships or a mapping on one of its
+  attributes is refused as a domain with every reason listed, and Cancel leaves it as it was.
+  An element with no mapping changes type the same way. The type and mappings survive a reload,
+  an export and an import of the LDM, and a second LDM derived from the same ontology is left
+  exactly as it was.
 - Proposals for Pizza are worked out in a worker without blocking the page; for a 10,000-class
   generated ontology within 30 seconds (NFR-19).
 

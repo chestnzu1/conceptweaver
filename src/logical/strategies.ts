@@ -1,4 +1,4 @@
-import { STRATEGY_IDS, type ElementKind, type StrategyId } from './contracts';
+import { STRATEGY_IDS, type ElementKind, type ElementType, type StrategyId } from './contracts';
 
 /**
  * What a semantic mapping does, as a catalogue (roadmap LM-4; SYSTEM_ARCHITECTURE.md §13.7): one
@@ -29,6 +29,8 @@ export interface StrategyEntry {
   sources?: { min?: number; max?: number };
   /** The kind of LDM element it makes. */
   target: ElementKind;
+  /** Where it makes a kind with more than one element type (an entity, a reference entity), which one. */
+  makes?: ElementType;
   /** What it does, for a reader choosing between strategies. */
   description: string;
 }
@@ -52,6 +54,7 @@ export const STRATEGIES: readonly StrategyEntry[] = [
     sourceKinds: ['class'],
     sources: ONE,
     target: 'entity',
+    makes: 'reference',
     description: 'One class becomes an entity whose rows are the codes other entities point at, rather than a list held in a domain.',
   },
   {
@@ -76,6 +79,7 @@ export const STRATEGIES: readonly StrategyEntry[] = [
     sourceKinds: ['class'],
     sources: ONE,
     target: 'entity',
+    makes: 'reference',
     description: 'The members of a class defined by owl:oneOf become rows of a reference entity, each with a code.',
   },
   {
@@ -222,6 +226,39 @@ export function strategyForText(text: string): StrategyEntry | undefined {
 /** The kind of element a strategy makes, where the id is known. */
 export function expectedKindOf(id: string | undefined): ElementKind | undefined {
   return strategyById(id)?.target;
+}
+
+/**
+ * The element type a strategy makes, where that is one this workspace edits: a reference entity
+ * only where its catalogue entry says so; every other entity strategy makes an ordinary entity,
+ * and a domain strategy a domain. Other kinds (a relationship, a rule) have no element type here.
+ */
+export function expectedElementTypeOf(id: string | undefined): ElementType | undefined {
+  const entry = strategyById(id);
+  if (!entry) return undefined;
+  if (entry.makes) return entry.makes;
+  if (entry.target === 'entity') return 'entity';
+  if (entry.target === 'domain') return 'domain';
+  return undefined;
+}
+
+/**
+ * The strategy that does for another element type exactly what this one did (a plain entity and a
+ * reference entity from the same class, an enumeration that was a domain and one that is a
+ * reference entity), where the catalogue has one. Nothing is guessed: undefined means no strategy
+ * is semantically the same, and the mapping is left for review.
+ */
+const COUNTERPARTS: Partial<Record<StrategyId, Partial<Record<ElementType, StrategyId>>>> = {
+  OWL_CLASS_TO_LDM_ENTITY: { reference: 'OWL_CLASS_TO_LDM_REFERENCE_ENTITY' },
+  OWL_CLASS_TO_LDM_REFERENCE_ENTITY: { entity: 'OWL_CLASS_TO_LDM_ENTITY' },
+  OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY: { domain: 'OWL_ENUMERATION_TO_LDM_DOMAIN' },
+  OWL_ENUMERATION_TO_LDM_DOMAIN: { reference: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' },
+};
+
+/** The strategy a mapping follows after its element changes type, or undefined when none does the same for it. */
+export function strategyForElementType(id: StrategyId, to: ElementType): StrategyId | undefined {
+  if (expectedElementTypeOf(id) === to) return id;
+  return COUNTERPARTS[id]?.[to];
 }
 
 /** The words a mapping records for a strategy, naming the element it is about where its text does. */

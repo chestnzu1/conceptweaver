@@ -396,7 +396,7 @@ describe('typed strategies and the conversion they ask for', () => {
     expect(mappingAfter.strategy).toBe('enumerated class → reference entity');
     expect(mappingAfter.converted).toMatchObject({ from: 'OWL_ENUMERATION_TO_LDM_DOMAIN', to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' });
     expect(mappingAfter.made.by).toBe('hand');
-    expect(mappingAfter.baseline).toEqual({ entity: { id: entity.id, name: entity.name, definition: entity.definition } });
+    expect(mappingAfter.baseline).toEqual({ entity: { id: entity.id, name: entity.name, definition: entity.definition, reference: true } });
     // The mapping is current, and its new element was not instantly "customised".
     const report = await h.traceability.report({ model });
     const described = report.mappings.find((m) => m.mapping.id === made.mapping)!;
@@ -454,6 +454,234 @@ describe('typed strategies and the conversion they ask for', () => {
     const untouched = structuredClone(h.ldm(other));
     const preview = await h.traceability.previewConversion({ model, mapping: made.mapping, to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY' });
     await h.traceability.applyConversion(preview);
+    expect(h.ldm(other)).toEqual(untouched);
+  });
+});
+
+describe('element types in the Entities workspace', () => {
+  /** A hand-added entity of one attribute and one primary key on it, mapped from the class Genre. */
+  async function withOneValue(h: ReturnType<typeof harness>) {
+    const model = await h.derive('Film LDM');
+    const entity = {
+      id: 'e-one-value',
+      name: 'One value',
+      definition: 'A single code.',
+      attributes: [{ id: 'a-one-value', name: 'Value', definition: '', type: { base: 'text' as const }, optional: false }],
+      keys: [{ id: 'k-one-value', name: 'One value key', kind: 'primary' as const, members: [{ attribute: 'a-one-value' }] }],
+    };
+    await h.edit.apply({ model, baseRevision: h.ldm(model).revision, changes: [{ op: 'add', element: { kind: 'entity', entity } }], summary: 'Added a one-value entity.' });
+    const made = await h.traceability.addMapping({ model, sources: [{ iri: h.iri('Genre') }], targets: [{ entity: entity.id }], strategyId: 'OWL_CLASS_TO_LDM_ENTITY', rationale: 'The class is one code.' });
+    return { model, entity, made };
+  }
+
+  /** The domain, its mapping and the attribute in `withDomain`, reachable from this block. */
+  async function withDomain(h: ReturnType<typeof harness>) {
+    const model = await h.derive('Film LDM');
+    const film = h.ldm(model).entities.find((e) => e.name === 'Film')!;
+    const domain = { id: 'd-genre-list', name: 'Genre list', definition: 'A category of films.', base: { base: 'text' as const }, constraints: { values: [{ code: 'Drama', label: 'Drama' }, { code: 'Comedy', label: 'Comedy' }] } };
+    await h.edit.apply({
+      model,
+      baseRevision: h.ldm(model).revision,
+      changes: [
+        { op: 'add', element: { kind: 'domain', domain } },
+        { op: 'add', element: { kind: 'attribute', entity: film.id, attribute: { id: 'a-genre-code', name: 'Genre code', definition: '', type: { domain: domain.id }, optional: true } } },
+      ],
+      summary: 'Added a domain and an attribute typed by it.',
+    });
+    const made = await h.traceability.addMapping({ model, sources: [{ iri: h.iri('Genre') }], targets: [{ domain: domain.id }], strategyId: 'OWL_ENUMERATION_TO_LDM_DOMAIN', rationale: 'The categories are a list.' });
+    return { model, domain, made, film };
+  }
+
+  it('offers every element type, naming why one is not available as the element stands', async () => {
+    const h = harness();
+    const model = await h.derive('Film LDM');
+    const film = h.ldm(model).entities.find((e) => e.name === 'Film')!;
+    const choices = await h.traceability.elementTypes({ model, element: { entity: film.id } });
+    expect(choices.map((c) => [c.type, c.label, c.available])).toEqual([
+      ['entity', 'Entity', true],
+      ['reference', 'Reference Entity', true],
+      ['domain', 'Domain', false],
+    ]);
+    expect(choices[2].reason).toMatch(/attributes besides its one value/);
+    expect(choices.every((c) => c.description.length > 0)).toBe(true);
+    // An element that is not there is refused, not guessed.
+    await expect(h.traceability.elementTypes({ model, element: { entity: 'e-nope' } })).rejects.toMatchObject({ code: 'not-found' });
+  });
+
+  it('previews an entity becoming a reference entity without writing, then applies the element and its mapping as one step', async () => {
+    const h = harness();
+    const { model, entity, made } = await withOneValue(h);
+    const commits = h.commits();
+    const revision = h.ldm(model).revision;
+    const ontologyBefore = { terms: structuredClone(h.current().terms), props: structuredClone(h.current().props), relations: structuredClone(h.current().relations) };
+
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { entity: entity.id }, to: 'reference' });
+    expect(h.commits()).toBe(commits);
+    expect(h.ldm(model).revision).toBe(revision);
+    expect(h.ldm(model).entities.find((e) => e.id === entity.id)!.reference).toBeUndefined();
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.from).toMatchObject({ type: 'entity', kind: 'entity', name: 'One value' });
+    expect(preview.to).toMatchObject({ type: 'reference', kind: 'entity', ref: { entity: entity.id } });
+    expect(preview.changes).toContainEqual({ op: 'update', target: { entity: entity.id }, before: { reference: undefined }, after: { reference: true } });
+    expect(preview.mappings).toEqual([expect.objectContaining({ mapping: made.mapping, action: 'follows', from: 'OWL_CLASS_TO_LDM_ENTITY', to: 'OWL_CLASS_TO_LDM_REFERENCE_ENTITY' })]);
+
+    const applied = await h.traceability.applyElementTypeChange(preview);
+    expect(h.commits()).toBe(commits + 1);
+    expect(applied.element).toEqual({ entity: entity.id });
+    const after = h.ldm(model);
+    expect(after.entities.find((e) => e.id === entity.id)!.reference).toBe(true);
+    const mapping = after.mappings.find((m) => m.id === made.mapping)!;
+    expect(mapping.strategyId).toBe('OWL_CLASS_TO_LDM_REFERENCE_ENTITY');
+    expect(mapping.targets).toEqual([{ entity: entity.id }]);
+    expect(mapping.baseline).toMatchObject({ elements: [expect.objectContaining({ id: entity.id, reference: true, name: 'One value' })] });
+    // The mapping still holds, and the type the baseline records is not read as a later change.
+    const described = (await h.traceability.report({ model })).mappings.find((m) => m.mapping.id === made.mapping)!;
+    expect(described.status).toBe('current');
+    expect(described.customised).toBe(false);
+    // Nothing of the ontology moved.
+    expect({ terms: h.current().terms, props: h.current().props, relations: h.current().relations }).toEqual(ontologyBefore);
+  });
+
+  it('changes a reference entity back into an ordinary entity, its mapping following it', async () => {
+    const h = harness();
+    const { model, entity, made } = await withOneValue(h);
+    const first = await h.traceability.previewElementTypeChange({ model, element: { entity: entity.id }, to: 'reference' });
+    await h.traceability.applyElementTypeChange(first);
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { entity: entity.id }, to: 'entity' });
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.mappings).toEqual([expect.objectContaining({ from: 'OWL_CLASS_TO_LDM_REFERENCE_ENTITY', to: 'OWL_CLASS_TO_LDM_ENTITY', action: 'follows' })]);
+    await h.traceability.applyElementTypeChange(preview);
+    const after = h.ldm(model);
+    expect(after.entities.find((e) => e.id === entity.id)!.reference).toBeUndefined();
+    expect(after.mappings.find((m) => m.id === made.mapping)!.strategyId).toBe('OWL_CLASS_TO_LDM_ENTITY');
+    expect((await h.traceability.report({ model })).mappings.find((m) => m.mapping.id === made.mapping)!.status).toBe('current');
+  });
+
+  it('turns a domain into a reference entity: code and label, a key on the code, the mapping following it', async () => {
+    const h = harness();
+    const { model, domain, made, film } = await withDomain(h);
+    const choices = await h.traceability.elementTypes({ model, element: { domain: domain.id } });
+    expect(choices.map((c) => [c.type, c.available])).toEqual([
+      ['entity', true],
+      ['reference', true],
+      ['domain', true],
+    ]);
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { domain: domain.id }, to: 'reference' });
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.creates).toEqual(['Entity “Genre list”', 'Attribute “Genre list.code”, mandatory, of the domain’s base type', 'Attribute “Genre list.label”', 'Primary key on “Genre list.code”']);
+    expect(preview.keys).toEqual(['The entity gets a primary key on “code”: one row for each value.', 'The attributes typed by the domain keep their ids, so keys that name them still hold.']);
+    expect(preview.mappings).toEqual([expect.objectContaining({ mapping: made.mapping, from: 'OWL_ENUMERATION_TO_LDM_DOMAIN', to: 'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY', action: 'follows' })]);
+
+    const applied = await h.traceability.applyElementTypeChange(preview);
+    expect(applied.element).toEqual({ entity: expect.any(String) });
+    const after = h.ldm(model);
+    expect(after.domains.some((d) => d.id === domain.id)).toBe(false);
+    const entity = after.entities.find((e) => e.id === (applied.element as { entity: string }).entity)!;
+    expect(entity.reference).toBe(true);
+    expect(entity.attributes.map((a) => [a.name, a.optional])).toEqual([
+      ['code', false],
+      ['label', true],
+    ]);
+    expect(entity.keys[0].members).toEqual([{ attribute: entity.attributes[0].id }]);
+    expect(after.entities.find((e) => e.id === film.id)!.attributes.find((a) => a.id === 'a-genre-code')!.type).toEqual({ base: 'text' });
+    expect(after.mappings.find((m) => m.id === made.mapping)!.strategyId).toBe('OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY');
+    expect((await h.traceability.report({ model })).mappings.find((m) => m.mapping.id === made.mapping)!.status).toBe('current');
+  });
+
+  it('turns a domain into an ordinary entity, keeping a mapping none of whose strategies does the same for review', async () => {
+    const h = harness();
+    const { model, domain, made } = await withDomain(h);
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { domain: domain.id }, to: 'entity' });
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.decisions).toEqual([expect.objectContaining({ name: 'values', chosen: 'left behind' })]);
+    expect(preview.warnings.join(' ')).toMatch(/does not keep the domain’s values or constraints/);
+    expect(preview.mappings).toEqual([expect.objectContaining({ mapping: made.mapping, action: 'review' })]);
+    await h.traceability.applyElementTypeChange(preview);
+    const after = h.ldm(model);
+    expect(after.domains.some((d) => d.id === domain.id)).toBe(false);
+    const entity = after.entities.find((e) => e.name === 'Genre list')!;
+    expect(entity.reference).toBeUndefined();
+    const mapping = after.mappings.find((m) => m.id === made.mapping)!;
+    expect(mapping.targets).toEqual([{ entity: entity.id }]);
+    expect(mapping.strategyId).toBe('OWL_ENUMERATION_TO_LDM_DOMAIN');
+    // No strategy does for an entity what the domain strategy did: the mapping is kept, never
+    // silently called compatible.
+    expect((await h.traceability.report({ model })).mappings.find((m) => m.mapping.id === made.mapping)!.status).toBe('mismatched');
+  });
+
+  it('turns a one-value entity into a domain, the mapping that made it kept for review', async () => {
+    const h = harness();
+    const { model, entity, made } = await withOneValue(h);
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { entity: entity.id }, to: 'domain' });
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.creates).toEqual(['Domain “One value”, of the base type the attribute had']);
+    expect(preview.removes).toEqual(['Entity “One value”', 'Attribute “One value.Value”', 'Primary key on it']);
+    expect(preview.mappings).toEqual([expect.objectContaining({ mapping: made.mapping, action: 'review' })]);
+    await h.traceability.applyElementTypeChange(preview);
+    const after = h.ldm(model);
+    expect(after.entities.some((e) => e.id === entity.id)).toBe(false);
+    const made2 = after.domains.find((d) => d.name === 'One value')!;
+    expect(made2).toBeDefined();
+    const mapping = after.mappings.find((m) => m.id === made.mapping)!;
+    expect(mapping.targets).toEqual([{ domain: made2.id }]);
+    expect(mapping.strategyId).toBe('OWL_CLASS_TO_LDM_ENTITY');
+    expect((await h.traceability.report({ model })).mappings.find((m) => m.mapping.id === made.mapping)!.status).toBe('mismatched');
+  });
+
+  it('classifies and converts an element no mapping targets', async () => {
+    const h = harness();
+    const model = await h.derive('Film LDM');
+    const entity = {
+      id: 'e-unmapped',
+      name: 'Unmapped code',
+      definition: '',
+      attributes: [{ id: 'a-unmapped', name: 'Code', definition: '', type: { base: 'text' as const }, optional: false }],
+      keys: [{ id: 'k-unmapped', name: 'Code key', kind: 'primary' as const, members: [{ attribute: 'a-unmapped' }] }],
+    };
+    await h.edit.apply({ model, baseRevision: h.ldm(model).revision, changes: [{ op: 'add', element: { kind: 'entity', entity } }], summary: 'Added an unmapped entity.' });
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { entity: entity.id }, to: 'reference' });
+    expect(preview.conflicts).toEqual([]);
+    expect(preview.mappings).toEqual([]);
+    await h.traceability.applyElementTypeChange(preview);
+    expect(h.ldm(model).entities.find((e) => e.id === entity.id)!.reference).toBe(true);
+  });
+
+  it('refuses an unsafe conversion as it stands and leaves the original unchanged', async () => {
+    const h = harness();
+    const model = await h.derive('Film LDM');
+    const film = h.ldm(model).entities.find((e) => e.name === 'Film')!;
+    const commits = h.commits();
+    const revision = h.ldm(model).revision;
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { entity: film.id }, to: 'domain' });
+    expect(preview.conflicts.length).toBeGreaterThan(0);
+    expect(preview.changes).toEqual([]);
+    await expect(h.traceability.applyElementTypeChange(preview)).rejects.toMatchObject({ code: 'refused' });
+    expect(h.commits()).toBe(commits);
+    expect(h.ldm(model).revision).toBe(revision);
+    expect(h.ldm(model).entities.find((e) => e.id === film.id)!.attributes.length).toBe(film.attributes.length);
+    expect(h.ldm(model).domains).toEqual([]);
+  });
+
+  it('refuses a preview the model has moved on from, changing nothing', async () => {
+    const h = harness();
+    const { model, entity } = await withOneValue(h);
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { entity: entity.id }, to: 'reference' });
+    await h.edit.apply({ model, baseRevision: h.ldm(model).revision, changes: [{ op: 'add', element: { kind: 'entity', entity: { id: 'e-unrelated', name: 'Unrelated', definition: '', attributes: [], keys: [] } } }], summary: 'Added an unrelated entity.' });
+    const commits = h.commits();
+    const revision = h.ldm(model).revision;
+    await expect(h.traceability.applyElementTypeChange(preview)).rejects.toMatchObject({ code: 'stale-revision' });
+    expect(h.commits()).toBe(commits);
+    expect(h.ldm(model).revision).toBe(revision);
+    expect(h.ldm(model).entities.find((e) => e.id === entity.id)!.reference).toBeUndefined();
+  });
+
+  it('changes one LDM of a project and leaves another derived from the same ontology alone', async () => {
+    const h = harness();
+    const { model, entity } = await withOneValue(h);
+    const other = await h.derive('Cinema LDM', lower);
+    const untouched = structuredClone(h.ldm(other));
+    const preview = await h.traceability.previewElementTypeChange({ model, element: { entity: entity.id }, to: 'reference' });
+    await h.traceability.applyElementTypeChange(preview);
     expect(h.ldm(other)).toEqual(untouched);
   });
 });

@@ -260,7 +260,7 @@ describe('validation of enumerations', () => {
     expect(rules(lights())).toEqual([]);
   });
 
-  it('flags an enumeration that lists nothing, of individuals or of values', () => {
+  it('flags an enumeration that lists nothing, of individuals or of values', async () => {
     let m = ok(setEnumeration(lights(), 'color', true));
     const made = addDatatype(m, 'Switch state');
     m = ok(made);
@@ -269,7 +269,7 @@ describe('validation of enumerations', () => {
       ['enumeration-empty', 'The enumerated datatype “Switch state” has no values yet. Until it has one, it is exported as a datatype without a definition.'],
     ]);
     // In the validation view each is a finding about the class, or about the model when no property uses the datatype.
-    const found = qualityFindings(m).findings.filter((f) => f.ruleId === 'enumeration-empty');
+    const found = (await qualityFindings(m)).findings.filter((f) => f.ruleId === 'enumeration-empty');
     expect(found.map((f) => [f.rule, f.entity?.name, f.entity?.type])).toEqual([
       ['Enumeration without members', 'Traffic light color', 'class'],
       ['Enumeration without members', 'Traffic', 'ontology'],

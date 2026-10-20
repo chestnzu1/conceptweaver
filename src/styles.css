@@ -3120,6 +3120,20 @@ table.prefixes small {
   color: var(--accent);
 }
 
+.import-rows .tag.update {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.import-rows .tag.unchanged {
+  color: var(--ink-3);
+}
+
+.import-rows .change {
+  color: var(--ink-2);
+}
+
 .import-rows .note {
   color: var(--warn);
 }
@@ -4572,6 +4586,48 @@ code.pred {
 .rules .rule small {
   display: block;
   color: var(--ink-2);
+}
+
+.rules .custom-rules {
+  grid-column: 1 / -1;
+}
+
+.rules .custom-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rules .custom-rule small code {
+  display: block;
+  max-height: 90px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.rules .custom-rule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rules .custom-rule-editor textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  tab-size: 2;
+  white-space: pre;
 }
 
 .shapes {
@@ -7240,6 +7296,15 @@ button.st-bar-row:hover {
   max-width: 100%;
 }
 
+.diagram-options {
+  width: 340px;
+  max-width: 100%;
+}
+
+.diagram-options .row {
+  flex-wrap: wrap;
+}
+
 .layout-slider {
   display: flex;
   flex-direction: column;
@@ -8634,6 +8699,14 @@ tbody tr.pinned td:first-child {
   fill: var(--ink);
   font-size: 13px;
   font-weight: 600;
+  pointer-events: none;
+}
+
+.ldm-node-kind {
+  fill: var(--ink-2);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   pointer-events: none;
 }
 

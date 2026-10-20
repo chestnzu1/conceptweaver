@@ -1,5 +1,5 @@
 import type { Model } from '../model/types';
-import type { CallOptions, ElementKind, ElementRef, LogicalChange, LogicalModel, MappingSource, SemanticMapping, StrategyId, TransformationConfig } from '../logical/contracts';
+import type { CallOptions, ElementKind, ElementRef, ElementType, LogicalChange, LogicalModel, MappingSource, SemanticMapping, StrategyId, TransformationConfig } from '../logical/contracts';
 
 /**
  * Deriving a logical data model from the ontology (roadmap LM-3; SYSTEM_ARCHITECTURE.md §13.4;
@@ -371,6 +371,78 @@ export interface ConversionQuery {
   rationale?: string;
 }
 
+// ---------------------------------------------------------------- element types (the Entities workspace)
+
+/** One element type an element may become, and whether it can as it stands. */
+export interface ElementTypeChoice {
+  type: ElementType;
+  label: string;
+  description: string;
+  /** False when the element cannot become this type without changes the planner cannot make exactly. */
+  available: boolean;
+  /** Why not, where it cannot. */
+  reason?: string;
+}
+
+/** What to ask an element type about: its choices as it stands. */
+export interface ElementTypeChangeQuery {
+  model: string;
+  /** An entity or a domain: the element types the Entities workspace edits. */
+  element: ElementRef;
+}
+
+/** What to change an element's type into, and the decisions taken so far. */
+export interface ElementTypeQuery {
+  model: string;
+  element: ElementRef;
+  to: ElementType;
+  decisions?: Record<string, string>;
+}
+
+/** A mapping of the element, and what a change of its type does with it. */
+export interface ElementTypeMappingChange {
+  mapping: string;
+  /** The strategy in words, as the mapping records it. */
+  label: string;
+  from?: StrategyId;
+  to?: StrategyId;
+  /**
+   * `follows`: the mapping moves to a strategy that does the same for the new type. `review`: no
+   * strategy does the same, so the mapping's strategy is kept and Traceability marks it for review.
+   */
+  action: 'follows' | 'review';
+  note: string;
+}
+
+/**
+ * What changing an element's type would do, worked out before anything is written: a structural
+ * transformation where the kinds differ, with the mappings of the element moved or left for
+ * review, as one change set. Nothing here is committed, and nothing of the ontology is touched.
+ */
+export interface ElementTypePreview {
+  model: string;
+  /** The LDM's revision this was worked out against; an LDM that moved since refuses it. */
+  baseRevision: string;
+  /** The element as it is now. */
+  element: ElementRef;
+  from: { type: ElementType; kind: 'entity' | 'domain'; name: string };
+  to: { type: ElementType; kind: 'entity' | 'domain'; name: string; ref: ElementRef };
+  creates: string[];
+  modifies: string[];
+  removes: string[];
+  keys: string[];
+  constraints: string[];
+  decisions: ConversionDecision[];
+  warnings: string[];
+  /** Why the change cannot be made as it stands; nothing is ever applied with one. */
+  conflicts: string[];
+  /** Everything the change would do, the mappings' own updates included. */
+  changes: LogicalChange[];
+  /** The mappings of the element, and what the change does with each. */
+  mappings: ElementTypeMappingChange[];
+  at: number;
+}
+
 /**
  * Traceability, impact and synchronization (roadmap LM-4; SYSTEM_ARCHITECTURE.md §13.7 to
  * §13.9; FR-M18-8 to FR-M18-14, ADR-025). Reports are plain data; synchronization proposals are
@@ -395,6 +467,12 @@ export interface TraceabilityService {
   previewConversion(query: ConversionQuery, options?: CallOptions): Promise<ConversionPreview>;
   /** Applies a reviewed preview as one logical change set, with the mapping's own update, or refuses it whole. */
   applyConversion(preview: ConversionPreview, options?: CallOptions): Promise<{ model: string; revision: string }>;
+  /** The element types an entity or domain may become, and why one it may not cannot. */
+  elementTypes(query: ElementTypeChangeQuery, options?: CallOptions): Promise<ElementTypeChoice[]>;
+  /** What changing an element's type would do, its mappings included. Never changes anything. */
+  previewElementTypeChange(query: ElementTypeQuery, options?: CallOptions): Promise<ElementTypePreview>;
+  /** Applies a reviewed element type change as one logical change set, or refuses it whole. */
+  applyElementTypeChange(preview: ElementTypePreview, options?: CallOptions): Promise<{ model: string; revision: string; element: ElementRef }>;
 }
 
 /** The ontology and the LDM as the impact worker reads them. */

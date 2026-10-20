@@ -15,6 +15,25 @@ let viewCache: { model: Model; sub: SubgraphState; view: Model } | undefined;
 
 let scopeCache: { model: Model; scope: GraphScope; view: Model } | undefined;
 
+let diagramCache: { view: Model; hidden: readonly string[]; out: Model } | undefined;
+
+/**
+ * The view without the terms the diagram on the canvas leaves out, and the relationships that
+ * need them. What is left out is only left out of this diagram: the model still has it, and so
+ * does every other diagram and the RDF.
+ */
+function withoutHidden(view: Model): Model {
+  const hidden = view.diagrams.find((d) => d.id === view.diagram)?.hidden ?? view.diagrams[0]?.hidden;
+  if (!hidden?.length) return view;
+  if (diagramCache && diagramCache.view === view && diagramCache.hidden === hidden) return diagramCache.out;
+  const left = new Set(hidden);
+  const terms = view.terms.filter((t) => !left.has(t.id));
+  if (terms.length === view.terms.length) return view;
+  const out = { ...view, terms, relations: view.relations.filter((r) => !left.has(r.from) && !left.has(r.to)) };
+  diagramCache = { view, hidden, out };
+  return out;
+}
+
 function scoped(model: Model, scope: GraphScope): Model {
   if (scope === 'all') return model;
   if (scopeCache && scopeCache.model === model && scopeCache.scope === scope) return scopeCache.view;
@@ -39,8 +58,8 @@ function scoped(model: Model, scope: GraphScope): Model {
  */
 export function viewOf(s: { model: Model; subgraph: SubgraphState; graphScope?: GraphScope }): Model {
   const { model, subgraph: sub } = s;
-  if (!sub.active || !sub.result) return scoped(model, s.graphScope ?? 'all');
-  if (viewCache && viewCache.model === model && viewCache.sub === sub) return viewCache.view;
+  if (!sub.active || !sub.result) return withoutHidden(scoped(model, s.graphScope ?? 'all'));
+  if (viewCache && viewCache.model === model && viewCache.sub === sub) return withoutHidden(viewCache.view);
   const byId = new Map(model.terms.map((t) => [t.id, t]));
   const rels = new Set(sub.result.rels);
   const terms: Term[] = [];
@@ -52,7 +71,7 @@ export function viewOf(s: { model: Model; subgraph: SubgraphState; graphScope?: 
   }
   const view = { ...model, terms, relations: model.relations.filter((r) => rels.has(r.id)) };
   viewCache = { model, sub, view };
-  return view;
+  return withoutHidden(view);
 }
 
 /** The layout of what the canvas shows: the model's own for the full graph, the subgraph's for a subgraph. */

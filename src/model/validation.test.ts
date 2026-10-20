@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { addIsA, addLink, addValue } from './axioms';
 import { withIris } from './iri';
 import { loadModel, saveModel } from './library';
-import { QUALITY_RULES, setRule } from './quality';
+import { QUALITY_RULES, setCustomRule, setRule } from './quality';
 import { fromTurtle, toTurtle } from './rdf';
 import { SH, type ShaclValue } from './shacl';
 import { importIntoSet, newPropertyShape, newSetFor, setTurtle, shapesToTurtle } from './shapes';
@@ -317,12 +317,12 @@ describe('SHACL validation', () => {
 });
 
 describe('ontology quality', () => {
-  const rules = (m: Model) => qualityFindings(m).findings.map((f) => f.ruleId);
+  const rules = async (m: Model) => (await qualityFindings(m)).findings.map((f) => f.ruleId);
 
-  it('reports missing annotations as suggestions, never as errors', () => {
+  it('reports missing annotations as suggestions, never as errors', async () => {
     const { m, id } = build();
     const n = { ...m, terms: m.terms.map((t) => (t.id === id.Actor ? { ...t, description: '' } : t.id === id.Bob ? { ...t, name: '' } : t)) };
-    const f = qualityFindings(n).findings;
+    const f = (await qualityFindings(n)).findings;
     expect(f.find((x) => x.ruleId === 'missing-definition')).toMatchObject({ category: 'quality', severity: 'info', rule: 'Missing definition', entity: { name: 'Actor', type: 'class' } });
     const unnamed = f.find((x) => x.ruleId === 'missing-label')!;
     expect(unnamed).toMatchObject({ severity: 'warning', entity: { type: 'individual' } });
@@ -334,44 +334,94 @@ describe('ontology quality', () => {
     expect(owlFindings(n).findings).toEqual([]);
   });
 
-  it('offers to tag untagged annotations with the model’s language', () => {
+  it('offers to tag untagged annotations with the model’s language', async () => {
     const { m, id } = build();
     const n = { ...m, terms: m.terms.map((t) => (t.id === id.Actor ? { ...t, fields: [{ key: 'skos:scopeNote', value: 'Stage and screen.' }, { key: 'skos:notation', value: 'A1' }] } : t)) };
-    const f = qualityFindings(n).findings.find((x) => x.ruleId === 'missing-language')!;
+    const f = (await qualityFindings(n)).findings.find((x) => x.ruleId === 'missing-language')!;
     expect(f.message).toBe('“Actor” has 1 annotation without a language: skos:scopeNote.');
     // A code is not text in a language and is left alone.
     expect(f.fix!.apply(n).terms.find((t) => t.id === id.Actor)!.fields).toEqual([{ key: 'skos:scopeNote', value: 'Stage and screen.', lang: 'en' }, { key: 'skos:notation', value: 'A1' }]);
   });
 
-  it('treats multiple inheritance as valid: off by default, reported only when asked for', () => {
+  it('treats multiple inheritance as valid: off by default, reported only when asked for', async () => {
     const { m, id } = build();
     const n = edit(addIsA(m, id.Actor, id.Employee));
-    expect(rules(n)).not.toContain('multiple-inheritance');
+    expect(await rules(n)).not.toContain('multiple-inheritance');
     expect(owlFindings(n).findings).toEqual([]);
     const asked = { ...n, quality: setRule(n.quality, 'multiple-inheritance', true) };
-    expect(qualityFindings(asked).findings.find((f) => f.ruleId === 'multiple-inheritance')).toMatchObject({ severity: 'info', entity: { name: 'Actor' }, message: '“Actor” has 2 parents: Person, Employee.' });
+    expect((await qualityFindings(asked)).findings.find((f) => f.ruleId === 'multiple-inheritance')).toMatchObject({ severity: 'info', entity: { name: 'Actor' }, message: '“Actor” has 2 parents: Person, Employee.' });
   });
 
-  it('lets each rule be switched off and on, keeping only what differs from the default', () => {
+  it('lets each rule be switched off and on, keeping only what differs from the default', async () => {
     const { m, id } = build();
     const n = { ...m, terms: m.terms.map((t) => (t.id === id.Actor ? { ...t, description: '' } : t)) };
-    expect(rules(n)).toContain('missing-definition');
+    expect(await rules(n)).toContain('missing-definition');
     const off = { ...n, quality: setRule(n.quality, 'missing-definition', false) };
-    expect(off.quality).toEqual({ off: ['missing-definition'], on: [] });
-    expect(rules(off)).not.toContain('missing-definition');
-    expect(setRule(off.quality, 'missing-definition', true)).toEqual({ off: [], on: [] });
-    expect(rules(n)).not.toContain('root-class');
-    expect(rules({ ...n, quality: setRule(n.quality, 'root-class', true) })).toContain('root-class');
-    const s = qualityFindings(off).summary;
+    expect(off.quality).toEqual({ off: ['missing-definition'], on: [], rules: [] });
+    expect(await rules(off)).not.toContain('missing-definition');
+    expect(setRule(off.quality, 'missing-definition', true)).toEqual({ off: [], on: [], rules: [] });
+    expect(await rules(n)).not.toContain('root-class');
+    expect(await rules({ ...n, quality: setRule(n.quality, 'root-class', true) })).toContain('root-class');
+    const s = (await qualityFindings(off)).summary;
     // The one switched off here, and those that are off until asked for.
     expect(s.rulesOn).toBe(s.rulesTotal - 1 - QUALITY_RULES.filter((r) => !r.default).length);
   });
 
-  it('finds redundant superclasses, duplicate statements and questionable IRIs, and removes nothing by itself', () => {
+  it('runs a rule of the user’s own as SPARQL, each row a result with the rule’s own severity', async () => {
+    const { m, id } = build();
+    const query = 'SELECT ?entity ?message WHERE { ?entity a owl:Class . FILTER NOT EXISTS { ?entity skos:definition ?definition } BIND(CONCAT("No definition: ", STR(?entity)) AS ?message) }';
+    const n = { ...m, terms: m.terms.map((t) => (t.id === id.Actor ? { ...t, description: '' } : t)), quality: setCustomRule(m.quality, { id: 'no-definition', name: 'No definition', query, severity: 'error', enabled: true }) };
+    const { summary, findings } = await qualityFindings(n);
+    const custom = findings.filter((f) => f.ruleId === 'custom:no-definition');
+    expect(custom.map((f) => [f.rule, f.severity, f.entity?.name, f.entity?.type])).toEqual([['No definition', 'error', 'Actor', 'class']]);
+    expect(custom[0].message).toBe(`No definition: ${n.terms.find((t) => t.id === id.Actor)!.iri}`);
+    expect(custom[0].terms).toEqual([id.Actor]);
+    expect(custom[0].explanation).toContain(query);
+    expect(summary.rulesTotal).toBe(QUALITY_RULES.length + 1);
+    expect(summary.rulesOn).toBe(QUALITY_RULES.filter((r) => r.default).length + 1);
+    expect(summary.errors).toBe(custom.length);
+  });
+
+  it('switches a rule of the user’s own off and on like a built-in one', async () => {
+    const { m, iri } = build();
+    const query = `SELECT ?entity ?message WHERE { VALUES ?entity { <${iri('Actor')}> } BIND("Actor is here." AS ?message) }`;
+    const rule = { id: 'actor', name: 'Actor note', query, severity: 'info' as const, enabled: true };
+    const on = { ...m, quality: setCustomRule(m.quality, rule) };
+    const found = (await qualityFindings(on)).findings.filter((f) => f.ruleId === 'custom:actor');
+    expect(found.map((f) => [f.message, f.severity, f.entity?.name])).toEqual([['Actor is here.', 'info', 'Actor']]);
+    const off = setRule(on.quality, 'custom:actor', false);
+    expect(off.rules).toEqual([{ ...rule, enabled: false }]);
+    expect((await qualityFindings({ ...on, quality: off })).findings.filter((f) => f.ruleId === 'custom:actor')).toEqual([]);
+    expect(setRule(off, 'actor', true).rules[0].enabled).toBe(true);
+    // A rule that is not there is not invented.
+    expect(setRule(off, 'no-such-rule', true)).toBe(off);
+  });
+
+  it('reports a rule that cannot run instead of passing it over', async () => {
+    const { m } = build();
+    const withRule = (query: string) => ({ ...m, quality: setCustomRule(m.quality, { id: 'tried', name: 'Tried', query, severity: 'warning' as const, enabled: true }) });
+    const missing = (await qualityFindings(withRule('SELECT ?entity WHERE { ?entity a owl:Class }'))).findings.find((f) => f.ruleId === 'custom:tried')!;
+    expect(missing.message).toBe('The rule must return ?entity and ?message; it returns ?entity.');
+    expect(missing.severity).toBe('warning');
+    expect(missing.entity).toBeUndefined();
+    const broken = (await qualityFindings(withRule('SELECT ?entity ?message WHERE { ?entity a'))).findings.find((f) => f.ruleId === 'custom:tried')!;
+    expect(broken.message).toMatch(/^The rule could not be run: /);
+  });
+
+  it('keeps rules of one’s own through the file format, dropping one without a query', () => {
+    const { m } = build();
+    const raw = JSON.parse(JSON.stringify({ ...m, quality: { off: [], on: [], rules: [{ name: '  Named  ', query: ' SELECT ?entity ?message WHERE { } ', severity: 'error' }, { query: '   ' }, { id: 'kept', name: '', query: 'SELECT ?entity ?message WHERE {}', severity: 'odd', enabled: true }] } }));
+    expect(normalizeModel(raw).quality.rules).toEqual([
+      { id: 'rule-1', name: 'Named', query: 'SELECT ?entity ?message WHERE { }', severity: 'error', enabled: true },
+      { id: 'kept', name: 'Rule 2', query: 'SELECT ?entity ?message WHERE {}', severity: 'warning', enabled: true },
+    ]);
+  });
+
+  it('finds redundant superclasses, duplicate statements and questionable IRIs, and removes nothing by itself', async () => {
     const { m, id } = build();
     let n = edit(addIsA(m, id.Employee, id.Agent));
     n = { ...n, relations: [...n.relations, newRelation({ from: id.Ann, to: id.Acme, label: 'works for' })], terms: n.terms.map((t) => (t.id === id.Acme ? { ...t, iri: 'not an iri' } : t.id === id.Bob ? { ...t, iri: 'http://elsewhere.org/Bob' } : t)) };
-    const f = qualityFindings(n).findings;
+    const f = (await qualityFindings(n)).findings;
     const redundant = f.find((x) => x.ruleId === 'redundant-subclass')!;
     expect(redundant).toMatchObject({ severity: 'info', entity: { name: 'Employee' } });
     // Logically redundant is not wrong: there is advice, and no button that deletes it.
@@ -383,13 +433,13 @@ describe('ontology quality', () => {
     expect(f.find((x) => x.ruleId === 'namespace-usage')!.message).toMatch(/1 entity is in the namespace <http:\/\/elsewhere.org\/>, which has no prefix: Bob/);
   });
 
-  it('points out a shape that refers to something not in the ontology', () => {
+  it('points out a shape that refers to something not in the ontology', async () => {
     const { m, iri } = build();
     const n = withPersonShape(m, iri);
-    expect(rules(n)).not.toContain('unresolved-reference');
+    expect(await rules(n)).not.toContain('unresolved-reference');
     const shape = personShape(n);
     n.shapeSets[0].shapes = n.shapeSets[0].shapes.map((x) => (x === shape ? { ...x, props: x.props.map((y) => (y.p === SH + 'targetClass' ? { ...y, v: { iri: 'http://example.org/p#Persn' } } : y)) } : x));
-    expect(qualityFindings(n).findings.find((f) => f.ruleId === 'unresolved-reference')).toMatchObject({ severity: 'info', entity: { kind: 'shape', name: 'Person' } });
+    expect((await qualityFindings(n)).findings.find((f) => f.ruleId === 'unresolved-reference')).toMatchObject({ severity: 'info', entity: { kind: 'shape', name: 'Person' } });
   });
 });
 
@@ -468,7 +518,7 @@ describe('validation runs and their synchronisation with the model', () => {
 describe('persistence of shapes and rule settings', () => {
   it('keeps them through the app’s own file format, a model without them, and My Models', async () => {
     const { m, iri } = build();
-    const n = { ...withPersonShape(m, iri), quality: { off: ['missing-definition'], on: ['root-class'] } };
+    const n = { ...withPersonShape(m, iri), quality: { off: ['missing-definition'], on: ['root-class'], rules: [{ id: 'no-label', name: 'No label', query: 'SELECT ?entity ?message WHERE { ?entity a owl:Class . FILTER NOT EXISTS { ?entity rdfs:label ?label } BIND("No label." AS ?message) }', severity: 'warning' as const, enabled: false }] } };
     n.shapeSets[0].extra = '@prefix sh: <http://www.w3.org/ns/shacl#> .\n<http://example.org/p#Details> a sh:PropertyGroup .\n';
     expect(normalizeModel(JSON.parse(JSON.stringify(n)))).toEqual(n);
     // A model saved before there were shapes opens with none.
