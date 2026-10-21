@@ -19,7 +19,7 @@ const PIZZA = CORPUS.find((c: { id: string }) => c.id === 'pizza')!;
  * which has the OWL API, and give it documents to turn into Turtle. They need Java and the
  * service's libraries, and are skipped, saying so, on a machine that has neither.
  */
-const why = unavailable();
+const why = process.env.CONCEPTWEAVER_COMPANION_JAR ? 'This suite pins the single-file service’s OWL API and reasoner; the companion runs its own.' : unavailable();
 if (why) console.warn(`OWL syntax tests skipped: ${why}`);
 
 const FUNCTIONAL = `Prefix(:=<http://example.org/pizza#>)

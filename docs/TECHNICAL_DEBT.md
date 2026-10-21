@@ -731,6 +731,16 @@ conformance suite with it: `src/editing/local.test.ts` takes edits made in the e
 each as a change set, applies that to the model before the edit, and compares the statements with
 those of the model after it.
 
+*Status, 2026-10-21.* The conformance suite now runs through the companion too:
+`src/editing/conformance.test.ts` applies every fixture change set to the same ontology locally
+and over `POST /editing/apply`, and the two must agree — the same acceptance, the same refusals
+in the same words, the same notes, and, where applied, the same result compared as axioms by the
+service's own `/compare`. The server holds a change set to the page's rules as the page says them
+(`planned` and `ruled` ported to `SessionEditing`), including the page's read-back hold: a change
+set whose result would come back with anything it did not ask for is refused in the page's words.
+What the fixtures do not reach — statements the page's reader would drop, and names the page
+would take from `skos:prefLabel` and `dct:title` — is noted in the code as the remaining gap.
+
 ### AR-02 OWL 2 DL reasoning does not finish on large or expressive ontologies
 
 OWL 2 DL entailment is N2EXPTIME-complete in the worst case. HermiT is fast on many real

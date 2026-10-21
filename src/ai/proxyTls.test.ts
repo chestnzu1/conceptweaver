@@ -20,7 +20,7 @@ import { startReasoner, unavailable } from '../../reasoner/run.mjs';
  * provider so. Needs Java, keytool and mkfifo; skipped, saying so, without.
  */
 
-const missing = unavailable() ?? (spawnSync('keytool', ['-help']).error ? 'keytool was not found' : spawnSync('mkfifo', ['--version']).error ? 'mkfifo was not found' : undefined);
+const missing = process.env.CONCEPTWEAVER_COMPANION_JAR ? 'The proxy is the single-file service’s; the companion does not answer it.' : unavailable() ?? (spawnSync('keytool', ['-help']).error ? 'keytool was not found' : spawnSync('mkfifo', ['--version']).error ? 'mkfifo was not found' : undefined);
 if (missing) console.warn(`Pinned-connection tests skipped: ${missing}`);
 const KEY = 'sk-pinned-test-4242';
 const PORT = 5167;

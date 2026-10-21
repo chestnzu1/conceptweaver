@@ -21,7 +21,7 @@ import { statementsOf } from './unmapped';
  * structure. And HermiT has to take what is written, and find in it what OWL entails. Needs Java
  * and the service's libraries; skipped, saying so, without.
  */
-const why = unavailable();
+const why = process.env.CONCEPTWEAVER_COMPANION_JAR ? 'This suite pins the single-file service’s OWL API and reasoner; the companion runs its own.' : unavailable();
 if (why) console.warn(`Class expression conformance tests skipped: ${why}`);
 
 const M = 'http://example.org/m#';

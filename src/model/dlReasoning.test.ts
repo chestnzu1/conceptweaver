@@ -12,7 +12,7 @@ import { dlFindings, owlFindings } from './validation';
  * ontologies to it. They need Java and the reasoner's libraries, and are skipped, saying so,
  * on a machine that has neither.
  */
-const why = unavailable();
+const why = process.env.CONCEPTWEAVER_COMPANION_JAR ? 'This suite pins the single-file service’s OWL API and reasoner; the companion runs its own.' : unavailable();
 if (why) console.warn(`OWL 2 DL reasoning tests skipped: ${why}`);
 
 const PREFIXES = `

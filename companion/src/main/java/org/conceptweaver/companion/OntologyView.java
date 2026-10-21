@@ -180,10 +180,62 @@ final class OntologyView {
     return byCount.isEmpty() ? "" : byCount.get(0).getKey();
   }
 
+  /** What an entity is called, as the page's own reader names it: its label, or the IRI made readable. */
+  static String nameIn(OWLOntology ontology, String iri) {
+    return nameIn(ontology, IRI.create(iri), prefLanguageOf(ontology));
+  }
+
+  /** The same, with the language already known. */
+  static String nameIn(OWLOntology ontology, IRI entity, String pref) {
+    for (IRI p : new IRI[] {RDFS_LABEL, SKOS_PREF, DCT_TITLE}) {
+      List<OWLLiteral> literals = literalsIn(ontology, entity, p);
+      if (literals.isEmpty()) continue;
+      OWLLiteral best = null;
+      for (OWLLiteral l : literals) {
+        if (lang(l).equals(pref)) {
+          best = l;
+          break;
+        }
+        if (best == null && !l.hasLang()) best = l;
+      }
+      if (best == null) best = literals.get(0);
+      return best.getLiteral();
+    }
+    return humanize(entity.toString(), false);
+  }
+
+  /** The language most names are written in, worked out once for a plan. */
+  static String prefLanguageOf(OWLOntology ontology) {
+    Map<String, Integer> langs = new LinkedHashMap<>();
+    for (OWLAnnotationAssertionAxiom a : ontology.getAxioms(AxiomType.ANNOTATION_ASSERTION)) {
+      IRI p = a.getProperty().getIRI();
+      if (!p.equals(RDFS_LABEL) && !p.equals(SKOS_PREF)) continue;
+      if (!(a.getValue() instanceof OWLLiteral literal)) continue;
+      String lang = literal.hasLang() ? literal.getLang() : "";
+      langs.put(lang, langs.getOrDefault(lang, 0) + 1);
+    }
+    List<Map.Entry<String, Integer>> byCount = new ArrayList<>(langs.entrySet());
+    byCount.sort((x, y) -> {
+      if (y.getValue() != x.getValue()) return y.getValue() - x.getValue();
+      if (x.getKey().equals("en")) return -1;
+      if (y.getKey().equals("en")) return 1;
+      return 0;
+    });
+    return byCount.isEmpty() ? "" : byCount.get(0).getKey();
+  }
+
+  private static List<OWLLiteral> literalsIn(OWLOntology ontology, IRI entity, IRI property) {
+    List<OWLLiteral> out = new ArrayList<>();
+    for (OWLAnnotationAssertionAxiom a : ontology.getAnnotationAssertionAxioms(entity)) {
+      if (a.getProperty().getIRI().equals(property) && a.getValue() instanceof OWLLiteral literal) out.add(literal);
+    }
+    return out;
+  }
+
   /** The value of the first of these properties the entity has, in the preferred language where it has one. */
   String nameOf(IRI entity, IRI[] properties) {
     for (IRI p : properties) {
-      List<OWLLiteral> literals = literalsOf(entity, p);
+      List<OWLLiteral> literals = literalsIn(ontology, entity, p);
       if (literals.isEmpty()) continue;
       OWLLiteral best = null;
       for (OWLLiteral l : literals) {

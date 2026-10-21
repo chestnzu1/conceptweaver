@@ -13,7 +13,7 @@ const imports = (file: string) => [...readFileSync(here + file, 'utf8').matchAll
 
 describe('what editing depends on', () => {
   it('is the model, read and written, and the revisions the other services name', () => {
-    expect(files.sort()).toEqual(['axioms.ts', 'contracts.ts', 'local.ts']);
+    expect(files.sort()).toEqual(['axioms.ts', 'contracts.ts', 'http.ts', 'local.ts']);
     for (const file of files) {
       for (const from of imports(file)) {
         if (from.startsWith('./') || from === 'n3' || from.startsWith('../model/') || from === '../structure/local') continue;

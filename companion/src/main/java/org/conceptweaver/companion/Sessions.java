@@ -62,6 +62,21 @@ public final class Sessions {
       imports.add(new String[] {imp.get("iri").getAsString(), imp.get("text").getAsString()});
     }
     String revisionId = hash(document, imports);
+    Parsed parsed = parse(document, imports);
+    String ontologyId = OwlDocuments.iriText(parsed.ontology().getOntologyID().getOntologyIRI());
+    if (ontologyId.isEmpty()) ontologyId = "urn:conceptweaver:ontology:" + revisionId.substring(0, 16);
+    hold(ontologyId, revisionId, parsed.manager(), parsed.ontology(), document, imports);
+    JsonObject out = new JsonObject();
+    out.addProperty("ontologyId", ontologyId);
+    out.addProperty("revisionId", revisionId);
+    return out;
+  }
+
+  /** An ontology read into a manager of its own: what an upload or a change set is applied to. */
+  record Parsed(OWLOntologyManager manager, OWLOntology ontology) {}
+
+  /** Reads a document and the imports sent with it; an import that was not sent is not fetched. */
+  static Parsed parse(String document, List<String[]> imports) {
     OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
     manager.getIRIMappers().add((OWLOntologyIRIMapper) iri -> IRI.create(OwlDocuments.NOT_PROVIDED + Integer.toHexString(iri.toString().hashCode())));
     OWLOntologyLoaderConfiguration config = new OWLOntologyLoaderConfiguration().setMissingImportHandlingStrategy(MissingImportHandlingStrategy.SILENT);
@@ -76,21 +91,19 @@ public final class Sessions {
         // An import that cannot be read is left out, as /reason leaves it out; the session is the document itself.
       }
     }
-    OWLOntology ontology;
     try {
-      ontology = manager.loadOntologyFromOntologyDocument(new StringDocumentSource(document, IRI.create("urn:conceptweaver:ontology"), new TurtleDocumentFormat(), null), config);
+      return new Parsed(manager, manager.loadOntologyFromOntologyDocument(new StringDocumentSource(document, IRI.create("urn:conceptweaver:ontology"), new TurtleDocumentFormat(), null), config));
     } catch (Exception e) {
       throw new Refusal("failed", ReasoningService.describe(e));
     }
-    String ontologyId = OwlDocuments.iriText(ontology.getOntologyID().getOntologyIRI());
-    if (ontologyId.isEmpty()) ontologyId = "urn:conceptweaver:ontology:" + revisionId.substring(0, 16);
+  }
+
+  /** Holds one session under its reference; the least recently asked of goes first when the bound is reached. */
+  Held hold(String ontologyId, String revisionId, OWLOntologyManager manager, OWLOntology ontology, String document, List<String[]> imports) {
     Held one = new Held(manager, ontology, document, imports, ontologyId, revisionId, System.nanoTime());
     held.put(ontologyId + "\n" + revisionId, one);
     while (held.size() > bound) held.remove(held.keySet().iterator().next());
-    JsonObject out = new JsonObject();
-    out.addProperty("ontologyId", ontologyId);
-    out.addProperty("revisionId", revisionId);
-    return out;
+    return one;
   }
 
   /** The held session a question names, or the refusal a session that is not held gets. */

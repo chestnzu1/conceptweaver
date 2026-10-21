@@ -18,7 +18,7 @@ import { decodeDocument, FORMAT_LABEL, type DocumentFormat } from './rdfFormats'
  * Needs Java and the service's libraries, and the corpus (pnpm corpus); skipped, saying so, without.
  * With CORPUS_SAVED=<directory>, what was saved of each is written there as <id>.ttl, to look at.
  */
-const why = unavailable();
+const why = process.env.CONCEPTWEAVER_COMPANION_JAR ? 'The corpus conversion is the single-file service’s; the companion does not answer it.' : unavailable();
 if (why) console.warn(`Round-trip corpus skipped: ${why}`);
 else if (missing().length) console.warn(`Round-trip corpus: ${missing().map((e) => e.name).join(', ')} skipped, not fetched yet. Run “pnpm corpus”.`);
 

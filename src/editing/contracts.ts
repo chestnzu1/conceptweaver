@@ -189,10 +189,10 @@ export interface OntologyEditService {
 
 /**
  * stale-revision: the ontology has moved on from the revision named. not-found: there is no such
- * ontology here. refused: the change set was not applied, for the reasons given. aborted: it was
- * given up.
+ * ontology here. refused: the change set was not applied, for the reasons given. unsupported: the
+ * service cannot hold the result as it is. aborted: it was given up.
  */
-export type EditErrorCode = 'stale-revision' | 'not-found' | 'refused' | 'aborted';
+export type EditErrorCode = 'stale-revision' | 'not-found' | 'refused' | 'unsupported' | 'aborted';
 
 /** Why a change set was not applied, or a question not answered. Over a wire it is its code, its message and its refusals. */
 export class EditError extends Error {

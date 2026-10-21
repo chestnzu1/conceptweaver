@@ -32,6 +32,9 @@ final class HealthController {
     // An ontology can be uploaded once and held by content hash, and the structure and entity
     // questions are answered from it (roadmap 3.4).
     o.addProperty("sessions", true);
+    // A change set is applied to a held ontology whole or not at all, and the result is held as
+    // a new revision (roadmap 3.5).
+    o.addProperty("edits", true);
     // The assistant's requests are forwarded by the browser's profile only; this build has neither
     // /ai/forward nor /ai/key, so it says what it has.
     o.addProperty("forwardsAi", false);

@@ -13,7 +13,7 @@ import { adapterFor } from './providers/index';
  * machine stands in for one. Needs Java and the service's libraries; skipped, saying so, without.
  */
 
-const why = unavailable();
+const why = process.env.CONCEPTWEAVER_COMPANION_JAR ? 'The proxy is the single-file service’s; the companion does not answer it.' : unavailable();
 if (why) console.warn(`Proxy tests skipped: ${why}`);
 const KEY = 'sk-proxy-test-5678';
 

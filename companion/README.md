@@ -179,6 +179,38 @@ Each suite uploads its fixture document, asks every question of the local servic
 document and of the companion, and compares the answers: the session's reference and the entity
 keys are each side's own, and everything else is alike.
 
+## Change sets (3.5)
+
+`POST /editing/{apply,validate,entity}` asks the page's edit service over HTTP
+(`src/editing/http.ts`), each question a JSON change set of `{ontologyId, baseRevision, changes,
+summary}` made against a held revision. `apply` is atomic — every change or none — held to the
+editor's own rules, and the result is held as a new revision (its content hash) and answered with
+`{ontologyId, revisionId, notes, document}`. `validate` answers `{ok, refusals, notes}` without
+changing anything; `entity` is not answered yet (`unsupported` 501). A refusal is
+`{code, message}`: `stale-revision` 409 for a revision the ontology has moved on from, `refused`
+409 with a `refusals` array for a change set the rules refuse (each refusal its own `code` and
+`message`), `not-found` 404, `invalid` 400.
+
+The rules are the page's, word for word (`planned` and `ruled` of `src/editing/local.ts`, ported
+to `SessionEditing`): the identity of every change against the revision it was made on, the
+editor's rules on what is added against the state once the removals are made, and the page's own
+hold — a change set whose result would come back with anything it did not ask for is refused in
+the page's words, because an entity the additions introduce is read back with its declaration
+and the name made from its IRI as its label. A conformance suite holds the two sides together
+(AR-01): `src/editing/conformance.test.ts` runs every fixture change set through the local
+implementation and the companion over the same document and compares acceptance, refusals, notes
+and, where applied, the resulting documents as axioms by `/compare`:
+
+```sh
+./mvnw clean package
+export JAVA_HOME=/path/to/jdk-21
+export CONCEPTWEAVER_COMPANION_JAR=$PWD/target/companion-0.1.0-SNAPSHOT.jar
+cd ..
+pnpm exec vitest run src/editing/conformance.test.ts
+```
+
+`EditingHttpTest` covers the statuses and shapes the suite does not reach.
+
 ## What the tests reproduce
 
 `DependencySpikeTest` covers, through the declared dependencies only:
@@ -201,7 +233,9 @@ service name, engine, the declared OWL API version, both reasoners and the five 
 the frontend suites do not reach: 405 and 400 with the reasoning answer shape, the 403 that
 comes before the method, the preflight and CORS headers on an allowed and a refused origin,
 `/convert`'s 400, 422 and 200, and `/compare`'s 400, 422 and 405. The frontend's four suites are
-the parity check; these tests are for what they leave out.
+the parity check; these tests are for what they leave out. `SessionsHttpTest` and
+`EditingHttpTest` do the same for the sessions and change-set endpoints: the statuses and shapes
+the frontend suites leave out.
 
 ## Building and running
 
@@ -249,7 +283,7 @@ accounts, `GraphService` on the server and LM-5.
 
 ## Not here yet
 
-- Change sets (3.5), difference and export (3.6).
+- Difference and export (3.6).
 - The assistant forwarding endpoints of the single-file service (`/ai/forward`, `/ai/key` and
   `/ai/key/forget`); `/health` reports `forwardsAi` and `holdsAiKeys` as false, and
   `reasoner/run.mjs` ignores `--allow-local-ai` when it starts the companion.
