@@ -179,6 +179,7 @@ export const STRATEGY_IDS = [
   'OWL_ENUMERATION_TO_LDM_REFERENCE_ENTITY',
   'OWL_ENUMERATED_DATATYPE_TO_LDM_DOMAIN',
   'OWL_HIERARCHY_ROLLUP_TO_LDM_ENTITY',
+  'OWL_SUBCLASS_HIERARCHY_TO_LDM_REFERENCE_ENTITY',
   'OWL_SUBCLASS_TO_LDM_SPECIALIZATION',
   'OWL_SUBCLASS_TO_LDM_ROLLDOWN',
   'OWL_DATA_PROPERTY_TO_LDM_ATTRIBUTE',
@@ -243,8 +244,12 @@ export type NamingCase = (typeof NAMING_CASES)[number];
 export const NAMING_SEPARATORS = [' ', '', '_', '-'] as const;
 export type NamingSeparator = (typeof NAMING_SEPARATORS)[number];
 
-/** What a subclass hierarchy becomes: a specialization, one rolled-up entity, or attributes rolled down. */
-export const HIERARCHY_STRATEGIES = ['specialization', 'rollup', 'rolldown'] as const;
+/**
+ * What a subclass hierarchy becomes: a specialization, one rolled-up entity, attributes rolled
+ * down, or a reference entity of the subclasses beside an entity for the instances (the
+ * reference-data pattern: the subclasses are the values, and each instance points at its kind).
+ */
+export const HIERARCHY_STRATEGIES = ['specialization', 'rollup', 'rolldown', 'reference'] as const;
 export type HierarchyStrategy = (typeof HIERARCHY_STRATEGIES)[number];
 
 /** What an object property becomes: a relationship, or (where both ends are many) an associative entity. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { withIris } from '../model/iri';
 import { sampleModel } from '../model/sample';
-import { newProp, newTerm, type Model } from '../model/types';
+import { emptyModel, newProp, newRelation, newTerm, type Model } from '../model/types';
 import type { LogicalAttribute, LogicalModel, TransformationConfig } from '../logical/contracts';
 import { createLocalLogicalServices } from '../logical/local';
 import { applied, emptyLogicalModel, logicalModelFrom, transformationConfigFrom } from '../logical/rules';
@@ -521,5 +521,93 @@ describe('the transformation service', () => {
     const entity = result.proposals.find((p) => p.kind === 'entity')!;
     await h.service.apply({ result, accepted: [entity.id] });
     await expect(h.service.apply({ result, accepted: result.proposals.filter(chosenByDefault).map((p) => p.id) })).rejects.toMatchObject({ code: 'stale-revision' });
+  });
+});
+
+// ---------------------------------------------------------------- the reference-data pattern
+
+describe('the reference-data hierarchy pattern', () => {
+  const reference = (): TransformationConfig => ({ ...defaultTransformationConfig(), hierarchy: 'reference' });
+
+  /** A hierarchy of Vehicle with two kinds, a class of its own, and a data property on either level. */
+  function referenceModel() {
+    const m = emptyModel('Reference');
+    const vehicle = newTerm({ name: 'Vehicle' });
+    const car = newTerm({ name: 'Car' });
+    const bike = newTerm({ name: 'Bike' });
+    const garage = newTerm({ name: 'Garage' });
+    m.terms.push(vehicle, car, bike, garage);
+    m.relations.push(newRelation({ from: car.id, to: vehicle.id, kind: 'generalization' }), newRelation({ from: bike.id, to: vehicle.id, kind: 'generalization' }));
+    const mid = withIris(m);
+    const registration = newTerm({ name: 'Registration', type: 'property' });
+    const doors = newTerm({ name: 'Doors', type: 'property' });
+    mid.terms.push(registration, doors);
+    const ready = withIris(mid);
+    const vehicleIri = ready.terms.find((t) => t.name === 'Vehicle')!.iri!;
+    const carIri = ready.terms.find((t) => t.name === 'Car')!.iri!;
+    ready.terms.find((t) => t.name === 'Registration')!.domains = [{ id: 'd1', expression: { type: 'Class', iri: vehicleIri } }];
+    ready.terms.find((t) => t.name === 'Doors')!.domains = [{ id: 'd2', expression: { type: 'Class', iri: carIri } }];
+    return ready;
+  }
+
+  it('turns a class and its subclasses into a reference entity of the subclasses and an entity for the instances', () => {
+    const model = referenceModel();
+    const result = propose(model, ldm(), reference());
+    const entities = result.proposals.filter((p) => p.kind === 'entity');
+    expect(entities.map((p) => p.title)).toEqual(['Entity from the class Garage', 'Entity and reference entity from the hierarchy of Vehicle']);
+    const pattern = entities[1];
+    expect(pattern.strategy).toBe('subclass hierarchy → reference entity and instances entity');
+    expect(pattern.elements).toEqual(['Entity Vehicle', 'Reference entity Vehicle type', 'Relationship type']);
+    const adds = pattern.changes.filter((c) => c.op === 'add').map((c) => c.element);
+    const madeEntities = adds.filter((e): e is Extract<(typeof adds)[number], { kind: 'entity' }> => e.kind === 'entity');
+    const instanceEntity = madeEntities.find((e) => !e.entity.reference)!.entity;
+    const referenceEntity = madeEntities.find((e) => e.entity.reference)!.entity;
+    expect(instanceEntity.name).toBe('Vehicle');
+    expect(instanceEntity.reference).toBeUndefined();
+    expect(referenceEntity.name).toBe('Vehicle type');
+    expect(referenceEntity.reference).toBe(true);
+    // A reference entity is a concrete list of codes: a mandatory code, a label, and the code as its primary key.
+    expect(referenceEntity.attributes.map((a) => a.name)).toEqual(['code', 'label']);
+    expect(referenceEntity.attributes[0]).toMatchObject({ type: { base: 'identifier' }, optional: false });
+    expect(referenceEntity.attributes[1]).toMatchObject({ type: { base: 'text' }, optional: true });
+    expect(referenceEntity.keys).toHaveLength(1);
+    expect(referenceEntity.keys[0]).toMatchObject({ kind: 'primary', members: [{ attribute: referenceEntity.attributes[0].id }] });
+    // The instances point at their kind through a relationship, optional until the user says otherwise.
+    const relationship = adds.find((e): e is Extract<(typeof adds)[number], { kind: 'relationship' }> => e.kind === 'relationship')!.relationship;
+    expect(relationship.name).toBe('type');
+    expect(relationship.ends).toEqual([
+      { entity: instanceEntity.id, role: 'has type', min: 0, max: 'many' },
+      { entity: referenceEntity.id, role: 'type of', min: 0, max: 1 },
+    ]);
+    // The mappings say where each element came from: the whole hierarchy names the reference entity's values.
+    const mappings = pattern.changes.flatMap((c) => (c.op === 'add' && c.element.kind === 'mapping' ? [c.element.mapping] : []));
+    expect(mappings.map((m) => m.strategyId)).toEqual(['OWL_CLASS_TO_LDM_ENTITY', 'OWL_SUBCLASS_HIERARCHY_TO_LDM_REFERENCE_ENTITY']);
+    const referenceMapping = mappings.find((m) => m.strategyId === 'OWL_SUBCLASS_HIERARCHY_TO_LDM_REFERENCE_ENTITY')!;
+    expect(referenceMapping.sources.map((s) => s.label)).toEqual(['Bike', 'Car', 'Vehicle']);
+    expect(referenceMapping.targets).toEqual([{ entity: referenceEntity.id }]);
+    // The subclasses are the values of the pattern, not entities of their own: no specialization is proposed.
+    expect(result.proposals.filter((p) => p.kind === 'specialization')).toEqual([]);
+  });
+
+  it('puts a data property of a subclass on the instances entity, and accepts the pattern as one change set', () => {
+    const model = referenceModel();
+    const { result } = acceptStructure(model, ldm(), reference());
+    const vehicle = result.entities.find((e) => e.name === 'Vehicle')!;
+    expect(vehicle.attributes.map((a) => a.name).sort()).toEqual(['Doors', 'Registration']);
+    const types = result.entities.find((e) => e.name === 'Vehicle type')!;
+    expect(types.reference).toBe(true);
+    expect(result.entities.find((e) => e.name === 'Garage')!.attributes).toEqual([]);
+    expect(result.generalizations).toEqual([]);
+    expect(result.relationships).toHaveLength(1);
+    expect(result.relationships[0].ends.map((e) => e.entity).sort()).toEqual([types.id, vehicle.id].sort());
+  });
+
+  it('runs again over its own result and proposes nothing, and the configuration round-trips', () => {
+    const model = referenceModel();
+    const first = acceptStructure(model, ldm(), reference()).result;
+    const again = propose(model, first, reference());
+    expect(again.proposals).toEqual([]);
+    expect(again.skipped.map((s) => s.reason)).toEqual(expect.arrayContaining(['already represented by the reference-data pattern', 'already represented by an entity']));
+    expect(transformationConfigFrom({ ...defaultTransformationConfig(), hierarchy: 'reference' })?.hierarchy).toBe('reference');
   });
 });

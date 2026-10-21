@@ -217,6 +217,7 @@ export function TransformationDialog() {
               <option value="specialization">A specialization</option>
               <option value="rollup">One entity per hierarchy</option>
               <option value="rolldown">Attributes copied into each subtype</option>
+              <option value="reference">A reference entity of the subclasses, and an entity for the instances</option>
             </select>
           </label>
           <label className="field">

@@ -99,6 +99,15 @@ export const STRATEGIES: readonly StrategyEntry[] = [
     description: 'A class and its subclasses become one entity, with a discriminator saying which kind each row is.',
   },
   {
+    id: 'OWL_SUBCLASS_HIERARCHY_TO_LDM_REFERENCE_ENTITY',
+    label: 'subclass hierarchy → reference entity and instances entity',
+    sourceKinds: ['class'],
+    sources: MANY,
+    target: 'entity',
+    makes: 'reference',
+    description: 'A class and its subclasses become a reference entity whose rows are the subclasses, and an entity for the instances, each pointing at its kind.',
+  },
+  {
     id: 'OWL_SUBCLASS_TO_LDM_SPECIALIZATION',
     label: 'subclass hierarchy → specialization',
     sourceKinds: ['class'],

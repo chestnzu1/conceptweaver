@@ -140,6 +140,8 @@ interface Context {
   skipped: SkippedSource[];
   /** The class or enumerated datatype IRI each LDM entity was made from. */
   entityByClass: Map<string, string>;
+  /** The class IRI each reference entity of the reference-data hierarchy pattern was made from. */
+  referenceByClass: Map<string, string>;
   /** The proposal that made each entity, where one in this result did. */
   entityProposal: Map<string, string>;
   /** The enumerated datatype id or the enumerated class IRI each domain was made from. */
@@ -630,6 +632,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
     proposals: [],
     skipped: [],
     entityByClass: new Map(),
+    referenceByClass: new Map(),
     entityProposal: new Map(),
     domainByEnum: new Map(),
     domainProposal: new Map(),
@@ -651,7 +654,13 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       if (!refExists(ctx.working, ref)) continue;
       if (keyOfRef(ref) === 'entity') {
         const t = model.terms.find((x) => termIri(model, x) === iri);
-        if (t?.type === 'concept') ctx.entityByClass.set(iri, idOfRef(ref));
+        if (t?.type === 'concept') {
+          // The reference entity of the reference-data pattern names every class of its hierarchy
+          // as a source; those are the values of it, not the entity made from each class.
+          const made = target.mappings.find((m) => m.targets.some((x) => idOfRef(x) === idOfRef(ref)));
+          if (made?.strategyId === 'OWL_SUBCLASS_HIERARCHY_TO_LDM_REFERENCE_ENTITY') ctx.referenceByClass.set(iri, idOfRef(ref));
+          else ctx.entityByClass.set(iri, idOfRef(ref));
+        }
       } else if (keyOfRef(ref) === 'domain') {
         const d = model.datatypes.find((x) => enumIriOf(model, x) === iri);
         if (d) ctx.domainByEnum.set('id:' + d.id, idOfRef(ref));
@@ -732,7 +741,7 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
 
   // ------------------------------------------------------------ entities
   const rolled = new Map<string, string[]>(); // top class IRI → classes rolled into it
-  if (config.hierarchy === 'rollup') {
+  if (config.hierarchy === 'rollup' || config.hierarchy === 'reference') {
     for (const iri of [...scope].sort()) {
       if (classByIri.get(iri)?.oneOf) continue;
       const top = topOf(iri, hierarchy.supers);
@@ -741,11 +750,89 @@ export function proposalsFor(input: ProposalInput): TransformationResult {
       rolled.set(top, list);
     }
   }
-  const entityGroups = config.hierarchy === 'rollup' ? [...rolled.entries()].sort(([a], [b]) => a.localeCompare(b)) : [...scope].sort().map((iri) => [iri, [iri]] as [string, string[]]);
+  const entityGroups = config.hierarchy === 'rollup' || config.hierarchy === 'reference' ? [...rolled.entries()].sort(([a], [b]) => a.localeCompare(b)) : [...scope].sort().map((iri) => [iri, [iri]] as [string, string[]]);
   for (const [top, members] of entityGroups) {
     const lead = classByIri.get(top);
     if (!lead || lead.oneOf) continue;
     const existing = ctx.entityByClass.get(top);
+    const reference = config.hierarchy === 'reference' && members.length > 1;
+    // The reference-data pattern: the subclasses become the values of a reference entity, and the
+    // instances an entity of their own pointing at its kind. Both are worked out here, so that
+    // one proposal carries the whole pattern and the mappings it implies.
+    if (reference) {
+      const instanceExists = !!existing && refExists(ctx.working, { entity: existing });
+      if (instanceExists) for (const member of members) ctx.entityByClass.set(member, existing);
+      const existingReference = ctx.referenceByClass.get(top);
+      const referenceExists = !!existingReference && refExists(ctx.working, { entity: existingReference });
+      const instanceEntity = instanceExists ? ctx.working.entities.find((e) => e.id === existing) : undefined;
+      const instanceName = instanceEntity ? instanceEntity.name : name(lead.name, top, true);
+      const referenceName = nameFor(`${instanceName} type`, undefined, config.naming, false);
+      const sources: ProposalSource[] = [];
+      for (const member of members) {
+        const t = classByIri.get(member)!;
+        const memberIri = termIri(model, t);
+        sources.push({ iri: memberIri, label: t.name, axioms: [`Declaration(Class(<${memberIri}>))`, ...(t.classAxioms ?? []).map((a) => classAxiomText(ctx, memberIri, a))] });
+      }
+      const memberNames = members.map((m) => classByIri.get(m)?.name || localPart(m));
+      const changes: LogicalChange[] = [];
+      const elements: string[] = [];
+      let madeId: string;
+      let referenceId: string;
+      let madeRelationship: Relationship | undefined;
+      if (!instanceExists) {
+        const entity: LogicalEntity = { id: newId('e'), name: freeName(instanceName, ctx.entityNames), definition: config.definitions ? lead.description : '', attributes: [], keys: [] };
+        changes.push({ op: 'add', element: { kind: 'entity', entity } });
+        elements.push(`Entity ${entity.name}`);
+        const rootSources = [{ iri: top, label: lead.name, axioms: [`Declaration(Class(<${top}>))`, ...(lead.classAxioms ?? []).map((a) => classAxiomText(ctx, top, a))] }];
+        const m = mapping(ctx, rootSources, [{ entity: entity.id }], 'OWL_CLASS_TO_LDM_ENTITY', 'class → entity', `The class ${lead.name || localPart(top)} is in scope and no entity in this LDM was made from it; the instances of the hierarchy become its rows.`, { entity });
+        changes.push({ op: 'add', element: { kind: 'mapping', mapping: m } });
+        for (const member of members) ctx.entityByClass.set(member, entity.id);
+        madeId = entity.id;
+      } else {
+        madeId = existing;
+      }
+      if (!referenceExists) {
+        const code: LogicalAttribute = { id: newId('a'), name: 'code', definition: `The code that identifies one kind of ${instanceName}.`, type: { base: 'identifier' }, optional: false };
+        const label: LogicalAttribute = { id: newId('a'), name: 'label', definition: 'What the kind is called, for a reader.', type: { base: 'text' }, optional: true };
+        const key: Key = { id: newId('k'), kind: 'primary', name: 'Primary key', members: [{ attribute: code.id }] };
+        const referenceEntity: LogicalEntity = { id: newId('e'), name: freeName(referenceName, ctx.entityNames), definition: config.definitions ? lead.description : '', attributes: [code, label], keys: [key], reference: true };
+        changes.push({ op: 'add', element: { kind: 'entity', entity: referenceEntity } });
+        elements.push(`Reference entity ${referenceEntity.name}`);
+        const strategy = 'subclass hierarchy → reference entity and instances entity';
+        const m = mapping(ctx, sources, [{ entity: referenceEntity.id }], 'OWL_SUBCLASS_HIERARCHY_TO_LDM_REFERENCE_ENTITY', strategy, `${memberNames.join(', ')} are kinds of ${lead.name || localPart(top)}; the reference-data pattern keeps them as the values of one reference entity, and the instances in an entity of their own that points at its kind.`, { entity: referenceEntity });
+        changes.push({ op: 'add', element: { kind: 'mapping', mapping: m } });
+        ctx.referenceByClass.set(top, referenceEntity.id);
+        referenceId = referenceEntity.id;
+      } else {
+        referenceId = existingReference;
+      }
+      const typed = ctx.working.relationships.find((r) => r.ends.some((end) => end.entity === madeId) && r.ends.some((end) => end.entity === referenceId));
+      if (!typed) {
+        const relationship: Relationship = { id: newId('r'), name: freeName('type', relationshipNames(ctx)), definition: `The kind of ${instanceName}, as ${referenceName} lists them.`, ends: [{ entity: madeId, role: 'has type', min: 0, max: 'many' }, { entity: referenceId, role: 'type of', min: 0, max: 1 }], identifying: false };
+        changes.push({ op: 'add', element: { kind: 'relationship', relationship } });
+        elements.push(`Relationship ${relationship.name}`);
+        madeRelationship = relationship;
+      }
+      if (!changes.length) {
+        ctx.skipped.push({ iri: top, name: lead.name, reason: 'already represented by the reference-data pattern' });
+        continue;
+      }
+      const proposal = propose(ctx, {
+        kind: 'entity',
+        title: `${instanceExists ? 'Reference entity' : 'Entity and reference entity'} from the hierarchy of ${lead.name || localPart(top)}`,
+        sources,
+        elements,
+        changes,
+        strategy: 'subclass hierarchy → reference entity and instances entity',
+        rationale: `${memberNames.join(', ')} are kinds of ${lead.name || localPart(top)}; the reference-data pattern keeps them as the values of one reference entity, and the instances in an entity of their own that points at its kind.${instanceExists ? ` The entity ${instanceEntity!.name} already represents the instances.` : ''}`,
+        difference: 'OWL subclasses are sets of individuals; the values of a reference entity are codes. The subclasses become the codes, which the user may rename; the value list itself stays in the ontology.',
+        requires: [],
+        candidate: false,
+      });
+      for (const member of members) if (!ctx.entityProposal.has(member)) ctx.entityProposal.set(member, proposal.id);
+      if (madeRelationship) ctx.relationshipProposal.set(madeRelationship.id, proposal.id);
+      continue;
+    }
     if (existing && refExists(ctx.working, { entity: existing })) {
       for (const member of members) ctx.entityByClass.set(member, existing);
       ctx.skipped.push({ iri: top, name: lead.name, reason: 'already represented by an entity' });
