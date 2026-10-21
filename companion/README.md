@@ -4,7 +4,9 @@ The Java semantic backend of Phase 3. Task 3.1 (done 2026-10-20) chose the versi
 is built with: Spring Boot 4.1.1, OWL API 5.5.1, HermiT 1.4.5.519, ELK 0.6.0 and owlexplanation
 5.0.1 on JDK 21. Task 3.2 (done 2026-10-20) ported the single-file service's endpoints —
 `/health`, `/reason`, `/convert` and `/compare` — with the same requests, responses and statuses,
-and passed the frontend's own suites against it unchanged.
+and passed the frontend's own suites against it unchanged. Task 3.3 (done 2026-10-21) added
+reasoning as jobs: start, status, cancel and result over HTTP, one bounded executor, a wall-clock
+limit per job, and answers cached by content and reasoner.
 
 `CompanionApplication` is that application. `reasoner/run.mjs` starts it in place of the
 single-file service when `CONCEPTWEAVER_COMPANION_JAR` names the built jar; without that variable
@@ -31,14 +33,14 @@ the chosen target remains OWL API 5.
 
 The roadmap's fallback was to stay on 4.5 if OWL API 5 with the needed reasoners was not clean.
 It was clean: the same tests pass on JDK 21 with Spring Boot 4.1.1 under both profiles — the
-spike's 10, and 16 since 3.2's HTTP parity tests joined them.
+spike's 10, plus the HTTP parity tests of 3.2 and the jobs tests of 3.3, 29 in all.
 
 ```
 $ ./mvnw test
-Tests run: 16, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 $ ./mvnw -Powlapi4 test
-Tests run: 16, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -60,7 +62,8 @@ The same endpoints, the same fields in every answer, the same statuses and the s
 names because `src/model/owlSyntaxes.test.ts` calls it, as do the corpus and conformance suites.
 `/reason`, `/convert` and `/compare` check `Origin` before the method, read at most 64 MB, answer
 JSON with `Cache-Control: no-store`, and never fetch an import. `/health` has no origin check, as
-in the single-file service.
+in the single-file service; it adds `"jobs": true`, which the single-file service does not say,
+and the parity tests compare the fields they need rather than the whole answer.
 
 The tests that prove it are the frontend's own, run unchanged against the jar:
 
@@ -90,6 +93,48 @@ reasons, and each such call also records that the monitor has said its piece, so
 the same monitor stays silent. The single-file service had no SLF4J binding, which made those
 calls no-ops; Spring Boot has one, so `org.semanticweb.elk` is set to `OFF`, and `/reason` asks
 the monitors itself, once, as the single-file service did.
+
+## Reasoning as jobs (3.3)
+
+`POST /reasoning/start` takes `{ontologyId, revisionId, engine: "dl", ontology, imports?,
+timeoutMs?, explanations?, reasoner?}` and answers with a job at once:
+`{job, ontologyId, revisionId, engine, state, phase}`. `state` is `queued`, `running`, `done`,
+`failed` or `cancelled`; `phase` says what the job is doing ("Reading the ontology…", "Checking
+the ontology's profile…", "Reasoning with HermiT…", "Working out justifications…"). `POST
+/reasoning/status` and `/reasoning/cancel` take `{job}` and answer with the job; `POST
+/reasoning/result` takes `{job}` and waits for `{ontologyId, revisionId, engine, report}`, the
+same report `/reason` gives. A refusal is `{code, message}` with the status
+`src/reasoning/http.ts` expects: `invalid` 400, `not-found` 404, `cancelled` 409, `failed` 422,
+`busy` 429, `unsupported` 501. The page's client is `src/reasoning/http.ts`; the editor is not
+wired to it until 3.4 and 3.7.
+
+- **One executor.** Jobs and `/reason` share a bounded `ThreadPoolExecutor`: one worker and four
+  places in the queue by default. Work beyond that is refused (`busy`) rather than loaded into
+  the same heap (TD-14). Cancel returns within two seconds, interrupts the reasoner, and leaves
+  no result.
+- **Limits.** `conceptweaver.reasoning.timeout-ms` (60 s) is the default and
+  `max-timeout-ms` (600 s) the most a request may ask for. Every report says `limits.timeoutMs`
+  and `limits.maxHeapMb`, and so does `/reason`; the Validation card shows them. The heap is set
+  where the service is started: `reasoner/run.mjs --memory=<size>` passes `-Xmx<size>` to either
+  service, 2 GB unless given.
+- **Cache.** An answer is kept under the SHA-256 of the ontology, imports, explanations, timeout
+  and reasoner, 16 least-recently-used first (`conceptweaver.reasoning.cache`). A second start
+  of the same content answers `done` with `cached: true` and runs nothing. Failed, cancelled and
+  timed-out jobs are not kept.
+- **Settings.** `conceptweaver.reasoning.workers`, `.queue`, `.timeout-ms`, `.max-timeout-ms`
+  and `.cache`, in `application.properties` or on the command line.
+  `spring.mvc.async.request-timeout` is raised so that `/reasoning/result` may wait as long as a
+  job may run.
+- **No revisions yet.** The companion holds no ontology and knows no revision until 3.4, so a
+  start accepts any non-empty `revisionId`; the revision check the page's local service makes
+  arrives with ontology sessions.
+
+`ReasoningJobsTest` covers the bookkeeping without a reasoner — one content answered once and
+kept, cancel within two seconds leaving no result, the timeout, `busy`, phases, a failed report
+being a failed job that is not kept, and the refusals. `ReasoningJobsHttpTest` covers the four
+questions over HTTP, the refusals' statuses and codes, the POST-only and origin rules, and
+`health.jobs`. `src/reasoning/http.test.ts` runs the local reasoning service and the same
+service behind the HTTP client side by side and compares their answers and refusals.
 
 ## What the tests reproduce
 
@@ -129,7 +174,8 @@ first use.
 
 The application listens on 127.0.0.1:5190 by default, as the single-file service does. It takes
 the same launch arguments: `--port=`, `--host=` and repeated `--allow-origin=`.
-`reasoner/run.mjs` passes them through when it starts the jar in place of the single file. From
+`reasoner/run.mjs` passes them through when it starts the jar in place of the single file, and
+turns `--memory=<size>` into the JVM's `-Xmx<size>` for either service (`2g` unless given). From
 the repository root, after the jar is built:
 
 ```sh
@@ -159,7 +205,7 @@ accounts, `GraphService` on the server and LM-5.
 
 ## Not here yet
 
-- Reasoning jobs (3.3), ontology sessions (3.4), change sets (3.5), difference and export (3.6).
+- Ontology sessions (3.4), change sets (3.5), difference and export (3.6).
 - The assistant forwarding endpoints of the single-file service (`/ai/forward`, `/ai/key` and
   `/ai/key/forget`); `/health` reports `forwardsAi` and `holdsAiKeys` as false, and
   `reasoner/run.mjs` ignores `--allow-local-ai` when it starts the companion.

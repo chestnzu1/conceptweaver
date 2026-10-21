@@ -1037,6 +1037,11 @@ public class ReasonerService {
     }
     synchronized (out) {
       out.addProperty("ms", (System.nanoTime() - t0) / 1_000_000);
+      // What the answer was worked out under: the time it was allowed, and the heap it had.
+      JsonObject limits = new JsonObject();
+      limits.addProperty("timeoutMs", timeoutMs);
+      limits.addProperty("maxHeapMb", Runtime.getRuntime().maxMemory() / (1024 * 1024));
+      out.add("limits", limits);
       return out.deepCopy();
     }
   }

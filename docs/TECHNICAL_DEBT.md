@@ -565,8 +565,23 @@ same requests, responses and statuses (`companion/`; `/health`, `/reason`, `/con
 `/compare`), and 16 Java tests cover what the frontend suites do not; `reasoner/run.mjs` starts
 the companion in place of the single file when `CONCEPTWEAVER_COMPANION_JAR` is set. The
 single-file service is still the default until 3.7 packages the companion and the frontend
-detects it. Jobs and the bounded executor are 3.3; `robot.jar` and its pinned line remain in the
-default path until 3.7.
+detects it; `robot.jar` and its pinned line remain in the default path until then.
+
+**Progress — 3.3 (2026-10-21).** The companion now answers reasoning as jobs:
+`POST /reasoning/{start,status,cancel,result}` (`companion/.../ReasoningJobs.java`,
+`ReasoningJobsController.java`), with the contract of `src/reasoning/contracts.ts` and a client,
+`src/reasoning/http.ts`, tested against the local service. One bounded executor
+(`ReasoningPool`) serves both the jobs and `/reason`: one worker and four places in the queue by
+default (`conceptweaver.reasoning.workers`, `.queue`), a request beyond that refused with
+`busy` (429) rather than queued without bound. Every job has a wall-clock limit
+(`.timeout-ms`, `.max-timeout-ms`), is interrupted when it passes, and can be cancelled within
+two seconds leaving no result. Answers are cached by the SHA-256 of the ontology, imports,
+explanations, timeout and reasoner (`.cache`, 16 by default), so reasoning again without an edit
+is free; failed answers are not cached. `/reason` answers with the same cache and says the
+timeout and heap it was worked out under (`limits`), as every job's report does; the same
+figures are shown in the Validation card. `reasoner/run.mjs` takes `--memory=<size>` for the heap
+it starts either service with. Neither a size budget by ontology size nor ELK on the EL part of a
+larger OWL 2 DL ontology has been built; both remain open.
 
 **What is good and should be kept.** The request and response shapes, the honest status
 (*complete*, *partial*, *failed*), the justifications and the refusal to fetch anything from the

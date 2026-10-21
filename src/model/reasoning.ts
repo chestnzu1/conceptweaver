@@ -214,6 +214,8 @@ export interface ReasoningResult {
   errors: string[];
   warnings: string[];
   ms: number;
+  /** The limits it was worked out under, where the service says them: how long it allowed, and the heap it had. */
+  limits?: { timeoutMs: number; maxHeapMb?: number };
 }
 
 /** Finds in the model what the reasoner names by IRI. */
@@ -329,6 +331,7 @@ export function dlResult(model: Model, report: DlReport): ReasoningResult {
     errors: report.errors,
     warnings: report.warnings,
     ms: report.roundTripMs ?? report.ms,
+    ...(report.limits ? { limits: report.limits } : {}),
   };
 }
 

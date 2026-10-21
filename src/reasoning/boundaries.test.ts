@@ -13,7 +13,7 @@ const imports = (file: string) => [...readFileSync(here + file, 'utf8').matchAll
 
 describe('what reasoning depends on', () => {
   it('is the reasoner and the model it reasons about', () => {
-    expect(files.sort()).toEqual(['contracts.ts', 'local.ts', 'worker.ts']);
+    expect(files.sort()).toEqual(['contracts.ts', 'http.ts', 'local.ts', 'worker.ts']);
     for (const file of files) {
       for (const from of imports(file)) {
         if (from.startsWith('./') || from.startsWith('../model/')) continue;

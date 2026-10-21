@@ -515,7 +515,7 @@ For the LDM workstream:
 | 3.2 | **Parity.** `/health`, `/reason` and `/convert` in Spring Boot with the same requests and responses. `src/model/dlReasoning.test.ts`, `src/model/owlSyntaxes.test.ts`, `e2e/dl-reasoning.mjs` and `e2e/open-owl.mjs` pass unchanged against it. Java unit tests for what those do not reach. Done 2026-10-20: the companion also answers `/compare` (the suites call it), with the single-file service's fields, statuses, origin check, body limit and error shapes; all four suites pass unchanged against the `owlapi4` build whose version strings they assert, and 16 Java tests cover the rest. `reasoner/run.mjs` starts the companion in place of the single file when `CONCEPTWEAVER_COMPANION_JAR` is set. | TD-14, ADR-003 | M |
 | SH-4 | **Jena SHACL on the server.** `ValidationService` answered by the companion with Jena SHACL, with the requests and reports of the local engine; the W3C SHACL Core conformance suite of SH-2 run through both and the reports compared; data graphs too large for the page validated there, as a job. | FR-M4-16 | M |
 | SH-5 | **SHACL-SPARQL and the inferred graph.** SPARQL-based constraints and constraint components, and validation against the inferred graph, by the server; the browser engine names what it cannot run instead of passing it over. | FR-M4-9 | M |
-| 3.3 | **Reasoning jobs.** Start, status, cancel; a bounded executor; profile check and reasoner choice; results cached by content hash and reasoner. | ADR-005, FR-M3-4, FR-M3-8 | M |
+| 3.3 | **Reasoning jobs.** Start, status, cancel; a bounded executor; profile check and reasoner choice; results cached by content hash and reasoner. Done 2026-10-21: the companion answers `POST /reasoning/{start,status,cancel,result}` with the page's job contract (`src/reasoning/http.ts`), through one bounded executor shared with `/reason` (one job at a time, four waiting, refused as `busy` beyond that); every job has a wall-clock limit, can be stopped within two seconds leaving no result, and every answer is cached by the hash of ontology, imports, explanations, timeout and reasoner (16 kept, least recently used first). Each job does the profile check and reasoner choice of 2.6 unchanged, through the same work `/reason` uses. The answer says the timeout and heap it was worked out under, in both services, and `reasoner/run.mjs` takes `--memory`. `pnpm verify` green; the four 3.2 suites pass unchanged against the companion; 29 Java tests and `src/reasoning/http.test.ts` cover the rest. | ADR-005, FR-M3-4, FR-M3-8 | M |
 | 3.4 | **Ontology sessions.** An ontology is uploaded once and held by content hash; `StructureService` and `EntityQueryService` are answered from it over the OWL API. The frontend's `http.test.ts` suites pass against the server. | FR-M6-7 | L |
 | 3.5 | **Change sets on the server.** Apply a change set to a held ontology atomically; return the new content hash. A conformance suite runs every fixture change set through the local and the server implementation and compares the results as axioms. | AR-01, ADR-004 | L |
 | 3.6 | **Difference and export.** A difference between two ontologies by OWL API structural comparison; export in every syntax. | FR-M6-6, FR-M11-2 | S |
@@ -523,8 +523,8 @@ For the LDM workstream:
 
 ### Dependencies
 
-Phase 1 (1.8, 1.9) for the contracts. 3.1 and 3.2 are done, and with SH-2 done, SH-4 can
-follow. SH-5 needs SH-4; neither depends on 3.3 to 3.6. 3.4 and 3.5 are independent of each
+Phase 1 (1.8, 1.9) for the contracts. 3.1, 3.2 and 3.3 are done, and with SH-2 done, SH-4 can
+follow. SH-5 needs SH-4; neither depends on 3.4 to 3.6. 3.4 and 3.5 are independent of each
 other. 3.4 also unblocks 5.8a, the local MCP prototype, which can be built in this phase without
 Phase 5 accounts. Nothing in this phase is a prerequisite of the LDM workstream (§1.3): database
 connection and schema discovery (3.8, 3.9, stage DI-1) are deferred with data integration (§11).
@@ -858,6 +858,20 @@ read-only tool catalog over the services that already answer the browser, projec
 revision-scoped, bounded and paged. **5.8a is eligible after 3.4** and may be built in Phase 3;
 **5.8b waits for 5.1, the public API of 5.8, 4.4 and LM-5**. Nothing in 3.2 onwards changes, and
 nothing MCP-related is implemented yet.
+
+**2026-10-21: 3.3 is done**, reasoning jobs in the companion. `POST /reasoning/start` answers
+with a job at once; `status` reports its state and phase; `cancel` stops it within two seconds
+and leaves no result; `result` waits for the answer. One bounded executor serves jobs and
+`/reason` (one worker and four places in the queue by default, `busy` beyond that), so two
+ontologies are not classified into the same heap (fixes the executor half of TD-14). Every job
+has a wall-clock limit and is interrupted when it passes. Answers are cached by the SHA-256 of
+the ontology, imports, explanations, timeout and reasoner, so reasoning again without an edit is
+free; failed answers are not cached. The report says the timeout and heap it was worked out
+under, in both services, and `reasoner/run.mjs --memory=<size>` sets the heap. The page's client
+for this API is `src/reasoning/http.ts`, tested against the local service; the editor is not
+wired to it until ontology sessions (3.4) and packaging with detection (3.7). A size budget for
+ontologies and ELK on the EL part of a larger OWL 2 DL ontology remain open. **The next task is
+3.4**, ontology sessions.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
 

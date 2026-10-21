@@ -39,6 +39,8 @@ export interface ReasoningJob extends OntologyRef {
   phase: string;
   /** Why it failed. */
   error?: string;
+  /** Its answer had already been worked out for this revision and reasoner, and was reused. */
+  cached?: boolean;
 }
 
 // ---------------------------------------------------------------- the fast reasoner's answer
@@ -135,6 +137,8 @@ export interface DlReport {
   explanations?: DlExplanation[];
   errors: string[];
   warnings: string[];
+  /** The limits it was worked out under: how long the service allowed, and the heap it had. */
+  limits?: { timeoutMs: number; maxHeapMb?: number };
   /** Added here, not by the service: where it was asked, how long the round trip took, and whether it answered at all. */
   url?: string;
   roundTripMs?: number;
@@ -164,9 +168,12 @@ export interface ReasoningService {
 /**
  * stale-revision: the ontology has moved on from the revision named. not-found: there is no such
  * ontology or job. cancelled: the job was stopped. failed: it could not answer. aborted: the
- * question was given up.
+ * question was given up. busy: the service has as much work as it takes; ask again when a job
+ * has finished (a backend bounds how much it reasons over at once). invalid: the question is not
+ * one the service can take. unsupported: the service does not offer what was asked for (a backend
+ * does not reason with the app's own fast engine).
  */
-export type ReasoningErrorCode = 'stale-revision' | 'not-found' | 'cancelled' | 'failed' | 'aborted';
+export type ReasoningErrorCode = 'stale-revision' | 'not-found' | 'cancelled' | 'failed' | 'aborted' | 'busy' | 'invalid' | 'unsupported';
 
 export class ReasoningError extends Error {
   constructor(

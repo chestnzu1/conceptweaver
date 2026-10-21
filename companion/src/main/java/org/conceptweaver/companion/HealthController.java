@@ -27,6 +27,8 @@ final class HealthController {
     // and comparing two documents of an ontology statement by statement.
     o.addProperty("converts", true);
     o.addProperty("compares", true);
+    // Reasoning can be started as a job, followed, stopped and asked for its answer (roadmap 3.3).
+    o.addProperty("jobs", true);
     // The assistant's requests are forwarded by the browser's profile only; this build has neither
     // /ai/forward nor /ai/key, so it says what it has.
     o.addProperty("forwardsAi", false);

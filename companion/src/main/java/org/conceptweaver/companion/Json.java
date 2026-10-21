@@ -36,6 +36,13 @@ final class Json {
     return o;
   }
 
+  /** A refusal or a fault that is not one of the page's codes: only what went wrong. */
+  static JsonObject message(String message) {
+    JsonObject o = new JsonObject();
+    o.addProperty("message", message);
+    return o;
+  }
+
   /** A document answer carrying only what went wrong, for /convert and /compare. */
   static JsonObject unread(String message) {
     JsonObject o = new JsonObject();

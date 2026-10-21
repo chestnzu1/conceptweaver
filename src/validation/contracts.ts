@@ -115,6 +115,8 @@ export interface OwlSummary {
   /** For a reasoner chosen by the ontology's profile, which one, and why. */
   chosen?: string;
   ms: number;
+  /** The limits it was worked out under, where the service says them: how long it allowed, and the heap it had. */
+  limits?: { timeoutMs: number; maxHeapMb?: number };
   /** What kept the reasoner from answering, or from answering for all of the ontology. */
   errors?: string[];
   notes?: string[];

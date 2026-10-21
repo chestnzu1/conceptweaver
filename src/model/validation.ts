@@ -317,6 +317,7 @@ export function dlFindings(model: Model, report: DlReport): { summary: OwlSummar
       profile: coverageOf(report.engine || 'HermiT') === 'OWL 2 EL' ? EL_PROFILE : DL_PROFILE,
       ...(report.choice?.requested === 'auto' ? { chosen: report.choice.why } : {}),
       ms: report.roundTripMs ?? report.ms,
+      ...(report.limits ? { limits: report.limits } : {}),
       ...(report.status === 'failed' ? { errors: report.errors.map(say) } : {}),
       ...(notes.length ? { notes } : {}),
     },

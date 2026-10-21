@@ -130,8 +130,10 @@ assistance, server-side LDMs.
 Spring Boot 4.1.1 with OWL API 5.5.1, HermiT 1.4.5.519 and ELK 0.6.0 on JDK 21 passes the same
 tests as the OWL API 4.5.29 line. Task 3.2, parity of the OWL service in Spring Boot, is done as
 well (2026-10-20): the four frontend suites named for it pass unchanged against the companion.
-The next milestone is **MS-5, the companion**, which replaces
-the single-file service, and the next task is 3.3, reasoning jobs. MS-16, server-side logical
+Task 3.3, reasoning jobs, is done too (2026-10-21): the companion starts, follows, cancels and
+answers jobs through one bounded executor, caching each answer by content and reasoner. The next
+milestone is **MS-5, the companion**, which replaces
+the single-file service, and the next task is 3.4, ontology sessions. MS-16, server-side logical
 models through LM-5, follows in Phase 4. MS-17, the
 read-only MCP server, is scheduled in Phase 5: its local stage (5.8a) can follow 3.4, and its
 production stage (5.8b) follows 5.8a, 5.1, 4.4 and LM-5

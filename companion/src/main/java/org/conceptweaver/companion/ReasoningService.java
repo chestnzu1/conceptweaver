@@ -10,12 +10,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.semanticweb.HermiT.Configuration;
 import org.semanticweb.HermiT.ReasonerFactory;
 import org.semanticweb.owl.explanation.api.Explanation;
@@ -59,17 +59,15 @@ import org.springframework.stereotype.Service;
  * written anywhere; an import that was not sent is reported as missing, not fetched.
  */
 @Service
-public final class ReasoningService {
+public final class ReasoningService implements ReasoningWork {
 
-  /** The service never waits longer than this for one answer, whatever the request asks. */
-  static final int MIN_TIMEOUT_MS = 1_000;
-  static final int MAX_TIMEOUT_MS = 600_000;
+  private final ReasoningSettings settings;
+  private final ReasoningPool pool;
 
-  static final ExecutorService WORKERS = Executors.newCachedThreadPool(r -> {
-    Thread t = new Thread(r, "reasoning");
-    t.setDaemon(true);
-    return t;
-  });
+  ReasoningService(ReasoningSettings settings, ReasoningPool pool) {
+    this.settings = settings;
+    this.pool = pool;
+  }
 
   /** What the service will not go on with, already said in words. */
   static final class Refused extends RuntimeException {
@@ -79,38 +77,74 @@ public final class ReasoningService {
   }
 
   /**
-   * Reasons over the ontology in `request`, waiting at most its timeout. Whatever had been worked
-   * out when the time ran out is not shown: half a classification reads like a whole one.
+   * Reasons over the ontology in `request`, waiting at most its timeout. It goes through the same
+   * bounded executor as a job does (roadmap task 3.3): a service with no room answers that it is
+   * busy rather than load one ontology more. Whatever had been worked out when the time ran out
+   * is not shown: half a classification reads like a whole one.
    */
   public JsonObject run(JsonObject request) {
     long t0 = System.nanoTime();
-    int timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(MAX_TIMEOUT_MS, Json.intOf(request, "timeoutMs", 60_000)));
+    int timeoutMs = settings.timeoutOf(Json.intOf(request, "timeoutMs", settings.timeoutMs));
     AtomicReference<OWLReasoner> running = new AtomicReference<>();
     JsonObject out = Json.result();
-    Future<?> job = WORKERS.submit(() -> work(request, out, running));
+    Future<?> job;
+    try {
+      job = pool.submit(() -> {
+        work(request, out, running, phase -> {});
+        return null;
+      });
+    } catch (RejectedExecutionException e) {
+      failed(out, pool.busy());
+      return answer(out, timeoutMs, t0);
+    }
     try {
       job.get(timeoutMs, TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
       OWLReasoner r = running.get();
       if (r != null) r.interrupt();
       job.cancel(true);
-      synchronized (out) {
-        // Whatever had been worked out is not shown: half a classification reads like a whole one.
-        for (String k : new String[] {"unsatisfiable", "subclasses", "equivalents", "types", "same", "relations", "explanations"}) out.remove(k);
-        out.addProperty("status", "failed");
-        if (!out.has("consistency")) out.addProperty("consistency", "unknown");
-        Json.strings(out, "errors").add("Reasoning was stopped after " + (timeoutMs / 1000) + " seconds without finishing.");
-      }
+      failed(out, "Reasoning was stopped after " + (timeoutMs / 1000) + " seconds without finishing.");
     } catch (Exception e) {
       Throwable cause = e.getCause() == null ? e : e.getCause();
-      synchronized (out) {
-        out.addProperty("status", "failed");
-        if (!out.has("consistency")) out.addProperty("consistency", "unknown");
-        Json.strings(out, "errors").add(describe(cause));
-      }
+      failed(out, describe(cause));
     }
+    return answer(out, timeoutMs, t0);
+  }
+
+  /**
+   * The work of one job: the report of `request`, saying through `phase` what it is doing. A
+   * failure is a failed report, as /reason gives one, never an exception to the caller.
+   */
+  @Override
+  public JsonObject report(JsonObject request, int timeoutMs, Consumer<String> phase, AtomicReference<OWLReasoner> running) {
+    long t0 = System.nanoTime();
+    JsonObject out = Json.result();
+    try {
+      work(request, out, running, phase);
+    } catch (Throwable e) {
+      failed(out, describe(e));
+    }
+    return answer(out, timeoutMs, t0);
+  }
+
+  /** What a failed answer says: no half-worked result, the reason, and no claim of consistency. */
+  private static void failed(JsonObject out, String message) {
+    synchronized (out) {
+      for (String k : new String[] {"unsatisfiable", "subclasses", "equivalents", "types", "same", "relations", "explanations"}) out.remove(k);
+      out.addProperty("status", "failed");
+      if (!out.has("consistency")) out.addProperty("consistency", "unknown");
+      Json.strings(out, "errors").add(message);
+    }
+  }
+
+  /** The finished report: how long it took, and the limits it was worked out under. */
+  private static JsonObject answer(JsonObject out, int timeoutMs, long t0) {
     synchronized (out) {
       out.addProperty("ms", (System.nanoTime() - t0) / 1_000_000);
+      JsonObject limits = new JsonObject();
+      limits.addProperty("timeoutMs", timeoutMs);
+      limits.addProperty("maxHeapMb", Runtime.getRuntime().maxMemory() / (1024 * 1024));
+      out.add("limits", limits);
       return out.deepCopy();
     }
   }
@@ -134,7 +168,8 @@ public final class ReasoningService {
     return Json.firstLines(found.replaceAll("(?m)^\\s*at .*$", "").replaceAll("org\\.semanticweb\\.[A-Za-z.]+\\.([A-Za-z]+Exception):?", "").trim(), 3);
   }
 
-  static void work(JsonObject request, JsonObject out, AtomicReference<OWLReasoner> running) {
+  static void work(JsonObject request, JsonObject out, AtomicReference<OWLReasoner> running, Consumer<String> phase) {
+    phase.accept("Reading the ontology…");
     OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
     OWLDataFactory df = manager.getOWLDataFactory();
     // An import that was not sent with the request is not fetched: its address is mapped to one nothing can be loaded from.
@@ -187,6 +222,7 @@ public final class ReasoningService {
     // Whether this is OWL 2 DL at all. Something used without being declared (an annotation property
     // such as skos:definition, most often) is read as what its use implies and changes no axiom, so it
     // is counted apart from what really puts the ontology outside OWL 2 DL.
+    phase.accept("Checking the ontology’s profile…");
     OWLProfileReport report = new OWL2DLProfile().checkOntology(ontology);
     JsonObject profile = new JsonObject();
     JsonArray violations = new JsonArray();
@@ -260,6 +296,7 @@ public final class ReasoningService {
     synchronized (out) {
       out.add("choice", choice);
     }
+    phase.accept("Reasoning with " + (useElk ? "ELK" : "HermiT") + "…");
     if (useElk) {
       elk(ontology, out, running, missing.size() == 0);
       return;
@@ -313,6 +350,7 @@ public final class ReasoningService {
       if (!consistent) {
         // From a contradiction everything follows, so there is no hierarchy to report: only why.
         if (perSubject > 0) {
+          phase.accept("Working out justifications…");
           OWLAxiom entailment = df.getOWLSubClassOfAxiom(df.getOWLThing(), df.getOWLNothing());
           explanations.add(explain("inconsistent", null, entailment, Explanations.inconsistent(explaining, df, budget), ontology, perSubject, System.currentTimeMillis() + budget, names, df));
         }
@@ -416,6 +454,7 @@ public final class ReasoningService {
 
       // Why each unsatisfiable class is one, as far as the time for it goes.
       if (perSubject > 0) {
+        phase.accept("Working out justifications…");
         long deadline = System.currentTimeMillis() + budget;
         ExplanationGeneratorFactory<OWLAxiom> generators = Explanations.manager(explaining);
         int done = 0;

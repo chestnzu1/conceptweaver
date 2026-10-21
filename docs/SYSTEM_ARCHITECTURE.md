@@ -329,7 +329,7 @@ Each is a TypeScript interface under `src/<area>/contracts.ts`, following the tw
 | `StructureService` | children, branches, paths, summary, search, compare, explain, analyze, members; the same four of the class questions for properties (stated `rdfs:subPropertyOf` only) | `src/structure/local.ts` | **Existing** |
 | `EntityQueryService` | describe, query, options | `src/entities/local.ts` | **Existing** |
 | `OntologyEditService` | `apply(changeSet)`, `validate(changeSet)`, `entity(iri)` | `src/editing/local.ts`, over the rule functions of `axioms.ts`; the document's edits are its steps | **Existing** (2026-10-15) |
-| `ReasoningService` | `start(revision, engine)`, `status(job)`, `cancel(job)`, `result(job)` | `src/reasoning/local.ts`: `reasoner.ts` in a worker; HermiT through `reasoning.ts` | **Existing** (2026-10-15) |
+| `ReasoningService` | `start(revision, engine)`, `status(job)`, `cancel(job)`, `result(job)` | `src/reasoning/local.ts`: `reasoner.ts` in a worker; HermiT through `reasoning.ts` | **Existing** (2026-10-15); the companion answers the same four questions over HTTP since 2026-10-21, with the client in `src/reasoning/http.ts` |
 | `ValidationService` | `start(revision, scope)`, `status`, `cancel`, `report` | `src/validation/local.ts`: `validation.ts` in a worker | **Existing** (2026-10-15) |
 | `GraphService` | `neighbourhood(roots, depth, direction, filters)`, `search(text)`, `kinds()`: the subgraph around roots, matching terms, and the edge kinds to filter by | `src/graph/local.ts` over `subgraph.ts` (`extractSubgraph`, `searchTerms`, `edgeTypes`) | **Existing** (2026-10-18) |
 | `ImportExportService` | `detect`, `read(document)`, `write(model, syntax)` | `src/io/local.ts`, over `rdfFormats.ts`, `rdf.ts` and `rdfxml.ts`; OWL's own syntaxes written by the OWL service | **Existing** (2026-10-16) |
@@ -362,7 +362,9 @@ cannot tell a local service from a remote one.
   answer are JSON.
 - **Lists are paged**; the service may return fewer than asked for.
 - **Calls can be given up** (`AbortSignal`), and a refusal is a typed error with a code:
-  `stale-revision` 409, `not-found` 404, `invalid` 400, `unsupported` 501.
+  `stale-revision` 409, `not-found` 404, `invalid` 400, `unsupported` 501; a job's own refusals
+  are `cancelled` 409, `failed` 422, `aborted` 499 and `busy` 429 (`src/reasoning/http.ts`
+  holds the mapping the server follows, `Refusal.java` the one the companion applies).
 - **Read and write are separate interfaces.** A query service never changes an ontology.
 - **Long work is a job**: start returns an id at once; status reports progress and can be
   polled or streamed (Server-Sent Events); cancel is always available.
@@ -558,6 +560,14 @@ In the Local profile the job executor is a Web Worker for the in-page reasoner, 
 for HermiT and ELK; nothing is written to a triple store and the result is held in memory, as
 now.
 
+**Status, 2026-10-21 (roadmap 3.3).** The companion has the job part of this diagram: `start`
+answers with a job at once, `status` gives its state and phase, `cancel` stops it within two
+seconds and leaves no result, and `result` waits for the answer. One bounded executor is shared
+with `/reason` (one worker and four waiting by default), each job has a wall-clock limit, and
+answers are kept by content hash and reasoner, so asking again without an edit costs nothing. The
+inferred graph is held in memory per answer until Phase 4 writes it to the triple store per
+revision; the page's client is `src/reasoning/http.ts`, not yet wired to the editor (3.4, 3.7).
+
 ## 6. Technology stack evaluation
 
 The brief proposes a stack. Each choice is weighed here against what the application needs and
@@ -646,8 +656,11 @@ flowchart TD
 **Status, 2026-10-17 (roadmap task 2.6).** The local service has the first two branches: *auto*
 gives ELK for an ontology in OWL 2 EL and HermiT otherwise, and the answer says which and why;
 HermiT or ELK can be asked for. ELK's result is complete only where none of its own
-incompleteness monitors reports an unsupported feature, and lists what they report. The size
-budget and ELK on the EL part of a larger OWL 2 DL ontology are the server's (task 3.3).
+incompleteness monitors reports an unsupported feature, and lists what they report. Since
+2026-10-21 (task 3.3) the executor's size, the job timeout and the heap are settings in the
+companion (`conceptweaver.reasoning.workers`, `.queue`, `.timeout-ms`, `.max-timeout-ms` and
+`--memory`); a size budget by ontology size, and ELK on the EL part of a larger OWL 2 DL
+ontology, remain open.
 
 ### 7.2 Rules that hold for every reasoner
 
@@ -674,6 +687,15 @@ Each of these is how the application behaves today and is carried over unchanged
 - **Incremental reasoning is not promised.** ELK supports incremental classification for some
   kinds of change; HermiT does not. The design assumes a full run per revision and treats
   anything faster as an optimisation.
+
+**Status, 2026-10-21 (roadmap 3.3).** The companion runs jobs and `/reason` through one
+`ThreadPoolExecutor` whose worker count and queue are settings; work beyond it is refused as
+`busy` rather than queued without bound. A job that passes its wall-clock limit is interrupted
+and failed; cancel interrupts the reasoner as well, and returns within two seconds. Answers are
+cached by the SHA-256 of ontology, imports, explanations, timeout and reasoner — content, not
+revision, while the companion has no revisions (3.4) — and only complete or partial answers are
+kept, never a failed one. A reasoner that ignores interruption is still run in the same process;
+a child process remains the escape hatch if one proves deaf to it.
 
 ## 8. Scalability and performance
 
@@ -1706,9 +1728,10 @@ and requirement facts about third-party software were checked on 2026-10-13 agai
 
 The Phase 3 build's versions and behaviour were checked on 2026-10-20 by building `companion/`:
 Spring Boot 4.1.1, OWL API 5.5.1 and 4.5.29, HermiT 1.4.5.519 and 1.4.5.456, ELK 0.6.0,
-owlexplanation 5.0.1 and 2.0.0, from the POM and `mvn dependency:tree`; 16 tests pass on JDK 21
-under both OWL API profiles, and the four frontend suites named in roadmap 3.2 pass unchanged
-against the 4.5.29 build. [companion/README.md](../companion/README.md) has the commands.
+owlexplanation 5.0.1 and 2.0.0, from the POM and `mvn dependency:tree`; 29 tests pass on JDK 21
+under both OWL API profiles (16 at 3.2; the jobs tests of 3.3 joined them on 2026-10-21), and the
+four frontend suites named in roadmap 3.2 pass unchanged against the 4.5.29 build.
+[companion/README.md](../companion/README.md) has the commands.
 
 The MCP revision named by the requirement (2026-07-28) and the Java SDK landscape were surveyed
 by search on 2026-10-20; the specification itself was not fetched. The revision is reported to

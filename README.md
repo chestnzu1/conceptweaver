@@ -57,6 +57,10 @@ Leave this running too. The first start fetches the reasoner's libraries (about 
 and compiles the service; after that it starts in a couple of seconds and prints
 `ConceptWeaver reasoning service: HermiT … on http://127.0.0.1:5190`.
 
+The reasoner is given 2 GB of heap. For a larger ontology give it more:
+`pnpm reasoner --memory=4g`. The Validation card says how long each answer was allowed and how
+much heap it had (*Limits: 60 s, 2 GB of heap*).
+
 Then, in the app:
 
 1. Open **Validation**.

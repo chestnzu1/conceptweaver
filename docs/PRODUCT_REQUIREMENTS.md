@@ -248,7 +248,7 @@ import, materialisation, virtual knowledge graphs, several databases, writing to
 | --- | --- | --- | --- |
 | M1 Modelling and entity management | **Existing** | `src/components/Entities.tsx`, `EntityEditor.tsx`, `src/model/iri.ts`, `src/model/identity.ts` | Lossless round trip (property identity done 2026-10-14) |
 | M2 Axiom and restriction editing | **Partially Implemented** | `src/model/axioms.ts`, `props.ts`, `expressions.ts`, `src/components/AxiomParts.tsx` | General class axioms and SWRL rules have no editor |
-| M3 Reasoning | **Existing**, job handling partial | `src/model/reasoner.ts`, `reasoning.ts`, `src/reasoning/`, `reasoner/ReasonerService.java` (HermiT and ELK, chosen by profile) | No server-side jobs or size budget |
+| M3 Reasoning | **Existing** | `src/model/reasoner.ts`, `reasoning.ts`, `src/reasoning/`, `reasoner/ReasonerService.java` (HermiT and ELK, chosen by profile); server jobs in `companion/` and `src/reasoning/http.ts` (2026-10-21) | No size budget by ontology size; no ELK on the EL part of a larger OWL 2 DL ontology |
 | M4 SHACL and quality | **Existing** | `src/model/validation.ts`, `shacl.ts`, `quality.ts`, `src/validation/` | No SHACL-SPARQL; no server engine; keys and nested class expressions are not proposed as shapes (SHACL track, SH-4 and SH-5) |
 | M5 Graph and subgraph | **Existing** | `src/components/Canvas.tsx`, `src/layout/`, `src/model/subgraph.ts` | About 2,000 terms |
 | M6 Structure exploration | **Existing** | `src/structure/` | No ontology-level comparison |
@@ -448,11 +448,11 @@ service's library bundle. No progress, no cancel, no cache across sessions.
 | FR-M3-1 | Immediate rule-based feedback while editing, without blocking the page. | Implemented 2026-10-15: the fast reasoner runs in a worker after an edit, for what shows it; an edit on 2,600 classes has no task over 100 ms | P0 |
 | FR-M3-2 | Complete OWL 2 DL reasoning with HermiT, reporting complete, partial or failed with reasons. | Existing | P0 |
 | FR-M3-3 | Inferred statements are shown apart from asserted ones, never stored among them, and exportable on request. | Existing | P0 |
-| FR-M3-4 | Reasoning is a job: started, followed, cancelled; one result per revision and reasoner, reused until the ontology changes. | Recommended | P1 |
+| FR-M3-4 | Reasoning is a job: started, followed, cancelled; one result per revision and reasoner, reused until the ontology changes. | **Existing** (2026-10-21, roadmap 3.3): the page's local service already had jobs; the companion now answers start, status, cancel and result over HTTP, through one bounded executor, with answers cached by content and reasoner. The editor adopts the HTTP service with ontology sessions (3.4) and packaging (3.7). | P1 |
 | FR-M3-5 | ELK is offered for OWL 2 EL ontologies; "automatic" chooses a reasoner from the ontology's profile and says which it chose. | **Existing** (2026-10-17, roadmap 2.6): in the local service; the reasoner list in Validation, automatic by default | P1 |
 | FR-M3-6 | A justification can be asked for any inferred subclass relationship, type or inconsistency. | Partially Implemented (for HermiT findings; the hierarchy's `explain` has none for HermiT) | P1 |
 | FR-M3-7 | An inferred statement can be made an asserted one by an explicit command, as a normal edit. | Recommended | P2 |
-| FR-M3-8 | Time and memory limits are settings, shown with each result. | Partially Implemented (fixed defaults) | P1 |
+| FR-M3-8 | Time and memory limits are settings, shown with each result. | **Existing** (2026-10-21, roadmap 3.3): the companion's workers, queue, timeout, maximum timeout and cache are settings (`conceptweaver.reasoning.*`), `pnpm reasoner -- --memory=<size>` sets the heap, and every DL report says the timeout and heap it was worked out under; the Validation card shows them. The in-page fast reasoner has no bounded job and shows none. | P1 |
 
 **Module non-functional points.** NFR-2 is defined by this module's existing behaviour. A
 reasoner never blocks editing (NFR-3). Complete OWL 2 DL reasoning is not guaranteed to finish

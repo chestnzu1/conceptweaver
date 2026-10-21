@@ -54,6 +54,7 @@ class ParityHttpTest {
     assertEquals(1, health.get("protocol").getAsInt());
     assertTrue(health.get("converts").getAsBoolean());
     assertTrue(health.get("compares").getAsBoolean());
+    assertTrue(health.get("jobs").getAsBoolean());
     // This build has no assistant endpoint, so it says it forwards nothing and holds no key.
     assertFalse(health.get("forwardsAi").getAsBoolean());
     assertFalse(health.get("holdsAiKeys").getAsBoolean());
@@ -89,6 +90,14 @@ class ParityHttpTest {
     assertEquals(200, named.statusCode());
     assertEquals("https://allowed.example", named.headers().firstValue("Access-Control-Allow-Origin").orElse(null));
     assertEquals("complete", json(named).get("status").getAsString());
+  }
+
+  @Test
+  void reasonSaysTheTimeAndHeapTheAnswerWasWorkedUnder() throws Exception {
+    JsonObject report = json(send("POST", "/reason", "{\"ontology\": " + Json.GSON.toJson(TURTLE) + "}", null));
+    JsonObject limits = report.getAsJsonObject("limits");
+    assertEquals(60_000, limits.get("timeoutMs").getAsInt());
+    assertTrue(limits.get("maxHeapMb").getAsInt() > 0);
   }
 
   @Test

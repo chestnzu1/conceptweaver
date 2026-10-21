@@ -26,6 +26,14 @@ const PAGE = 200;
 const SEVERITY_LABEL: Record<Level, string> = { error: 'Error', warning: 'Warning', info: 'Suggestion' };
 const fileBase = (name: string) => name.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'model';
 
+/** The limits a reasoner worked under, as a person reads them: "60 s, 2 GB of heap". */
+const limitsOf = ({ timeoutMs, maxHeapMb }: { timeoutMs: number; maxHeapMb?: number }) => {
+  const seconds = timeoutMs % 1000 === 0 ? String(timeoutMs / 1000) : (timeoutMs / 1000).toFixed(1);
+  if (maxHeapMb === undefined) return `${seconds} s`;
+  const heap = maxHeapMb >= 1024 ? `${(maxHeapMb / 1024).toFixed(maxHeapMb % 1024 === 0 ? 0 : 1)} GB` : `${maxHeapMb} MB`;
+  return `${seconds} s, ${heap} of heap`;
+};
+
 /** An LDM problem as a result of the validation view, opening where it is edited. */
 function fromLdm(p: LdmProblem): Finding {
   return {
@@ -512,6 +520,7 @@ function OwlCard() {
                   {owl.status === 'unknown' || (dl && owl.status === 'inconsistent') ? '' : `, ${owl.inferred} inferred`} · {owl.ms} ms
                 </p>
               )}
+              {owl.limits && <p className="muted limits">Limits: {limitsOf(owl.limits)}.</p>}
             </div>
           )}
           <details>
