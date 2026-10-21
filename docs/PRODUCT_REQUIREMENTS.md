@@ -608,7 +608,7 @@ the model now, or a model in My Models (`src/projects/`, `Versions.tsx`).
 | FR-M6-4 | Metrics and diagnostics of the hierarchy, each with the classes behind it. | Existing | P1 |
 | FR-M6-5 | Object- and data-property hierarchies in the same explorer. | Implemented 2026-10-18 (`StructurePropertyExplore.tsx` over `propertyGraph.ts`: both kinds in one tree, each badged by kind, stated `rdfs:subPropertyOf` only) | P1 |
 | FR-M6-6 | Compare two versions of an ontology, or two ontologies: entities and axioms added, removed and changed. | Implemented 2026-10-18 (`src/projects/difference.ts` names renames and moves; `Versions.tsx` compares with a version, the model now, or a model in My Models) | P1 |
-| FR-M6-7 | The explorer is answered by a server for server-side ontologies. | Partially Implemented (client only) | P1 |
+| FR-M6-7 | The explorer is answered by a server for server-side ontologies. | Implemented 2026-10-21 (roadmap 3.4: `POST /sessions` holds an uploaded ontology by content hash; `/structure/{question}` and `/entities/{question}` answer from it over the OWL API, question for question as the page's own services answer) | P1 |
 
 **Dependencies.** FR-M6-6 needs M10. FR-M6-7 needs Phase 3.
 
@@ -618,7 +618,7 @@ the model now, or a model in My Models (`src/projects/`, `Versions.tsx`).
   its kind; a search finds either kind, and the summary describes the property in focus.
 - FR-M6-6: for two versions that differ by one renamed class, one moved class and one removed
   restriction, the comparison shows exactly those three changes, grouped by entity.
-- FR-M6-7: the existing `http.test.ts` suite passes against the Java implementation.
+- FR-M6-7: the existing `http.test.ts` suite passes against the Java implementation. Done 2026-10-21: the structure and entity suites of `src/structure/http.test.ts` and `src/entities/http.test.ts` run against the companion (set `CONCEPTWEAVER_COMPANION_JAR`) and pass, question for question against the local service over the same document.
 
 ### M7 Advanced bulk import and data mapping
 

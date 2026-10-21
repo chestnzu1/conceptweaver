@@ -516,16 +516,16 @@ For the LDM workstream:
 | SH-4 | **Jena SHACL on the server.** `ValidationService` answered by the companion with Jena SHACL, with the requests and reports of the local engine; the W3C SHACL Core conformance suite of SH-2 run through both and the reports compared; data graphs too large for the page validated there, as a job. | FR-M4-16 | M |
 | SH-5 | **SHACL-SPARQL and the inferred graph.** SPARQL-based constraints and constraint components, and validation against the inferred graph, by the server; the browser engine names what it cannot run instead of passing it over. | FR-M4-9 | M |
 | 3.3 | **Reasoning jobs.** Start, status, cancel; a bounded executor; profile check and reasoner choice; results cached by content hash and reasoner. Done 2026-10-21: the companion answers `POST /reasoning/{start,status,cancel,result}` with the page's job contract (`src/reasoning/http.ts`), through one bounded executor shared with `/reason` (one job at a time, four waiting, refused as `busy` beyond that); every job has a wall-clock limit, can be stopped within two seconds leaving no result, and every answer is cached by the hash of ontology, imports, explanations, timeout and reasoner (16 kept, least recently used first). Each job does the profile check and reasoner choice of 2.6 unchanged, through the same work `/reason` uses. The answer says the timeout and heap it was worked out under, in both services, and `reasoner/run.mjs` takes `--memory`. `pnpm verify` green; the four 3.2 suites pass unchanged against the companion; 29 Java tests and `src/reasoning/http.test.ts` cover the rest. | ADR-005, FR-M3-4, FR-M3-8 | M |
-| 3.4 | **Ontology sessions.** An ontology is uploaded once and held by content hash; `StructureService` and `EntityQueryService` are answered from it over the OWL API. The frontend's `http.test.ts` suites pass against the server. | FR-M6-7 | L |
+| 3.4 | **Ontology sessions.** An ontology is uploaded once and held by content hash; `StructureService` and `EntityQueryService` are answered from it over the OWL API. The frontend's `http.test.ts` suites pass against the server. Done 2026-10-21: the companion answers `POST /sessions` with the reference the structure and entity questions ask by (`src/sessions/http.ts`); a session is held by the SHA-256 of its content and the last 8 are kept. `POST /structure/{question}` and `POST /entities/{question}` answer from a held session, question for question, status for status and message for message, as the page's own services answer: the hierarchy walks, the comparison, the analysis and the entity records are Java ports of the page's, the asserted hierarchy read from the document as the app reads it, and the inferred one built from the same `/reason` report the page reads. The two `http.test.ts` suites run against the companion and pass; 3 Java tests cover the upload and what the suites do not reach. | FR-M6-7 | L |
 | 3.5 | **Change sets on the server.** Apply a change set to a held ontology atomically; return the new content hash. A conformance suite runs every fixture change set through the local and the server implementation and compares the results as axioms. | AR-01, ADR-004 | L |
 | 3.6 | **Difference and export.** A difference between two ontologies by OWL API structural comparison; export in every syntax. | FR-M6-6, FR-M11-2 | S |
 | 3.7 | **Packaging.** One runnable artefact; one command to start it; the frontend detects it. Release note: the companion now needs JDK 21. | ADR-011 | S |
 
 ### Dependencies
 
-Phase 1 (1.8, 1.9) for the contracts. 3.1, 3.2 and 3.3 are done, and with SH-2 done, SH-4 can
-follow. SH-5 needs SH-4; neither depends on 3.4 to 3.6. 3.4 and 3.5 are independent of each
-other. 3.4 also unblocks 5.8a, the local MCP prototype, which can be built in this phase without
+Phase 1 (1.8, 1.9) for the contracts. 3.1, 3.2, 3.3 and 3.4 are done, and with SH-2 done, SH-4 can
+follow. SH-5 needs SH-4; neither depends on 3.5 to 3.6. 3.5 and 3.6 are independent of each
+other. 3.4 done also unblocks 5.8a, the local MCP prototype, which can be built in this phase without
 Phase 5 accounts. Nothing in this phase is a prerequisite of the LDM workstream (§1.3): database
 connection and schema discovery (3.8, 3.9, stage DI-1) are deferred with data integration (§11).
 
@@ -855,7 +855,7 @@ and 5.8b (production integration), with FR-M9-8, ADR-028 and milestone MS-17. It
 of OpenBKN's BKN Foundry, whose Context Loader exposes knowledge-network retrieval to MCP clients
 through an adapter over its own services. What is borrowed is the shape, not the code: a fixed,
 read-only tool catalog over the services that already answer the browser, project- and
-revision-scoped, bounded and paged. **5.8a is eligible after 3.4** and may be built in Phase 3;
+revision-scoped, bounded and paged. **5.8a is eligible now** (3.4 is done) and may be built in Phase 3;
 **5.8b waits for 5.1, the public API of 5.8, 4.4 and LM-5**. Nothing in 3.2 onwards changes, and
 nothing MCP-related is implemented yet.
 
@@ -870,8 +870,25 @@ free; failed answers are not cached. The report says the timeout and heap it was
 under, in both services, and `reasoner/run.mjs --memory=<size>` sets the heap. The page's client
 for this API is `src/reasoning/http.ts`, tested against the local service; the editor is not
 wired to it until ontology sessions (3.4) and packaging with detection (3.7). A size budget for
-ontologies and ELK on the EL part of a larger OWL 2 DL ontology remain open. **The next task is
-3.4**, ontology sessions.
+ontologies and ELK on the EL part of a larger OWL 2 DL ontology remain open.
+
+**2026-10-21: 3.4 is done**, ontology sessions in the companion. `POST /sessions` takes
+`{document, imports}` and answers with the reference the structure and entity questions ask by
+(`src/sessions/http.ts`): the ontology is held by the SHA-256 of its content, so the same content
+uploaded again is the same session, and another document of the same ontology is another
+revision of it. Eight sessions are held, the least recently asked of going first — this is the
+bridge to Phase 4, not a store. `POST /structure/{question}` and `POST /entities/{question}`
+answer from a held session over the OWL API, question for question and refusal for refusal as the
+page's own services answer: `service.ts`, `compare.ts`, `analyze.ts`, the hierarchy walks and the
+record reading of `entities/local.ts` are ported to Java, and the asserted hierarchy is read from
+the document as the app reads it (labels and languages, prefixes, externals, drawn restrictions).
+The inferred hierarchy is built from the same `/reason` report the page reads, so both sides
+agree on what the reasoner entails; the entities' filters that rest on a reasoner are answered
+from it. The `http.test.ts` suites of the structure and the entity services run against the
+companion (set `CONCEPTWEAVER_COMPANION_JAR`) and pass, question for question against the local
+service over the same document; 3 Java tests cover the upload and the refusals the suites do not
+reach. The editor is not wired to the sessions until packaging with detection (3.7). **The next
+task is 3.5**, change sets on the server.
 
 **Task 2.6: ELK in the companion, and the reasoner chosen by profile** (FR-M3-5).
 

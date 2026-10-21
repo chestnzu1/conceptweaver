@@ -12,7 +12,11 @@ import com.google.gson.JsonObject;
  */
 final class Json {
 
-  static final Gson GSON = new Gson();
+  /**
+   * Writes nulls as nulls: a provenance without a reasoner says "engine": null, and an analysis
+   * without a number says so with null, never by leaving the field out (which would read as 0).
+   */
+  static final Gson GSON = new com.google.gson.GsonBuilder().serializeNulls().create();
 
   private Json() {}
 

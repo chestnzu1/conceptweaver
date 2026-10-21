@@ -6,7 +6,10 @@ is built with: Spring Boot 4.1.1, OWL API 5.5.1, HermiT 1.4.5.519, ELK 0.6.0 and
 `/health`, `/reason`, `/convert` and `/compare` — with the same requests, responses and statuses,
 and passed the frontend's own suites against it unchanged. Task 3.3 (done 2026-10-21) added
 reasoning as jobs: start, status, cancel and result over HTTP, one bounded executor, a wall-clock
-limit per job, and answers cached by content and reasoner.
+limit per job, and answers cached by content and reasoner. Task 3.4 (done 2026-10-21) added
+ontology sessions: an ontology uploaded once and held by content hash, with the Structure
+Explorer's and the Entities page's questions answered from it over the OWL API, and the
+frontend's own `http.test.ts` suites passing against it.
 
 `CompanionApplication` is that application. `reasoner/run.mjs` starts it in place of the
 single-file service when `CONCEPTWEAVER_COMPANION_JAR` names the built jar; without that variable
@@ -37,10 +40,10 @@ spike's 10, plus the HTTP parity tests of 3.2 and the jobs tests of 3.3, 29 in a
 
 ```
 $ ./mvnw test
-Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 32, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 $ ./mvnw -Powlapi4 test
-Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 32, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -125,9 +128,10 @@ wired to it until 3.4 and 3.7.
   and `.cache`, in `application.properties` or on the command line.
   `spring.mvc.async.request-timeout` is raised so that `/reasoning/result` may wait as long as a
   job may run.
-- **No revisions yet.** The companion holds no ontology and knows no revision until 3.4, so a
-  start accepts any non-empty `revisionId`; the revision check the page's local service makes
-  arrives with ontology sessions.
+- **No revisions yet.** The companion holds no ontology of its own for reasoning: a start
+  carries the ontology and its imports, and accepts any non-empty `revisionId`. The sessions of
+  3.4 are the structure and entity services' own holding, and reasoning over a session runs
+  through the same cache.
 
 `ReasoningJobsTest` covers the bookkeeping without a reasoner — one content answered once and
 kept, cancel within two seconds leaving no result, the timeout, `busy`, phases, a failed report
@@ -135,6 +139,45 @@ being a failed job that is not kept, and the refusals. `ReasoningJobsHttpTest` c
 questions over HTTP, the refusals' statuses and codes, the POST-only and origin rules, and
 `health.jobs`. `src/reasoning/http.test.ts` runs the local reasoning service and the same
 service behind the HTTP client side by side and compares their answers and refusals.
+
+## Ontology sessions (3.4)
+
+`POST /sessions` takes `{document, imports?}` — the ontology in Turtle, and the imports it
+declares — and answers `{ontologyId, revisionId}`: the ontology's IRI, and the SHA-256 of the
+content, so the same content uploaded again is the same session and another document of the same
+ontology is another revision of it. Eight sessions are held, the least recently asked of going
+first (`conceptweaver.sessions.cache`); holding is bounded on purpose — these are the bridge to
+Phase 4, not a store. A refusal is `{message}` with 400 for a request that is not JSON with a
+`document`, 413 over the 64 MB limit, and 422 for a document that could not be read.
+
+`POST /structure/{question}` and `POST /entities/{question}` answer from a held session, each
+question a JSON query naming the session's reference, question for question, status for status
+and message for message as the page's own services answer (`src/structure/http.ts` and
+`src/entities/http.ts`): the structure service's 13 questions and the entity service's three,
+with `{code, message}` refusals — `stale-revision` 409 for a session that is not held or a
+revision that is not the held one, `not-found` 404, `invalid` 400, `unsupported` 501. What the
+answer is: the hierarchy walks, the comparison, the analysis and the entity records are Java
+ports of `src/structure/graph.ts`, `propertyGraph.ts`, `compare.ts`, `analyze.ts` and the record
+reading of `src/entities/local.ts`, kept behaviour for behaviour; the asserted hierarchy is read
+from the document as the app reads it (labels and their language, prefixes, externals, drawn
+restrictions), and the inferred hierarchy is built from the same `/reason` report the page
+reads, so the two sides agree on what the reasoner entails. An entity in an answer is a key the
+service chooses — here the entity's IRI.
+
+`SessionsHttpTest` covers the upload and the refusals' statuses and shapes; the parity check is
+the frontend's own, run against the jar:
+
+```sh
+./mvnw clean package
+export JAVA_HOME=/path/to/jdk-21
+export CONCEPTWEAVER_COMPANION_JAR=$PWD/target/companion-0.1.0-SNAPSHOT.jar
+cd ..
+pnpm exec vitest run src/structure/http.test.ts src/entities/http.test.ts
+```
+
+Each suite uploads its fixture document, asks every question of the local service over the same
+document and of the companion, and compares the answers: the session's reference and the entity
+keys are each side's own, and everything else is alike.
 
 ## What the tests reproduce
 
@@ -192,8 +235,9 @@ the services the companion answers, not a second backend. It is not built yet. W
 
 - it is disabled by default, bound to loopback, guarded by a bearer token generated per start and
   by `Host` and `Origin` checks, with an allow-list of projects;
-- its catalog is fixed in code and read-only: after 3.4, a project summary, entity search, an
-  entity's details and the class and property hierarchies, all bounded and paged;
+- its catalog is fixed in code and read-only: over the sessions of 3.4, a project summary,
+  entity search, an entity's details and the class and property hierarchies, all bounded and
+  paged;
 - it has no tool that edits an ontology or an LDM, applies a mapping or deletes a project, and no
   access to an AI provider or key;
 - it calls the same `StructureService` and `EntityQueryService` the frontend uses; a tool whose
@@ -205,11 +249,12 @@ accounts, `GraphService` on the server and LM-5.
 
 ## Not here yet
 
-- Ontology sessions (3.4), change sets (3.5), difference and export (3.6).
+- Change sets (3.5), difference and export (3.6).
 - The assistant forwarding endpoints of the single-file service (`/ai/forward`, `/ai/key` and
   `/ai/key/forget`); `/health` reports `forwardsAi` and `holdsAiKeys` as false, and
   `reasoner/run.mjs` ignores `--allow-local-ai` when it starts the companion.
-- The read-only MCP adapter (5.8a), which waits for 3.4's services.
+- The read-only MCP adapter (5.8a), which is now eligible: the sessions of 3.4 answer every
+  service its tools need.
 - Packaging as the default and a frontend that detects it (3.7). Until then `pnpm reasoner`
   starts the single-file service of `reasoner/` unless `CONCEPTWEAVER_COMPANION_JAR` is set.
 - Jena TDB2 and SHACL: Phase 4 and SH-4. AR-03 remains open for the Jena half of the alignment.

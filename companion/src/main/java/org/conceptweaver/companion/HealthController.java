@@ -29,6 +29,9 @@ final class HealthController {
     o.addProperty("compares", true);
     // Reasoning can be started as a job, followed, stopped and asked for its answer (roadmap 3.3).
     o.addProperty("jobs", true);
+    // An ontology can be uploaded once and held by content hash, and the structure and entity
+    // questions are answered from it (roadmap 3.4).
+    o.addProperty("sessions", true);
     // The assistant's requests are forwarded by the browser's profile only; this build has neither
     // /ai/forward nor /ai/key, so it says what it has.
     o.addProperty("forwardsAi", false);

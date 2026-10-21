@@ -1,5 +1,6 @@
 package org.conceptweaver.companion;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.ByteArrayOutputStream;
@@ -41,7 +42,7 @@ final class HttpSupport {
   }
 
   /** A JSON answer, as the single-file service writes it: never cached. */
-  static ResponseEntity<String> respond(int status, JsonObject body) {
+  static ResponseEntity<String> respond(int status, JsonElement body) {
     return ResponseEntity.status(status)
         .contentType(MediaType.parseMediaType("application/json; charset=utf-8"))
         .cacheControl(CacheControl.noStore())

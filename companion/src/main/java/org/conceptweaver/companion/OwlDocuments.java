@@ -150,8 +150,11 @@ final class OwlDocuments {
       return one.isPresent() ? one.get().toString() : "";
     }
     try {
-      if (!(Boolean) optional.getClass().getMethod("isPresent").invoke(optional)) return "";
-      return String.valueOf(optional.getClass().getMethod("get").invoke(optional));
+      // Guava's Optional: its methods are asked for on the public Optional class — the Present it
+      // hands back is package-private, and a method asked for on that class is not callable.
+      Class<?> optionalClass = Class.forName("com.google.common.base.Optional");
+      boolean present = (Boolean) optionalClass.getMethod("isPresent").invoke(optional);
+      return present ? String.valueOf(optionalClass.getMethod("get").invoke(optional)) : "";
     } catch (ReflectiveOperationException e) {
       return "";
     }

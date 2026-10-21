@@ -1013,11 +1013,13 @@ that *Layered* says so and uses the built-in hierarchical layout.
 - `scripts` – `verify.mjs` (every check, as CI runs it), `bench.mjs` (the benchmarks and their
   report) and `main-thread.mjs` (the longest main-thread task in the browser, for `bench.mjs`).
 - `companion` – the Java semantic backend of Phase 3: Spring Boot with the OWL API 5.5.1,
-  HermiT, ELK and the explanation library, built with the Maven wrapper. Tasks 3.1 and 3.2 are
+  HermiT, ELK and the explanation library, built with the Maven wrapper. Tasks 3.1 to 3.4 are
   done: it answers `/health`, `/reason`, `/convert` and `/compare` with the single-file service's
-  requests and responses, and the frontend's reasoning and OWL-syntax suites pass unchanged
-  against it. It is not wired into `pnpm` yet; `reasoner/` is still the service the app asks
-  unless `CONCEPTWEAVER_COMPANION_JAR` is set. See `companion/README.md`.
+  requests and responses, reasoning as jobs, and ontology sessions — an ontology uploaded once
+  and held by content hash, with the structure and entity questions answered from it, and the
+  frontend's own suites passing against it. It is not wired into `pnpm` yet; `reasoner/` is
+  still the service the app asks unless `CONCEPTWEAVER_COMPANION_JAR` is set. See
+  `companion/README.md`.
 - `corpus` – the round-trip corpus: `corpus.mjs` lists the ontologies, each by a fixed version
   and its checksum, and fetches them into `files/` (not committed); `expected/` holds what a
   round trip through the app loses of each today (see *Reading ontologies*). `shacl.mjs` fetches
